@@ -85,5 +85,3 @@ Map.addLayer(ts.select("ndvi"), {}, "NDVI", false);
 Map.addLayer(ts.select("mirbi"), {}, "MIRBI", false);
 Map.addLayer(ts.select("bai"), {}, "BAI", false);
 Map.addLayer(ts.select("evi"), {}, "EVI", false);
-
-

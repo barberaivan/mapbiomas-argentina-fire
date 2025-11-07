@@ -46,7 +46,9 @@ function harmonizeETM(img) {
     .multiply(coefficients.slopes)
     .add(coefficients.itcps)
     .toFloat();
-  return img.addBands(orig.select('QA_PIXEL')).copyProperties(orig, orig.propertyNames());
+  return img.addBands(orig.select('QA_PIXEL'))
+            //.addBands(orig.select('ST_B6').rename('thermal'))
+            .copyProperties(orig, orig.propertyNames());
 }
 
 // Prepare OLI
@@ -55,7 +57,9 @@ function prepOLI(img) {
   img = renameL8L9(img)
     .multiply(0.0000275).add(-0.2)
     .toFloat();
-  return img.copyProperties(orig, orig.propertyNames());
+  return img
+            //.addBands(orig.select('ST_B10').rename('thermal'))
+            .copyProperties(orig, orig.propertyNames());
 }
 
 // Compute many spectral indices sensitive to fire
@@ -141,11 +145,67 @@ function addFireIndices(img) {
       'swir1': img.select('swir1'),
       'swir2': img.select('swir2')
     }).rename('wetness');
-  
+    
+ 
   // Add all indices to the image
   return img.addBands([
     nbr, nbr2, ndvi, mirbi, bai, evi, savi, msi, ndsi, ndmi, 
     brightness, greenness, wetness
+  ]);
+}
+
+// Burn indices, using -MIRBI, so all indices decrease with fire.
+function addFireFour(img) {
+  // NBR - Normalized Burn Ratio (Key index for fire mapping)
+  var nbr = img.normalizedDifference(['nir', 'swir2']).rename('nbr');
+  
+  // NBR2 - Normalized Burn Ratio 2 (SWIR-based)
+  var nbr2 = img.normalizedDifference(['swir1', 'swir2']).rename('nbr2');
+  
+  // NDVI - Normalized Difference Vegetation Index
+  var ndvi = img.normalizedDifference(['nir', 'red']).rename('ndvi');
+  
+  // MIRBI - Mid-Infrared Burn Index * (-1)
+  var mirbi = img.expression(
+    '10 * swir2 - 9.8 * swir1 + 2', {
+      'swir2': img.select('swir2'),
+      'swir1': img.select('swir1')
+    }).rename('mirbi').multiply(-1); 
+  
+  // Add all indices to the image
+  return img.addBands([
+    nbr, nbr2, ndvi, mirbi
+  ]);
+}
+
+// Burn indices, using -MIRBI, so all indices decrease with fire.
+function addFireSix(img) {
+  // NBR - Normalized Burn Ratio (Key index for fire mapping)
+  var nbr = img.normalizedDifference(['nir', 'swir2']).rename('nbr');
+  
+  // NBR2 - Normalized Burn Ratio 2 (SWIR-based)
+  var nbr2 = img.normalizedDifference(['swir1', 'swir2']).rename('nbr2');
+  
+  // NDVI - Normalized Difference Vegetation Index
+  var ndvi = img.normalizedDifference(['nir', 'red']).rename('ndvi');
+  
+  // MIRBI - Mid-Infrared Burn Index * (-1)
+  var mirbi = img.expression(
+    '10 * swir2 - 9.8 * swir1 + 2', {
+      'swir2': img.select('swir2'),
+      'swir1': img.select('swir1')
+    }).rename('mirbi').multiply(-1); 
+  
+  // ATBI, an improvement over NBRs
+  var atbi = nbr.multiply(img.select('nir')).divide(img.select('swir2'))
+                .rename('atbi');
+  
+  var atbi2 = nbr2.multiply(img.select('swir1')).divide(img.select('swir2'))
+                  .rename('atbi2');
+  
+  // Add all indices to the image
+  return img.addBands([
+    nbr, nbr2, ndvi, mirbi, atbi, atbi2
   ]);
 }
 
@@ -251,8 +311,8 @@ function getLandsat(roi, startDate, endDate, indicesFunction) {
   var ls9 = ee.ImageCollection('LANDSAT/LC09/C02/T1_L2').filter(colFilter).map(maskq).map(prepOLI);
 
   var landsat = ls5.merge(ls7).merge(ls8).merge(ls9)
-    .select(['blue', 'green', 'red', 'nir', 'swir1', 'swir2']); // remove QA band
-  var indices = landsat.map(indicesFunction);//.map(addNDFI);
+    .select(['blue', 'green', 'red', 'nir', 'swir1', 'swir2']); // remove QA band //, 'thermal'
+  var indices = landsat.map(indicesFunction);
   return indices;
 }
 
@@ -273,6 +333,254 @@ function getGABAM() {
     .clip(roi);
 }
 
+
+// MapBiomas LandCover Reclassification for fire, 
+// returning multi-band image
+function mapBiomasReclass() {
+  // Load MapBiomas image (multi-band: one per year)
+  var mapbiomas = ee.Image("projects/mapbiomas-argentina/assets/LAND-COVER/COLLECTION-2/GENERAL/CLASSIFICATION/FINAL_CLASSIFICATION/PAT/PAT-INTEGRACION-FINAL-v4");
+
+  // Old and new values
+  var from = [3, 66, 6, 12, 11, 75, 63, 21, 9, 29, 25, 24, 33, 34, 27];
+  var to   = [1, 2,  1,  3,  3,  3,  3,  3, 1,  0,  0,  0,  0,  0,  0];
+
+  /*
+  new values:
+  0: no quemable
+  1: bosque
+  2: arbustal
+  3: pastizal
+  */
+
+  // Get all band names
+  var bnames = mapbiomas.bandNames();
+  
+  // Reclassify each band
+  var reclassifiedBands = bnames.map(function(year) {
+    var band = mapbiomas.select([year])
+      .remap(from, to)
+      .rename([year]); // keep the band name
+    return band;
+  });
+
+  // Merge all reclassified bands back into one multiband image
+  var veg = ee.ImageCollection(reclassifiedBands).toBands().rename(bnames);
+  return veg;
+}
+
+// MapBiomas LandCover Reclassification for fire, 
+// returning ImageCollection
+function mapBiomasReclassCol() {
+  // Load MapBiomas image (multi-band: one per year)
+  var mapbiomas = ee.Image("projects/mapbiomas-argentina/assets/LAND-COVER/COLLECTION-2/GENERAL/CLASSIFICATION/FINAL_CLASSIFICATION/PAT/PAT-INTEGRACION-FINAL-v4");
+
+  // Old and new values
+  var from = [3, 66, 6, 12, 11, 75, 63, 21, 9, 29, 25, 24, 33, 34, 27];
+  var to   = [1,  2, 1,  3,  3,  3,  3,  3, 1,  0,  0,  0,  0,  0,  0];
+
+  /*
+  new values:
+  0: no quemable
+  1: bosque
+  2: arbustal
+  3: pastizal
+  */
+
+  // Get all band names
+  var bnames = mapbiomas.bandNames();
+
+  // Convert each band to an image with a 'year' property
+  var reclassCol = ee.ImageCollection(
+    bnames.map(function(bname) {
+      bname = ee.String(bname);
+      var year = bname.split('_').get(1); // extract the year part
+      var img = mapbiomas
+        .select([bname])
+        .remap(from, to)
+        .rename('classification')
+        .set('year', ee.Number.parse(year))
+        .set('system:time_start', ee.Date.parse('YYYY', year).millis());
+      return img;
+    })
+  );
+
+  return reclassCol;
+}
+
+// Compute coefficients-image, from a 3-class vegetation image and 
+// a dictionary of coefficients (a simple remap).
+function makeCoeffImage(veg, coeffs) {
+  // Mask out non-burnable areas (veg == 0)
+  veg = veg.updateMask(veg.neq(0));
+
+  // Helper: make one coefficient band
+  var coeffBands = Object.keys(coeffs).map(function(varName) {
+    // Get the 3 coefficients for veg classes 1, 2, 3
+    var values = coeffs[varName];
+
+    // Remap vegetation values (1, 2, 3) to the corresponding coefficients
+    var band = veg.remap(
+      [1, 2, 3],
+      [values[0], values[1], values[2]]
+    ).rename(varName);
+
+    return band;
+  });
+
+  // Combine all bands into one image
+  var coeffImg = ee.Image.cat(coeffBands);
+
+  return coeffImg;
+}
+
+// Function to add Day of Year (DOY) band to image
+function addDOY(image) {
+  // Get time_start property (milliseconds since 1970-01-01)
+  var millis = ee.Date(image.get('system:time_start'));
+  
+  // Compute day of year
+  var doy = millis.getRelative('day', 'year').add(1); // add(1) to make it 1–365
+  
+  var doyimg = ee.Image.constant(doy).rename('DOY').toInt16();
+  // copy mask from image
+  doyimg = doyimg.updateMask(image.mask());
+  
+  // Option 1: set as a property
+  image = image.set('DOY', doy);
+  
+  // Option 2 (optional): add as a constant band
+  image = image.addBands(doyimg);
+  
+  return image;
+}
+
+// Compute low and high values for a single-band collection.
+// Returns a 2-band image: <band>_low and <band>_high.
+function computeExtremesSingle(collection) {
+  // Get the single band name
+  var bandName = ee.String(collection.first().bandNames().get(0));
+
+  // Count valid observations
+  var N = collection.count().select([0]).rename('N');
+
+  // Convert to array (remove singleton band dimension)
+  var arr = collection.toArray().arrayProject([0]); // shape: [time]
+
+  // Sort ascending (low) and descending (high)
+  var sortedAsc  = arr.arraySort();
+  var sortedDesc = arr.multiply(-1).arraySort().multiply(-1);
+  
+  // metrics:
+  // m1: first (minimum or maximum)
+  // m2: mean(first, second)
+  // m3: mean(second, third)
+
+  // --- LOWS ---
+  var low1 = sortedAsc.arrayGet([0]);  // min
+  var low2 = sortedAsc.arraySlice(0, 0, 2)
+                      .arrayReduce(ee.Reducer.mean(), [0])
+                      .arrayGet([0]);
+  var low3 = sortedAsc.arraySlice(0, 1, 3)
+                      .arrayReduce(ee.Reducer.mean(), [0])
+                      .arrayGet([0]);
+
+  // --- HIGHS ---
+  var high1 = sortedDesc.arrayGet([0]);  // max
+  var high2 = sortedDesc.arraySlice(0, 0, 2)
+                        .arrayReduce(ee.Reducer.mean(), [0])
+                        .arrayGet([0]);
+  var high3 = sortedDesc.arraySlice(0, 1, 3)
+                        .arrayReduce(ee.Reducer.mean(), [0])
+                        .arrayGet([0]);
+
+  // --- Select depending on number of valid obs ---
+  // Choose metric according to N
+  // N > 20 -> m3
+  // 20 >= N >=9 -< m2
+  // 9 > N -> m1
+  // 2 > N -> masked
+  var low = low3
+    .where(N.lte(20), low2)
+    .where(N.lt(9), low1)
+    .updateMask(N.gt(1));
+
+  var high = high3
+    .where(N.lte(20), high2)
+    .where(N.lt(9), high1)
+    .updateMask(N.gt(1));
+
+  // Rename bands
+  low  = low.rename(bandName.cat('_low'));
+  high = high.rename(bandName.cat('_high'));
+
+  // Return 2-band image
+  return low.addBands(high);
+}
+
+// Compute a predictor image matching the coeffs_obs dictionary
+// keys defined in utils/constants.js.
+// indImg: landsat image with the four fire indices.
+// summ: image with the summaries of those indices in previous year (low and high).
+// coeffs: coefficients dictionary, to get keys.
+function makePredictorsObs(indImg, summ, coeffs) {
+  // Step 1. Compute "_d" variables for each fire index
+  var fireIndices = ['nbr', 'nbr2', 'mirbi', 'ndvi'];
+  var diffs = {};
+  fireIndices.forEach(function(idx) {
+    diffs[idx + '_d'] = summ.select(idx + '_low').subtract(indImg.select(idx)).rename(idx + '_d');
+  });
+
+  // Step 2. Build a dictionary of available base variables
+  var base = {};
+  fireIndices.forEach(function(idx) {
+    base[idx] = indImg.select(idx);
+    base[idx + '_low'] = summ.select(idx + '_low');
+    base[idx + '_high'] = summ.select(idx + '_high');
+    base[idx + '_d'] = diffs[idx + '_d'];
+  });
+
+  // Step 3. Iterate over all keys in coeffs and build corresponding predictor bands
+  var predictorsList = Object.keys(coeffs).map(function(term) {
+    if (term === 'intercept') {
+      return ee.Image.constant(1).rename('intercept');
+    }
+
+    // Interaction term (contains "X")
+    if (term.indexOf('X') > -1) {
+      var parts = term.split('X');
+      var img = ee.Image.constant(1);
+      parts.forEach(function(p) {
+        img = img.multiply(base[p]);
+      });
+      return img.rename(term);
+    }
+
+    // Regular single variable
+    return base[term].rename(term);
+  });
+
+  // Step 4. Concatenate into a single multi-band image
+  var predictors = ee.Image.cat(predictorsList);
+
+  return predictors;
+}
+
+// Add fractional year from system:time_start
+function addFracYear(img) {
+  // Ensure img is cast as ee.Image
+  img = ee.Image(img);
+  
+  var date = ee.Date(img.get('system:time_start'));
+  var year = date.get('year');
+  var doy = date.getRelative('day', 'year'); // day-of-year (0–365)
+  var daysInYear = ee.Date.fromYMD(year.add(1), 1, 1)
+    .difference(ee.Date.fromYMD(year, 1, 1), 'day');
+  var fracYear = year.add(doy.divide(daysInYear)); // e.g. 2019.25
+  
+  return img.addBands(
+    ee.Image.constant(fracYear).rename('fracYear').toFloat()
+  );
+}
 
 // Visualization functions ----------------------------------------------
 
@@ -412,40 +720,6 @@ function makeNBRtsPanel(roi, begin, end, pre_lwr, pre_upr, post_lwr, post_upr) {
   return panel;
 }
 
-// MapBiomas Fire Reclassification ----------------------------------------
-
-function mapBiomasReclass() {
-  // Load MapBiomas image (multi-band: one per year)
-  var mapbiomas = ee.Image("projects/mapbiomas-argentina/assets/LAND-COVER/COLLECTION-2/GENERAL/CLASSIFICATION/FINAL_CLASSIFICATION/PAT/PAT-INTEGRACION-FINAL-v4");
-
-  // Old and new values
-  var from = [3, 66, 6, 12, 11, 75, 63, 21, 9, 29, 25, 24, 33, 34, 27];
-  var to   = [1, 2,  1,  3,  3,  3,  3,  3, 1,  0,  0,  0,  0,  0,  0];
-
-  /*
-  new values:
-  0: no quemable
-  1: bosque
-  2: arbustal
-  3: pastizal
-  */
-
-  // Get all band names
-  var bnames = mapbiomas.bandNames();
-  
-  // Reclassify each band
-  var reclassifiedBands = bnames.map(function(year) {
-    var band = mapbiomas.select([year])
-      .remap(from, to)
-      .rename([year]); // keep the band name
-    return band;
-  });
-
-  // Merge all reclassified bands back into one multiband image
-  var veg = ee.ImageCollection(reclassifiedBands).toBands().rename(bnames);
-  return veg;
-}
-
 // Exports ----------------------------------------------------------
 
 exports = {
@@ -454,5 +728,13 @@ exports = {
   addNBR: addNBR,
   addNBR_NDVI: addNBR_NDVI,
   addFireIndices: addFireIndices,
-  mapBiomasReclass: mapBiomasReclass
+  addFireFour: addFireFour,
+  addFireSix: addFireSix,
+  mapBiomasReclass: mapBiomasReclass,
+  mapBiomasReclassCol: mapBiomasReclassCol,
+  addDOY: addDOY,
+  computeExtremesSingle: computeExtremesSingle,
+  makeCoeffImage: makeCoeffImage,
+  makePredictorsObs: makePredictorsObs,
+  addFracYear: addFracYear
 };
