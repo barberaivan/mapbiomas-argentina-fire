@@ -756,7 +756,7 @@ plot_bpts_fit <- function(
   d <- d[order(d$date), ]
   
   # predict
-  d$logit_p <- predict(model, d, type = "link")
+  d$logit_p <- predict(model_obs, d, type = "link")
   d$p <- plogis(d$logit_p)
 
   # choose variable to display
@@ -870,7 +870,7 @@ plot_bpts_fit <- function(
   )
 
   # Get annual-level prob
-  da$p <- predict(mbp_annual, da, type = "response")
+  da$p <- predict(model_annual, da, type = "response")
 
   # Factor burned
   da$burned_fac <- factor(

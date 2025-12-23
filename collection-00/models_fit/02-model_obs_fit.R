@@ -61,7 +61,6 @@ mbp <- glm2(
 # Save
 saveRDS(mbp, file.path("exports", "model_obs.rds"))
 
-
 # Reparameterize model by veg type ----------------------------------
 # To make coefficient-bands in GEE. [forest, shrubland, steppe]
 

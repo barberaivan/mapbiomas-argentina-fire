@@ -1,0 +1,1024 @@
+% $ biblatex auxiliary file $
+% $ biblatex bbl format version 3.3 $
+% Do not modify the above lines!
+%
+% This is an auxiliary file used by the 'biblatex' package.
+% This file may safely be deleted. It will be recreated by
+% biber as required.
+%
+\begingroup
+\makeatletter
+\@ifundefined{ver@biblatex.sty}
+  {\@latex@error
+     {Missing 'biblatex' package}
+     {The bibliography requires the 'biblatex' package.}
+      \aftergroup\endinput}
+  {}
+\endgroup
+
+
+\refsection{0}
+  \datalist[entry]{nyt/global//global/global/global}
+    \entry{AchantaSNIC}{inproceedings}{}{}
+      \name{author}{2}{}{%
+        {{un=0,uniquepart=base,hash=70ab76581ec6cc5f89acbc1833d77b14}{%
+           family={Achanta},
+           familyi={A\bibinitperiod},
+           given={Radhakrishna},
+           giveni={R\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=77f28bca610b53581502d07362bdb720}{%
+           family={Süsstrunk},
+           familyi={S\bibinitperiod},
+           given={Sabine},
+           giveni={S\bibinitperiod},
+           givenun=0}}%
+      }
+      \strng{namehash}{12bf925d2ef8438fb0596397c6dc65a0}
+      \strng{fullhash}{12bf925d2ef8438fb0596397c6dc65a0}
+      \strng{fullhashraw}{12bf925d2ef8438fb0596397c6dc65a0}
+      \strng{bibnamehash}{12bf925d2ef8438fb0596397c6dc65a0}
+      \strng{authorbibnamehash}{12bf925d2ef8438fb0596397c6dc65a0}
+      \strng{authornamehash}{12bf925d2ef8438fb0596397c6dc65a0}
+      \strng{authorfullhash}{12bf925d2ef8438fb0596397c6dc65a0}
+      \strng{authorfullhashraw}{12bf925d2ef8438fb0596397c6dc65a0}
+      \field{sortinit}{A}
+      \field{sortinithash}{2f401846e2029bad6b3ecc16d50031e2}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{booktitle}{Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR)}
+      \field{month}{7}
+      \field{title}{Superpixels and Polygons Using Simple Non-Iterative Clustering}
+      \field{year}{2017}
+      \field{pages}{4895\bibrangedash 4904}
+      \range{pages}{10}
+      \verb{doi}
+      \verb 10.1109/CVPR.2017.520
+      \endverb
+      \verb{urlraw}
+      \verb https://openaccess.thecvf.com/content_cvpr_2017/html/Achanta_Superpixels_and_Polygons_CVPR_2017_paper.html
+      \endverb
+      \verb{url}
+      \verb https://openaccess.thecvf.com/content_cvpr_2017/html/Achanta_Superpixels_and_Polygons_CVPR_2017_paper.html
+      \endverb
+    \endentry
+    \entry{adams_bischof_1994}{article}{}{}
+      \name{author}{2}{}{%
+        {{un=0,uniquepart=base,hash=f2af507e066491c7c22b05e5fbd04234}{%
+           family={Adams},
+           familyi={A\bibinitperiod},
+           given={Rolf},
+           giveni={R\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=b328eba9f8d20162b395d8e1fa202cd0}{%
+           family={Bischof},
+           familyi={B\bibinitperiod},
+           given={Leanne},
+           giveni={L\bibinitperiod},
+           givenun=0}}%
+      }
+      \strng{namehash}{ab8b9dfa3ed5f49a17906e01b78b9cb0}
+      \strng{fullhash}{ab8b9dfa3ed5f49a17906e01b78b9cb0}
+      \strng{fullhashraw}{ab8b9dfa3ed5f49a17906e01b78b9cb0}
+      \strng{bibnamehash}{ab8b9dfa3ed5f49a17906e01b78b9cb0}
+      \strng{authorbibnamehash}{ab8b9dfa3ed5f49a17906e01b78b9cb0}
+      \strng{authornamehash}{ab8b9dfa3ed5f49a17906e01b78b9cb0}
+      \strng{authorfullhash}{ab8b9dfa3ed5f49a17906e01b78b9cb0}
+      \strng{authorfullhashraw}{ab8b9dfa3ed5f49a17906e01b78b9cb0}
+      \field{sortinit}{A}
+      \field{sortinithash}{2f401846e2029bad6b3ecc16d50031e2}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{IEEE Transactions on Pattern Analysis and Machine Intelligence}
+      \field{number}{6}
+      \field{title}{Seeded Region Growing}
+      \field{volume}{16}
+      \field{year}{1994}
+      \field{pages}{641\bibrangedash 647}
+      \range{pages}{7}
+      \verb{doi}
+      \verb 10.1109/34.295913
+      \endverb
+    \endentry
+    \entry{alencar2022mapbiomas_fire}{article}{}{}
+      \name{author}{18}{}{%
+        {{un=0,uniquepart=base,hash=0a8e1d6bcc15c5a5ae0bc1a26d0b0e60}{%
+           family={Alencar},
+           familyi={A\bibinitperiod},
+           given={Ane\bibnamedelimb A.\bibnamedelimi C.},
+           giveni={A\bibinitperiod\bibinitdelim A\bibinitperiod\bibinitdelim C\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=9b7539cd288f75a93fbd37b5c430ed2e}{%
+           family={Arruda},
+           familyi={A\bibinitperiod},
+           given={Vera\bibnamedelimb L.\bibnamedelimi S.},
+           giveni={V\bibinitperiod\bibinitdelim L\bibinitperiod\bibinitdelim S\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=7081ec57ad58c1c1f743c8394eb24e31}{%
+           family={Silva},
+           familyi={S\bibinitperiod},
+           given={Wallace\bibnamedelimb V.\bibnamedelimi da},
+           giveni={W\bibinitperiod\bibinitdelim V\bibinitperiod\bibinitdelim d\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=2d9b61b1b45462bdce559a68323a4ff3}{%
+           family={Conciani},
+           familyi={C\bibinitperiod},
+           given={Diego\bibnamedelima E.},
+           giveni={D\bibinitperiod\bibinitdelim E\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=98c54ba357a673e5875b24545a86269d}{%
+           family={Costa},
+           familyi={C\bibinitperiod},
+           given={Diego\bibnamedelima P.},
+           giveni={D\bibinitperiod\bibinitdelim P\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=a46a15f95c72cbd3388d8d16909a4b12}{%
+           family={Crusco},
+           familyi={C\bibinitperiod},
+           given={Nérivaldo},
+           giveni={N\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=098a87d858b466913dd98418fe1cef01}{%
+           family={Duverger},
+           familyi={D\bibinitperiod},
+           given={Soltan\bibnamedelima G.},
+           giveni={S\bibinitperiod\bibinitdelim G\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=c4d107d787caf3513aa281a79415c8ae}{%
+           family={Ferreira},
+           familyi={F\bibinitperiod},
+           given={Néto\bibnamedelima C.},
+           giveni={N\bibinitperiod\bibinitdelim C\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=ac43f8eaff8f0f88107e54682177636a}{%
+           family={França-Rocha},
+           familyi={F\bibinithyphendelim R\bibinitperiod},
+           given={Waldeck},
+           giveni={W\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=71f0747a995f8187d9cb0c16add65c69}{%
+           family={Hasenack},
+           familyi={H\bibinitperiod},
+           given={H.},
+           giveni={H\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=011bded2d0fa74c9345d6bb41042e0af}{%
+           family={Martenexen},
+           familyi={M\bibinitperiod},
+           given={L.\bibnamedelimi F.\bibnamedelimi M.},
+           giveni={L\bibinitperiod\bibinitdelim F\bibinitperiod\bibinitdelim M\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=dcd35dc75708a8113ea744ba55ccc326}{%
+           family={Piontekowski},
+           familyi={P\bibinitperiod},
+           given={V.\bibnamedelimi J.},
+           giveni={V\bibinitperiod\bibinitdelim J\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=296e7e26434c72f4e703259873765663}{%
+           family={Ribeiro},
+           familyi={R\bibinitperiod},
+           given={N.\bibnamedelimi V.},
+           giveni={N\bibinitperiod\bibinitdelim V\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=15f1e94d7e75e3b1269857dcaeefbd55}{%
+           family={Rosa},
+           familyi={R\bibinitperiod},
+           given={E.\bibnamedelimi R.},
+           giveni={E\bibinitperiod\bibinitdelim R\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=eddf94f2201bfa45abb1a059032c25f2}{%
+           family={Rosa},
+           familyi={R\bibinitperiod},
+           given={M.\bibnamedelimi R.},
+           giveni={M\bibinitperiod\bibinitdelim R\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=9d2128bc4a70b9a481b49818e7b77ede}{%
+           family={Santos},
+           familyi={S\bibinitperiod},
+           given={S.\bibnamedelimi M.\bibnamedelimi B.},
+           giveni={S\bibinitperiod\bibinitdelim M\bibinitperiod\bibinitdelim B\bibinitperiod},
+           givenun=0,
+           prefix={dos},
+           prefixi={d\bibinitperiod},
+           prefixun=0}}%
+        {{un=0,uniquepart=base,hash=9534f76909a81415eca2134ed1a45d3f}{%
+           family={Shimbo},
+           familyi={S\bibinitperiod},
+           given={J.\bibnamedelimi Z.},
+           giveni={J\bibinitperiod\bibinitdelim Z\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=09743ce534c8164c9b5dcfc7fd33d133}{%
+           family={Vélez-Martín},
+           familyi={V\bibinithyphendelim M\bibinitperiod},
+           given={E.},
+           giveni={E\bibinitperiod},
+           givenun=0}}%
+      }
+      \strng{namehash}{b424d428e8cd7d74bcc90eaccc8d120e}
+      \strng{fullhash}{a8df9416a3c0d74af27ffe17e6c101f5}
+      \strng{fullhashraw}{a8df9416a3c0d74af27ffe17e6c101f5}
+      \strng{bibnamehash}{b424d428e8cd7d74bcc90eaccc8d120e}
+      \strng{authorbibnamehash}{b424d428e8cd7d74bcc90eaccc8d120e}
+      \strng{authornamehash}{b424d428e8cd7d74bcc90eaccc8d120e}
+      \strng{authorfullhash}{a8df9416a3c0d74af27ffe17e6c101f5}
+      \strng{authorfullhashraw}{a8df9416a3c0d74af27ffe17e6c101f5}
+      \field{sortinit}{A}
+      \field{sortinithash}{2f401846e2029bad6b3ecc16d50031e2}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Remote Sensing}
+      \field{number}{11}
+      \field{title}{Long-Term Landsat-Based Monthly Burned Area Dataset for the Brazilian Biomes Using Deep Learning}
+      \field{volume}{14}
+      \field{year}{2022}
+      \field{pages}{2510}
+      \range{pages}{1}
+      \verb{doi}
+      \verb 10.3390/rs14112510
+      \endverb
+      \verb{urlraw}
+      \verb https://www.mdpi.com/2072-4292/14/11/2510
+      \endverb
+      \verb{url}
+      \verb https://www.mdpi.com/2072-4292/14/11/2510
+      \endverb
+    \endentry
+    \entry{fraser2000}{article}{}{}
+      \name{author}{3}{}{%
+        {{un=0,uniquepart=base,hash=00ec21958bd7c39105cdd649f7834d52}{%
+           family={Fraser},
+           familyi={F\bibinitperiod},
+           given={Robert\bibnamedelima H.},
+           giveni={R\bibinitperiod\bibinitdelim H\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=d53924176446bd7521ce63fab321a25e}{%
+           family={Li},
+           familyi={L\bibinitperiod},
+           given={Zhanqing},
+           giveni={Z\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=0eee580d8c0575c99ec5a3452a280733}{%
+           family={Cihlar},
+           familyi={C\bibinitperiod},
+           given={Josef},
+           giveni={J\bibinitperiod},
+           givenun=0}}%
+      }
+      \strng{namehash}{e021fa1243418822e92209401f59dc2c}
+      \strng{fullhash}{e021fa1243418822e92209401f59dc2c}
+      \strng{fullhashraw}{e021fa1243418822e92209401f59dc2c}
+      \strng{bibnamehash}{e021fa1243418822e92209401f59dc2c}
+      \strng{authorbibnamehash}{e021fa1243418822e92209401f59dc2c}
+      \strng{authornamehash}{e021fa1243418822e92209401f59dc2c}
+      \strng{authorfullhash}{e021fa1243418822e92209401f59dc2c}
+      \strng{authorfullhashraw}{e021fa1243418822e92209401f59dc2c}
+      \field{sortinit}{F}
+      \field{sortinithash}{2638baaa20439f1b5a8f80c6c08a13b4}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Remote Sensing of Environment}
+      \field{number}{3}
+      \field{title}{Hotspot and NDVI Differencing Synergy (HANDS): A New Technique for Burned Area Mapping over Boreal Forest}
+      \field{volume}{74}
+      \field{year}{2000}
+      \field{pages}{362\bibrangedash 376}
+      \range{pages}{15}
+      \verb{doi}
+      \verb 10.1016/S0034-4257(00)00139-7
+      \endverb
+    \endentry
+    \entry{giglio2009}{article}{}{}
+      \name{author}{5}{}{%
+        {{un=0,uniquepart=base,hash=a67cd59b332075244b9040d7fe226ab6}{%
+           family={Giglio},
+           familyi={G\bibinitperiod},
+           given={Louis},
+           giveni={L\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=6773c99b9a24bafa68732b3fd56d02e2}{%
+           family={Loboda},
+           familyi={L\bibinitperiod},
+           given={Tatiana},
+           giveni={T\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=6cec726b9ec0722b2450b260f31b9064}{%
+           family={Roy},
+           familyi={R\bibinitperiod},
+           given={David\bibnamedelima P.},
+           giveni={D\bibinitperiod\bibinitdelim P\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=1b28604ab54ff51e3d93cfa31b35105b}{%
+           family={Quayle},
+           familyi={Q\bibinitperiod},
+           given={Brad},
+           giveni={B\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=f1e79a130f7c7be262476ca3509c403c}{%
+           family={Justice},
+           familyi={J\bibinitperiod},
+           given={Christopher\bibnamedelima O.},
+           giveni={C\bibinitperiod\bibinitdelim O\bibinitperiod},
+           givenun=0}}%
+      }
+      \strng{namehash}{e6accd6b4adb016d7ce61543f05971a9}
+      \strng{fullhash}{4a4c55defe4f586fe558e318bedd3274}
+      \strng{fullhashraw}{4a4c55defe4f586fe558e318bedd3274}
+      \strng{bibnamehash}{e6accd6b4adb016d7ce61543f05971a9}
+      \strng{authorbibnamehash}{e6accd6b4adb016d7ce61543f05971a9}
+      \strng{authornamehash}{e6accd6b4adb016d7ce61543f05971a9}
+      \strng{authorfullhash}{4a4c55defe4f586fe558e318bedd3274}
+      \strng{authorfullhashraw}{4a4c55defe4f586fe558e318bedd3274}
+      \field{sortinit}{G}
+      \field{sortinithash}{32d67eca0634bf53703493fb1090a2e8}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Remote Sensing of Environment}
+      \field{number}{2}
+      \field{title}{An Active-Fire Based Burned Area Mapping Algorithm for the MODIS Sensor}
+      \field{volume}{113}
+      \field{year}{2009}
+      \field{pages}{408\bibrangedash 420}
+      \range{pages}{13}
+      \verb{doi}
+      \verb 10.1016/j.rse.2008.10.006
+      \endverb
+    \endentry
+    \entry{gorelick_google_2017}{article}{}{}
+      \name{author}{6}{}{%
+        {{un=0,uniquepart=base,hash=ecdf9b747a50a0392d63cfcb19bab980}{%
+           family={Gorelick},
+           familyi={G\bibinitperiod},
+           given={Noel},
+           giveni={N\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=e1d35caeb746ad98cd06b197081f8d3d}{%
+           family={Hancher},
+           familyi={H\bibinitperiod},
+           given={Matt},
+           giveni={M\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=fa6be8707ae84aaa505f45fb1eeaf1e5}{%
+           family={Dixon},
+           familyi={D\bibinitperiod},
+           given={Mike},
+           giveni={M\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=9c4ad5f57526bc5e2860286041301be5}{%
+           family={Ilyushchenko},
+           familyi={I\bibinitperiod},
+           given={Simon},
+           giveni={S\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=b84c1a79465c97114921fede146c934c}{%
+           family={Thau},
+           familyi={T\bibinitperiod},
+           given={David},
+           giveni={D\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=438ba6e4e04af2429f76e57a1dfe5974}{%
+           family={Moore},
+           familyi={M\bibinitperiod},
+           given={Rebecca},
+           giveni={R\bibinitperiod},
+           givenun=0}}%
+      }
+      \strng{namehash}{792a8bdb1913bb19ed8b0812490cbf6c}
+      \strng{fullhash}{b954749a9b709618ccf61b88c3e93f33}
+      \strng{fullhashraw}{b954749a9b709618ccf61b88c3e93f33}
+      \strng{bibnamehash}{792a8bdb1913bb19ed8b0812490cbf6c}
+      \strng{authorbibnamehash}{792a8bdb1913bb19ed8b0812490cbf6c}
+      \strng{authornamehash}{792a8bdb1913bb19ed8b0812490cbf6c}
+      \strng{authorfullhash}{b954749a9b709618ccf61b88c3e93f33}
+      \strng{authorfullhashraw}{b954749a9b709618ccf61b88c3e93f33}
+      \field{sortinit}{G}
+      \field{sortinithash}{32d67eca0634bf53703493fb1090a2e8}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Remote Sensing of Environment}
+      \field{note}{Publisher: Elsevier}
+      \field{title}{Google {Earth} {Engine}: {Planetary}-scale geospatial analysis for everyone}
+      \field{volume}{202}
+      \field{year}{2017}
+      \field{pages}{18\bibrangedash 27}
+      \range{pages}{10}
+      \verb{doi}
+      \verb 10.1016/j.rse.2017.06.031
+      \endverb
+    \endentry
+    \entry{haralick_shapiro_1985}{article}{}{}
+      \name{author}{2}{}{%
+        {{un=0,uniquepart=base,hash=66d80b3b1c68fe14c878e56b6942be35}{%
+           family={Haralick},
+           familyi={H\bibinitperiod},
+           given={Robert\bibnamedelima M.},
+           giveni={R\bibinitperiod\bibinitdelim M\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=ca7fc3d42366c890d5dd7fe4690380ef}{%
+           family={Shapiro},
+           familyi={S\bibinitperiod},
+           given={Linda\bibnamedelima G.},
+           giveni={L\bibinitperiod\bibinitdelim G\bibinitperiod},
+           givenun=0}}%
+      }
+      \strng{namehash}{c98538b6fbc43cb31186bcc963ed84ff}
+      \strng{fullhash}{c98538b6fbc43cb31186bcc963ed84ff}
+      \strng{fullhashraw}{c98538b6fbc43cb31186bcc963ed84ff}
+      \strng{bibnamehash}{c98538b6fbc43cb31186bcc963ed84ff}
+      \strng{authorbibnamehash}{c98538b6fbc43cb31186bcc963ed84ff}
+      \strng{authornamehash}{c98538b6fbc43cb31186bcc963ed84ff}
+      \strng{authorfullhash}{c98538b6fbc43cb31186bcc963ed84ff}
+      \strng{authorfullhashraw}{c98538b6fbc43cb31186bcc963ed84ff}
+      \field{sortinit}{H}
+      \field{sortinithash}{23a3aa7c24e56cfa16945d55545109b5}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Computer Vision, Graphics, and Image Processing}
+      \field{number}{1}
+      \field{title}{Image Segmentation Techniques}
+      \field{volume}{29}
+      \field{year}{1985}
+      \field{pages}{100\bibrangedash 132}
+      \range{pages}{33}
+      \verb{doi}
+      \verb 10.1016/S0734-189X(85)90153-7
+      \endverb
+    \endentry
+    \entry{hawbaker2020}{article}{}{}
+      \name{author}{8}{}{%
+        {{un=0,uniquepart=base,hash=937552b4a1535a305b08643e6a804da0}{%
+           family={Hawbaker},
+           familyi={H\bibinitperiod},
+           given={Todd\bibnamedelima J.},
+           giveni={T\bibinitperiod\bibinitdelim J\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=d9596fef9b1d0e569c872155e4619166}{%
+           family={Vanderhoof},
+           familyi={V\bibinitperiod},
+           given={Mark\bibnamedelima K.},
+           giveni={M\bibinitperiod\bibinitdelim K\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=29be91bb9d24642aa24f36576233c665}{%
+           family={Schmidt},
+           familyi={S\bibinitperiod},
+           given={Gail\bibnamedelima L.},
+           giveni={G\bibinitperiod\bibinitdelim L\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=e95887eaaec7bd1f6013850807f16120}{%
+           family={Beal},
+           familyi={B\bibinitperiod},
+           given={Yvonne-Jones},
+           giveni={Y\bibinithyphendelim J\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=ce9f859d8dae1923a5108f191e7a462a}{%
+           family={Picotte},
+           familyi={P\bibinitperiod},
+           given={Jarett\bibnamedelima J.},
+           giveni={J\bibinitperiod\bibinitdelim J\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=535cf30da0fa8efc8f4278b2e0c6ed57}{%
+           family={Takacs},
+           familyi={T\bibinitperiod},
+           given={Justin\bibnamedelima D.},
+           giveni={J\bibinitperiod\bibinitdelim D\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=55eb22acdab6e8c0017475694de83df5}{%
+           family={Falgout},
+           familyi={F\bibinitperiod},
+           given={James\bibnamedelima T.},
+           giveni={J\bibinitperiod\bibinitdelim T\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=1a9265d8b5518abf2fa4e7481ab21ed5}{%
+           family={Dwyer},
+           familyi={D\bibinitperiod},
+           given={John\bibnamedelima L.},
+           giveni={J\bibinitperiod\bibinitdelim L\bibinitperiod},
+           givenun=0}}%
+      }
+      \strng{namehash}{c21425b82ce8ca8771adb800522b9b30}
+      \strng{fullhash}{d2d695551df8a257b4972b3fdb24ad47}
+      \strng{fullhashraw}{d2d695551df8a257b4972b3fdb24ad47}
+      \strng{bibnamehash}{c21425b82ce8ca8771adb800522b9b30}
+      \strng{authorbibnamehash}{c21425b82ce8ca8771adb800522b9b30}
+      \strng{authornamehash}{c21425b82ce8ca8771adb800522b9b30}
+      \strng{authorfullhash}{d2d695551df8a257b4972b3fdb24ad47}
+      \strng{authorfullhashraw}{d2d695551df8a257b4972b3fdb24ad47}
+      \field{sortinit}{H}
+      \field{sortinithash}{23a3aa7c24e56cfa16945d55545109b5}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Remote Sensing of Environment}
+      \field{title}{The Landsat Burned Area Product}
+      \field{volume}{235}
+      \field{year}{2020}
+      \field{pages}{111486}
+      \range{pages}{1}
+      \verb{doi}
+      \verb 10.1016/j.rse.2019.111486
+      \endverb
+    \endentry
+    \entry{hofstadter1979}{book}{}{}
+      \name{author}{1}{}{%
+        {{un=0,uniquepart=base,hash=c6941e617c7458ca4f6250cec8f9b702}{%
+           family={Hofstadter},
+           familyi={H\bibinitperiod},
+           given={Douglas\bibnamedelima R.},
+           giveni={D\bibinitperiod\bibinitdelim R\bibinitperiod},
+           givenun=0}}%
+      }
+      \list{location}{1}{%
+        {New York}%
+      }
+      \list{publisher}{1}{%
+        {Basic Books}%
+      }
+      \strng{namehash}{c6941e617c7458ca4f6250cec8f9b702}
+      \strng{fullhash}{c6941e617c7458ca4f6250cec8f9b702}
+      \strng{fullhashraw}{c6941e617c7458ca4f6250cec8f9b702}
+      \strng{bibnamehash}{c6941e617c7458ca4f6250cec8f9b702}
+      \strng{authorbibnamehash}{c6941e617c7458ca4f6250cec8f9b702}
+      \strng{authornamehash}{c6941e617c7458ca4f6250cec8f9b702}
+      \strng{authorfullhash}{c6941e617c7458ca4f6250cec8f9b702}
+      \strng{authorfullhashraw}{c6941e617c7458ca4f6250cec8f9b702}
+      \field{sortinit}{H}
+      \field{sortinithash}{23a3aa7c24e56cfa16945d55545109b5}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{isbn}{978-0465026562}
+      \field{title}{Gödel, Escher, Bach: An Eternal Golden Braid}
+      \field{year}{1979}
+    \endentry
+    \entry{huang2002tasseled}{article}{}{}
+      \name{author}{5}{}{%
+        {{un=0,uniquepart=base,hash=f664510c6f431e263444db550b85957c}{%
+           family={Huang},
+           familyi={H\bibinitperiod},
+           given={Chengquan},
+           giveni={C\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=fb2da2550e8ea20b245ce9749e968434}{%
+           family={Wylie},
+           familyi={W\bibinitperiod},
+           given={Bruce},
+           giveni={B\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=c00c5566a318bb826525dcbc4d2d883b}{%
+           family={Yang},
+           familyi={Y\bibinitperiod},
+           given={Limin},
+           giveni={L\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=aa35e2fc65c166865d623ae9f88175d6}{%
+           family={Homer},
+           familyi={H\bibinitperiod},
+           given={Collin},
+           giveni={C\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=6bfe41c79a611b9a6ce805e5b23e1cc8}{%
+           family={Zylstra},
+           familyi={Z\bibinitperiod},
+           given={Greg},
+           giveni={G\bibinitperiod},
+           givenun=0}}%
+      }
+      \strng{namehash}{7de4bd38d14566131844764cf7c5fde1}
+      \strng{fullhash}{950c904b3ac848a9f73ff61d3bca0e81}
+      \strng{fullhashraw}{950c904b3ac848a9f73ff61d3bca0e81}
+      \strng{bibnamehash}{7de4bd38d14566131844764cf7c5fde1}
+      \strng{authorbibnamehash}{7de4bd38d14566131844764cf7c5fde1}
+      \strng{authornamehash}{7de4bd38d14566131844764cf7c5fde1}
+      \strng{authorfullhash}{950c904b3ac848a9f73ff61d3bca0e81}
+      \strng{authorfullhashraw}{950c904b3ac848a9f73ff61d3bca0e81}
+      \field{sortinit}{H}
+      \field{sortinithash}{23a3aa7c24e56cfa16945d55545109b5}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{International Journal of Remote Sensing}
+      \field{number}{8}
+      \field{title}{Derivation of a tasseled cap transformation based on Landsat 7 at-satellite reflectance}
+      \field{volume}{23}
+      \field{year}{2002}
+      \field{pages}{1741\bibrangedash 1748}
+      \range{pages}{8}
+    \endentry
+    \entry{key_benson_2006}{incollection}{}{}
+      \name{author}{2}{}{%
+        {{un=0,uniquepart=base,hash=6184073e6ea247f98bfa25269b7382d8}{%
+           family={Key},
+           familyi={K\bibinitperiod},
+           given={C.\bibnamedelimi H.},
+           giveni={C\bibinitperiod\bibinitdelim H\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=9073a788ead30d1116991b3db241a5e9}{%
+           family={Benson},
+           familyi={B\bibinitperiod},
+           given={N.\bibnamedelimi C.},
+           giveni={N\bibinitperiod\bibinitdelim C\bibinitperiod},
+           givenun=0}}%
+      }
+      \list{location}{1}{%
+        {Ogden, UT}%
+      }
+      \list{publisher}{1}{%
+        {U.S. Department of Agriculture, Forest Service, Rocky Mountain Research Station}%
+      }
+      \strng{namehash}{9001ea0db4eed2cc0298d1b20aaab497}
+      \strng{fullhash}{9001ea0db4eed2cc0298d1b20aaab497}
+      \strng{fullhashraw}{9001ea0db4eed2cc0298d1b20aaab497}
+      \strng{bibnamehash}{9001ea0db4eed2cc0298d1b20aaab497}
+      \strng{authorbibnamehash}{9001ea0db4eed2cc0298d1b20aaab497}
+      \strng{authornamehash}{9001ea0db4eed2cc0298d1b20aaab497}
+      \strng{authorfullhash}{9001ea0db4eed2cc0298d1b20aaab497}
+      \strng{authorfullhashraw}{9001ea0db4eed2cc0298d1b20aaab497}
+      \field{sortinit}{K}
+      \field{sortinithash}{c02bf6bff1c488450c352b40f5d853ab}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{booktitle}{FIREMON: Fire Effects Monitoring and Inventory System}
+      \field{number}{RMRS-GTR-164-CD}
+      \field{series}{General Technical Report}
+      \field{title}{Landscape Assessment (LA): Sampling and Analysis Methods}
+      \field{year}{2006}
+    \endentry
+    \entry{long2019}{article}{}{}
+      \name{author}{9}{}{%
+        {{un=0,uniquepart=base,hash=cd0f9cbaadc7ad7bc93f02fdb6a88310}{%
+           family={Long},
+           familyi={L\bibinitperiod},
+           given={Tengfei},
+           giveni={T\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=9204b0d0b0d3d2879960c12e289ef341}{%
+           family={Zhang},
+           familyi={Z\bibinitperiod},
+           given={Zhaoming},
+           giveni={Z\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=130f388154b5eb42d3fd9394408e21e0}{%
+           family={He},
+           familyi={H\bibinitperiod},
+           given={Guojin},
+           giveni={G\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=60933ab9abd6bbb9251882df55893d67}{%
+           family={Jiao},
+           familyi={J\bibinitperiod},
+           given={Weili},
+           giveni={W\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=aef09bee35d2d1968e488c853b24b2c9}{%
+           family={Tang},
+           familyi={T\bibinitperiod},
+           given={Chao},
+           giveni={C\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=ec178af7e6d4d84b4f62384c896337ea}{%
+           family={Wu},
+           familyi={W\bibinitperiod},
+           given={Bingfang},
+           giveni={B\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=2757c83baa9167f69929b7d48dbbd2aa}{%
+           family={Zhang},
+           familyi={Z\bibinitperiod},
+           given={Xiaomei},
+           giveni={X\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=5a1dc79877b8466138bc1ccbc8cfb24a}{%
+           family={Wang},
+           familyi={W\bibinitperiod},
+           given={Guizhou},
+           giveni={G\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=bdbde363161a86d2c447a290d285bd1d}{%
+           family={Yin},
+           familyi={Y\bibinitperiod},
+           given={Ranyu},
+           giveni={R\bibinitperiod},
+           givenun=0}}%
+      }
+      \list{publisher}{1}{%
+        {MDPI}%
+      }
+      \strng{namehash}{4bdbccfdf690aa2da5ae1855c58ae504}
+      \strng{fullhash}{e4a64ccab138585d6acf00c10d378f0c}
+      \strng{fullhashraw}{e4a64ccab138585d6acf00c10d378f0c}
+      \strng{bibnamehash}{4bdbccfdf690aa2da5ae1855c58ae504}
+      \strng{authorbibnamehash}{4bdbccfdf690aa2da5ae1855c58ae504}
+      \strng{authornamehash}{4bdbccfdf690aa2da5ae1855c58ae504}
+      \strng{authorfullhash}{e4a64ccab138585d6acf00c10d378f0c}
+      \strng{authorfullhashraw}{e4a64ccab138585d6acf00c10d378f0c}
+      \field{sortinit}{L}
+      \field{sortinithash}{7c47d417cecb1f4bd38d1825c427a61a}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Remote Sensing}
+      \field{number}{5}
+      \field{title}{30 m resolution global annual burned area mapping based on {L}andsat Images and {G}oogle {E}arth {E}ngine}
+      \field{volume}{11}
+      \field{year}{2019}
+      \field{pages}{489}
+      \range{pages}{1}
+      \verb{doi}
+      \verb 10.3390/rs11050489
+      \endverb
+    \endentry
+    \entry{mapbiomasarg}{misc}{}{}
+      \name{author}{1}{}{%
+        {{un=0,uniquepart=base,hash=b38891b2d829661c364ce15aeab1341e}{%
+           family={{MapBiomas Argentina}},
+           familyi={M\bibinitperiod}}}%
+      }
+      \strng{namehash}{b38891b2d829661c364ce15aeab1341e}
+      \strng{fullhash}{b38891b2d829661c364ce15aeab1341e}
+      \strng{fullhashraw}{b38891b2d829661c364ce15aeab1341e}
+      \strng{bibnamehash}{b38891b2d829661c364ce15aeab1341e}
+      \strng{authorbibnamehash}{b38891b2d829661c364ce15aeab1341e}
+      \strng{authornamehash}{b38891b2d829661c364ce15aeab1341e}
+      \strng{authorfullhash}{b38891b2d829661c364ce15aeab1341e}
+      \strng{authorfullhashraw}{b38891b2d829661c364ce15aeab1341e}
+      \field{sortinit}{M}
+      \field{sortinithash}{4625c616857f13d17ce56f7d4f97d451}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{note}{Clasificación anual de cobertura y uso del suelo}
+      \field{title}{MapBiomas Argentina Colección 2}
+      \field{year}{2025}
+      \verb{urlraw}
+      \verb https://argentina.mapbiomas.org/
+      \endverb
+      \verb{url}
+      \verb https://argentina.mapbiomas.org/
+      \endverb
+    \endentry
+    \entry{R}{manual}{}{}
+      \name{author}{1}{}{%
+        {{un=0,uniquepart=base,hash=dcdebb6b35bff7c0568bf8c50ef8626d}{%
+           family={{R Core Team. }},
+           familyi={R\bibinitperiod}}}%
+      }
+      \list{location}{1}{%
+        {Vienna, Austria}%
+      }
+      \list{organization}{1}{%
+        {R Foundation for Statistical Computing}%
+      }
+      \strng{namehash}{dcdebb6b35bff7c0568bf8c50ef8626d}
+      \strng{fullhash}{dcdebb6b35bff7c0568bf8c50ef8626d}
+      \strng{fullhashraw}{dcdebb6b35bff7c0568bf8c50ef8626d}
+      \strng{bibnamehash}{dcdebb6b35bff7c0568bf8c50ef8626d}
+      \strng{authorbibnamehash}{dcdebb6b35bff7c0568bf8c50ef8626d}
+      \strng{authornamehash}{dcdebb6b35bff7c0568bf8c50ef8626d}
+      \strng{authorfullhash}{dcdebb6b35bff7c0568bf8c50ef8626d}
+      \strng{authorfullhashraw}{dcdebb6b35bff7c0568bf8c50ef8626d}
+      \field{sortinit}{R}
+      \field{sortinithash}{5e1c39a9d46ffb6bebd8f801023a9486}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{R: A Language and Environment for Statistical Computing}
+      \field{year}{2025}
+      \verb{urlraw}
+      \verb https://www.R-project.org/
+      \endverb
+      \verb{url}
+      \verb https://www.R-project.org/
+      \endverb
+    \endentry
+    \entry{roy2016harmonization}{article}{}{}
+      \name{author}{7}{}{%
+        {{un=0,uniquepart=base,hash=6cec726b9ec0722b2450b260f31b9064}{%
+           family={Roy},
+           familyi={R\bibinitperiod},
+           given={David\bibnamedelima P.},
+           giveni={D\bibinitperiod\bibinitdelim P\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=dfe77a50cade550d930fa8dd0407ac40}{%
+           family={Kovalskyy},
+           familyi={K\bibinitperiod},
+           given={Volodymyr},
+           giveni={V\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=76653e39450f8c0603c914937fccb188}{%
+           family={Zhang},
+           familyi={Z\bibinitperiod},
+           given={Hongyan},
+           giveni={H\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=1365a03923177acc9609c3dc3811aa41}{%
+           family={Vermote},
+           familyi={V\bibinitperiod},
+           given={Eric\bibnamedelima F.},
+           giveni={E\bibinitperiod\bibinitdelim F\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=f8c3de6828fd5a189e537cf06a0140b2}{%
+           family={Yan},
+           familyi={Y\bibinitperiod},
+           given={Li},
+           giveni={L\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=a6da29c40fe6a2950850be3e34a43d9a}{%
+           family={Kumar},
+           familyi={K\bibinitperiod},
+           given={Suresh\bibnamedelima S.},
+           giveni={S\bibinitperiod\bibinitdelim S\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=1b6871cb2b03807e40186d42c871ce23}{%
+           family={Egorov},
+           familyi={E\bibinitperiod},
+           given={Alexei},
+           giveni={A\bibinitperiod},
+           givenun=0}}%
+      }
+      \strng{namehash}{59a7b768dd2f3fd30410a62c4cffda65}
+      \strng{fullhash}{d7859e556874e475580f4ae52284b994}
+      \strng{fullhashraw}{d7859e556874e475580f4ae52284b994}
+      \strng{bibnamehash}{59a7b768dd2f3fd30410a62c4cffda65}
+      \strng{authorbibnamehash}{59a7b768dd2f3fd30410a62c4cffda65}
+      \strng{authornamehash}{59a7b768dd2f3fd30410a62c4cffda65}
+      \strng{authorfullhash}{d7859e556874e475580f4ae52284b994}
+      \strng{authorfullhashraw}{d7859e556874e475580f4ae52284b994}
+      \field{sortinit}{R}
+      \field{sortinithash}{5e1c39a9d46ffb6bebd8f801023a9486}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Remote Sensing of Environment}
+      \field{title}{Characterization of Landsat-7 to Landsat-8 reflective wavelength and normalized difference vegetation index continuity}
+      \field{volume}{185}
+      \field{year}{2016}
+      \field{pages}{57\bibrangedash 70}
+      \range{pages}{14}
+      \verb{doi}
+      \verb 10.1016/j.rse.2015.12.024
+      \endverb
+    \endentry
+    \entry{trigg_flasse_2001}{article}{}{}
+      \name{author}{2}{}{%
+        {{un=0,uniquepart=base,hash=62952a1bf509473c5611a9818a6a041f}{%
+           family={Trigg},
+           familyi={T\bibinitperiod},
+           given={S.},
+           giveni={S\bibinitperiod},
+           givenun=0}}%
+        {{un=0,uniquepart=base,hash=254ec78e9fc9a27bcea2db964d0fee51}{%
+           family={Flasse},
+           familyi={F\bibinitperiod},
+           given={S.},
+           giveni={S\bibinitperiod},
+           givenun=0}}%
+      }
+      \strng{namehash}{98e6eb162e2af4864d0ab35a3bde5995}
+      \strng{fullhash}{98e6eb162e2af4864d0ab35a3bde5995}
+      \strng{fullhashraw}{98e6eb162e2af4864d0ab35a3bde5995}
+      \strng{bibnamehash}{98e6eb162e2af4864d0ab35a3bde5995}
+      \strng{authorbibnamehash}{98e6eb162e2af4864d0ab35a3bde5995}
+      \strng{authornamehash}{98e6eb162e2af4864d0ab35a3bde5995}
+      \strng{authorfullhash}{98e6eb162e2af4864d0ab35a3bde5995}
+      \strng{authorfullhashraw}{98e6eb162e2af4864d0ab35a3bde5995}
+      \field{sortinit}{T}
+      \field{sortinithash}{9af77f0292593c26bde9a56e688eaee9}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{International Journal of Remote Sensing}
+      \field{number}{13}
+      \field{title}{An evaluation of different bi-spectral spaces for discriminating burned shrub-savannah}
+      \field{volume}{22}
+      \field{year}{2001}
+      \field{pages}{2641\bibrangedash 2647}
+      \range{pages}{7}
+      \verb{doi}
+      \verb 10.1080/01431160110053185
+      \endverb
+    \endentry
+    \entry{tucker_1979}{article}{}{}
+      \name{author}{1}{}{%
+        {{un=0,uniquepart=base,hash=5e83ec1d7e877e2830850efe163aeb1a}{%
+           family={Tucker},
+           familyi={T\bibinitperiod},
+           given={C.\bibnamedelimi J.},
+           giveni={C\bibinitperiod\bibinitdelim J\bibinitperiod},
+           givenun=0}}%
+      }
+      \strng{namehash}{5e83ec1d7e877e2830850efe163aeb1a}
+      \strng{fullhash}{5e83ec1d7e877e2830850efe163aeb1a}
+      \strng{fullhashraw}{5e83ec1d7e877e2830850efe163aeb1a}
+      \strng{bibnamehash}{5e83ec1d7e877e2830850efe163aeb1a}
+      \strng{authorbibnamehash}{5e83ec1d7e877e2830850efe163aeb1a}
+      \strng{authornamehash}{5e83ec1d7e877e2830850efe163aeb1a}
+      \strng{authorfullhash}{5e83ec1d7e877e2830850efe163aeb1a}
+      \strng{authorfullhashraw}{5e83ec1d7e877e2830850efe163aeb1a}
+      \field{sortinit}{T}
+      \field{sortinithash}{9af77f0292593c26bde9a56e688eaee9}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{journaltitle}{Remote Sensing of Environment}
+      \field{title}{Red and photographic infrared linear combinations for monitoring vegetation}
+      \field{volume}{8}
+      \field{year}{1979}
+      \field{pages}{127\bibrangedash 150}
+      \range{pages}{24}
+      \verb{doi}
+      \verb 10.1016/0034-4257(79)90013-0
+      \endverb
+    \endentry
+    \entry{usgs_landsat_burned_area_2021}{report}{}{}
+      \name{author}{1}{}{%
+        {{un=0,uniquepart=base,hash=443478d363b15c65a1ee517d1122e79b}{%
+           family={{U.S. Geological Survey}},
+           familyi={U\bibinitperiod}}}%
+      }
+      \list{institution}{1}{%
+        {Department of the Interior}%
+      }
+      \list{location}{1}{%
+        {United States}%
+      }
+      \strng{namehash}{443478d363b15c65a1ee517d1122e79b}
+      \strng{fullhash}{443478d363b15c65a1ee517d1122e79b}
+      \strng{fullhashraw}{443478d363b15c65a1ee517d1122e79b}
+      \strng{bibnamehash}{443478d363b15c65a1ee517d1122e79b}
+      \strng{authorbibnamehash}{443478d363b15c65a1ee517d1122e79b}
+      \strng{authornamehash}{443478d363b15c65a1ee517d1122e79b}
+      \strng{authorfullhash}{443478d363b15c65a1ee517d1122e79b}
+      \strng{authorfullhashraw}{443478d363b15c65a1ee517d1122e79b}
+      \field{extraname}{1}
+      \field{sortinit}{U}
+      \field{sortinithash}{6901a00e45705986ee5e7ca9fd39adca}
+      \field{extradate}{1}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{title}{Landsat Burned Area Product Guide}
+      \field{type}{techreport}
+      \field{version}{1.1}
+      \field{year}{2021}
+    \endentry
+    \entry{landsatc2}{misc}{}{}
+      \name{author}{1}{}{%
+        {{un=0,uniquepart=base,hash=443478d363b15c65a1ee517d1122e79b}{%
+           family={{U.S. Geological Survey}},
+           familyi={U\bibinitperiod}}}%
+      }
+      \strng{namehash}{443478d363b15c65a1ee517d1122e79b}
+      \strng{fullhash}{443478d363b15c65a1ee517d1122e79b}
+      \strng{fullhashraw}{443478d363b15c65a1ee517d1122e79b}
+      \strng{bibnamehash}{443478d363b15c65a1ee517d1122e79b}
+      \strng{authorbibnamehash}{443478d363b15c65a1ee517d1122e79b}
+      \strng{authornamehash}{443478d363b15c65a1ee517d1122e79b}
+      \strng{authorfullhash}{443478d363b15c65a1ee517d1122e79b}
+      \strng{authorfullhashraw}{443478d363b15c65a1ee517d1122e79b}
+      \field{extraname}{2}
+      \field{sortinit}{U}
+      \field{sortinithash}{6901a00e45705986ee5e7ca9fd39adca}
+      \field{extradate}{2}
+      \field{extradatescope}{labelyear}
+      \field{labeldatesource}{}
+      \field{labelnamesource}{author}
+      \field{labeltitlesource}{title}
+      \field{note}{Accessed via Google Earth Engine}
+      \field{title}{Landsat Collection 2 Level-2 Science Products}
+      \field{year}{2021}
+      \verb{urlraw}
+      \verb https://www.usgs.gov/landsat-missions/landsat-collection-2
+      \endverb
+      \verb{url}
+      \verb https://www.usgs.gov/landsat-missions/landsat-collection-2
+      \endverb
+    \endentry
+  \enddatalist
+\endrefsection
+\endinput
+

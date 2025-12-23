@@ -35,7 +35,6 @@ for (fid in fire_ids) {
 
   ll <- vector("list", np)
   for (p in seq_len(np)) {
-    message(point_ids[p])
     ll[[p]] <- prep_annual_point(fid, point_ids[p])
   }
 
@@ -58,7 +57,7 @@ data_annual <- do.call(rbind, data_annual_list)
 # write
 write.table(
   data_annual, 
-  file.path("data", "processed", "data_annual_level.csv"),
+  file.path("data", "processed", "data_annual_level2.csv"),
   row.names = F, sep = ","
 )
 
@@ -66,5 +65,14 @@ nrow(data_annual)
 # 38047 obs
 
 table(data_annual$burned) / sum(table(data_annual$burned))
-# unburned  burned 
-# 0.7969354 0.2030646 
+#         0         1 
+# 0.7983809 0.2016191
+
+# Points / h = 12889 / 35.97 = 358.3264
+# 38047 / 358.3264 = 106.1797 h
+# To get 38047 points
+
+# 106.1797 + 5.01 / 2 = 108.6847 h total
+
+# Eff ratio
+# 108.6847 / 41.07 = 2.646328

@@ -25,3 +25,5 @@ plot_bpts_fit(18, 31) # removed problematic point
 # no mejoró usando NBR2
 
 plot_bpts_fit(18)
+
+plot_bpts_fit(14, class = "unburned")
