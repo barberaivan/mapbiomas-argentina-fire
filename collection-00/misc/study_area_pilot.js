@@ -50,8 +50,8 @@ Map.addLayer(trains, {color: "black"}, "Training areas");
 
 var assetName = "projects/mapbiomas-argentina/assets/FIRE/AUXILIARY_DATA/VECTOR/pilot_study_area";
 
-Export.table.toAsset({
-  description: "Study area pilot",
-  collection: ee.FeatureCollection(study_area),
-  assetId: assetName
-});
+// Export.table.toAsset({
+//   description: "Study area pilot",
+//   collection: ee.FeatureCollection(study_area),
+//   assetId: assetName
+// });

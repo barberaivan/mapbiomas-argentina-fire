@@ -41,7 +41,7 @@
 */
 
 
-var funk = require("users/mapbiomas-arg/fuego:functions.js");
+var funk = require("users/mapbiomas-arg/fuego:collection-00/utils/functions.js");
 
 // Load MapBiomas image (multi-band: one per year)
 var mapbiomas = ee.Image("projects/mapbiomas-argentina/assets/LAND-COVER/COLLECTION-2/GENERAL/CLASSIFICATION/FINAL_CLASSIFICATION/PAT/PAT-INTEGRACION-FINAL-v4");
@@ -65,7 +65,7 @@ var reclassifiedBands = bnames.map(function(year) {
 var veg = ee.ImageCollection(reclassifiedBands).toBands().rename(bnames);
 
 // Select the correct band
-var year = ee.Number(2014);
+var year = ee.Number(2015);
 var bname = ee.String("classification_").cat(year.format());
 var fire_land = veg.select(bname);
 var landcover = mapbiomas.select(bname);
@@ -85,3 +85,5 @@ Map.addLayer(ts.select("ndvi"), {}, "NDVI", false);
 Map.addLayer(ts.select("mirbi"), {}, "MIRBI", false);
 Map.addLayer(ts.select("bai"), {}, "BAI", false);
 Map.addLayer(ts.select("evi"), {}, "EVI", false);
+
+

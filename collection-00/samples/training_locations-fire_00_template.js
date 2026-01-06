@@ -55,7 +55,7 @@ var end = ee.Date.fromYMD(fireYear.add(y_forward), 07, 01);
 
 // Used to get the quality-masked, harmonized, Landsat imagery, with
 // NBR computed
-var funk = require("users/mapbiomas-arg/fuego:functions.js");
+var funk = require("users/mapbiomas-arg/fuego:collection-00/utils/functions.js");
 
 // Data extraction --------------------------------------------------------
 

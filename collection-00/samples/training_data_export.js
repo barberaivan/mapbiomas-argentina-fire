@@ -10,7 +10,7 @@
   FI stands for Fire Indices.
 */ 
 
-var funk = require("users/mapbiomas-arg/fuego:functions.js");
+var funk = require("users/mapbiomas-arg/fuego/utils:functions.js");
 
 // Max year reached by MapBiomas landcover
 var mblimit = ee.Number(2024);

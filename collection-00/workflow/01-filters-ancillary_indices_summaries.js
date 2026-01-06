@@ -1,5 +1,7 @@
-// Compute annual images with extreme values of fire indices
-
+// Compute annual images with extreme values of ancillary indices:
+// brightness and NDSI, to remove volcanic ash, clouds, and snow.
+// Edited from <01-burn_prob_obs-burn_indices_summaries>.
+ 
 // Load functions --------------------------------------------------------
 
 // Used to get the quality-masked, harmonized, Landsat imagery, with
@@ -11,7 +13,7 @@ var cons = require("users/mapbiomas-arg/fuego:collection-00/utils/constants.js")
 
 // Constants -------------------------------------------------------------
 
-var dirbase = 'projects/mapbiomas-argentina/assets/FIRE/COLLECTION-0/WORKFLOW-EXPORTS/burn_indices_summaries/';
+var dirbase = 'projects/mapbiomas-argentina/assets/FIRE/COLLECTION-0/WORKFLOW-EXPORTS/ancillary_indices_summaries/';
 
 var roi = cons.roi;
 
@@ -26,12 +28,12 @@ for (var y = cons.startYearSumm; y <= cons.endYearSumm; y++) {
   var start = ee.Date.fromYMD(yNum, 1, 1);
   var end   = ee.Date.fromYMD(yNum.add(1), 1, 1);
 
-  var landsat = funk.getLandsat(roi, start, end, funk.addFireFour)
-                    .select(cons.ind_names);
+  var landsat = funk.getLandsat(roi, start, end, funk.addAncillaryIndices)
+                    .select(cons.anc_names);
 
   // Apply computeExtremesSingle band-by-band
   var summ = ee.ImageCollection(
-    cons.ind_names.map(function(band) {
+    cons.anc_names.map(function(band) {
       band = ee.String(band);
       var col = landsat.select([band]);
       var extremes = funk.computeExtremesSingle(col);
@@ -44,7 +46,7 @@ for (var y = cons.startYearSumm; y <= cons.endYearSumm; y++) {
       return renamed;
     })
   ).toBands()  
-  .rename(cons.ind_names.map(function(b) {
+  .rename(cons.anc_names.map(function(b) {
     return [ee.String(b).cat('_low'), ee.String(b).cat('_high')];
   }).flatten())
   .set('year', yNum)
@@ -52,7 +54,7 @@ for (var y = cons.startYearSumm; y <= cons.endYearSumm; y++) {
 
   // Client-side strings for task description and assetId
   var desc = 'summ_' + y;
-  var assetId = dirbase + 'fi_summ_' + y;
+  var assetId = dirbase + 'ancillary_summ_' + y;
 
   // Queue export task (the Export call itself accepts server-side objects)
   Export.image.toAsset({
@@ -64,5 +66,3 @@ for (var y = cons.startYearSumm; y <= cons.endYearSumm; y++) {
     maxPixels: 1E13
   });
 }
-// ~ 2 h / image
-// 1998:2025 took a bit more than a day
