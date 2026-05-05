@@ -1,0 +1,20 @@
+---
+title: "Ideas MapBiomas Fuego Colección 1"
+output: html_document
+date: "2026-03-18"
+---
+
+## Métricas de series temporales
+
+En vez de usar la mediana de $K$ observaciones, sumar diferencias consecutivas.
+Siendo $\boldsymbol{P}$ el vector de probabilidad de quema en un pixel, a lo largo de varias fechas, y  $\boldsymbol{Y}$ el vector de fechas asociado (en año fraccional), definimos los vectores de diferencias consecutivas en  $\boldsymbol{P}$ y en  $\boldsymbol{Y}$ como  $\boldsymbol{dP}$ y  $\boldsymbol{dY}$, respectivamente, calculados de la siguiente manera:
+
+$$
+\begin{aligned}
+\boldsymbol{dP} = \boldsymbol{P}_{-1} - \boldsymbol{P}_{-T} \\
+\boldsymbol{dY} = \boldsymbol{Y}_{-1} - \boldsymbol{Y}_{-T}, \\
+\end{aligned}
+$$
+donde el subíndice $-1$ representa al vector quitando la primera observación, y $-T$ es el vector sin la última observación.
+
+El máximo de $\boldsymbol{dP}$ es muy importante para definir eventos de fuego, pero esta métrica es sensible a ruido. En el piloto, calculamos esta métrica sobre la mediana de $K$ observaciones de probabilidad de quema, pero esto requiere aplicar varias agregaciones temporales, según la velocidad de recuperación. Además, calcular la mediana es costoso. Para evitar usar la mediana, podemos acumular (sumar) $\boldsymbol{dP}$ sobre ventanas de $K$ observaciones. Cuando un lugar se quema, por lo general la probabilidad de quema sube y se mantiene alta, al menos por una observación. Esto hace que $\boldsymbol{dP}$ tome un valor cercano a uno en el momento del fuego, y cercano a cero en la observación siguiente (la probabilidad se mantiene cerca de uno). Esto no ocurre en caso de ruido, donde la probabilidad de quema tiene un pico efímero. Allí, $\boldsymbol{dP}$ se acerca a 1 y luego a -1. Al sumar estos valores, se anulan. Como ocurría con la mediana, la ventana de observaciones $K$ óptima para acumular $\boldsymbol{dP}$ dependerá del compromiso entre duración del ruido (quizás dura más de una observación en períodos nublados donde los filtros funcionan mal) y la duración de la señal de quema. 
