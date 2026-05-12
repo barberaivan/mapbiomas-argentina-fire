@@ -1,0 +1,13 @@
+project:
+  type: default
+
+execute:
+  cache: true       # avoid re-running heavy GEE calls on re-render
+  freeze: auto
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    code-fold: true
+    embed-resources: true

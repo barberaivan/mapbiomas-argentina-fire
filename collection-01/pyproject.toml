@@ -1,0 +1,16 @@
+[project]
+name = "mapbiomas-argentina-fire-col1"
+version = "0.1.0"
+description = "Collection-01 fire-mapping workflow (Python/GEE)"
+requires-python = ">=3.11"
+
+dependencies = [
+    "earthengine-api>=0.1.380",
+    "geemap>=0.30",          # optional, useful for interactive inspection
+]
+
+[tool.pip]
+# Install in the virtual environment that rgee will also use:
+#   python -m venv .venv && source .venv/bin/activate
+#   pip install -e .
+#   Rscript -e "rgee::ee_install()"

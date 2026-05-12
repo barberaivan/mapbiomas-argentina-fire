@@ -8,3 +8,10 @@
 # Temporary files
 *.tmp
 *.bak
+
+# Environment settings for GEE
+.env
+
+# Python
+__pycache__/
+*.pyc
