@@ -1,10 +1,10 @@
 ---
-title: "Training data exploration — class balance and RF design decisions"
+title: "Land cover remap for burn probability modelling"
 author: "MapBiomas Argentina Fire"
 date: today
 ---
 
-## Purpose
+## Motivation
 
 Two decisions need to be made before fitting the Random Forest model:
 
@@ -74,6 +74,16 @@ region_name_ambig_tbl <- remap_raw |>
 remap <- remap |>
   left_join(region_name_ambig_tbl, by = c("mb_class_raw", "region_fire"))
 
+# Class 75 (turberas) is absent from the sheet (which uses 73); add it as
+# grassland for all region_fires so training observations are not lost.
+remap <- bind_rows(
+  remap,
+  expand_grid(region_fire = c("CUYO", "PAT", "PAMPA", "CHACO-BA"), mb_class_raw = 75L) |>
+    mutate(arg_name = "Turberas", region_name = NA_character_,
+           veg_fire_name_1 = "grassland", veg_fire_name_2 = "grassland",
+           region_name_ambig = NA_character_)
+)
+
 # Reference for remap tables: all 6 fire classes in display order.
 all_veg_classes <- c("forest", "shrubland", "grassland", "agriculture",
                      "non-burnable", "non-observed")
@@ -119,12 +129,23 @@ area_by_rf <- crosswalk |>
   select(region_fire, mb_class_raw, area_frac)
 
 # ── Helper: build one remap summary table (per proposal column) ──────────────
-# Returns: veg_class | burned (%) | unburned | obs frac (%) | area frac (%)
+# Returns: veg_class | burned (%) | unburned | obs frac (%) | area frac (%) |
+#          n fires | med obs/fire
 make_remap_tbl <- function(obs_r, veg_col, area_r, remap_r, total_obs) {
   counts <- obs_r |>
     count(.data[[veg_col]], burned_label, name = "n") |>
     pivot_wider(names_from = burned_label, values_from = n, values_fill = 0L) |>
     rename(veg_class = all_of(veg_col))
+
+  robustness <- obs_r |>
+    filter(burned == 1L) |>
+    count(.data[[veg_col]], fire_id, name = "n_burned") |>
+    group_by(veg_class = .data[[veg_col]]) |>
+    summarise(
+      n_fires      = n_distinct(fire_id),
+      med_obs_fire = median(n_burned),
+      .groups = "drop"
+    )
 
   area_agg <- area_r |>
     left_join(remap_r |> select(mb_class_raw, veg_class = all_of(veg_col)),
@@ -133,8 +154,9 @@ make_remap_tbl <- function(obs_r, veg_col, area_r, remap_r, total_obs) {
     summarise(area_frac = sum(area_frac, na.rm = TRUE), .groups = "drop")
 
   tibble(veg_class = all_veg_classes) |>
-    left_join(counts,   by = "veg_class") |>
-    left_join(area_agg, by = "veg_class") |>
+    left_join(counts,     by = "veg_class") |>
+    left_join(area_agg,   by = "veg_class") |>
+    left_join(robustness, by = "veg_class") |>
     mutate(
       burned   = replace_na(burned,   0L),
       unburned = replace_na(unburned, 0L),
@@ -143,9 +165,11 @@ make_remap_tbl <- function(obs_r, veg_col, area_r, remap_r, total_obs) {
                        paste0(burned, " (", round(burned / total * 100, 1), "%)"),
                        as.character(burned)),
       obs_frac_pct  = round(total / total_obs * 100, 2),
-      area_frac_pct = round(replace_na(area_frac, 0) * 100, 2)
+      area_frac_pct = round(replace_na(area_frac, 0) * 100, 2),
+      n_fires       = replace_na(n_fires, 0L)
     ) |>
-    select(veg_class, burned_pct, unburned, obs_frac_pct, area_frac_pct)
+    select(veg_class, burned_pct, unburned, obs_frac_pct, area_frac_pct,
+           n_fires, med_obs_fire)
 }
 
 # ── Training observations — all regions ─────────────────────────────────────
@@ -191,7 +215,7 @@ obs_remapped <- obs_all |>
 
 ---
 
-## 1. Vegetation type reclassification
+## Land cover remaps by region
 
 *For each region: raw MapBiomas class breakdown, then the proposed remap.*
 
@@ -213,7 +237,7 @@ walk(region_fires, \(rf) {
   same_remap  <- identical(remap_tbl_1, remap_tbl_2)
 
   remap_col_names <- c("veg class", "burned (%)", "unburned",
-                       "obs frac (%)", "area frac (%)")
+                       "obs frac (%)", "area frac (%)", "n fires", "med obs/fire")
 
   # ── 1a. Raw MapBiomas classes ────────────────────────────────────────────
   cat("#### Raw MapBiomas classes\n\n")
@@ -291,31 +315,3 @@ walk(region_fires, \(rf) {
 })
 ```
 
----
-
-## 2. Per-fire robustness of remap classes
-
-Are burned observations spread across multiple fires (robust) or dominated by one or two (fragile)?
-
-```{r per_fire_robustness, results='asis'}
-walk(region_fires, \(rf) {
-  cat("\n\n### Region:", rf, "\n\n")
-
-  robustness_tbl <- obs_remapped |>
-    filter(region_fire == rf, burned == 1L,
-           !veg_fire_name_1 %in% c("non-burnable", "non-observed", NA)) |>
-    count(veg_fire_name_1, fire_id, name = "n_burned") |>
-    group_by(veg_fire_name_1) |>
-    summarise(
-      n_fires      = n_distinct(fire_id),
-      total_burned = sum(n_burned),
-      min_fire     = min(n_burned),
-      max_fire     = max(n_burned),
-      .groups = "drop"
-    ) |>
-    arrange(desc(total_burned))
-
-  print(kable(robustness_tbl, format = "markdown"))
-  cat("\n")
-})
-```
