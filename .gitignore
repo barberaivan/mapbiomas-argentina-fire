@@ -5,6 +5,9 @@
 .Rhistory
 .Rproj.user/
 
+# Downloaded / derived data (large files, not for version control)
+collection-01/data/
+
 # Temporary files
 *.tmp
 *.bak

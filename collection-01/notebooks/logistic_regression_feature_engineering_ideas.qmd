@@ -1,0 +1,181 @@
+---
+title: "Feature engineering ideas for the obs-level burn probability regression"
+subtitle: "Notes for Collection-1"
+author: ""
+date: ""
+format:
+  html:
+    toc: true
+    toc-depth: 3
+---
+
+## Context
+
+Collection-1 drops the explicit delta features that Col-0 carried (focal value minus previous-year minimum). The remaining inputs are:
+
+- **Focal observation:** raw Landsat bands plus families of indices — fire-related (NBR, NBR2, MIRBI, BAI), water-related (NDWI), moisture-related (NDMI, MSI), greenness-related (NDVI, EVI, SAVI, TCT greenness).
+- **Previous-year summary metrics:** per-band and per-index distributional summaries (low, high, possibly mean, std, percentiles).
+- **MapBiomas vegetation mosaic** of the previous year, used as a stratifier in the coefficients (forest / shrubland / grassland).
+
+The goal of the engineering described here is to give the logistic regression access to non-linear and interactive structure *without* growing the compute graph in depth, and without re-introducing the brittle delta features. The link function already provides saturation and pairwise multiplicative behaviour on the response scale; what is engineered here is non-linearity in $\eta$.
+
+The transformations below are organised by what they encode physically. Each one is one or two ops deep, additive into the predictors image as a new band, and contributes a single coefficient (or a small number of coefficients) to the joint fit. The transformations compose well: a power transform of a log-ratio, for example, is still a depth-3 feature, and the dot product with the coefficient image absorbs the count.
+
+## Re-creating the anomaly signal without deltas
+
+The most important thing the deltas were doing was telling the model "this observation is unusually dark/bright compared to where this pixel normally lives." That signal is not lost when you drop deltas — it just has to be expressed differently from the two pieces of information you still have (focal value, previous-year summaries).
+
+### Normalised position within the previous-year range
+
+For each index that has both `_low` and `_high` summaries from the previous year:
+
+$$\text{pos}(I) = \frac{I_\text{focal} - I_\text{prev,low}}{I_\text{prev,high} - I_\text{prev,low} + \epsilon}$$
+
+This is bounded approximately in $[0, 1]$ for observations within last year's range, with negative values when the observation is below the prior-year minimum and values $> 1$ when above the maximum. Compared to a raw delta, it is automatically scaled by the local dynamic range, so a fixed coefficient is more comparable across vegetation regimes. The $\epsilon$ should be a small fixed constant well below the smallest realistic `high - low` gap, not a fit parameter.
+
+Applied to NBR, NBR2, NDVI, NDMI: low values are fire-suggestive (the observation is at or below the prior-year minimum); values near 1 mean "looks normal." A single coefficient on `pos(NBR)` captures most of what the old `nbr_d` did, in a scale-invariant form.
+
+### Log-ratio against a prior-year reference
+
+For strictly positive quantities (TCT brightness, raw bands once scaled, certain index transforms):
+
+$$\log\!\left(\frac{I_\text{focal} + \epsilon}{I_\text{prev,low} + \epsilon}\right)$$
+
+Linear in $\eta$, symmetric under multiplicative scaling of the underlying signal, and well-behaved near zero. Useful for SWIR2 (charred surfaces brighten, so the log-ratio against the prior-year low is fire-suggestive when positive) and for any index where "fraction of pre-fire baseline" is more physical than "absolute difference."
+
+For signed indices like NBR, work in $1 + I$ space first to make the argument positive: $\log((1 + \text{NBR}_\text{focal}) / (1 + \text{NBR}_\text{prev,low}))$.
+
+### Standardised anomaly
+
+If a `_std` summary exists from the previous year:
+
+$$z(I) = \frac{I_\text{focal} - I_\text{prev,mean}}{I_\text{prev,std} + \epsilon}$$
+
+Conceptually the cleanest anomaly score. Less robust than the `pos` form when the previous year had few observations (then `std` is noisy), but stronger when the distribution is well-sampled. If only `low` and `high` are available, the `pos` form is the right substitute.
+
+## Shape transforms on focal-observation features
+
+### Power transforms
+
+For any feature where the relationship between feature value and burn log-odds is plausibly concave or convex, $x^\alpha$ with $\alpha$ chosen from a coarse grid (0.25, 0.33, 0.5, 0.67, 1, 1.5, 2) captures most of the available curvature.
+
+- Fire indices (NBR, NBR2, MIRBI in its negated form): the strong signal is in the lower tail; $\alpha < 1$ on $(c - I)$ for a sensible upper anchor $c$ compresses extreme drops and gives the middle range more weight. Alternatively $\alpha > 1$ on the same expression to *amplify* extreme drops and suppress mid-range noise — pick based on whether the residuals show more error in the middle or at the extreme.
+- Greenness (NDVI, EVI, SAVI): a fractional power on the focal value emphasises the "is this still vegetation" decision at low NDVI more than at high.
+- Raw SWIR2: the char-brightening relationship saturates; $\sqrt{\text{SWIR2}_\text{focal}}$ or similar handles that without a hard cap.
+
+These can be tuned univariately as discussed previously — power exponents are shape parameters and survive the marginal-to-conditional transition acceptably. Lock in once, refit the joint LR.
+
+### Log transforms for skewed positives
+
+`log(1 + x)` on any strictly non-negative feature with a long upper tail (TCT brightness, BAI, MSI, raw reflectances at high values) is essentially free and almost always helps when the raw feature has a multiplicative noise structure. BAI in particular has an extreme upper tail and is a good candidate.
+
+## Cross-index agreement and contrast features
+
+Confounders (deforestation, drought, defoliation, ash, snow) tend to fool *some* indices but not all. Engineering features that capture inter-index consistency directly is high-value, low-cost, and exactly what the LR cannot easily learn from the marginal features alone when sample sizes for the confounders are small.
+
+### Pairwise contrasts within a family
+
+Within the fire family:
+
+- `NBR_focal - NBR2_focal`: fire drives both down, but typically NBR more; drought drives NBR2 less; deforestation drives both similarly. The differential is a fire-vs-confounder lever.
+- `NBR_focal + NBR2_focal`: total fire-band signal; redundant with the two raw values for the LR, but a single coefficient on the sum sometimes generalises better when training data is small.
+
+Within the moisture/greenness families:
+
+- `NDMI_focal - NDVI_focal`: dry vegetation has low NDMI but possibly still-decent NDVI. Burned vegetation has both low. The contrast separates "dry but green" from "actually burned."
+- `EVI - NDVI`: the two greenness indices respond differently to soil background. Their contrast is informative in mixed pixels.
+
+### Pairwise contrasts across families
+
+- `NBR_focal - NDVI_focal`: burned pixels are low on both; deforested pixels have low NDVI but the NBR drop can be modest if the soil exposed is not very charred. Useful for the deforestation-vs-fire problem.
+- `MIRBI_focal × (1 - NDMI_focal)`: high MIRBI (fire signature) combined with low moisture (dry surface). Multiplicative because either alone is ambiguous.
+
+These are linear combinations of features the LR already has, so in a strict information-theoretic sense they are redundant — the LR could in principle learn the same contrast through separate coefficients on each component. In practice, when the relevant samples are scarce, fitting one coefficient on the contrast is much more stable than fitting two coefficients that nearly cancel. The contrast form *uses* the sample size more efficiently.
+
+## Combustibility from prior-year context
+
+Burnability depends on what was there to burn. Several features express this without using the focal observation at all:
+
+- `NDVI_prev_high × (1 - NDMI_prev_low)`: peak vegetation during the prior year multiplied by maximum dryness during the prior year. A "fuel-load × dryness" combustibility index. High values mean "lots of vegetation that did get dry at some point."
+- `NDVI_prev_high - NDVI_prev_low`: prior-year vegetation seasonality. High values in grasslands (annual cycle); low values in stable forests or barren areas. This conditions how a focal NDVI drop should be interpreted.
+- `NBR_prev_high`: the highest healthy-vegetation NBR seen last year. A focal NBR far below this is more anomalous than a focal NBR far below a structurally low prior-year reference.
+
+These are pure prior-year features and don't introduce focal-vs-prior coupling. They are most useful in interactions (next section), because alone they say "this area is burnable" not "this area is burning."
+
+## Interactions
+
+### Two-way: focal signal × prior-year context
+
+The most useful interactions in this problem are those that condition a focal burn-suggestive feature on prior-year combustibility:
+
+- `pos(NBR) × NDVI_prev_high`: a focal NBR anomaly only matters if there was vegetation there to begin with. Multiplying by prior-year peak NDVI down-weights anomalies in pixels that were already bare.
+- `log_ratio(SWIR2) × NDMI_prev_low`: SWIR2 brightening matters more in pixels that did get dry last year.
+- `(1 - NBR_focal) × greenness_TCT_prev_mean`: a "fire signal" weighted by typical greenness.
+
+Each of these is a depth-2 feature (one multiply on top of the engineered component). Graph cost negligible.
+
+### Two-way: focal × focal multiplicative
+
+When two focal indices are both fire-suggestive in their *own* sense, their product can carry information that neither alone does, because the product is large only when both fire. For example:
+
+- `(NBR_low_anchor - NBR_focal)^+ × (MIRBI_focal_neg)^+`: only large when both NBR has dropped *and* MIRBI is in its fire range, where `x^+` denotes a soft non-negative clip via softplus or `max(x, 0)`.
+
+Use sparingly — these are easy to over-add.
+
+### Three-way: vegetation gate × focal × prior-year
+
+Three-way products earn their place when one factor is a near-binary context indicator. Your `mapbiomas` reclassification (forest = 1, shrubland = 2, grassland = 3) is already a perfect such gate:
+
+- `1[forest] × pos(NBR) × NDVI_prev_high`: NBR anomaly in forests, conditioned on prior-year peak vegetation.
+- `1[grassland] × (NBR_focal - NBR2_focal) × NDVI_prev_high`: the cross-family contrast in grasslands, weighted by prior-year vegetation cycle peak.
+
+Two notes on this:
+
+1. You already have vegetation-class-specific coefficients on every feature (via `makeCoeffImage`). That gives you the equivalent of an interaction with the categorical class for the *linear* terms. The three-way products above add interactions *within* a class — they are not redundant with the existing class-stratified coefficients.
+2. Three-way products' effective sample size is roughly the product of the marginal coverages of each factor. Add them surgically, tied to a confounder you understand, not combinatorially.
+
+## Soft thresholds and gates
+
+Use sparingly, because they introduce decision-like parameters that don't survive univariate tuning well (per the previous discussion). The cases where they help most:
+
+- **Char detection on SWIR2:** `softplus(k · (SWIR2_focal - τ))` for a hand-set `τ` near the value above which SWIR2 is unambiguous evidence of bare/charred surface. One feature, one coefficient.
+- **Greenness gate:** `σ(k · (NDVI_focal - τ))` with `τ ≈ 0.2` says "below this, the pixel is not vegetation right now." Useful when multiplied with prior-year fuel-load features to express "there was vegetation, and there isn't now."
+
+Set thresholds from domain knowledge or from inspecting marginal histograms; tune steepness `k` joint with a small local search (5 values around a sensible default), not full CV.
+
+## Snow, water, and shadow disambiguation
+
+These often misfire as burned because they also drop NBR/NDVI. A few cheap features:
+
+- `NDSI_focal`: standard snow detector. Include as a feature in its own right and, more usefully, as a *gate* — `(1 - σ(k · (NDSI_focal - τ))) × pos(NBR)` down-weights the NBR anomaly when NDSI is high.
+- `NDWI_focal` or its surrogate: same idea for water. A pixel that has high NDWI and high prior-year water frequency should not be a fire seed.
+- Blue band brightness: clouds and shadows have characteristic patterns in the visible. `(blue_focal × NIR_focal)` is high for bright clouds and low for shadows; can be useful as a quality-style feature even if it duplicates information already used in QA masking.
+
+These are mostly there to give the LR explicit, monotonic levers to push down false positives in those regimes, even if QA masking already handles the obvious cases.
+
+## Workflow recommendations
+
+The order of operations that gets the most out of this engineering with the least overfitting:
+
+1. **Start by computing the anomaly features** (`pos`, log-ratios, standardised when available) for the four core fire indices and for NDVI and NDMI. This recovers the delta-style information without the brittleness.
+2. **Add power transforms** on the focal-observation forms of each fire-sensitive feature, with exponents chosen by univariate scan on a small grid. Lock in.
+3. **Add 5–10 contrast features** built from physical reasoning (the confounder-specific ones in the agreement section). Do not add the full Cartesian product.
+4. **Add 2–3 prior-year combustibility features.**
+5. **Add a small number of interactions**, prioritising focal × prior-year couplings over three-way products. Use the existing vegetation class stratification rather than re-introducing it via interactions.
+6. **Fit the joint LR with L1 or elastic-net regularisation** on this augmented feature set, in R/Python externally. Regularisation will prune the genuinely-redundant features (especially among contrasts that overlap with raw terms). The exported coefficient dictionary then plugs into `coeffs_obs` with no GEE-side changes.
+7. **Verify calibration** before deploying. The downstream SNIC seed/candidate thresholding depends on calibrated probabilities; a richer feature set can sharpen probabilities to the point where the same nominal thresholds (e.g., `seed if p > 0.8`) behave differently across vegetation regimes. Reliability diagrams per vegetation class catch this.
+
+## Cost in the GEE compute graph
+
+Each engineered feature is a shallow (depth 1–3) transformation of input bands written to a new band of the predictors image. They run in parallel — no two engineered features sit on each other's critical path. The downstream `predictors.multiply(coeffImg).reduce(ee.Reducer.sum())` is fused at the C++ level and does not deepen with feature count. The total graph depth from input bands to `logit_p` stays around 5–6 nodes regardless of whether you have 40 or 80 predictors. The cost is in the data dimension (more bands) and in the client-side construction of `predictorsList`, neither of which is a bottleneck at this scale.
+
+In contrast to an MLP, where each layer's output is the next layer's input and the dependency chain forces sequential per-tile evaluation, this design is a wide-and-flat fan: many short independent paths feeding a single fused dot product. That is what makes the engineering essentially free.
+
+## Pitfalls to watch for
+
+- **Redundancy and collinearity.** Power transforms can subsume separate raw-and-interaction terms; log-ratios can subsume separate "focal" and "prior-year" terms. Let regularisation handle this rather than pre-pruning by intuition.
+- **Stability of denominators.** Anywhere a feature has a denominator (`pos`, log-ratio, MSI), enforce a numerical floor on the denominator that is well below the smallest realistic value. Don't tune this — set it once.
+- **Masked pixels in the previous-year summaries.** If a pixel has too few clear observations in the prior year, `low`/`high`/`mean` are unreliable. The summarisation step should already mask these; verify that the masked status propagates through the anomaly features.
+- **Calibration drift across vegetation classes.** The model has class-specific coefficients on each predictor, so the *fit* will absorb class-level shifts. But if the engineered features are computed from prior-year summaries that themselves have class-dependent reliability, the calibration may drift. Check reliability per class on a held-out year.
+- **Overfitting on small confounder classes.** The very samples that motivate adding these features (small N) are also the ones that make adding too many features risky. Regularisation is the right tool; cross-validate the regularisation strength rather than the individual feature decisions.
+

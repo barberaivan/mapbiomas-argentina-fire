@@ -37,10 +37,14 @@ collection-01/
 │   ├── constants.py        # All paths, feature lists, MB reclass table, RF params
 │   └── functions.py        # GEE helpers: Landsat preprocessing, indices, MB sampling
 ├── workflow/
-│   ├── 00-status.py        # Check export status across all regions
 │   ├── 01-training_data_export.py   # Export training data (one GEE task per fire)
 │   └── 02–08-*.py          # Stubs — in development
-├── notebooks/              # Quarto-R (.qmd) exploratory analyses
+├── scripts/                # Ad-hoc utilities — not mandatory pipeline steps
+│   ├── status.py                    # Check GEE export status across all regions
+│   ├── download_observations.py     # Download training observations to local CSV
+│   ├── export_region_raster.py      # Export region-ID raster to GEE asset
+│   └── make_fires_table_stats.R     # Build fires_table_stats.csv from xlsx + obs CSVs
+├── notebooks/              # Quarto-R (.qmd) exploratory analyses and decisions
 ├── samples/                # ARCHIVE — JS templates from interactive point collection
 └── data/                   # gitignored — local downloads and scratch files
 ```
@@ -50,15 +54,6 @@ collection-01/
 ## Running the pipeline
 
 Run all scripts from the **repo root**.
-
-### Step 00 — Check status
-
-```bash
-/home/ivan/.venvs/gee/bin/python collection-01/workflow/00-status.py
-/home/ivan/.venvs/gee/bin/python collection-01/workflow/00-status.py --region PAT
-```
-
-Reports DONE / RUNNING / PENDING / FAILED / MISSING for each fire in each region.
 
 ### Step 01 — Export training data
 
@@ -76,17 +71,39 @@ Output per fire: `COLLECTION-1/TRAINING-DATA/{region}/training_observations-fire
 
 A JSON run log is written to `workflow/01-training_data_export/run_{region}_v{version}.json`.
 
+### Scripts (ad-hoc utilities)
+
+```bash
+# Check GEE export status across all regions (or one)
+/home/ivan/.venvs/gee/bin/python collection-01/scripts/status.py
+/home/ivan/.venvs/gee/bin/python collection-01/scripts/status.py --region PAT
+
+# Download completed training observations to collection-01/data/ as a local CSV
+/home/ivan/.venvs/gee/bin/python collection-01/scripts/download_observations.py --region PAT --version 1
+```
+
 ### Steps 02–08
 
 In development. See script stubs in `collection-01/workflow/`.
 
-### Notebooks (Quarto-R, run in order)
+### Scripts (R utilities)
 
-| Notebook | When to run | Output |
-|----------|-------------|--------|
-| `01-landcover_reclassification.qmd` | Before step 01 | `MB_RECLASS_FROM/TO` in `constants.py` |
-| `02-training_sample_audit.qmd` | After step 01 | Class balance checks per region |
-| `03-rf_hyperparameter_tuning.qmd` | After step 01 | `RF_PARAMS` in `constants.py` |
+```bash
+# Build fires_table_stats.csv (needed by data_collection_stats.qmd)
+# Re-run whenever training observation CSVs are updated.
+Rscript collection-01/scripts/make_fires_table_stats.R
+```
+
+### Notebooks (Quarto-R)
+
+| Notebook | Purpose | Dependencies |
+|----------|---------|--------------|
+| `algo-fuego.qmd` | Algorithm flowchart (Mermaid/DOT) | — |
+| `vegetation_remap_and_class_imbalance.qmd` | Validate MB → fire-class remap; class balance per region | training obs CSVs, Google Sheets |
+| `data_collection_stats.qmd` | Field collection stats (time, authors, points, obs per fire) | `fires_table_stats.csv` → run `make_fires_table_stats.R` first |
+| `logistic_regression_terms.qmd` | LR model term design for obs-level burn probability | — |
+| `logistic_regression_feature_engineering_ideas.qmd` | Feature engineering ideas for the LR model | — |
+| `burn_prob_ts_metrics.qmd` | Exploration of burn-probability time-series summary metrics | — |
 
 ---
 

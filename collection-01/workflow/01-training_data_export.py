@@ -21,6 +21,7 @@ then run the full region. See also TASK-DATA-EXPORT.md.
 
 import argparse
 import json
+import math
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -31,6 +32,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import ee
 from utils import constants as C
 from utils import functions as F
+
+# Max points per export task. Larger fires are split into ceil(n / CHUNK_SIZE)
+# balanced chunks to avoid OOM (fire_47 v2 failed at 10k, v3 split-in-half at
+# 5k also OOMed; 2k is known to work).
+CHUNK_SIZE = 2000
 
 # ─── Sampling ────────────────────────────────────────────────────────────────
 
@@ -94,14 +100,14 @@ def process_fire(fire_props, region, locations):
     obs_start_year = datetime.strptime(pre_lwr[:10],  "%Y-%m-%d").year
     obs_end_year   = datetime.strptime(post_upr[:10], "%Y-%m-%d").year
     mb_start_year  = obs_start_year - 1
-    mb_end_year    = obs_end_year - 1
+    mb_end_year    = min(obs_end_year - 1, C.MB_LIMIT_YEAR)
 
     # For each previous-year MB layer, fetch the corresponding Landsat year
     # (obs_year = mb_year + 1) and attach the land-cover and mosaic.
     year_collections = []
     for mb_year in range(mb_start_year, mb_end_year + 1):
         obs_year  = mb_year + 1
-        mb_class  = F.get_mb_class_bands(lulc, mb_year, C.MB_RECLASS_FROM, C.MB_RECLASS_TO)
+        mb_class  = F.get_mb_class_band(lulc, mb_year)
         mb_mosaic = F.get_mb_mosaic_bands(mosaic_ic, mb_year, locations, C.MB_MOSAIC_BANDS)
 
         ls = (F.get_landsat(locations, f"{obs_year}-01-01", f"{obs_year + 1}-01-01")
@@ -186,6 +192,7 @@ def main(region, version, test_fire=None):
     fire_log = []
     for feat in fires_info:
         props    = feat["properties"]
+        geom     = feat["geometry"]
         fire_id  = props["fire_id"]
         fid_str  = str(fire_id).removeprefix("fire_").zfill(2)
         locations = _load_locations(fire_id, region)
@@ -208,20 +215,61 @@ def main(region, version, test_fire=None):
             print(f"  {fire_id}: WARNING no 'unburned' points (burned-only export).")
 
         locations = F.assign_point_ids(locations)
-        fc = process_fire(props, region, locations)
 
-        output_path = (f"{C.TRAINING_DATA_COL1}/{region}/"
-                       f"training_observations-fire_{fid_str}_v{version}")
-        task = ee.batch.Export.table.toAsset(
-            collection=fc,
-            description=f"training_obs_{region}_fire_{fid_str}_v{version}",
-            assetId=output_path,
-        )
-        task.start()
-        task_id = task.status()["id"]
-        print(f"  {fire_id}: submitted → {output_path.split('/')[-1]}  [{task_id}]")
-        fire_log.append({"fire_id": fire_id, "status": "submitted",
-                         "output_asset": output_path, "task_id": task_id})
+        is_multipoly = (geom["type"] == "MultiPolygon"
+                        and len(geom["coordinates"]) > 1)
+
+        if is_multipoly:
+            # Per-sub-polygon split: cuts both point count AND Landsat scene
+            # count per task (large multi-poly fires like fire_47 OOM otherwise
+            # because their bbox pulls in too many scenes). Skips empty polys.
+            sub_polys = geom["coordinates"]
+            chunks = []
+            for i, poly_coords in enumerate(sub_polys):
+                sub_geom = ee.Geometry.Polygon(poly_coords)
+                sub_locs = locations.filterBounds(sub_geom)
+                n_sub = sub_locs.size().getInfo()
+                if n_sub == 0:
+                    print(f"  {fire_id} _part{i + 1:02d}: 0 points in polygon, skipping")
+                    continue
+                chunks.append((f"_part{i + 1:02d}", sub_locs, n_sub))
+            print(f"  {fire_id}: MultiPolygon ({len(sub_polys)} polys) → "
+                  f"{len(chunks)} non-empty parts to export")
+        elif n_total > CHUNK_SIZE:
+            n_chunks = math.ceil(n_total / CHUNK_SIZE)
+            chunk_size = math.ceil(n_total / n_chunks)
+            chunks = []
+            for i in range(n_chunks):
+                lo = i * chunk_size
+                hi = min((i + 1) * chunk_size, n_total)
+                chunk = locations.filter(
+                    ee.Filter.And(
+                        ee.Filter.gte("point_id", lo),
+                        ee.Filter.lt("point_id", hi),
+                    )
+                )
+                chunks.append((f"_part{i + 1:02d}", chunk, hi - lo))
+            print(f"  {fire_id}: n={n_total} > {CHUNK_SIZE}, "
+                  f"splitting into {n_chunks} parts of ~{chunk_size}")
+        else:
+            chunks = [("", locations, n_total)]
+
+        for suffix, loc_chunk, n_chunk in chunks:
+            fc = process_fire(props, region, loc_chunk)
+            output_path = (f"{C.TRAINING_DATA_COL1}/{region}/"
+                           f"training_observations-fire_{fid_str}_v{version}{suffix}")
+            task = ee.batch.Export.table.toAsset(
+                collection=fc,
+                description=f"training_obs_{region}_fire_{fid_str}_v{version}{suffix}",
+                assetId=output_path,
+            )
+            task.start()
+            task_id = task.status()["id"]
+            print(f"  {fire_id}{suffix} (n={n_chunk}): submitted → "
+                  f"{output_path.split('/')[-1]}  [{task_id}]")
+            fire_log.append({"fire_id": fire_id, "chunk": suffix or None,
+                             "n_points": n_chunk, "status": "submitted",
+                             "output_asset": output_path, "task_id": task_id})
 
     # Write sidecar run-log
     log = {
@@ -234,8 +282,6 @@ def main(region, version, test_fire=None):
         "mapbiomas_mosaic": C.MAPBIOMAS_MOSAIC,
         "mb_mosaic_bands":  C.MB_MOSAIC_BANDS,
         "focal_features":   C.ALL_FOCAL_FEATURES,
-        "mb_reclass_from":  C.MB_RECLASS_FROM,
-        "mb_reclass_to":    C.MB_RECLASS_TO,
         "fires":            fire_log,
     }
     log_file = Path(__file__).with_suffix("") / f"run_{region}_v{version}.json"

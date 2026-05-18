@@ -1,0 +1,429 @@
+---
+title: "Data collection stats"
+format: html
+execute:
+  warning: false
+  message: false
+---
+
+```{r setup}
+library(data.table)
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+library(scales)
+library(knitr)
+library(ggrepel)
+```
+
+> **Dependency:** requires `collection-01/data/fires_table_stats.csv`.
+> If training observations were updated, re-run `collection-01/scripts/make_fires_table_stats.R` first.
+
+## Load fires_table_stats
+
+```{r load}
+fires <- fread("../data/fires_table_stats.csv")
+
+# PAT fire_46 (drought reference) and fire_47 (ash reference) are not real
+# burn events — Iván sampled 10k random points in each. They count as team
+# effort (kept in time / fishers / samplers stats) but should NOT appear in
+# region-level point/obs/fire counts or in per-author point totals (would
+# dominate everything else). `fires_burns` is the subset that drops them.
+fires_burns <- fires |>
+  filter(!(region == "PAT" & fire_id %in% c("fire_46", "fire_47")))
+```
+
+## Fires, points, observations by region
+
+```{r counts-by-region, fig.width=9, fig.height=3.2}
+by_region <- fires_burns |>
+  group_by(region) |>
+  summarise(
+    n_fires  = n(),
+    n_points = sum(n_points, na.rm = TRUE),
+    n_obs    = sum(n_obs,    na.rm = TRUE),
+    .groups  = "drop"
+  ) |>
+  arrange(desc(n_obs)) |>
+  mutate(region = factor(region, levels = rev(region)))
+
+mk_bar <- function(d, var, title, show_labels) {
+  p <- ggplot(d, aes(x = .data[[var]], y = region)) +
+    geom_col(fill = viridisLite::viridis(1, begin = 0.30, end = 0.30)) +
+    labs(title = title, x = NULL, y = NULL) +
+    scale_x_continuous(labels = comma) +
+    theme_minimal(base_size = 11) +
+    theme(panel.grid.major.y = element_blank())
+  if (!show_labels) p <- p + theme(axis.text.y = element_blank())
+  p
+}
+
+p1 <- mk_bar(by_region, "n_fires",  "Fires",        show_labels = TRUE)
+p2 <- mk_bar(by_region, "n_points", "Points",       show_labels = FALSE)
+p3 <- mk_bar(by_region, "n_obs",    "Observations", show_labels = FALSE)
+
+p1 + p2 + p3
+```
+
+```{r counts-totals}
+tibble(
+  ` `      = "Total",
+  n_fires  = sum(by_region$n_fires),
+  n_points = sum(by_region$n_points),
+  n_obs    = sum(by_region$n_obs)
+) |>
+  kable(
+    col.names   = c(" ", "Fires", "Points", "Observations"),
+    format.args = list(big.mark = ",")
+  )
+```
+
+## Time spent as a team
+
+Fishing time = the effort of finding / registering each fire before sampling.
+PAT fires 01–30 were collected last year and averaged ~10 min per fire;
+the remaining fires were collected with a slower workflow averaging ~14 min.
+
+Sampling time per fire is the `duration_min` column. For fires with no
+recorded duration we impute it as $\bar t_{\text{region}} \times \text{n\_points}$,
+where $\bar t_{\text{region}}$ is the mean recorded minutes per point in the
+fire's region. The `n_estimated` column counts how many fires in the scope
+had their sampling time imputed this way.
+
+```{r time-analysis}
+# Region-level mean sampling time per point, computed from `fires_burns`
+# only — fire_46 / fire_47 are random-sampling outliers (5 min for 10k pts)
+# and would crash the PAT rate.
+region_rate <- fires_burns |>
+  mutate(duration_rec = as.numeric(duration_min)) |>
+  filter(!is.na(duration_rec)) |>
+  group_by(region) |>
+  summarise(min_per_point = sum(duration_rec) / sum(n_points), .groups = "drop")
+
+fires_time <- fires |>
+  mutate(
+    is_pat_01_30   = region == "PAT" &
+      fire_id %in% sprintf("fire_%02d", 1:30),
+    fishing_min    = ifelse(is_pat_01_30, 10, 14),
+    duration_rec   = as.numeric(duration_min),
+    time_estimated = is.na(duration_rec)
+  ) |>
+  left_join(region_rate, by = "region") |>
+  mutate(
+    sampling_min = ifelse(time_estimated, n_points * min_per_point, duration_rec)
+  )
+
+summarise_time <- function(d, label) {
+  tibble(
+    scope      = label,
+    n_fires    = nrow(d),
+    fishing_h  = sum(d$fishing_min,  na.rm = TRUE) / 60,
+    sampling_h = sum(d$sampling_min, na.rm = TRUE) / 60
+  ) |>
+    mutate(total_h = fishing_h + sampling_h)
+}
+
+bind_rows(
+  summarise_time(fires_time, "Pilot + Collection 1"),
+  summarise_time(filter(fires_time, !is_pat_01_30), "Collection 1")
+) |>
+  kable(
+    digits      = 1,
+    col.names   = c("Dataset", "Fires", "Fishing time (h)",
+                    "Sampling time (h)", "Total time (h)"),
+    format.args = list(big.mark = ","),
+    caption     = "Team-wide time spent (hours). Fishing: 10 min/fire for PAT fire_01–30, 14 min/fire for the rest. Sampling: `duration_min` when recorded, otherwise imputed as `mean_min_per_point_region × n_points`."
+  )
+```
+
+## Fire-Fishers' stats
+
+```{r fishers-rank, fig.width=8, fig.height=4}
+fishers <- fires |>
+  count(colector, region, name = "n_fires")
+
+fisher_order <- fishers |>
+  group_by(colector) |>
+  summarise(total = sum(n_fires), .groups = "drop") |>
+  arrange(total) |>
+  pull(colector)
+
+fishers <- fishers |>
+  mutate(colector = factor(colector, levels = fisher_order))
+
+ggplot(fishers, aes(x = n_fires, y = colector, fill = region)) +
+  geom_col() +
+  scale_x_continuous(labels = comma) +
+  scale_fill_viridis_d(option = "D", begin = 0, end = 0.9) +
+  theme_minimal(base_size = 11) +
+  theme(panel.grid.major.y = element_blank()) +
+  labs(x = "Fires fished", y = NULL, fill = "Region")
+```
+
+## Point-Samplers' stats
+
+### Fires sampled per author
+
+```{r samplers-rank, fig.width=8, fig.height=6}
+samplers <- fires |>
+  count(author, region, name = "n_fires")
+
+sampler_order <- samplers |>
+  group_by(author) |>
+  summarise(total = sum(n_fires), .groups = "drop") |>
+  arrange(total) |>
+  pull(author)
+
+samplers <- samplers |>
+  mutate(author = factor(author, levels = sampler_order))
+
+ggplot(samplers, aes(x = n_fires, y = author, fill = region)) +
+  geom_col() +
+  scale_x_continuous(labels = comma) +
+  scale_fill_viridis_d(option = "D", begin = 0, end = 0.9) +
+  theme_minimal(base_size = 11) +
+  theme(panel.grid.major.y = element_blank()) +
+  labs(x = "Fires sampled", y = NULL, fill = "Region")
+```
+
+### Region-diversity per author
+
+Treating regions as "species" and number of fires per region as
+"abundance", we compute Shannon's $H = -\sum p_i \log p_i$ and Pielou's
+evenness $J = H / \log S$ (with $S$ = number of regions the author worked
+in). Both depend only on the *proportions* $p_i$, so total abundance has
+no direct effect — although larger samples tend to discover more rare
+regions, which raises $S$. Restricted to authors with $\ge 10$ fires.
+
+```{r diversity-per-author, fig.width=7, fig.height=4}
+ab <- fires |>
+  count(author, region, name = "n")
+
+per_author_div <- ab |>
+  group_by(author) |>
+  summarise(
+    total   = sum(n),
+    shannon = -sum((n / total) * log(n / total)),
+    S       = n_distinct(region),
+    pielou  = ifelse(S > 1, shannon / log(S), NA_real_),
+    .groups = "drop"
+  ) |>
+  filter(total >= 10)
+
+author_div_order <- per_author_div |> arrange(shannon) |> pull(author)
+
+div_long <- bind_rows(
+  per_author_div |> transmute(author, index = "Shannon (H)", value = shannon),
+  per_author_div |> transmute(author, index = "Pielou (J)",  value = pielou)
+) |>
+  mutate(
+    author = factor(author, levels = author_div_order),
+    # Pielou first in factor so it dodges to the lower y, Shannon to the
+    # upper y. Legend is reversed below to keep Shannon listed first.
+    index  = factor(index,  levels = c("Pielou (J)", "Shannon (H)"))
+  )
+
+ggplot(div_long, aes(x = value, y = author, fill = index)) +
+  geom_col(position = position_dodge(width = 0.75), width = 0.7) +
+  scale_fill_manual(
+    values = c(
+      "Shannon (H)" = viridisLite::viridis(1, begin = 0.40, end = 0.40),
+      "Pielou (J)"  = viridisLite::viridis(1, begin = 0.75, end = 0.75)
+    )
+  ) +
+  guides(fill = guide_legend(reverse = TRUE)) +
+  theme_minimal(base_size = 11) +
+  theme(panel.grid.major.y = element_blank()) +
+  labs(x = "Diversity index for the region of sampled fires",
+       y = NULL, fill = NULL)
+```
+
+### Total points sampled per author
+
+First with PAT fire_46 and fire_47 included (Iván's 10 000 random points
+in each), then with them removed.
+
+```{r samplers-points, fig.width=8, fig.height=12}
+plot_author_points <- function(d, title) {
+  d_summary <- d |>
+    group_by(author, region) |>
+    summarise(n_pts = sum(n_points, na.rm = TRUE), .groups = "drop")
+
+  ord <- d_summary |>
+    group_by(author) |>
+    summarise(total = sum(n_pts), .groups = "drop") |>
+    arrange(total) |>
+    pull(author)
+
+  d_summary |>
+    mutate(author = factor(author, levels = ord)) |>
+    ggplot(aes(x = n_pts, y = author, fill = region)) +
+    geom_col() +
+    scale_x_continuous(labels = comma) +
+    scale_fill_viridis_d(option = "D", begin = 0, end = 0.9) +
+    theme_minimal(base_size = 11) +
+    theme(panel.grid.major.y = element_blank()) +
+    labs(title = title, x = "Points sampled", y = NULL, fill = "Region")
+}
+
+plot_author_points(fires,       "With fire_46 and fire_47") /
+  plot_author_points(fires_burns, "Without fire_46 and fire_47")
+```
+
+### Sampling speed (points per minute) per author
+
+Total points / total sampling minutes, aggregated across all the fires
+each author worked on. Sampling time uses recorded `duration_min` and
+the regional-rate imputation for missing values (same as the time-spent
+section). First with PAT fire_46 and fire_47, then without.
+
+The fastest and slowest bars are highlighted (lighter shade) among
+authors who sampled at least **5 fires**, so that small-sample outliers
+don't claim the extremes. Same rule applies to the seconds-per-point
+plot below.
+
+```{r samplers-speed, fig.width=8, fig.height=12}
+# Bar colors: bulk dark; fastest and slowest highlighted lighter. Classic
+# viridis (option D), values along the [0=dark, 1=light] palette axis.
+# Only authors with ≥ 5 sampled fires are eligible for fastest / slowest
+# (avoids singling out small-sample outliers).
+bar_colors <- c(
+  other   = viridisLite::viridis(1, begin = 0.10, end = 0.10),
+  fastest = viridisLite::viridis(1, begin = 0.80, end = 0.80),
+  slowest = viridisLite::viridis(1, begin = 0.65, end = 0.65)
+)
+
+flag_extremes <- function(authors, n_fires, metric, fastest_is) {
+  # fastest_is: "max" (e.g. pts/min) or "min" (e.g. sec/pt)
+  elig <- which(n_fires >= 5)
+  if (length(elig) == 0) return(rep("other", length(authors)))
+  if (fastest_is == "max") {
+    fast_i <- elig[which.max(metric[elig])]
+    slow_i <- elig[which.min(metric[elig])]
+  } else {
+    fast_i <- elig[which.min(metric[elig])]
+    slow_i <- elig[which.max(metric[elig])]
+  }
+  out <- rep("other", length(authors))
+  out[fast_i] <- "fastest"
+  out[slow_i] <- "slowest"
+  out
+}
+
+plot_author_speed <- function(d, title) {
+  d_summary <- d |>
+    group_by(author) |>
+    summarise(
+      n_fires      = n(),
+      total_points = sum(n_points,     na.rm = TRUE),
+      total_min    = sum(sampling_min, na.rm = TRUE),
+      pts_per_min  = total_points / total_min,
+      .groups      = "drop"
+    ) |>
+    arrange(pts_per_min) |>
+    mutate(
+      bar_class = flag_extremes(author, n_fires, pts_per_min, "max"),
+      author    = factor(author, levels = author)
+    )
+
+  highlights <- filter(d_summary, bar_class != "other")
+
+  ggplot(d_summary, aes(x = pts_per_min, y = author, fill = bar_class)) +
+    geom_col() +
+    geom_text(
+      data = highlights,
+      aes(label = sprintf("%.1f", pts_per_min)),
+      hjust = -0.2, size = 3, colour = "grey20"
+    ) +
+    scale_fill_manual(values = bar_colors, guide = "none") +
+    scale_x_continuous(labels = comma, expand = expansion(mult = c(0, 0.10))) +
+    theme_minimal(base_size = 11) +
+    theme(panel.grid.major.y = element_blank()) +
+    labs(title = title, x = "Points / minute", y = NULL)
+}
+
+is_ash_drought <- function(d) {
+  d$region == "PAT" & d$fire_id %in% c("fire_46", "fire_47")
+}
+
+plot_author_speed(fires_time,                              "With fire_46 and fire_47") /
+  plot_author_speed(filter(fires_time, !is_ash_drought(fires_time)),
+                    "Without fire_46 and fire_47")
+```
+
+### Time per point (seconds) per author
+
+Same data, inverted to seconds-per-point — usually easier to read at a
+glance. Ranking is "fastest at top".
+
+```{r samplers-seconds, fig.width=8, fig.height=12}
+plot_author_seconds <- function(d, title) {
+  d_summary <- d |>
+    group_by(author) |>
+    summarise(
+      n_fires      = n(),
+      total_points = sum(n_points,     na.rm = TRUE),
+      total_min    = sum(sampling_min, na.rm = TRUE),
+      sec_per_pt   = total_min * 60 / total_points,
+      .groups      = "drop"
+    ) |>
+    arrange(desc(sec_per_pt)) |>
+    mutate(
+      bar_class = flag_extremes(author, n_fires, sec_per_pt, "min"),
+      author    = factor(author, levels = author)
+    )
+
+  highlights <- filter(d_summary, bar_class != "other")
+
+  ggplot(d_summary, aes(x = sec_per_pt, y = author, fill = bar_class)) +
+    geom_col() +
+    geom_vline(xintercept = 1, linetype = "dashed", colour = "grey30") +
+    geom_text(
+      data = highlights,
+      aes(label = sprintf("%.2f", sec_per_pt)),
+      hjust = -0.2, size = 3, colour = "grey20"
+    ) +
+    scale_fill_manual(values = bar_colors, guide = "none") +
+    scale_x_continuous(labels = comma, expand = expansion(mult = c(0, 0.10))) +
+    theme_minimal(base_size = 11) +
+    theme(panel.grid.major.y = element_blank()) +
+    labs(title = title, x = "Seconds / point", y = NULL)
+}
+
+plot_author_seconds(fires_time,                                "With fire_46 and fire_47") /
+  plot_author_seconds(filter(fires_time, !is_ash_drought(fires_time)),
+                      "Without fire_46 and fire_47")
+```
+
+### Speed vs number of fires sampled
+
+PAT fire_46 and fire_47 are excluded.
+
+```{r samplers-scatter, fig.width=7, fig.height=5}
+scatter_data <- fires_time |>
+  filter(!is_ash_drought(fires_time)) |>
+  group_by(author) |>
+  summarise(
+    n_fires      = n(),
+    total_points = sum(n_points,     na.rm = TRUE),
+    total_min    = sum(sampling_min, na.rm = TRUE),
+    pts_per_min  = total_points / total_min,
+    .groups      = "drop"
+  )
+
+v_dark <- viridisLite::viridis(1, begin = 0.10, end = 0.10)
+v_mid  <- viridisLite::viridis(1, begin = 0.60, end = 0.60)
+
+ggplot(scatter_data, aes(x = n_fires, y = pts_per_min)) +
+  geom_smooth(data = filter(scatter_data, author != "Nehuen Bedeti"),
+              method = "lm", formula = y ~ x,
+              colour = v_mid, fill = v_mid, alpha = 0.3, linewidth = 0.6) +
+  geom_point(colour = v_dark, size = 2.5) +
+  geom_text_repel(aes(label = author), size = 3, max.overlaps = Inf) +
+  scale_x_continuous(breaks = pretty_breaks()) +
+  theme_minimal(base_size = 11) +
+  labs(x = "Number of fires sampled", y = "Points / minute")
+```
+
+
+

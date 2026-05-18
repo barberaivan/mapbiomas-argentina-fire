@@ -1,0 +1,77 @@
+---
+title: "Algoritmo de Mapeo de Fuego - MapBiomas"
+format:
+  html:
+    mermaid:
+      theme: neutral
+---
+
+## Workflow
+
+
+```{dot}
+//| fig-width: 8
+//| fig-height: 12
+digraph {
+  rankdir=TB
+  node [fontname="Arial", shape=box, style="filled,rounded", margin="0.3,0.15", width=0]
+  edge [fontname="Arial", fontsize=10]
+
+  subgraph cluster_AT {
+    label="Análisis temporal"
+    style=filled; fillcolor="#f9f9f9"; color="#cccccc"
+
+    A0 [label="Imagen Landsat",                                    fillcolor="#FBEAF0", color="#993556", fontcolor="#72243E"]
+    A  [label="Índices espectrales y\nbandas ópticas",             fillcolor="#FBEAF0", color="#993556", fontcolor="#72243E"]
+    B0 [label="MapBiomas assets",                                  fillcolor="#FBEAF0", color="#993556", fontcolor="#72243E"]
+    B1 [label="Land cover\n(remap de año previo)",                 fillcolor="#FBEAF0", color="#993556", fontcolor="#72243E"]
+    B2 [label="Mosaico anual\n(subset de año previo)",             fillcolor="#FBEAF0", color="#993556", fontcolor="#72243E"]
+    B3 [label="Regiones", fillcolor="#FBEAF0", color="#993556", fontcolor="#72243E"]
+    
+    CL1 [label="Clasificador probabilístico\n(regresión logística)",fillcolor="white",  color="#993556", fontcolor="#72243E", style="filled"]
+    C  [label="Probabilidad de quema\na nivel de observación",     fillcolor="#FBEAF0", color="#993556", fontcolor="#72243E"]
+    D  [label="Métricas de resumen a nivel anual\n(prob max, diff max)", fillcolor="#FBEAF0", color="#993556", fontcolor="#72243E"]
+    CL2 [label="Umbrales",                                         fillcolor="white",  color="#993556", fontcolor="#72243E", style="filled"]
+    E1 [label="Semillas\n(celdas claramente quemadas)",            fillcolor="#FBEAF0", color="#993556", fontcolor="#72243E"]
+    E2 [label="Candidatos\n(celdas plausiblemente quemadas)",      fillcolor="#FBEAF0", color="#993556", fontcolor="#72243E"]
+
+    {rank=same; A0; B0}
+    A0 -> B0 [style=invis]
+    {rank=same; A; B1; B2; B3}
+    A -> B1 [style=invis]
+    B1 -> B2 [style=invis]
+    B2 -> B3 [style=invis]
+
+    A0 -> A
+    B0 -> B1; B0 -> B2
+    A -> CL1; B1 -> CL1; B2 -> CL1
+    CL1 -> C
+    C -> D [label="sub-anual → anual"]
+    D -> CL2
+    CL2 -> E1; CL2 -> E2
+  }
+
+  subgraph cluster_AE {
+    label="Análisis espacial"
+    style=filled; fillcolor="#f9f9f9"; color="#cccccc"
+
+    F [label="Crecimiento de región\nde semillas a candidatos", fillcolor="#EEEDFE", color="#534AB7", fontcolor="#3C3489"]
+    G [label="Grupos de píxeles\n(áreas quemadas)",             fillcolor="#EEEDFE", color="#534AB7", fontcolor="#3C3089"]
+    H [label="Polígonos de área quemada",                       fillcolor="#EEEDFE", color="#534AB7", fontcolor="#3C3489"]
+  }
+
+  subgraph cluster_PR {
+    label="Productos"
+    style=filled; fillcolor="#f9f9f9"; color="#cccccc"
+
+    I [label="Mes de quema / Tamaño de la cicatriz",          fillcolor="#E1F5EE", color="#0F6E56", fontcolor="#085041"]
+    J [label="Año del último incendio / Frecuencia de fuego", fillcolor="#E1F5EE", color="#0F6E56", fontcolor="#085041"]
+  }
+
+  E1 -> F; E2 -> F
+  F -> G; G -> H; H -> I; I -> J
+}
+```
+```
+
+

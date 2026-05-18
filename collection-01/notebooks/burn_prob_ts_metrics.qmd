@@ -1,0 +1,638 @@
+---
+title: "Burn probability time-series metrics"
+format:
+  html:
+    self-contained: true
+    code-fold: true
+execute:
+  warning: false
+  message: false
+---
+
+## Overview
+
+Per pixel per year, the fire-detection algorithm produces an intra-annual sequence of burn probabilities at Landsat observation dates. We explore summary metrics derived from that irregular time series to identify which derived quantities best discriminate a true burn signal from noise, slow vegetation stress (drought), or a partial disturbance (deforestation).
+
+Four synthetic signals are created over 46 equally-spaced observations (DOY 1–365). From each probability vector we compute forward differences and rolling means at multiple window lengths, then visualise all metrics together.
+
+## Setup
+
+```{r}
+library(tidyverse)
+
+# Single source of truth for plot styling. Bump `base_size` to scale every font
+# in every plot, or tweak individual elements here to update all plots at once.
+theme_burn <- function(base_size = 14) {
+  theme_minimal(base_size = base_size) +
+    theme(
+      strip.placement   = "outside",
+      strip.text.y.left = element_text(angle = 0, hjust = 1,
+                                       size   = base_size - 2,
+                                       margin = margin(r = 6)),
+      strip.text.x      = element_text(face   = "bold",
+                                       size   = base_size - 1,
+                                       margin = margin(b = 6)),
+      panel.spacing     = unit(0.85, "lines"),
+      panel.grid.minor  = element_blank(),
+      plot.title        = element_text(face   = "bold",
+                                       size   = base_size + 2,
+                                       margin = margin(b = 6)),
+      plot.subtitle     = element_text(size   = base_size - 2,
+                                       colour = "grey45",
+                                       margin = margin(b = 8)),
+      axis.text         = element_text(size = base_size - 2),
+      axis.title        = element_text(size = base_size - 1),
+      legend.position   = "top",
+      legend.box        = "horizontal",
+      legend.title      = element_text(size = base_size - 1),
+      legend.text       = element_text(size = base_size - 2)
+    )
+}
+
+theme_set(theme_burn())
+```
+
+## Synthetic signals
+
+```{r}
+n   <- 46
+doy <- seq(1, 365, length.out = n)
+
+make_signal <- function(type, peak = 1.0) {
+  p <- rep(0.0, n)
+  switch(type,
+    fire = {
+      # abrupt jump to `peak` at obs 10; plateau 3 obs; fast linear decline to 0 by obs 25
+      p[10:12] <- peak
+      p[12:25] <- seq(peak, 0, length.out = 14)
+    },
+    noise = {
+      # near-zero everywhere except a single cloud-contamination spike at obs 10
+      p[10] <- peak
+    },
+    drought = {
+      # slow linear increase from obs 3 to obs 22; slow linear decline to obs 44
+      p[3:22]  <- seq(0, peak, length.out = 20)
+      p[22:44] <- seq(peak, 0, length.out = 23)
+    },
+    deforestation = {
+      # abrupt jump to `peak`; plateau 3 obs; slow decline to 0 by obs 40
+      p[10:12] <- peak
+      p[12:40] <- seq(peak, 0, length.out = 29)
+    }
+  )
+  p
+}
+
+# Each row defines one signal. Multiple rows per `case` are allowed and will be
+# overlaid in the same column of the facet grid, distinguished by colour.
+signal_specs <- tibble::tribble(
+  ~case,           ~level,         ~peak,
+  "fire",          NA_character_,  1.00,
+  "noise",         NA_character_,  0.90,
+  "drought",       NA_character_,  1.00,
+  "deforestation", "0.50",         0.50,
+  "deforestation", "0.75",         0.75
+)
+```
+
+## Derived metrics
+
+Let $p_t$ denote the burn probability at observation $t \in \{1, \dots, n\}$ on date $d_t$. Each quantity below is assigned to the indicated date (always **forward** — the date of the earliest observation entering the window, except $\Delta p_t$ which is dated at the second operand).
+
+$$
+\begin{aligned}
+\Delta p_t                 &= p_t - p_{t-1},                                       &\quad& d_t \\[2pt]
+\Sigma\Delta p^{(2)}_t     &= \Delta p_t + \Delta p_{t+1} \;=\; p_{t+1} - p_{t-1}, &\quad& d_t \\[2pt]
+\Sigma\Delta p^{(3)}_t     &= \Delta p_t + \Delta p_{t+1} + \Delta p_{t+2}
+                              \;=\; p_{t+2} - p_{t-1},                             &\quad& d_t \\[2pt]
+\bar p^{(2)}_t             &= \tfrac{1}{2}\,(p_t + p_{t+1}),                        &\quad& d_t \\[2pt]
+\bar p^{(3)}_t             &= \tfrac{1}{3}\,(p_t + p_{t+1} + p_{t+2}),              &\quad& d_t \\[2pt]
+\pi^{(3)}_t                &= p_t \, p_{t+1} \, p_{t+2},                            &\quad& d_t \\[2pt]
+q^{(3)}_t                  &= p_t \, p_{t+1} \;+\; p_{t+1} \, p_{t+2},              &\quad& d_t \\[2pt]
+J_t                        &= \Delta p_t \;\cdot\; \min\!\bigl(p_t,\, p_{t+1},\, p_{t+2}\bigr), &\quad& d_t
+\end{aligned}
+$$
+
+The diff-sums telescope to $\Sigma\Delta p^{(k)}_t = p_{t+k-1} - p_{t-1}$, i.e. wider single-step differences — by construction blind to the values between the endpoints. The product $\pi^{(3)}$ and the persistence-gated jump $J$ are both zero whenever any of their factors is zero, so a single-obs spike cannot trigger them. Products are cheap if the upstream model already exposes log-probabilities (e.g. logistic regression): $\log \pi^{(3)}_t = \log p_t + \log p_{t+1} + \log p_{t+2}$.
+
+```{r}
+# For a probability vector p at dates d, compute:
+#   pdiff      : p[t] - p[t-1], assigned to forward date t
+#   pdiff_sum2 : rolling sum of 2 consecutive diffs, date of first diff
+#   pdiff_sum3 : rolling sum of 3 consecutive diffs, date of first diff
+#   mean2      : 2-obs forward rolling mean of p, date of first obs
+#   mean3      : 3-obs forward rolling mean of p, date of first obs
+#   prod3      : 3-obs forward rolling product of p, date of first obs
+#                — spike-killer: any zero in the window forces the window to zero
+#   q3         : sum of products of consecutive pairs in a 3-obs window,
+#                p[t]·p[t+1] + p[t+1]·p[t+2], date of first obs.
+#                — fires when the high value is flanked by another high value;
+#                  in log-space this is logsumexp(log p[t]+log p[t+1], log p[t+1]+log p[t+2])
+#   jump_x_min : (p[t] - p[t-1]) · min(p[t], p[t+1], p[t+2]), date = t
+#                — combined: requires both an abrupt jump AND persistence after,
+#                  so it suppresses noise (no persistence) and drought (no jump) at once
+compute_metrics <- function(p, d) {
+  n  <- length(p)
+  pd <- diff(p)          # length n-1
+  m  <- length(pd)
+  pd_doy <- d[-1]        # forward dates for each diff
+
+  list(
+    prob       = tibble(doy = d,              value = p),
+    pdiff      = tibble(doy = pd_doy,         value = pd),
+    pdiff_sum2 = tibble(doy = pd_doy[-m],     value = pd[-m] + pd[-1]),
+    pdiff_sum3 = tibble(doy = pd_doy[1:(m-2)],
+                        value = pd[1:(m-2)] + pd[2:(m-1)] + pd[3:m]),
+    mean2      = tibble(doy = d[-n],          value = (p[-n] + p[-1]) / 2),
+    mean3      = tibble(doy = d[1:(n-2)],     value = (p[1:(n-2)] + p[2:(n-1)] + p[3:n]) / 3),
+    prod3      = tibble(doy = d[1:(n-2)],     value = p[1:(n-2)] * p[2:(n-1)] * p[3:n]),
+    q3         = tibble(doy = d[1:(n-2)],
+                        value = p[1:(n-2)] * p[2:(n-1)] + p[2:(n-1)] * p[3:n]),
+    jump_x_min = tibble(
+      doy   = d[2:(n-2)],
+      value = (p[2:(n-2)] - p[1:(n-3)]) *
+              pmin(p[2:(n-2)], p[3:(n-1)], p[4:n])
+    )
+  )
+}
+
+var_levels  <- c("prob", "pdiff", "pdiff_sum2", "pdiff_sum3",
+                 "mean2", "mean3", "prod3", "q3", "jump_x_min")
+case_levels <- c("fire", "noise", "drought", "deforestation")
+
+df <- purrr::pmap_dfr(signal_specs, function(case, level, peak) {
+  p      <- make_signal(case, peak)
+  mets   <- compute_metrics(p, doy)
+  sig_id <- if (is.na(level)) case else paste(case, level, sep = "_")
+  purrr::map_dfr(var_levels, function(vr) {
+    mets[[vr]] |> mutate(
+      signal_id = sig_id,
+      case      = case,
+      level     = level,
+      variable  = vr
+    )
+  })
+}) |>
+  mutate(
+    case      = factor(case,     levels = case_levels),
+    variable  = factor(variable, levels = var_levels),
+    color_grp = dplyr::coalesce(level, "single")
+  )
+```
+
+## Plot
+
+```{r}
+#| fig-width: 13
+#| fig-height: 19
+
+# DOY of max pdiff per case — vertical reference in the prob panel only.
+# Multiple signals per case have the same transition DOY in these synthetics,
+# so we keep one vline per case.
+vline_df <- df |>
+  filter(variable == "pdiff") |>
+  group_by(signal_id, case) |>
+  slice_max(value, n = 1, with_ties = FALSE) |>
+  ungroup() |>
+  group_by(case) |>
+  slice_head(n = 1) |>
+  ungroup() |>
+  select(case, doy_vline = doy) |>
+  mutate(variable = factor("prob", levels = var_levels))
+
+var_labels <- c(
+  prob       = "Burn prob.",
+  pdiff      = "Δp  (1-step)",
+  pdiff_sum2 = "Δp sum  (2)",
+  pdiff_sum3 = "Δp sum  (3)",
+  mean2      = "Mean  (2-obs)",
+  mean3      = "Mean  (3-obs)",
+  prod3      = "Product  (3-obs)",
+  q3         = "Σ pair-prod  (3-obs)",
+  jump_x_min = "Δp · min₃"
+)
+
+case_labels <- c(
+  fire          = "Fire",
+  noise         = "Cloud noise",
+  drought       = "Drought",
+  deforestation = "Deforestation"
+)
+
+ggplot(df, aes(x = doy, y = value, group = signal_id, colour = color_grp)) +
+  geom_hline(yintercept = 0, colour = "grey80", linewidth = 0.35) +
+  geom_line(linewidth = 0.65) +
+  geom_point(size = 0.85) +
+  geom_vline(
+    data        = vline_df,
+    aes(xintercept = doy_vline),
+    colour      = "tomato",
+    linetype    = "dashed",
+    linewidth   = 0.7,
+    inherit.aes = FALSE
+  ) +
+  facet_grid(
+    variable ~ case,
+    scales   = "free_y",
+    switch   = "y",
+    labeller = labeller(variable = var_labels, case = case_labels)
+  ) +
+  scale_colour_manual(
+    name   = "Deforestation peak",
+    values = c(single = "grey25", `0.50` = "#1f78b4", `0.75` = "#e31a1c"),
+    breaks = c("0.50", "0.75")
+  ) +
+  scale_x_continuous(
+    breaks = c(1, 91, 182, 274, 365),
+    labels = c("1", "91", "182", "274", "365")
+  ) +
+  labs(
+    x        = "Day of year",
+    y        = NULL,
+    title    = "Intra-annual burn probability — raw signal and derived metrics",
+    subtitle = "Dashed red line (prob panel): DOY of max Δp — sharpest single-step probability increase"
+  )
+```
+
+## Irregular sampling: penalising long gaps
+
+All metrics above treat $\Delta p_t = p_t - p_{t-1}$ as instantaneous — they ignore the elapsed time between observations $t-1$ and $t$. Landsat sampling is far from regular: clouds, scene failures, and the L8+L9 combined revisit (~8 d) produce gaps that can stretch to weeks or months. Under irregular sampling, a *slow* drought sampled across a long gap can produce a $\Delta p$ that visually mimics a *fast* fire transition.
+
+Dividing by $\Delta t$ (a rate) overcorrects — it penalises *every* non-zero gap linearly, including the 8–30 day gaps that are still perfectly trustworthy. Instead, we apply a **soft gap-penalty weight** that is essentially 1 for short gaps and saturates to 0 for long ones. A stretched-exponential (Weibull survival) shape — slow near zero, then dropping fast — has exactly that behaviour:
+
+$$
+w(\tau) \;=\; \exp\!\bigl[-(\tau/\tau_0)^{k}\bigr], \qquad \tau_0 = 80\ \text{d},\ k = 4
+$$
+
+The exponent $k = 4$ keeps the curve flat near 0; with $k = 1$ it would be plain exponential and start dropping immediately. Numerically: $w(30\,\text{d}) \approx 0.98$, $w(60\,\text{d}) \approx 0.73$, $w(90\,\text{d}) \approx 0.20$, $w(120\,\text{d}) \approx 0.006$.
+
+The gap-weighted persistence-gated jump is
+
+$$
+J^{w}_t \;=\; (p_t - p_{t-1}) \cdot w(\tau_t) \cdot \min\!\bigl(p_t,\, p_{t+1},\, p_{t+2}\bigr),
+$$
+
+with $\tau_t = d_t - d_{t-1}$ the gap (in days) immediately preceding observation $t$.
+
+To expose the failure mode of the time-agnostic detector we add a **sparsely-sampled drought** scenario: same underlying drought signal as before, but only ~9 observations retained across the year (mean gap ≈ 45 d). The time-agnostic $J$ inflates there because consecutive *visible* obs span large $\Delta p$; the gap-weighted $J^{w}$ does not.
+
+```{r}
+#| label: gap-weight-shape
+#| fig-width: 6.5
+#| fig-height: 3
+
+gap_weight <- function(tau_days, tau0 = 80, k = 4) {
+  exp(-(tau_days / tau0)^k)
+}
+
+tibble(tau = seq(0, 180, by = 1), w = gap_weight(tau)) |>
+  ggplot(aes(tau, w)) +
+  geom_line(linewidth = 0.9, colour = "steelblue") +
+  geom_vline(xintercept = c(30, 120), colour = "grey60", linetype = "dotted") +
+  annotate("text", x = 30,  y = 0.05, label = "30 d",  hjust = -0.15, size = 3, colour = "grey40") +
+  annotate("text", x = 120, y = 0.05, label = "120 d", hjust = -0.15, size = 3, colour = "grey40") +
+  scale_y_continuous(limits = c(0, 1), expand = c(0, 0)) +
+  scale_x_continuous(breaks = seq(0, 180, by = 30)) +
+  labs(
+    x        = "Gap τ  (days)",
+    y        = "Weight w(τ)",
+    title    = "Gap-penalty weight",
+    subtitle = "w(τ) = exp(−(τ / 80)⁴)"
+  )
+```
+
+```{r}
+# Sparse drought: keep only ~9 obs over the year (gaps ~32–57 days).
+sparse_keep <- c(1, 5, 10, 16, 22:46)
+
+build_obs <- function(case, peak, keep = seq_len(n)) {
+  p_full <- make_signal(case, peak)
+  list(p = p_full[keep], d = doy[keep])
+}
+
+signals2 <- list(
+  fire              = list(case = "fire",           level = NA_character_,
+                           obs = build_obs("fire",          1.00)),
+  noise             = list(case = "noise",          level = NA_character_,
+                           obs = build_obs("noise",         0.90)),
+  drought           = list(case = "drought",        level = NA_character_,
+                           obs = build_obs("drought",       1.00)),
+  drought_sparse    = list(case = "drought_sparse", level = NA_character_,
+                           obs = build_obs("drought",       1.00, sparse_keep)),
+  deforestation_050 = list(case = "deforestation",  level = "0.50",
+                           obs = build_obs("deforestation", 0.50)),
+  deforestation_075 = list(case = "deforestation",  level = "0.75",
+                           obs = build_obs("deforestation", 0.75))
+)
+
+compute_jw <- function(p, d) {
+  nn  <- length(p)
+  pd  <- diff(p)              # length nn - 1
+  tau <- diff(d)              # gap in days, length nn - 1
+  w   <- gap_weight(tau)      # length nn - 1
+  fwd <- d[-1]                # forward date for each diff / each gap
+
+  idx       <- 1:(nn - 3)     # for jump: t = 2..(nn - 2)
+  jx_doy    <- fwd[idx]
+  persist3  <- pmin(p[2:(nn - 2)], p[3:(nn - 1)], p[4:nn])
+  j_agn     <- pd[idx]            * persist3   # time-agnostic = jump_x_min
+  j_w       <- pd[idx] * w[idx]   * persist3   # gap-weighted
+
+  list(
+    prob       = tibble(doy = d,        value = p),
+    weight     = tibble(doy = fwd,      value = w),
+    jump_x_min = tibble(doy = jx_doy,   value = j_agn),
+    jump_w     = tibble(doy = jx_doy,   value = j_w)
+  )
+}
+
+var2_levels  <- c("prob", "weight", "jump_x_min", "jump_w")
+case2_levels <- c("fire", "noise", "drought", "drought_sparse", "deforestation")
+
+df2 <- purrr::imap_dfr(signals2, function(sig, sig_id) {
+  mets <- compute_jw(sig$obs$p, sig$obs$d)
+  purrr::map_dfr(var2_levels, function(vr) {
+    mets[[vr]] |> mutate(
+      year_frac = (doy - 1) / 364,
+      signal_id = sig_id,
+      case      = sig$case,
+      level     = sig$level,
+      variable  = vr
+    )
+  })
+}) |>
+  mutate(
+    case      = factor(case,     levels = case2_levels),
+    variable  = factor(variable, levels = var2_levels),
+    color_grp = dplyr::coalesce(level, "single")
+  )
+```
+
+```{r}
+#| fig-width: 15
+#| fig-height: 12
+
+case2_labels <- c(
+  fire           = "Fire",
+  noise          = "Cloud noise",
+  drought        = "Drought",
+  drought_sparse = "Drought (sparse)",
+  deforestation  = "Deforestation"
+)
+
+var2_labels <- c(
+  prob       = "Burn prob.",
+  weight     = "Gap weight  w(τ)",
+  jump_x_min = "Δp · min₃   (time-agnostic)",
+  jump_w     = "Δp · w(τ) · min₃   (gap-weighted)"
+)
+
+ggplot(df2, aes(x = year_frac, y = value,
+                group = signal_id, colour = color_grp)) +
+  geom_hline(yintercept = 0, colour = "grey80", linewidth = 0.35) +
+  geom_line(linewidth = 0.65) +
+  geom_point(size = 1.1) +
+  facet_grid(
+    variable ~ case,
+    scales   = "free_y",
+    switch   = "y",
+    labeller = labeller(variable = var2_labels, case = case2_labels)
+  ) +
+  scale_colour_manual(
+    name   = "Deforestation peak",
+    values = c(single = "grey25", `0.50` = "#1f78b4", `0.75` = "#e31a1c"),
+    breaks = c("0.50", "0.75")
+  ) +
+  scale_x_continuous(breaks = seq(0, 1, by = 0.25)) +
+  labs(
+    x        = "Fractional year",
+    y        = NULL,
+    title    = "Gap-weighted jump-and-persistence under irregular sampling",
+    subtitle = "Row 3 (Δp·min₃) inflates for the sparsely-sampled drought — big visible Δp across long gaps.\nRow 4 weights each diff by w(τ) and the spurious signal collapses, while fire and deforestation are preserved."
+  )
+```
+
+## Per-observation features for SNIC seeds and candidates
+
+Rather than collapse everything into one composite, we expose each per-obs quantity as a feature, so the downstream SNIC seed/candidate logic can weight them independently. The feature vector at observation $t$ (in a pixel with $N^{\text{obs}}_{\text{year}}$ valid annual observations) is:
+
+- **Diff certainty** &nbsp; $\tau^{\text{pre}}_t = d_t - d_{t-1}$ &nbsp; (days, smaller = better; soft weight $w(\tau^{\text{pre}}_t)$).
+- **Persistence span** &nbsp; $\tau^{\text{post}}_t = d_{t+2} - d_t$ &nbsp; (days; larger = stronger persistence *within* a cap).
+- **Adaptive persistence** — fixed-$k = 3$ when sampling is dense, falling back to $k = 2$ when too sparse:
+  $$
+  \operatorname{persist}^{\text{adapt}}_t \;=\;
+  \begin{cases}
+    \min(p_t,\, p_{t+1},\, p_{t+2}) & \text{if } \tau^{\text{post}}_t \le \tau_{\max} \\
+    \min(p_t,\, p_{t+1})            & \text{otherwise}
+  \end{cases}
+  \qquad \tau_{\max} = 60\,\text{d}
+  $$
+- **Annual obs count** &nbsp; $N^{\text{obs}}_{\text{year}}$ &nbsp; (pixel-level scalar; low values down-weight everything).
+- **Composite** &nbsp; $J^{w,\text{adapt}}_t = (p_t - p_{t-1}) \cdot w(\tau^{\text{pre}}_t) \cdot \operatorname{persist}^{\text{adapt}}_t$.
+
+**Seed** (strict): $J^{w,\text{adapt}}_t \ge 0.5$ AND $\tau^{\text{pre}}_t \le 30$ d AND $\tau^{\text{post}}_t \le 60$ d AND $N^{\text{obs}}_{\text{year}} \ge 35$.
+
+**Candidate** (permissive): $J^{w,\text{adapt}}_t \ge 0.15$ AND $\tau^{\text{pre}}_t \le 60$ d AND $N^{\text{obs}}_{\text{year}} \ge 20$.
+
+SNIC then grows segments from seeds; candidates attach if spatially consistent. Isolated candidates (e.g., a single drought pixel flagged across a long pre-jump gap) get rejected for lack of neighbour support.
+
+```{r}
+# Adaptive persistence: 3-obs min when the window's time span ≤ tau_max,
+# otherwise fall back to 2-obs min (and to p[t] alone at the trailing edge).
+persist_adapt_fn <- function(p, d, tau_max = 60) {
+  nn       <- length(p)
+  p3       <- rep(NA_real_, nn)
+  p2       <- rep(NA_real_, nn)
+  tau_post <- rep(NA_real_, nn)
+  if (nn >= 3) {
+    p3[1:(nn - 2)]       <- pmin(p[1:(nn - 2)], p[2:(nn - 1)], p[3:nn])
+    tau_post[1:(nn - 2)] <- d[3:nn] - d[1:(nn - 2)]
+  }
+  if (nn >= 2) p2[1:(nn - 1)] <- pmin(p[1:(nn - 1)], p[2:nn])
+
+  out <- p
+  out <- ifelse(!is.na(p2), p2, out)
+  out <- ifelse(!is.na(p3) & !is.na(tau_post) & tau_post <= tau_max, p3, out)
+  out
+}
+
+compute_snic_features <- function(p, d,
+                                   tau_max       = 60,
+                                   theta_high    = 0.5,
+                                   theta_low     = 0.15,
+                                   tau_pre_seed  = 30,
+                                   tau_pre_cand  = 60,
+                                   tau_post_seed = 60,
+                                   n_min_seed    = 35,
+                                   n_min_cand    = 20) {
+  nn         <- length(p)
+  n_obs_year <- nn
+
+  tau_pre  <- c(NA_real_, diff(d))
+  tau_post <- if (nn >= 3) c(d[3:nn] - d[1:(nn - 2)], NA_real_, NA_real_)
+              else rep(NA_real_, nn)
+  w_pre    <- gap_weight(tau_pre)
+
+  persist_adapt <- persist_adapt_fn(p, d, tau_max = tau_max)
+  dp            <- c(NA_real_, diff(p))
+  J_w_adapt     <- dp * w_pre * persist_adapt
+
+  is_seed <- !is.na(J_w_adapt) & J_w_adapt >= theta_high &
+             !is.na(tau_pre)   & tau_pre   <= tau_pre_seed &
+             !is.na(tau_post)  & tau_post  <= tau_post_seed &
+             n_obs_year >= n_min_seed
+
+  is_cand <- !is.na(J_w_adapt) & J_w_adapt >= theta_low &
+             !is.na(tau_pre)   & tau_pre   <= tau_pre_cand &
+             n_obs_year >= n_min_cand
+
+  tibble(
+    doy           = d,
+    p             = p,
+    tau_pre       = tau_pre,
+    tau_post      = tau_post,
+    w_pre         = w_pre,
+    persist_adapt = persist_adapt,
+    dp            = dp,
+    J_w_adapt     = J_w_adapt,
+    n_obs_year    = n_obs_year,
+    flag          = factor(
+      dplyr::case_when(is_seed ~ "seed", is_cand ~ "candidate", TRUE ~ "none"),
+      levels = c("none", "candidate", "seed")
+    )
+  )
+}
+
+df3 <- purrr::imap_dfr(signals2, function(sig, sig_id) {
+  feats <- compute_snic_features(sig$obs$p, sig$obs$d)
+  feats |> mutate(
+    year_frac = (doy - 1) / 364,
+    signal_id = sig_id,
+    case      = sig$case,
+    level     = sig$level
+  )
+}) |>
+  mutate(
+    case      = factor(case, levels = case2_levels),
+    color_grp = dplyr::coalesce(level, "single")
+  )
+```
+
+```{r}
+#| fig-width: 15
+#| fig-height: 14
+
+var3_levels <- c("prob", "tau_pre", "tau_post", "persist_adapt", "J_w_adapt")
+
+var3_labels <- c(
+  prob          = "Burn prob.",
+  tau_pre       = "τ_pre  (d)",
+  tau_post      = "τ_post  (d)",
+  persist_adapt = "Persist (adaptive)",
+  J_w_adapt     = "J  (w, adapt)"
+)
+
+df3_long <- df3 |>
+  select(year_frac, signal_id, case, color_grp, flag,
+         prob = p, tau_pre, tau_post, persist_adapt, J_w_adapt) |>
+  tidyr::pivot_longer(c(prob, tau_pre, tau_post, persist_adapt, J_w_adapt),
+                      names_to = "variable", values_to = "value") |>
+  mutate(variable = factor(variable, levels = var3_levels))
+
+# Threshold reference lines per row
+hlines_df <- tibble::tribble(
+  ~variable,    ~yintercept, ~thr_type,
+  "tau_pre",    30,          "seed",
+  "tau_pre",    60,          "candidate",
+  "tau_post",   60,          "seed",
+  "J_w_adapt",  0.5,         "seed",
+  "J_w_adapt",  0.15,        "candidate"
+) |>
+  mutate(variable = factor(variable, levels = var3_levels))
+
+# Flag markers — only on the prob and J_w_adapt rows
+flag_markers <- df3_long |>
+  filter(variable %in% c("prob", "J_w_adapt"), flag != "none")
+
+ggplot(df3_long, aes(x = year_frac, y = value,
+                     group = signal_id, colour = color_grp)) +
+  geom_hline(yintercept = 0, colour = "grey80", linewidth = 0.35) +
+  geom_hline(
+    data        = hlines_df,
+    aes(yintercept = yintercept, linetype = thr_type),
+    colour      = "grey55",
+    linewidth   = 0.45,
+    inherit.aes = FALSE
+  ) +
+  geom_line(linewidth = 0.6) +
+  geom_point(size = 0.85) +
+  geom_point(
+    data        = flag_markers,
+    aes(x = year_frac, y = value, fill = flag),
+    shape       = 21,
+    colour      = "grey20",
+    size        = 2.6,
+    stroke      = 0.5,
+    inherit.aes = FALSE
+  ) +
+  facet_grid(
+    variable ~ case,
+    scales   = "free_y",
+    switch   = "y",
+    labeller = labeller(variable = var3_labels, case = case2_labels)
+  ) +
+  scale_colour_manual(
+    name   = "Deforestation peak",
+    values = c(single = "grey25", `0.50` = "#1f78b4", `0.75` = "#e31a1c"),
+    breaks = c("0.50", "0.75")
+  ) +
+  scale_fill_manual(
+    name   = "SNIC flag",
+    values = c(seed = "#e31a1c", candidate = "#ff9b1f")
+  ) +
+  scale_linetype_manual(
+    name   = "Threshold",
+    values = c(seed = "dashed", candidate = "dotted")
+  ) +
+  scale_x_continuous(breaks = seq(0, 1, by = 0.25)) +
+  labs(
+    x        = "Fractional year",
+    y        = NULL,
+    title    = "Per-observation features and SNIC seed/candidate flags",
+    subtitle = "Red = seed, orange = candidate. Dashed/dotted greys mark the seed and candidate thresholds on τ_pre, τ_post, and J."
+  )
+```
+
+## Special case: low-severity forest burns (Patagonia)
+
+In Patagonian forests, **low-severity fires can kill the canopy on a delayed schedule** — the burn probability rises slowly over weeks to months rather than jumping abruptly. To the focal jumper $J^{w,\text{adapt}}_t$ this looks indistinguishable from drought, and the SNIC seed/candidate criteria above will not fire because $\Delta p_t$ stays small at every individual step.
+
+The discriminating signature is the *combination* of: a real, sustained probability after the slow rise (unlike drought, which recovers); a pre-disturbance state that was clearly healthy forest; and the *absence* of any sharp-edged signal — both in the year of interest and in the previous year.
+
+**Candidate criterion** — forest class, Patagonia only, candidates only (never seeds, because we have no reliable transition date):
+
+$$
+\begin{aligned}
+&\max_t \,\operatorname{persist}^{\text{adapt}}_{Y,\,t}    &&\ge\, \theta_{\text{persist}}                && \text{(crown does die — unlike drought)} \\
+\wedge\;&\,\text{NDVI}^{\text{wet}}_{Y-1}                   &&\ge\, \theta_{\text{NDVI}}                    && \text{(was a healthy forest)} \\
+\wedge\;&\max_t \, J^{w,\text{adapt}}_{Y,\,t}               &&\le\, \theta_{J,\,\text{low}}                 && \text{(no abrupt jump this year — unlike fire)} \\
+\wedge\;&\max_t \, J^{w,\text{adapt}}_{Y-1,\,t}             &&\le\, \theta_{J,\,\text{low}}                 && \text{(no abrupt jump last year either)} \\
+\wedge\;&\,\text{land cover}_{Y-1}                          &&=\,   \text{forest}                           &&  \\
+\wedge\;&\,\text{region}                                    &&=\,   \text{PAT}                              &&
+\end{aligned}
+$$
+
+The two annual-max constraints are the key. They together separate this regime from the three nearest distractors:
+
+| Distractor                                    | What breaks the criterion                                              |
+|-----------------------------------------------|------------------------------------------------------------------------|
+| Drought (slow rise, full recovery)            | $\max_t \operatorname{persist}^{\text{adapt}}_{Y,t}$ stays low — the prob returns to zero |
+| Regular fire (sharp transition)               | $\max_t J^{w,\text{adapt}}_{Y,t}$ is high — fails the "low jumper this year" check        |
+| Burned previous year, still looks dead        | $\max_t J^{w,\text{adapt}}_{Y-1,t}$ is high — fails the "low jumper last year" check     |
+| Non-forest land cover with similar dynamics   | Fails the land-cover gate                                              |
+
+These pixels enter SNIC strictly as **candidates** for the forest fire class, never as seeds. They depend on spatial coherence with neighbouring sharp-edge fire seeds to be retained — a delayed-mortality patch typically borders the higher-severity core, so the candidate ring attaches to the seed-anchored segment.
+
+The criterion is intentionally narrow: it would generate many false positives if applied outside forest land cover or outside Patagonia, where slow-mortality dynamics have different causes (e.g., agriculture rotation, shrub senescence).
+

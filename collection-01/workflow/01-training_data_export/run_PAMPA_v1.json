@@ -1,9 +1,9 @@
 {
-  "run_at": "2026-05-12T22:04:43.736328Z",
-  "region": "PAT",
+  "run_at": "2026-05-13T04:55:26.334933Z",
+  "region": "PAMPA",
   "version": 1,
-  "test_fire": "fire_44",
-  "training_fires": "projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/TRAINING-DATA/PAT/training_fires",
+  "test_fire": "fire_28",
+  "training_fires": "projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/TRAINING-DATA/PAMPA/training_fires",
   "mapbiomas_lulc": "projects/mapbiomas-argentina/assets/LAND-COVER/COLLECTION-2/INTEGRATION/mapbiomas_argentina_collection1_integration_v8_buffer",
   "mapbiomas_mosaic": "projects/nexgenmap/MapBiomas2/LANDSAT/ARGENTINA/mosaics-1",
   "mb_mosaic_bands": [
@@ -84,10 +84,10 @@
   ],
   "fires": [
     {
-      "fire_id": "fire_44",
+      "fire_id": "fire_28",
       "status": "submitted",
-      "output_asset": "projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/TRAINING-DATA/PAT/training_observations-fire_44_v1",
-      "task_id": "LZXN3KJ3RWVLRYUBKFKLYHM3"
+      "output_asset": "projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/TRAINING-DATA/PAMPA/training_observations-fire_28_v1",
+      "task_id": "HKVOQHRDG5W5C2CI5C3ELW3C"
     }
   ]
 }

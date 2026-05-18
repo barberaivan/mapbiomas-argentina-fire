@@ -32,16 +32,23 @@ MAPBIOMAS_LULC = (
 # MapBiomas annual mosaic: ImageCollection, filter by 'year' integer property
 MAPBIOMAS_MOSAIC = "projects/nexgenmap/MapBiomas2/LANDSAT/ARGENTINA/mosaics-1"
 
-# Mosaic bands to include: visible + NIR + SWIR + NDVI, median/dry/wet aggregates only
+# Mosaic bands: optical × {median,dry,wet,stdDev} + NDVI/NDWI/NPV/NDFI × same (40 total)
 MB_MOSAIC_BANDS = [
-    "blue_median",  "blue_median_dry",  "blue_median_wet",
-    "green_median", "green_median_dry", "green_median_wet",
-    "red_median",   "red_median_dry",   "red_median_wet",
-    "nir_median",   "nir_median_dry",   "nir_median_wet",
-    "swir1_median", "swir1_median_dry", "swir1_median_wet",
-    "swir2_median", "swir2_median_dry", "swir2_median_wet",
-    "ndvi_median",  "ndvi_median_dry",  "ndvi_median_wet",
+    "blue_median",  "blue_median_dry",  "blue_median_wet",  "blue_stdDev",
+    "green_median", "green_median_dry", "green_median_wet", "green_stdDev",
+    "red_median",   "red_median_dry",   "red_median_wet",   "red_stdDev",
+    "nir_median",   "nir_median_dry",   "nir_median_wet",   "nir_stdDev",
+    "swir1_median", "swir1_median_dry", "swir1_median_wet", "swir1_stdDev",
+    "swir2_median", "swir2_median_dry", "swir2_median_wet", "swir2_stdDev",
+    "ndvi_median",  "ndvi_median_dry",  "ndvi_median_wet",  "ndvi_stdDev",
+    "ndwi_median",  "ndwi_median_dry",  "ndwi_median_wet",  "ndwi_stdDev",
+    "npv_median",   "npv_median_dry",   "npv_median_wet",   "npv_stdDev",
+    "ndfi_median",  "ndfi_median_dry",  "ndfi_median_wet",  "ndfi_stdDev",
 ]
+
+# Names as they appear in exported training assets (get_mb_mosaic_bands adds
+# the 'mb_mos_' prefix; MB_MOSAIC_BANDS are the original names used for .select())
+MB_MOSAIC_FEATURE_NAMES = [f"mb_mos_{b}" for b in MB_MOSAIC_BANDS]
 
 # ─── Spectral features (17 per Landsat observation) ──────────────────────────
 OPTICAL_BANDS = ["BLUE", "GREEN", "RED", "NIR", "SWIR1", "SWIR2"]
@@ -50,13 +57,6 @@ TC_INDICES    = ["TCB", "TCG", "TCW"]        # Tasseled-cap (Baig et al. 2014, O
 EXTRA_INDICES = ["NDMI", "NDSI", "SAVI", "NDWI"]
 ALL_FOCAL_FEATURES = OPTICAL_BANDS + FIRE_INDICES + TC_INDICES + EXTRA_INDICES  # 17
 
-# ─── MapBiomas → fire-vegetation class reclassification ──────────────────────
-# Source: collection-00/utils/functions.js production version
-# 0=unburnable, 1=forest, 2=shrubland, 3=grassland/agri
-# NOTE: review and validate using notebooks/01-landcover_reclassification.qmd
-MB_RECLASS_FROM = [3, 66, 6, 12, 11, 75, 63, 21,  9, 29, 25, 24, 33, 34, 27]
-MB_RECLASS_TO   = [1,  2, 1,  3,  3,  3,  3,  3,  1,  0,  0,  0,  0,  0,  0]
-MB_FIRE_CLASS_NAMES = {0: "unburnable", 1: "forest", 2: "shrubland", 3: "grassland_agri"}
 
 # ─── RF hyperparameters ───────────────────────────────────────────────────────
 # Populated after notebooks/03-rf_hyperparameter_tuning.qmd

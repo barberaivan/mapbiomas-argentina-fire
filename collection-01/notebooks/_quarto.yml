@@ -2,8 +2,7 @@ project:
   type: default
 
 execute:
-  cache: true       # avoid re-running heavy GEE calls on re-render
-  freeze: auto
+  cache: false
 
 format:
   html:

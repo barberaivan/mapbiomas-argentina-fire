@@ -144,18 +144,16 @@ def add_indices(img):
     return img.addBands([nbr, nbr2, ndvi, mirbi, tcb, tcg, tcw, ndmi, ndsi, savi, ndwi])
 
 
-def get_mb_class_bands(lulc_img, mb_year, reclass_from, reclass_to):
+def get_mb_class_band(lulc_img, mb_year):
     """
-    Return a 2-band image with raw and reclassified MapBiomas land-cover
-    for mb_year.  Caller is responsible for passing the correct previous year
+    Return a single-band image with the raw MapBiomas land-cover class for
+    mb_year.  Caller is responsible for passing the correct previous year
     (mb_year = obs_year - 1).
 
-    Bands: 'mb_class_raw', 'mb_class_fire'.
+    Band: 'mb_class_raw'.  Reclassification to fire-vegetation classes is
+    deferred to model-fitting time using the per-region table in Google Sheets.
     """
-    band_name = f"classification_{mb_year}"
-    raw = lulc_img.select(band_name).rename("mb_class_raw")
-    fire_class = raw.remap(reclass_from, reclass_to).rename("mb_class_fire")
-    return raw.addBands(fire_class)
+    return lulc_img.select(f"classification_{mb_year}").rename("mb_class_raw")
 
 
 def get_mb_mosaic_bands(mosaic_col, mb_year, roi, bands):

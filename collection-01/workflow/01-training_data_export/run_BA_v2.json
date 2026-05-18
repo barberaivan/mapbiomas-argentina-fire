@@ -1,0 +1,184 @@
+{
+  "run_at": "2026-05-16T03:56:31.928858Z",
+  "region": "BA",
+  "version": 2,
+  "test_fire": null,
+  "training_fires": "projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/TRAINING-DATA/BA/training_fires",
+  "mapbiomas_lulc": "projects/mapbiomas-argentina/assets/LAND-COVER/COLLECTION-2/INTEGRATION/mapbiomas_argentina_collection1_integration_v8_buffer",
+  "mapbiomas_mosaic": "projects/nexgenmap/MapBiomas2/LANDSAT/ARGENTINA/mosaics-1",
+  "mb_mosaic_bands": [
+    "blue_median",
+    "blue_median_dry",
+    "blue_median_wet",
+    "blue_stdDev",
+    "green_median",
+    "green_median_dry",
+    "green_median_wet",
+    "green_stdDev",
+    "red_median",
+    "red_median_dry",
+    "red_median_wet",
+    "red_stdDev",
+    "nir_median",
+    "nir_median_dry",
+    "nir_median_wet",
+    "nir_stdDev",
+    "swir1_median",
+    "swir1_median_dry",
+    "swir1_median_wet",
+    "swir1_stdDev",
+    "swir2_median",
+    "swir2_median_dry",
+    "swir2_median_wet",
+    "swir2_stdDev",
+    "ndvi_median",
+    "ndvi_median_dry",
+    "ndvi_median_wet",
+    "ndvi_stdDev",
+    "ndwi_median",
+    "ndwi_median_dry",
+    "ndwi_median_wet",
+    "ndwi_stdDev",
+    "npv_median",
+    "npv_median_dry",
+    "npv_median_wet",
+    "npv_stdDev",
+    "ndfi_median",
+    "ndfi_median_dry",
+    "ndfi_median_wet",
+    "ndfi_stdDev"
+  ],
+  "focal_features": [
+    "BLUE",
+    "GREEN",
+    "RED",
+    "NIR",
+    "SWIR1",
+    "SWIR2",
+    "NBR",
+    "NBR2",
+    "MIRBI",
+    "NDVI",
+    "TCB",
+    "TCG",
+    "TCW",
+    "NDMI",
+    "NDSI",
+    "SAVI",
+    "NDWI"
+  ],
+  "mb_reclass_from": [
+    3,
+    66,
+    6,
+    12,
+    11,
+    75,
+    63,
+    21,
+    9,
+    29,
+    25,
+    24,
+    33,
+    34,
+    27
+  ],
+  "mb_reclass_to": [
+    1,
+    2,
+    1,
+    3,
+    3,
+    3,
+    3,
+    3,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "fires": [
+    {
+      "fire_id": "fire_01",
+      "status": "submitted",
+      "output_asset": "projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/TRAINING-DATA/BA/training_observations-fire_01_v2",
+      "task_id": "UWVBD5QDMWLE52R6XPLWPQTL"
+    },
+    {
+      "fire_id": "fire_02",
+      "status": "submitted",
+      "output_asset": "projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/TRAINING-DATA/BA/training_observations-fire_02_v2",
+      "task_id": "HEC2KORSKVTXFZCBUVC7MV53"
+    },
+    {
+      "fire_id": "fire_03",
+      "status": "submitted",
+      "output_asset": "projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/TRAINING-DATA/BA/training_observations-fire_03_v2",
+      "task_id": "W4KKQKJMEWMHZ4E6NVXEAR3G"
+    },
+    {
+      "fire_id": "fire_04",
+      "status": "submitted",
+      "output_asset": "projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/TRAINING-DATA/BA/training_observations-fire_04_v2",
+      "task_id": "622PCYBO2EWYEPXE7KYK4W3X"
+    },
+    {
+      "fire_id": "fire_05",
+      "status": "submitted",
+      "output_asset": "projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/TRAINING-DATA/BA/training_observations-fire_05_v2",
+      "task_id": "IO5CZWA2RTJJQGYTIYP7Z6VS"
+    },
+    {
+      "fire_id": "fire_06",
+      "status": "submitted",
+      "output_asset": "projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/TRAINING-DATA/BA/training_observations-fire_06_v2",
+      "task_id": "5HP35QPIQOUN2J6PSVRZZWEG"
+    },
+    {
+      "fire_id": "fire_07",
+      "status": "submitted",
+      "output_asset": "projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/TRAINING-DATA/BA/training_observations-fire_07_v2",
+      "task_id": "32VMBZH6OF72EWEVI24B7UMS"
+    },
+    {
+      "fire_id": "fire_08",
+      "status": "submitted",
+      "output_asset": "projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/TRAINING-DATA/BA/training_observations-fire_08_v2",
+      "task_id": "3QZ7KO3W472G3W2WJHDXWUEZ"
+    },
+    {
+      "fire_id": "fire_09",
+      "status": "submitted",
+      "output_asset": "projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/TRAINING-DATA/BA/training_observations-fire_09_v2",
+      "task_id": "VCB6IFQQUUFFU4DKDPSAORRV"
+    },
+    {
+      "fire_id": "fire_10",
+      "status": "submitted",
+      "output_asset": "projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/TRAINING-DATA/BA/training_observations-fire_10_v2",
+      "task_id": "TLOJMST4VZPF4STTXOKWD6OV"
+    },
+    {
+      "fire_id": "fire_11",
+      "status": "submitted",
+      "output_asset": "projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/TRAINING-DATA/BA/training_observations-fire_11_v2",
+      "task_id": "U7ZCFHHHRZ6C6H733H7RNTVT"
+    },
+    {
+      "fire_id": "fire_12",
+      "status": "submitted",
+      "output_asset": "projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/TRAINING-DATA/BA/training_observations-fire_12_v2",
+      "task_id": "DDDXFZJBKQGCBUFPSIKMYX4Q"
+    },
+    {
+      "fire_id": "fire_13",
+      "status": "submitted",
+      "output_asset": "projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/TRAINING-DATA/BA/training_observations-fire_13_v2",
+      "task_id": "TX2Y7KSZWDX754CAOLKS2BXC"
+    }
+  ]
+}
