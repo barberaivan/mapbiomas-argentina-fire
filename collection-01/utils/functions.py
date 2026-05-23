@@ -34,11 +34,12 @@ def _mask_clouds(img):
     """Mask cloud, cloud-shadow, snow, and water pixels (Landsat C2 QA_PIXEL)."""
     qa = img.select("QA_PIXEL")
     bad = (
-        qa.bitwiseAnd(1 << 1)   # dilated cloud
-        .Or(qa.bitwiseAnd(1 << 3))   # cloud
-        .Or(qa.bitwiseAnd(1 << 4))   # shadow
-        .Or(qa.bitwiseAnd(1 << 5))   # snow
-        .Or(qa.bitwiseAnd(1 << 7))   # water
+        qa.bitwiseAnd(1 << 1)         # dilated cloud
+        .Or(qa.bitwiseAnd(1 << 2))    # cirrus
+        .Or(qa.bitwiseAnd(1 << 3))    # cloud
+        .Or(qa.bitwiseAnd(1 << 4))    # shadow
+        .Or(qa.bitwiseAnd(1 << 5))    # snow
+        .Or(qa.bitwiseAnd(1 << 7))    # water
     )
     return img.updateMask(bad.Not())
 
