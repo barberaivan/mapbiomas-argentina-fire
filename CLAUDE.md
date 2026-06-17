@@ -18,46 +18,52 @@ absorbs the previously-unmapped CUYO class 19. `cv_feasibility_report.py` was re
 Table 2 matches `cv_feasibility_v1.csv` exactly. Low-K (<10 fires) classes are accepted
 as fittable (no longer flagged).
 
-**▶ Refit agriculture for the merged class, and renumber existing models (consequence of
-remap v2).** The old standalone `agriculture_pat` model is superseded by
-`agriculture_cuyo-pat`, AND dropping `agriculture_cuyo` shifted every veg_fire code at or
-above it, so the `class_NN` files already on disk (fit under the *old* numbering) are now
-mislabeled:
+**▶ Class numbering CHANGED with remap v2 — rename the existing model outputs (do NOT
+refit).** Dropping `agriculture_cuyo` and adding the merged `agriculture_cuyo-pat` shifted
+every veg_fire code at/above the change, so the `class_NN` files already on disk (fit under
+the *old* numbering) are now mislabeled. The PAT classes' MB-class membership did **not**
+change in remap v2 — only the integer code moved — so the existing fits are still valid.
+**Decision: rename the files to the new codes; do not re-fit `forest_pat` or `grassland_pat`
+(nor `shrubland_pat`).** Only `agriculture` actually changed.
 
 | veg_fire_name | old code / file | new code / file | action |
 |---|---|---|---|
 | agriculture_pat | 4 — `class_04_*` | — (class dropped) | **delete `class_04_*`** |
-| agriculture_cuyo-pat | (new) | 2 — `class_02_*` | **fit** |
-| forest_pat | 9 — `class_09_*` | 8 — `class_08_*` | refit (or renumber) — `class_09` slot is now `forest-cerr_chaco` |
-| grassland_pat | 17 — `class_17_*` | 16 — `class_16_*` | **in progress** (see running note below) — `class_17` slot is now `grassland-inund_chaco` |
-| shrubland_pat | 22 — `class_22_*` | 21 — `class_21_*` | refit (or renumber) — `class_22` slot is now `shrubland-closed_chaco` |
+| agriculture_cuyo-pat | (new) | 2 — `class_02_*` | **fit** (only new fit needed) |
+| forest_pat | 9 — `class_09_*` | 8 — `class_08_*` | **rename** (do not refit) — `class_09` slot is now `forest-cerr_chaco` |
+| grassland_pat | 17 — `class_17_*` | 16 — `class_16_*` | **rename** after the running fit finishes (do not refit) — `class_17` slot is now `grassland-inund_chaco` |
+| shrubland_pat | 22 — `class_22_*` | 21 — `class_21_*` | **rename** (do not refit) — `class_22` slot is now `shrubland-closed_chaco` |
 
 Steps:
 1. **Delete the dropped class**: `collection-01/models/class_04_*` (coefficients, cv_metrics,
    fit.rds, oof_predictions, tuning).
-2. **Fit the merged class**:
+2. **Fit the merged class** (the only refit):
    `Rscript collection-01/workflow/02-model_fitting.R 1 agriculture_cuyo-pat` → `class_02_*`.
-3. **Re-fit or renumber the PAT models** (`forest_pat`, `shrubland_pat`, `grassland_pat`)
-   so their files match the new codes (`class_08_*`, `class_21_*`, `class_16_*`); otherwise
-   the stale `class_09_*`/`class_22_*`/`class_17_*` collide with the new occupants of those
-   codes. Re-fitting is safest (renumber is fine since PAT membership is unchanged).
-4. After refitting, rebuild `models/cv_metrics_v1.csv` (see "Fit the remaining classes" below).
-   Always confirm the `class_NN` ↔ veg_fire_name mapping against
-   `config/veg_fire_remap.csv` before trusting any existing `class_*` model file.
+3. **Rename the PAT model files** to the new codes (forest_pat 9→8, grassland_pat 17→16
+   *(after the running fit finishes)*, shrubland_pat 22→21). For each class, rename all five
+   sidecars — `class_NN_{coefficients,cv_metrics,tuning,oof_predictions}.csv` and
+   `class_NN_fit.rds` — **and** fix the stale `veg_fire` integer column *inside*
+   `cv_metrics.csv` and `oof_predictions.csv` (a bare file rename leaves the old code in the
+   data). Everything else (coefficients, tuning, fit.rds) is code-agnostic. Do the renames
+   in descending order (22→21, 17→16, 9→8) so a new name never overwrites a not-yet-renamed
+   file.
+4. Rebuild `models/cv_metrics_v1.csv` (see "Fit the remaining classes" below). Then confirm
+   the `class_NN` ↔ veg_fire_name mapping against `config/veg_fire_remap.csv`.
 
 **⏳ CURRENTLY RUNNING (as of 2026-06-17 ~15:30):** a `grassland_pat` fit
 (`02-model_fitting.R 1 grassland_pat`, started 08:17 — the heavy one, ~30+ GB).
 **It was launched BEFORE the remap-v2 regen, so it reads the OLD numbering and will write
-`class_17_*` (old grassland_pat code; new code is 16).** Let it finish, then renumber/refit
-to code 16 like the other PAT classes below. Don't start another heavy fit alongside it.
+`class_17_*` (old grassland_pat code; new code is 16).** Let it finish, then **rename**
+it to code 16 like the other PAT classes (do not refit). Don't start another heavy fit
+alongside it.
 
 **▶ Models on disk are ALL under the OLD (pre-remap-v2) numbering.** `class_04` (agriculture_pat),
 `class_09` (forest_pat), `class_22` (shrubland_pat), and the in-progress `class_17`
 (grassland_pat) were fit before the code shift. Their *content* is still valid (the PAT
 classes' MB-class membership did not change in remap v2 — only the integer code moved), so
-each can be **renumbered** (rename files + fix the `veg_fire` code column) or **re-fit**.
-Re-fitting is safest; renumbering is cheaper for the heavy `grassland_pat`. The
-class→code mapping is in the table above (forest_pat 9→8, grassland_pat 17→16,
+they are **renamed**, not re-fit (rename the files + fix the `veg_fire` code column inside
+`cv_metrics`/`oof_predictions`). The class→code mapping is in the table above
+(forest_pat 9→8, grassland_pat 17→16,
 shrubland_pat 22→21; agriculture_pat 4 is dropped).
 
 **▶ Fit the remaining classes** (remap v2 validated; all 5 regions downloaded — BA includes
@@ -77,6 +83,41 @@ codes). Still to fit — every non-PAT class plus the merged `agriculture_cuyo-p
   `class_*` and renders one section per class).
 - Once all `class_*_cv_metrics.csv` exist, rebuild the summary:
   `Rscript -e "library(data.table); fwrite(rbindlist(lapply(Sys.glob('collection-01/models/class_*_cv_metrics.csv'), fread)), 'collection-01/models/cv_metrics_v1.csv')"`
+
+**▶ TASK FOR LICAN — per-fire NBR / NBR2 / burn-probability time-series plot.**
+Add a per-fire diagnostic to `notebooks/model_fit_diagnostics.qmd` (or a sibling notebook)
+to help spot fires whose **pre-/post-fire date windows are mis-defined**. Lican has
+reference code from collection-00 that produced this plot; it is **not in this repo** — adapt it.
+
+*Plot.* A 3-facet "spaghetti" time series per fire:
+- facets (rows): **NBR**, **NBR2**, and the **OOF-predicted burn probability**;
+- x-axis: observation date; one **line per training point** (`point_id`), each vertex an
+  observation;
+- colour by label: **burned vs unburned** point.
+Reading it: if burned points' predicted probability stays **low across the post-fire
+window**, the post-fire date was likely set too generously (or the pre/post boundary is
+off) for that fire.
+
+*Use the OOF probability* (`p_oof` from `models/class_NN_oof_predictions.csv`) — the
+cross-validated, honest estimate — not any in-sample refit.
+
+*Which fires to plot — AUTOMATIC (decided).* Default to flagging fires automatically rather
+than by hand: for each fire, compute the **median `p_oof` over its burned observations** and
+plot only fires where that median is **below a threshold (default 0.6)** — these are the
+suspicious ones. Expose the threshold as a notebook parameter, and allow an optional manual
+`fire_id` override list for ad-hoc inspection. (A handful of fires will qualify per class;
+one faceted figure each.)
+
+*Data Lican needs (NOT in git — download separately):*
+- `collection-01/data/training_observations_{region}_v1.csv` — the per-observation spectral
+  time series (has `NBR`, `NBR2`, `date`, `point_id`, `fire_id`, `region`, `burned`). This
+  `data/` folder is git-ignored (large); **download it from Google Drive — ask Iván for the
+  link.**
+- `collection-01/models/class_NN_oof_predictions.csv` — the per-obs OOF probability
+  (`p_oof`). These large sidecars are git-ignored too; get them with the models output (ask
+  Iván / regenerate by fitting).
+Join the two on `(region, fire_id, point_id, date)`. Key fires region-uniquely
+(`region_fire_id = paste(region, fire_id)`) since bare `fire_id`s repeat across regions.
 
 
 ## Remap v2 — RESOLVED 2026-06-17 (historical reference)
@@ -205,11 +246,12 @@ Key files:
 - Fires with no burned points (fire_46, fire_47 — drought/ash negatives) export unburned-only without being skipped.
 - `fire_id` is stored as a string `"fire_NN"` in GEE assets. Use `str(fire_id).removeprefix("fire_").zfill(2)` to get the zero-padded numeric part.
 
-**Spectral features (17 focal-date)**
+**Spectral features (21 focal-date — `ALL_FOCAL_FEATURES` in `constants.py`)**
 - Optical: BLUE, GREEN, RED, NIR, SWIR1, SWIR2
 - Fire indices: NBR, NBR2, MIRBI (raw — not sign-flipped as in col0), NDVI
 - Tasseled-cap (Baig 2014 OLI coefficients): TCB, TCG, TCW
 - Auxiliary: NDMI (vegetation moisture = NIR−SWIR1/NIR+SWIR1, same formula as col0's `ndwi_gao`), NDSI (snow), SAVI (sparse veg), NDWI (open water, McFeeters 1996 — new in col1)
+- Canonical-team additions: AFRI, kNDVI, EVI2, NIRv
 
 **MapBiomas mosaic**
 - 40 bands selected from 111: optical (6) + NDVI + NDWI + NPV + NDFI, each with median/dry/wet/stdDev aggregates.

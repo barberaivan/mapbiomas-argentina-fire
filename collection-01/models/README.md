@@ -21,7 +21,12 @@ e.g. `class_07_coefficients.csv`. Classes cross regions, so files are flat (no r
 | `class_NN_tuning.csv`       | notebooks (α/λ surface) | yes |
 | `class_NN_oof_predictions.csv` | notebooks (per-obs OOF `p_i`) | **no** (large) |
 | `class_NN_fit.rds`          | R refit cache | **no** (large) |
-| `cv_feasibility_{region}_v{ver}.csv` | pre-flight gate | yes |
+| `cv_feasibility_v{ver}.csv` | pre-flight gate (all regions; `_{region}_` variant for a single region) | yes |
+| `cv_metrics_v{ver}.csv`     | summary of all fitted classes (rbind of `class_*_cv_metrics.csv`) | yes |
+
+`NN` is the `veg_fire` code from `config/veg_fire_remap.csv` — note codes shift if the
+remap changes (e.g. a class is added/dropped), so reconcile filenames against the current
+remap rather than assuming a fixed mapping.
 
 The OOF predictions sidecar is keyed `(fire_id, point_id, date)` so it joins back to
 `data/training_observations_{region}_v{ver}.csv` for plotting `p_i` by fire/class.

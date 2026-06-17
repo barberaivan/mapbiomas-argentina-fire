@@ -9,7 +9,7 @@ Annual burned area mapping for Argentina using Landsat satellite imagery, produc
 | Collection | Folder | Status | Coverage | Model |
 |------------|--------|--------|----------|-------|
 | Collection 0 | `collection-00/` | Complete | Patagonia | Logistic regression (GEE JS + R) |
-| Collection 1 | `collection-01/` | In development | All regions | Random Forest (GEE Python API) |
+| Collection 1 | `collection-01/` | In development | All regions | Regularized logistic regression (GEE Python API + R `glmnet`) |
 
 See each collection's README for reproduction instructions:
 - [`collection-00/README_00.md`](collection-00/README_00.md)
