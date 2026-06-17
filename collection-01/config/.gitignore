@@ -1,0 +1,3 @@
+# The repo-root .gitignore drops all *.csv. The canonical veg_fire remap is the pipeline's
+# single source of truth (regenerated from the Google Sheet) — keep it versioned.
+!*.csv

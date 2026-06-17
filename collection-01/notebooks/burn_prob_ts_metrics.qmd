@@ -22,18 +22,20 @@ library(tidyverse)
 
 # Single source of truth for plot styling. Bump `base_size` to scale every font
 # in every plot, or tweak individual elements here to update all plots at once.
-theme_burn <- function(base_size = 14) {
+theme_burn <- function(base_size = 18) {
   theme_minimal(base_size = base_size) +
     theme(
       strip.placement   = "outside",
-      strip.text.y.left = element_text(angle = 0, hjust = 1,
-                                       size   = base_size - 2,
+      strip.text.y.left = element_text(size   = base_size - 2,
                                        margin = margin(r = 6)),
       strip.text.x      = element_text(face   = "bold",
                                        size   = base_size - 1,
                                        margin = margin(b = 6)),
       panel.spacing     = unit(0.85, "lines"),
       panel.grid.minor  = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.major.y = element_line(colour = "grey90", linewidth = 0.35),
+      axis.line         = element_line(colour = "grey50", linewidth = 0.4),
       plot.title        = element_text(face   = "bold",
                                        size   = base_size + 2,
                                        margin = margin(b = 6)),
@@ -55,30 +57,43 @@ theme_set(theme_burn())
 ## Synthetic signals
 
 ```{r}
-n   <- 46
+# Regular sampling at half the previous density (~16.5 d spacing).
+n   <- 23
 doy <- seq(1, 365, length.out = n)
+
+# Signal shapes are defined directly in DOY space so they survive any change
+# in sampling density. Helper for "spike at the obs nearest a target DOY".
+idx_at <- function(target_doy) which.min(abs(doy - target_doy))
 
 make_signal <- function(type, peak = 1.0) {
   p <- rep(0.0, n)
   switch(type,
     fire = {
-      # abrupt jump to `peak` at obs 10; plateau 3 obs; fast linear decline to 0 by obs 25
-      p[10:12] <- peak
-      p[12:25] <- seq(peak, 0, length.out = 14)
+      # peak plateau DOY 73–90, then linear decline to DOY 195
+      p <- ifelse(doy < 73,                                  0,
+           ifelse(doy <= 90,                                 peak,
+           ifelse(doy <= 195, peak * (195 - doy) / (195 - 90), 0)))
     },
     noise = {
-      # near-zero everywhere except a single cloud-contamination spike at obs 10
-      p[10] <- peak
+      # baseline 0, single high spike near DOY 73
+      p[idx_at(73)] <- peak
+    },
+    noise_down = {
+      # baseline 1, single low dip near DOY 276 (later in the year)
+      p[]            <- 1.0
+      p[idx_at(276)] <- 0.1
     },
     drought = {
-      # slow linear increase from obs 3 to obs 22; slow linear decline to obs 44
-      p[3:22]  <- seq(0, peak, length.out = 20)
-      p[22:44] <- seq(peak, 0, length.out = 23)
+      # slow linear increase DOY 17 → 171; linear decline to DOY 349
+      p <- ifelse(doy < 17,                                          0,
+           ifelse(doy <= 171, peak * (doy - 17)  / (171 - 17),
+           ifelse(doy <= 349, peak * (349 - doy) / (349 - 171),      0)))
     },
     deforestation = {
-      # abrupt jump to `peak`; plateau 3 obs; slow decline to 0 by obs 40
-      p[10:12] <- peak
-      p[12:40] <- seq(peak, 0, length.out = 29)
+      # peak plateau DOY 73–90, slow decline to DOY 317
+      p <- ifelse(doy < 73,                                   0,
+           ifelse(doy <= 90,                                  peak,
+           ifelse(doy <= 317, peak * (317 - doy) / (317 - 90), 0)))
     }
   )
   p
@@ -86,13 +101,15 @@ make_signal <- function(type, peak = 1.0) {
 
 # Each row defines one signal. Multiple rows per `case` are allowed and will be
 # overlaid in the same column of the facet grid, distinguished by colour.
+# `type` is the signal-generator key (passed to make_signal); `case` is the panel.
 signal_specs <- tibble::tribble(
-  ~case,           ~level,         ~peak,
-  "fire",          NA_character_,  1.00,
-  "noise",         NA_character_,  0.90,
-  "drought",       NA_character_,  1.00,
-  "deforestation", "0.50",         0.50,
-  "deforestation", "0.75",         0.75
+  ~case,           ~type,           ~level,         ~peak,
+  "fire",          "fire",          NA_character_,  1.00,
+  "noise",         "noise",         "up",           1.00,
+  "noise",         "noise_down",    "down",         1.00,
+  "drought",       "drought",       NA_character_,  1.00,
+  "deforestation", "deforestation", "0.50",         0.50,
+  "deforestation", "deforestation", "0.75",         0.75
 )
 ```
 
@@ -161,10 +178,10 @@ var_levels  <- c("prob", "pdiff", "pdiff_sum2", "pdiff_sum3",
                  "mean2", "mean3", "prod3", "q3", "jump_x_min")
 case_levels <- c("fire", "noise", "drought", "deforestation")
 
-df <- purrr::pmap_dfr(signal_specs, function(case, level, peak) {
-  p      <- make_signal(case, peak)
+df <- purrr::pmap_dfr(signal_specs, function(case, type, level, peak) {
+  p      <- make_signal(type, peak)
   mets   <- compute_metrics(p, doy)
-  sig_id <- if (is.na(level)) case else paste(case, level, sep = "_")
+  sig_id <- if (is.na(level)) type else paste(case, level, sep = "_")
   purrr::map_dfr(var_levels, function(vr) {
     mets[[vr]] |> mutate(
       signal_id = sig_id,
@@ -177,7 +194,11 @@ df <- purrr::pmap_dfr(signal_specs, function(case, level, peak) {
   mutate(
     case      = factor(case,     levels = case_levels),
     variable  = factor(variable, levels = var_levels),
-    color_grp = dplyr::coalesce(level, "single")
+    color_grp = dplyr::case_when(
+      case == "noise"         & level == "down" ~ "Alt",
+      case == "deforestation" & level == "0.75" ~ "Alt",
+      TRUE                                      ~ "Main"
+    )
   )
 ```
 
@@ -215,7 +236,7 @@ var_labels <- c(
 
 case_labels <- c(
   fire          = "Fire",
-  noise         = "Cloud noise",
+  noise         = "Noise\nup and down",
   drought       = "Drought",
   deforestation = "Deforestation"
 )
@@ -239,9 +260,9 @@ ggplot(df, aes(x = doy, y = value, group = signal_id, colour = color_grp)) +
     labeller = labeller(variable = var_labels, case = case_labels)
   ) +
   scale_colour_manual(
-    name   = "Deforestation peak",
-    values = c(single = "grey25", `0.50` = "#1f78b4", `0.75` = "#e31a1c"),
-    breaks = c("0.50", "0.75")
+    name   = NULL,
+    values = c(Main = "#000004", Alt = "#BB3754"),
+    breaks = c("Main", "Alt")
   ) +
   scale_x_continuous(
     breaks = c(1, 91, 182, 274, 365),
@@ -262,10 +283,10 @@ All metrics above treat $\Delta p_t = p_t - p_{t-1}$ as instantaneous — they i
 Dividing by $\Delta t$ (a rate) overcorrects — it penalises *every* non-zero gap linearly, including the 8–30 day gaps that are still perfectly trustworthy. Instead, we apply a **soft gap-penalty weight** that is essentially 1 for short gaps and saturates to 0 for long ones. A stretched-exponential (Weibull survival) shape — slow near zero, then dropping fast — has exactly that behaviour:
 
 $$
-w(\tau) \;=\; \exp\!\bigl[-(\tau/\tau_0)^{k}\bigr], \qquad \tau_0 = 80\ \text{d},\ k = 4
+w(\tau) \;=\; \exp\!\bigl[-(\tau/\tau_0)^{k}\bigr], \qquad \tau_0 = 40\ \text{d},\ k = 4
 $$
 
-The exponent $k = 4$ keeps the curve flat near 0; with $k = 1$ it would be plain exponential and start dropping immediately. Numerically: $w(30\,\text{d}) \approx 0.98$, $w(60\,\text{d}) \approx 0.73$, $w(90\,\text{d}) \approx 0.20$, $w(120\,\text{d}) \approx 0.006$.
+The exponent $k = 4$ keeps the curve flat near 0; with $k = 1$ it would be plain exponential and start dropping immediately. With 16 d regular sampling, normal gaps land deep in the flat region; the curve falls sharply across 30–60 d. Numerically: $w(15\,\text{d}) \approx 0.98$, $w(30\,\text{d}) \approx 0.73$, $w(45\,\text{d}) \approx 0.20$, $w(60\,\text{d}) \approx 0.006$.
 
 The gap-weighted persistence-gated jump is
 
@@ -282,29 +303,30 @@ To expose the failure mode of the time-agnostic detector we add a **sparsely-sam
 #| fig-width: 6.5
 #| fig-height: 3
 
-gap_weight <- function(tau_days, tau0 = 80, k = 4) {
+gap_weight <- function(tau_days, tau0 = 40, k = 4) {
   exp(-(tau_days / tau0)^k)
 }
 
-tibble(tau = seq(0, 180, by = 1), w = gap_weight(tau)) |>
+tibble(tau = seq(0, 90, by = 1), w = gap_weight(tau)) |>
   ggplot(aes(tau, w)) +
-  geom_line(linewidth = 0.9, colour = "steelblue") +
-  geom_vline(xintercept = c(30, 120), colour = "grey60", linetype = "dotted") +
-  annotate("text", x = 30,  y = 0.05, label = "30 d",  hjust = -0.15, size = 3, colour = "grey40") +
-  annotate("text", x = 120, y = 0.05, label = "120 d", hjust = -0.15, size = 3, colour = "grey40") +
+  geom_line(linewidth = 0.9, colour = "#000004") +
+  geom_vline(xintercept = c(15, 60), colour = "grey60", linetype = "dotted") +
+  annotate("text", x = 15, y = 0.05, label = "15 d", hjust = -0.15, size = 3, colour = "grey40") +
+  annotate("text", x = 60, y = 0.05, label = "60 d", hjust = -0.15, size = 3, colour = "grey40") +
   scale_y_continuous(limits = c(0, 1), expand = c(0, 0)) +
-  scale_x_continuous(breaks = seq(0, 180, by = 30)) +
+  scale_x_continuous(breaks = seq(0, 90, by = 15)) +
   labs(
     x        = "Gap τ  (days)",
     y        = "Weight w(τ)",
     title    = "Gap-penalty weight",
-    subtitle = "w(τ) = exp(−(τ / 80)⁴)"
+    subtitle = "w(τ) = exp(−(τ / 40)⁴)"
   )
 ```
 
 ```{r}
-# Sparse drought: keep only ~9 obs over the year (gaps ~32–57 days).
-sparse_keep <- c(1, 5, 10, 16, 22:46)
+# Sparse drought: keep only ~17 obs over the year (gaps up to ~50 d in the
+# early part, dense from obs 11 onward).
+sparse_keep <- c(1L, 3L, 5L, 8L, 11L:n)
 
 build_obs <- function(case, peak, keep = seq_len(n)) {
   p_full <- make_signal(case, peak)
@@ -314,8 +336,10 @@ build_obs <- function(case, peak, keep = seq_len(n)) {
 signals2 <- list(
   fire              = list(case = "fire",           level = NA_character_,
                            obs = build_obs("fire",          1.00)),
-  noise             = list(case = "noise",          level = NA_character_,
-                           obs = build_obs("noise",         0.90)),
+  noise_up          = list(case = "noise",          level = "up",
+                           obs = build_obs("noise",         1.00)),
+  noise_down        = list(case = "noise",          level = "down",
+                           obs = build_obs("noise_down",    1.00)),
   drought           = list(case = "drought",        level = NA_character_,
                            obs = build_obs("drought",       1.00)),
   drought_sparse    = list(case = "drought_sparse", level = NA_character_,
@@ -354,7 +378,6 @@ df2 <- purrr::imap_dfr(signals2, function(sig, sig_id) {
   mets <- compute_jw(sig$obs$p, sig$obs$d)
   purrr::map_dfr(var2_levels, function(vr) {
     mets[[vr]] |> mutate(
-      year_frac = (doy - 1) / 364,
       signal_id = sig_id,
       case      = sig$case,
       level     = sig$level,
@@ -365,7 +388,11 @@ df2 <- purrr::imap_dfr(signals2, function(sig, sig_id) {
   mutate(
     case      = factor(case,     levels = case2_levels),
     variable  = factor(variable, levels = var2_levels),
-    color_grp = dplyr::coalesce(level, "single")
+    color_grp = dplyr::case_when(
+      case == "noise"         & level == "down" ~ "Alt",
+      case == "deforestation" & level == "0.75" ~ "Alt",
+      TRUE                                      ~ "Main"
+    )
   )
 ```
 
@@ -375,7 +402,7 @@ df2 <- purrr::imap_dfr(signals2, function(sig, sig_id) {
 
 case2_labels <- c(
   fire           = "Fire",
-  noise          = "Cloud noise",
+  noise          = "Noise\nup and down",
   drought        = "Drought",
   drought_sparse = "Drought (sparse)",
   deforestation  = "Deforestation"
@@ -388,7 +415,7 @@ var2_labels <- c(
   jump_w     = "Δp · w(τ) · min₃   (gap-weighted)"
 )
 
-ggplot(df2, aes(x = year_frac, y = value,
+ggplot(df2, aes(x = doy, y = value,
                 group = signal_id, colour = color_grp)) +
   geom_hline(yintercept = 0, colour = "grey80", linewidth = 0.35) +
   geom_line(linewidth = 0.65) +
@@ -400,13 +427,13 @@ ggplot(df2, aes(x = year_frac, y = value,
     labeller = labeller(variable = var2_labels, case = case2_labels)
   ) +
   scale_colour_manual(
-    name   = "Deforestation peak",
-    values = c(single = "grey25", `0.50` = "#1f78b4", `0.75` = "#e31a1c"),
-    breaks = c("0.50", "0.75")
+    name   = NULL,
+    values = c(Main = "#000004", Alt = "#BB3754"),
+    breaks = c("Main", "Alt")
   ) +
-  scale_x_continuous(breaks = seq(0, 1, by = 0.25)) +
+  scale_x_continuous(breaks = c(1, 91, 182, 274, 365)) +
   labs(
-    x        = "Fractional year",
+    x        = "Day of year",
     y        = NULL,
     title    = "Gap-weighted jump-and-persistence under irregular sampling",
     subtitle = "Row 3 (Δp·min₃) inflates for the sparsely-sampled drought — big visible Δp across long gaps.\nRow 4 weights each diff by w(τ) and the spurious signal collapses, while fire and deforestation are preserved."
@@ -507,7 +534,6 @@ compute_snic_features <- function(p, d,
 df3 <- purrr::imap_dfr(signals2, function(sig, sig_id) {
   feats <- compute_snic_features(sig$obs$p, sig$obs$d)
   feats |> mutate(
-    year_frac = (doy - 1) / 364,
     signal_id = sig_id,
     case      = sig$case,
     level     = sig$level
@@ -515,7 +541,11 @@ df3 <- purrr::imap_dfr(signals2, function(sig, sig_id) {
 }) |>
   mutate(
     case      = factor(case, levels = case2_levels),
-    color_grp = dplyr::coalesce(level, "single")
+    color_grp = dplyr::case_when(
+      case == "noise"         & level == "down" ~ "Alt",
+      case == "deforestation" & level == "0.75" ~ "Alt",
+      TRUE                                      ~ "Main"
+    )
   )
 ```
 
@@ -534,7 +564,7 @@ var3_labels <- c(
 )
 
 df3_long <- df3 |>
-  select(year_frac, signal_id, case, color_grp, flag,
+  select(doy, signal_id, case, color_grp, flag,
          prob = p, tau_pre, tau_post, persist_adapt, J_w_adapt) |>
   tidyr::pivot_longer(c(prob, tau_pre, tau_post, persist_adapt, J_w_adapt),
                       names_to = "variable", values_to = "value") |>
@@ -555,7 +585,7 @@ hlines_df <- tibble::tribble(
 flag_markers <- df3_long |>
   filter(variable %in% c("prob", "J_w_adapt"), flag != "none")
 
-ggplot(df3_long, aes(x = year_frac, y = value,
+ggplot(df3_long, aes(x = doy, y = value,
                      group = signal_id, colour = color_grp)) +
   geom_hline(yintercept = 0, colour = "grey80", linewidth = 0.35) +
   geom_hline(
@@ -569,7 +599,7 @@ ggplot(df3_long, aes(x = year_frac, y = value,
   geom_point(size = 0.85) +
   geom_point(
     data        = flag_markers,
-    aes(x = year_frac, y = value, fill = flag),
+    aes(x = doy, y = value, fill = flag),
     shape       = 21,
     colour      = "grey20",
     size        = 2.6,
@@ -583,9 +613,9 @@ ggplot(df3_long, aes(x = year_frac, y = value,
     labeller = labeller(variable = var3_labels, case = case2_labels)
   ) +
   scale_colour_manual(
-    name   = "Deforestation peak",
-    values = c(single = "grey25", `0.50` = "#1f78b4", `0.75` = "#e31a1c"),
-    breaks = c("0.50", "0.75")
+    name   = NULL,
+    values = c(Main = "#000004", Alt = "#BB3754"),
+    breaks = c("Main", "Alt")
   ) +
   scale_fill_manual(
     name   = "SNIC flag",
@@ -595,9 +625,9 @@ ggplot(df3_long, aes(x = year_frac, y = value,
     name   = "Threshold",
     values = c(seed = "dashed", candidate = "dotted")
   ) +
-  scale_x_continuous(breaks = seq(0, 1, by = 0.25)) +
+  scale_x_continuous(breaks = c(1, 91, 182, 274, 365)) +
   labs(
-    x        = "Fractional year",
+    x        = "Day of year",
     y        = NULL,
     title    = "Per-observation features and SNIC seed/candidate flags",
     subtitle = "Red = seed, orange = candidate. Dashed/dotted greys mark the seed and candidate thresholds on τ_pre, τ_post, and J."
@@ -635,4 +665,251 @@ The two annual-max constraints are the key. They together separate this regime f
 These pixels enter SNIC strictly as **candidates** for the forest fire class, never as seeds. They depend on spatial coherence with neighbouring sharp-edge fire seeds to be retained — a delayed-mortality patch typically borders the higher-severity core, so the candidate ring attaches to the seed-anchored segment.
 
 The criterion is intentionally narrow: it would generate many false positives if applied outside forest land cover or outside Patagonia, where slow-mortality dynamics have different causes (e.g., agriculture rotation, shrub senescence).
+
+## MapBiomas workshop
+
+Drought is replaced by a **Gaussian bell** ($\sigma = 30\,\text{d}$) so the signal is symmetric and reaches exactly 1 at the centre. The sparse drought retains only three observations before the peak — the last at DOY ≈ 117 where the bell evaluates to ≈ 0.09 — producing a visible ~0.1 → 1 jump under time-agnostic metrics. Fire has two severity levels (1.0 and 0.8); deforestation has peaks at 0.5 and 0.7. The noise panel shows both an up-spike (baseline 0 → 1 near DOY 73) and a down-dip (baseline 1 → 0.1 near DOY 276) so the "noise looks like burn" failure mode is visible in both directions.
+
+```{r}
+mu_bell    <- doy[idx_at(180)]   # peak obs nearest mid-year (DOY ≈ 182.5)
+sigma_bell <- 30                 # days
+
+make_signal_bell <- function(type, peak = 1.0) {
+  p <- rep(0.0, n)
+  switch(type,
+    fire = {
+      p <- ifelse(doy < 73,                                  0,
+           ifelse(doy <= 90,                                 peak,
+           ifelse(doy <= 195, peak * (195 - doy) / (195 - 90), 0)))
+    },
+    noise = {
+      p[idx_at(73)] <- peak
+    },
+    noise_down = {
+      p[]            <- 1.0
+      p[idx_at(276)] <- 0.1
+    },
+    drought = {
+      p <- peak * exp(-((doy - mu_bell)^2) / (2 * sigma_bell^2))
+    },
+    deforestation = {
+      p <- ifelse(doy < 73,                                   0,
+           ifelse(doy <= 90,                                  peak,
+           ifelse(doy <= 317, peak * (317 - doy) / (317 - 90), 0)))
+    }
+  )
+  p
+}
+
+# Sparse drought: obs 1, 4, 8 before peak; dense from obs 11 onward.
+# At obs 8 (DOY ≈ 117): bell ≈ 0.09 → jump to ≈ 0.86 at obs 11 (DOY ≈ 166).
+sparse_keep_bell <- c(1L, 4L, 8L, 11L:n)
+
+build_obs_bell <- function(case, peak, keep = seq_len(n)) {
+  p_full <- make_signal_bell(case, peak)
+  list(p = p_full[keep], d = doy[keep])
+}
+
+signals_ws <- list(
+  fire_100          = list(case = "fire",           level = "1.00",
+                           obs = build_obs_bell("fire",          1.00)),
+  fire_080          = list(case = "fire",           level = "0.80",
+                           obs = build_obs_bell("fire",          0.80)),
+  noise_up          = list(case = "noise",          level = "up",
+                           obs = build_obs_bell("noise",         1.00)),
+  noise_down        = list(case = "noise",          level = "down",
+                           obs = build_obs_bell("noise_down",    1.00)),
+  drought           = list(case = "drought",        level = NA_character_,
+                           obs = build_obs_bell("drought",       1.00)),
+  drought_sparse    = list(case = "drought_sparse", level = NA_character_,
+                           obs = build_obs_bell("drought",       1.00, sparse_keep_bell)),
+  deforestation_050 = list(case = "deforestation",  level = "0.50",
+                           obs = build_obs_bell("deforestation", 0.50)),
+  deforestation_070 = list(case = "deforestation",  level = "0.70",
+                           obs = build_obs_bell("deforestation", 0.70))
+)
+
+# 5-obs forward rolling median dated at the middle (3rd) observation.
+compute_ws1 <- function(p, d) {
+  nn      <- length(p)
+  valid_n <- max(nn - 4L, 0L)
+
+  if (valid_n > 0L) {
+    med5_val <- vapply(seq_len(valid_n),
+                       function(i) median(p[i:(i + 4L)]),
+                       numeric(1))
+    med5_doy <- d[seq_len(valid_n) + 2L]   # middle obs of each 5-obs window
+  } else {
+    med5_val <- numeric(0)
+    med5_doy <- numeric(0)
+  }
+
+  dm5 <- diff(med5_val)
+  # Gap between consecutive med5 dates = gap between the two middle obs of the
+  # rolling windows. We use this gap to soften the product near long gaps.
+  gw_med <- if (length(med5_doy) >= 2) gap_weight(diff(med5_doy)) else numeric(0)
+
+  list(
+    prob        = tibble(doy = d,             value = p),
+    median5     = tibble(doy = med5_doy,      value = med5_val),
+    diff_med5   = tibble(doy = med5_doy[-1],  value = dm5),
+    prod_med5   = tibble(doy = med5_doy[-1],  value = dm5 * med5_val[-1]),
+    delta_t     = tibble(doy = d[-1],         value = diff(d)),
+    prod_med5_w = tibble(doy = med5_doy[-1],  value = dm5 * med5_val[-1] * gw_med)
+  )
+}
+
+var_ws1_levels <- c("prob", "median5", "diff_med5", "prod_med5",
+                    "delta_t", "prod_med5_w")
+
+df_ws1 <- purrr::imap_dfr(signals_ws, function(sig, sig_id) {
+  mets <- compute_ws1(sig$obs$p, sig$obs$d)
+  purrr::map_dfr(var_ws1_levels, function(vr) {
+    mets[[vr]] |> mutate(
+      signal_id = sig_id,
+      case      = sig$case,
+      level     = sig$level,
+      variable  = vr
+    )
+  })
+}) |>
+  mutate(
+    case      = factor(case,     levels = case2_levels),
+    variable  = factor(variable, levels = var_ws1_levels),
+    color_grp = dplyr::case_when(
+      case == "fire"          & level == "0.80" ~ "Alt",
+      case == "noise"         & level == "down" ~ "Alt",
+      case == "deforestation" & level == "0.70" ~ "Alt",
+      TRUE                                      ~ "Main"
+    )
+  )
+```
+
+```{r}
+#| fig-width: 14
+#| fig-height: 13
+
+var_ws1_labels <- c(
+  prob        = "Burn prob.",
+  median5     = "med₅",
+  diff_med5   = "Δ med₅",
+  prod_med5   = "Δmed₅ · med₅",
+  delta_t     = "Δt  (d)",
+  prod_med5_w = "Δmed₅ · med₅ · w(Δt)"
+)
+
+ggplot(df_ws1, aes(x = doy, y = value,
+                   group = signal_id, colour = color_grp)) +
+  geom_hline(yintercept = 0, colour = "grey80", linewidth = 0.35) +
+  geom_line(linewidth = 0.65) +
+  geom_point(size = 1.1) +
+  facet_grid(
+    variable ~ case,
+    scales   = "free_y",
+    switch   = "y",
+    labeller = labeller(variable = var_ws1_labels, case = case2_labels)
+  ) +
+  scale_colour_manual(
+    name   = NULL,
+    values = c(Main = "#000004", Alt = "#BB3754"),
+    breaks = c("Main", "Alt")
+  ) +
+  scale_x_continuous(breaks = c(1, 91, 182, 274, 365)) +
+  labs(
+    x        = "Day of year",
+    y        = NULL,
+    title    = "Bell-shaped drought · rolling median, its first difference, and gap-weighted product",
+    subtitle = paste0(
+      "Drought: Gaussian bell, σ = 30 d, peak = 1.  ",
+      "Sparse drought: 3 pre-peak obs (last at DOY ≈ 117, prob ≈ 0.09)."
+    )
+  )
+```
+
+```{r}
+# dp[t]   = p[t] - p[t-1], dated at d[t]   (t = 2..nn)
+# min3[t] = min(p[t], p[t+1], p[t+2]), dated at d[t]   (t = 1..nn-2)
+# jumper  = dp[t] * min3[t], overlap at t = 2..nn-2
+compute_ws2 <- function(p, d) {
+  nn       <- length(p)
+  dp_val   <- diff(p)
+  min3_val <- pmin(p[1:(nn - 2)], p[2:(nn - 1)], p[3:nn])
+  delta_t  <- diff(d)                                # length nn - 1
+  gw_dp    <- gap_weight(delta_t)                    # weight for each Δp
+
+  list(
+    prob     = tibble(doy = d,               value = p),
+    dp       = tibble(doy = d[-1],           value = dp_val),
+    min3     = tibble(doy = d[1:(nn - 2)],   value = min3_val),
+    jumper   = tibble(doy = d[2:(nn - 2)],
+                      value = dp_val[1:(nn - 3)] * min3_val[2:(nn - 2)]),
+    delta_t  = tibble(doy = d[-1],           value = delta_t),
+    jumper_w = tibble(doy = d[2:(nn - 2)],
+                      value = dp_val[1:(nn - 3)] * min3_val[2:(nn - 2)] *
+                              gw_dp[1:(nn - 3)])
+  )
+}
+
+var_ws2_levels <- c("prob", "min3", "dp", "jumper", "delta_t", "jumper_w")
+
+df_ws2 <- purrr::imap_dfr(signals_ws, function(sig, sig_id) {
+  mets <- compute_ws2(sig$obs$p, sig$obs$d)
+  purrr::map_dfr(var_ws2_levels, function(vr) {
+    mets[[vr]] |> mutate(
+      signal_id = sig_id,
+      case      = sig$case,
+      level     = sig$level,
+      variable  = vr
+    )
+  })
+}) |>
+  mutate(
+    case      = factor(case,     levels = case2_levels),
+    variable  = factor(variable, levels = var_ws2_levels),
+    color_grp = dplyr::case_when(
+      case == "fire"          & level == "0.80" ~ "Alt",
+      case == "noise"         & level == "down" ~ "Alt",
+      case == "deforestation" & level == "0.70" ~ "Alt",
+      TRUE                                      ~ "Main"
+    )
+  )
+```
+
+```{r}
+#| fig-width: 14
+#| fig-height: 13
+
+var_ws2_labels <- c(
+  prob     = "Burn prob.",
+  min3     = "min₃",
+  dp       = "Δp",
+  jumper   = "min₃ · Δp",
+  delta_t  = "Δt  (d)",
+  jumper_w = "min₃ · Δp · w(Δt)"
+)
+
+ggplot(df_ws2, aes(x = doy, y = value,
+                   group = signal_id, colour = color_grp)) +
+  geom_hline(yintercept = 0, colour = "grey80", linewidth = 0.35) +
+  geom_line(linewidth = 0.65) +
+  geom_point(size = 1.1) +
+  facet_grid(
+    variable ~ case,
+    scales   = "free_y",
+    switch   = "y",
+    labeller = labeller(variable = var_ws2_labels, case = case2_labels)
+  ) +
+  scale_colour_manual(
+    name   = NULL,
+    values = c(Main = "#000004", Alt = "#BB3754"),
+    breaks = c("Main", "Alt")
+  ) +
+  scale_x_continuous(breaks = c(1, 91, 182, 274, 365)) +
+  labs(
+    x        = "Day of year",
+    y        = NULL,
+    title    = "The jumper: Δp · min₃ and its gap-weighted form",
+    subtitle = "Last row multiplies by w(Δt) — the sparse-drought spurious jump (Δp across a long gap) is suppressed; fire survives."
+  )
+```
 

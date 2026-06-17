@@ -1,0 +1,217 @@
+<!--
+Child template for `model_fit_diagnostics.qmd`. Not rendered on its own — it is
+`knit_child`-ed once per fitted veg_fire class. Expects, in the calling
+environment: `metrics`, `tuning`, `coefs`, `oof` (the per-class CSVs),
+`cls` (veg_fire_name), `CLASS_CODE`, and `block_lvls`.
+-->
+
+# `r cls`
+
+veg_fire code **`r CLASS_CODE`** · regions `r metrics$regions[1]` ·
+`r format(metrics$n_obs[1], big.mark = ",")` obs ·
+`r format(metrics$n_pos[1], big.mark = ",")` positives
+(`r sprintf("%.1f%%", 100 * metrics$n_pos[1] / metrics$n_obs[1])`) ·
+K = `r metrics$K[1]` · `r metrics$n_nonzero[1]` nonzero terms
+
+## Summary
+
+```{r}
+metrics |>
+  mutate(across(where(is.numeric), \(x) signif(x, 4))) |>
+  pivot_longer(everything(), names_to = "metric", values_to = "value",
+               values_transform = as.character) |>
+  kable()
+```
+
+The model is fit with elastic net; `alpha` and `lambda` are tuned by grouped
+(leave-several-fires-out) K-fold CV. `lambda` reported is the one selected by
+`lambda_rule`. `n_nonzero` is the count of nonzero coefficients (excl. intercept).
+
+## Elastic-net tuning
+
+CV binomial deviance along the lambda path, one curve per `alpha`. Vertical lines
+mark `lambda.min` (dashed) and `lambda.1se` (dotted) of the selected alpha; the
+chosen model sits at the rule in `metrics$lambda_rule`.
+
+```{r}
+#| fig-width: 8
+#| fig-height: 5
+sel_alpha <- metrics$alpha[1]
+ggplot(tuning, aes(log(lambda), cvm, color = factor(alpha))) +
+  geom_line() +
+  geom_vline(xintercept = log(metrics$lambda_min[1]), linetype = "dashed") +
+  geom_vline(xintercept = log(metrics$lambda_1se[1]), linetype = "dotted") +
+  labs(x = expression(log(lambda)), y = "CV binomial deviance",
+       color = expression(alpha),
+       title = sprintf("%s — tuning (selected alpha = %.2f, rule = %s)",
+                       cls, sel_alpha, metrics$lambda_rule[1])) +
+  theme(legend.position = "bottom")
+```
+
+## Coefficients
+
+Nonzero coefficients by block (the GEE predictor blocks) and the strongest terms.
+
+Coefficients are on the **original feature scale** — `glmnet` standardizes each
+predictor internally (`standardize = TRUE`) but back-transforms the returned
+coefficients to the raw scale. A clean cross-term comparison would need them on
+the *standardized* scale (multiply each $\beta_j$ by $\mathrm{sd}(x_j)$, i.e. the
+effect of a 1-SD change), but the per-feature SDs are not exported by
+`02-model_fitting.R` and recovering them would mean rebuilding the full 427-column
+design matrix from the region tables here. That is deliberately left out — read the
+magnitudes below as raw-scale, so a large coefficient on a small-variance term need
+not mean a large effect.
+
+```{r}
+#| fig-width: 7
+#| fig-height: 3.5
+coefs |>
+  filter(block != "(intercept)") |>
+  group_by(block) |>
+  summarise(n_terms = n(), n_nonzero = sum(coefficient != 0), .groups = "drop") |>
+  mutate(block = factor(block, block_lvls)) |>
+  ggplot(aes(block, n_nonzero)) +
+  geom_col(fill = "steelblue") +
+  geom_text(aes(label = sprintf("%d/%d", n_nonzero, n_terms)), vjust = -0.3, size = 3) +
+  labs(x = NULL, y = "nonzero terms", title = sprintf("%s — active terms per block", cls))
+```
+
+```{r}
+#| fig-width: 7
+#| fig-height: 5
+coefs |>
+  filter(block != "(intercept)", coefficient != 0) |>
+  slice_max(abs(coefficient), n = 25) |>
+  mutate(term = fct_reorder(term, coefficient)) |>
+  ggplot(aes(coefficient, term, fill = block)) +
+  geom_col() +
+  labs(x = "coefficient (original scale)", y = NULL,
+       title = sprintf("%s — top 25 terms by |coefficient|", cls))
+```
+
+## Calibration (out-of-fold)
+
+Reliability curve: mean predicted probability vs observed burned rate within
+equal-count bins of the OOF predictions. On the diagonal = well calibrated. Point
+area is proportional to the number of observations in the bin — with a sharply
+separating model most observations pile into the low-`p` bins, so those points
+(near the origin) are the large ones.
+
+```{r}
+#| fig-width: 5.5
+#| fig-height: 5.5
+n_bins <- 20
+oof |>
+  mutate(bin = ntile(p_oof, n_bins)) |>
+  group_by(bin) |>
+  summarise(mean_p = mean(p_oof), obs_rate = mean(burned), n = n(), .groups = "drop") |>
+  ggplot(aes(mean_p, obs_rate)) +
+  geom_abline(linetype = "dashed", color = "grey50") +
+  geom_line(color = "steelblue") +
+  geom_point(aes(size = n), color = "steelblue", alpha = 0.7) +
+  scale_size_area(max_size = 9, labels = label_comma()) +
+  coord_equal(xlim = c(0, 1), ylim = c(0, 1)) +
+  labs(x = "mean predicted p (OOF)", y = "observed burned rate", size = "n in bin",
+       title = sprintf("%s — reliability (%d equal-count bins)", cls, n_bins),
+       subtitle = sprintf("Brier = %.3f  |  log-loss = %.3f  |  AUC = %.3f",
+                          metrics$cv_brier[1], metrics$cv_logloss[1], metrics$cv_auc[1]))
+```
+
+## Out-of-fold predicted-probability distribution
+
+Distribution of OOF `p_i` split by the true label — shows where the model is
+confidently right vs confidently wrong. A good model pushes burned toward 1 and
+unburned toward 0. The histogram (per-label density) and the empirical CDF below
+use the same colour for each label.
+
+```{r}
+#| fig-width: 8
+#| fig-height: 4
+oof |>
+  mutate(label = factor(burned, 0:1, c("unburned", "burned"))) |>
+  ggplot(aes(p_oof, after_stat(density), fill = label)) +
+  geom_histogram(bins = 50, position = "identity", alpha = 0.55) +
+  labs(x = "OOF predicted probability", y = "density (within label)", fill = NULL,
+       title = sprintf("%s — OOF probability by true label", cls),
+       subtitle = "per-label density, so both shapes are visible despite class imbalance")
+```
+
+```{r}
+#| fig-width: 8
+#| fig-height: 4
+oof |>
+  mutate(label = factor(burned, 0:1, c("unburned", "burned"))) |>
+  ggplot(aes(p_oof, color = label)) +
+  stat_ecdf(geom = "step", linewidth = 0.8) +
+  coord_cartesian(xlim = c(0, 1)) +
+  labs(x = "OOF predicted probability", y = "empirical CDF", color = NULL,
+       title = sprintf("%s — OOF probability ECDF by true label", cls),
+       subtitle = "same colours as the histogram above")
+```
+
+## Omission vs commission error
+
+Threshold sweep over the OOF predictions: classify `p_oof ≥ τ` as burned, then plot,
+as a function of τ, the **omission error** (true burned that fall below τ — missed
+burns, `1 − recall`) and the **commission error** (predicted-burned that are actually
+unburned — false alarms, `1 − precision`). This is the curve for setting the two GEE
+thresholds: **seeds** want a high τ where commission is near zero; **candidates** want
+a lower τ that keeps omission acceptable. Computed entirely from the OOF predictions
+(no re-fit), so it is an honest, cross-validated estimate.
+
+```{r}
+#| fig-width: 7.5
+#| fig-height: 4.5
+pos <- oof$p_oof[oof$burned == 1]
+neg <- oof$p_oof[oof$burned == 0]
+P <- length(pos); N <- length(neg)
+thr <- seq(0, 1, by = 0.005)
+TP  <- P * (1 - ecdf(pos)(thr))            # true burned with p >= thr
+FP  <- N * (1 - ecdf(neg)(thr))            # unburned with p >= thr (false alarms)
+err <- tibble(
+  thr        = thr,
+  omission   = 1 - TP / P,                                   # missed burned
+  commission = ifelse(TP + FP > 0, FP / (TP + FP), NA_real_) # false alarms among predicted burned
+)
+err |>
+  pivot_longer(c(omission, commission), names_to = "error", values_to = "rate") |>
+  ggplot(aes(thr, rate, color = error)) +
+  geom_line(linewidth = 0.8, na.rm = TRUE) +
+  scale_y_continuous(labels = label_percent()) +
+  scale_color_manual(values = c(omission = "#D55E00", commission = "#0072B2")) +
+  coord_cartesian(xlim = c(0, 1), ylim = c(0, 1)) +
+  labs(x = "probability threshold τ", y = "error rate", color = NULL,
+       title = sprintf("%s — omission vs commission error (OOF)", cls),
+       subtitle = "omission = burned missed at τ; commission = false alarms among predicted burned")
+```
+
+## By fire
+
+OOF predictions per training fire, split by label — surfaces fires the model
+handles poorly (e.g. unburned points predicted high, or burned predicted low).
+Fires are keyed by `region_fire_id` (`region` + `fire_id`) so cross-region classes
+do not conflate fires that share a numeric id.
+
+```{r}
+#| fig-width: 9
+#| fig-height: 5
+oof |>
+  mutate(label = factor(burned, 0:1, c("unburned", "burned")),
+         region_fire_id = fct_reorder(paste(region, fire_id), p_oof, .fun = median)) |>
+  ggplot(aes(p_oof, region_fire_id, color = label)) +
+  geom_boxplot(outlier.size = 0.4, position = position_dodge(width = 0.6)) +
+  labs(x = "OOF predicted probability", y = NULL, color = NULL,
+       title = sprintf("%s — OOF probability by fire", cls))
+```
+
+```{r}
+oof |>
+  mutate(region_fire_id = paste(region, fire_id)) |>
+  group_by(region_fire_id) |>
+  summarise(n = n(), n_burned = sum(burned),
+            mean_p_unburned = mean(p_oof[burned == 0]),
+            mean_p_burned   = mean(p_oof[burned == 1]), .groups = "drop") |>
+  arrange(desc(n)) |>
+  mutate(across(starts_with("mean_p"), \(x) round(x, 3))) |>
+  kable()
+```

@@ -1,0 +1,121 @@
+---
+title: "Categorical vs. Bernoulli: when does modeling class structure help?"
+format: html
+---
+
+## Question
+
+Three unburned classes with different spectral signatures: does fitting a
+Categorical model over each class improve burned-area separation compared to a
+single Bernoulli (burned vs. all-unburned) model?
+
+The core mechanism: the Bernoulli model has one slope to separate burned from the
+entire unburned pool. When one unburned class is abundant and far from burned
+(*normal veg*, high NBR) and another is rare but spectrally similar (*harvest*, low
+NBR), the binary slope is dominated by the dominant-distant contrast. The
+rare-similar class lands in the middle of the sigmoid with no mechanism to push it
+down. The categorical model fits separate parameters per class, so it can allocate
+probability to harvest rather than to burned in the harvest NBR range.
+
+## Parameters
+
+Edit `means`, `sds`, and `n` to explore different regimes. The effect is largest
+when the similar-to-burned class is rare and the distant class is abundant.
+
+```{r setup}
+library(mgcv)
+library(ggplot2)
+```
+
+```{r}
+#| fig.width=8, fig.height=5
+
+#          burned  harvest   normal
+means <- c(-0.3,  -0.2,    0.3)
+sds   <- c(0.2,  0.2,   0.2)
+n     <- c(1000,   1000,   1000)
+
+names(means) <- names(sds) <- names(n) <- c("burned", "harvest", "normal")
+cols <- c(burned = "#e63946", harvest = "#f4a261", normal = "#2a9d8f")
+
+## Data
+set.seed(42)
+dat <- data.frame(
+  nbr = c(
+    rnorm(n["burned"], means["burned"], sds["burned"]),
+    rnorm(n["harvest"],  means["harvest"],  sds["harvest"]),
+    rnorm(n["normal"], means["normal"], sds["normal"])
+  ),
+  class = factor(rep(names(n), n), levels = names(n))
+)
+dat$burned    <- as.integer(dat$class == "burned")
+dat$class_int <- as.integer(dat$class) - 1L   # 0 = burned, 1 = harvest, 2 = normal
+
+## clip middle-class dist
+dat <- dat[!(dat$class == "harvest" & dat$nbr > -0.2), ]
+
+## Models
+
+# Bernoulli: burned (1) vs. all unburned (0)
+m_bin <- glm(burned ~ nbr, family = binomial, data = dat)
+
+# Categorical: multinom(K=2) gives 3 classes; class 0 (burned) is the reference.
+# The two formulas model log P(harvest)/P(burned) and log P(normal)/P(burned).
+m_cat <- gam(
+  list(class_int ~ nbr, ~ nbr),
+  family = multinom(K = 2),
+  data   = dat
+)
+
+## Plot
+
+max_dens <- max(mapply(function(m, s) dnorm(m, m, s), means, sds))
+
+nbr_seq <- seq(min(dat$nbr), max(dat$nbr), length.out = 500)
+
+dens_df <- do.call(rbind, lapply(names(means), function(cl) {
+  data.frame(nbr   = nbr_seq,
+             y     = dnorm(nbr_seq, means[cl], sds[cl]) / max_dens,
+             class = cl)
+}))
+dens_df$class <- factor(dens_df$class, levels = names(cols))
+
+pred_df <- data.frame(
+  nbr   = rep(nbr_seq, 2),
+  y     = c(
+    predict(m_bin, newdata = data.frame(nbr = nbr_seq), type = "response"),
+    predict(m_cat, newdata = data.frame(nbr = nbr_seq), type = "response")[, 1]
+  ),
+  model = rep(c("Bernoulli", "Categorical"), each = length(nbr_seq))
+)
+
+ggplot() +
+  geom_ribbon(data = dens_df, aes(x = nbr, ymax = y, ymin = 0, 
+                                  colour = class, fill = class),
+            alpha = 0.2) +
+  geom_line(data = dens_df, aes(x = nbr, y = y, colour = class),
+            linetype = "dashed") +
+  geom_line(data = pred_df, aes(x = nbr, y = y, linetype = model),
+            colour = "black", linewidth = 1) +
+  scale_colour_manual(name = NULL, values = cols) +
+  scale_fill_manual(name = NULL, values = cols) +
+  scale_linetype_manual(name = "P(burned | NBR)",
+                        values = c(Bernoulli = "solid", Categorical = "dotted")) +
+  coord_cartesian(xlim = c(min(dat$nbr), max(dat$nbr)), ylim = c(0, 1)) +
+  labs(x = "NBR", y = "Probability / scaled density",
+       title = sprintf("n: burned = %d   harvest = %d   normal = %d",
+                       n["burned"], n["harvest"], n["normal"])) +
+  theme_minimal(base_size = 13)
+```
+
+It's hard to find situations where the Categorical is actually better than the Bernoulli. With complete overlap of harvest and burned, the curves are actually different. Having same N, the categorical can increase sharply as NBR decreases, reaching a flat area at 0.5 (same prob for burn and harvest). In turn, the logistic is monotonic, estimating probabilities wrong. But this case is terrible, extreme overlap. 
+
+When the separation between distributions of the predictor is only 1 SD, The difference among models is negligible. So the overlap must really be large for the predictions to differ.
+
+As expected, when N of the middle class is extremely low, the models can't differ, because when classes are little separable, the class abundance matters, and no data is like no influence. So, the Categorical model and sampling more confusing obs will help only when separability is terribly low.
+
+Obviously, Categorical is much better when the burned class is in the middle of two unburned ones: non-monotonic separation. 
+
+## Conclusion
+
+Compare logistic and categorical models when fitting; Categorical is very likely going to make similar predictions.

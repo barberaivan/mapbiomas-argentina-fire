@@ -1,0 +1,2 @@
+veg_fire,veg_fire_name,regions,n_obs,n_pos,K,n_terms,alpha,lambda_rule,lambda,lambda_min,lambda_1se,cv_deviance,cv_logloss,cv_brier,cv_auc,n_nonzero
+4,agriculture_pat,PAT,20069,2506,10,427,0.5,1se,0.0152244175590938,0.00454242914351114,0.0152244175590938,0.1100091318031,0.0550045659015502,0.013980199330668,0.996267569687218,42

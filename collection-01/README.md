@@ -9,8 +9,8 @@
 | Aspect | Collection 0 | Collection 1 |
 |--------|-------------|-------------|
 | Coverage | Patagonia only | BA, CHACO, PAMPA, CUYO, PAT |
-| Model | Logistic regression (2 levels) | Random Forest |
-| Language | GEE JavaScript + R | GEE Python API |
+| Model | Logistic regression (2 levels) | Regularized logistic regression (`glmnet`) |
+| Language | GEE JavaScript + R | Python (GEE processing) + R (model fitting) |
 | Previous-year features | Custom index summaries | MapBiomas mosaic (21 bands) |
 | Spectral features | NBR/NBR2/MIRBI/NDVI | 17 features (see below) |
 
@@ -34,11 +34,12 @@ Previous-year MapBiomas features (21 mosaic bands + raw/reclassified LULC class)
 ```
 collection-01/
 ├── utils/
-│   ├── constants.py        # All paths, feature lists, MB reclass table, RF params
+│   ├── constants.py        # All paths, feature lists, MB reclass table, LR terms
 │   └── functions.py        # GEE helpers: Landsat preprocessing, indices, MB sampling
-├── workflow/
+├── workflow/               # Numbered pipeline steps (mixed Python + R)
 │   ├── 01-training_data_export.py   # Export training data (one GEE task per fire)
-│   └── 02–08-*.py          # Stubs — in development
+│   ├── 02-model_fitting.R           # Fit LR per veg_fire class (R, glmnet)
+│   └── 03–08-*.py          # Stubs — in development (Python/GEE)
 ├── scripts/                # Ad-hoc utilities — not mandatory pipeline steps
 │   ├── status.py                    # Check GEE export status across all regions
 │   ├── download_observations.py     # Download training observations to local CSV
@@ -82,9 +83,17 @@ A JSON run log is written to `workflow/01-training_data_export/run_{region}_v{ve
 /home/ivan/.venvs/gee/bin/python collection-01/scripts/download_observations.py --region PAT --version 1
 ```
 
-### Steps 02–08
+### Step 02 — Model fitting (R)
 
-In development. See script stubs in `collection-01/workflow/`.
+Fitted locally in R with `glmnet`. Run with `Rscript`, or interactively in any R IDE (e.g. RStudio / Positron).
+
+```bash
+Rscript collection-01/workflow/02-model_fitting.R
+```
+
+### Steps 03–08
+
+In development (Python/GEE). See script stubs in `collection-01/workflow/`.
 
 ### Scripts (R utilities)
 
@@ -128,5 +137,5 @@ Current training_locations coverage: see `training_locations_status.txt`.
 | Step | Status |
 |------|--------|
 | 01 — training data export | PAT: complete. Other regions: pending training_locations. |
-| 02 — RF model fitting | Stub |
+| 02 — model fitting (R, glmnet) | Stub |
 | 03–08 — prediction pipeline | Stubs |

@@ -19,6 +19,7 @@ import argparse
 import csv
 import io
 import sys
+import time
 import zipfile
 from pathlib import Path
 
@@ -31,21 +32,35 @@ from utils import constants as C
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
 
-def _fetch_csv(fc):
-    """Download a FeatureCollection as (rows, fieldnames) via GEE's signed URL."""
-    url = fc.getDownloadURL(filetype="CSV")
-    resp = requests.get(url, timeout=300)
-    resp.raise_for_status()
+def _fetch_csv(fc, retries=4, backoff=5):
+    """Download a FeatureCollection as (rows, fieldnames) via GEE's signed URL.
 
-    if resp.content[:2] == b"PK":          # ZIP magic bytes
-        with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
-            name = next(n for n in zf.namelist() if n.endswith(".csv"))
-            text = zf.read(name).decode("utf-8")
-    else:
-        text = resp.content.decode("utf-8")
+    Retries on transient failures (GEE 500s, network) with exponential backoff;
+    raises the last error only if all attempts fail.
+    """
+    last_exc = None
+    for attempt in range(1, retries + 1):
+        try:
+            url = fc.getDownloadURL(filetype="CSV")
+            resp = requests.get(url, timeout=300)
+            resp.raise_for_status()
 
-    reader = csv.DictReader(io.StringIO(text))
-    return list(reader), reader.fieldnames
+            if resp.content[:2] == b"PK":          # ZIP magic bytes
+                with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+                    name = next(n for n in zf.namelist() if n.endswith(".csv"))
+                    text = zf.read(name).decode("utf-8")
+            else:
+                text = resp.content.decode("utf-8")
+
+            reader = csv.DictReader(io.StringIO(text))
+            return list(reader), reader.fieldnames
+        except Exception as exc:                   # noqa: BLE001 — retry any transient failure
+            last_exc = exc
+            if attempt < retries:
+                wait = backoff * 2 ** (attempt - 1)
+                print(f"retry {attempt}/{retries - 1} in {wait}s ({exc}) ...", end=" ", flush=True)
+                time.sleep(wait)
+    raise last_exc
 
 
 def _write_csv(rows, fieldnames, path):
@@ -66,18 +81,35 @@ def download_fires(region):
 
 
 def download_obs(region, version):
+    import re
     region_path = f"{C.TRAINING_DATA_COL1}/{region}"
     assets = ee.data.listAssets({"parent": region_path}).get("assets", [])
-    obs_assets = sorted(
-        a["name"] for a in assets
-        if "training_observations" in a["name"] and f"_v{version}" in a["name"]
-    )
+
+    # Parse all training_observations assets into (fire_key, version, full_name).
+    # fire_key = "fire_NN[_partXX]" (version-stripped). We then keep the highest
+    # version per fire_key so that re-exports (e.g. fire_09_v2) are picked up
+    # automatically even when other fires are still at v1.
+    pat = re.compile(r"training_observations-(fire_\d+)_v(\d+)((?:_part\d+)?)")
+    best: dict[str, tuple[int, str]] = {}  # fire_key → (version, asset_name)
+    for a in assets:
+        name = a["name"]
+        m = pat.search(name)
+        if not m:
+            continue
+        fire_key = m.group(1) + m.group(3)   # e.g. "fire_09" or "fire_47_part01"
+        v = int(m.group(2))
+        if fire_key not in best or v > best[fire_key][0]:
+            best[fire_key] = (v, name)
+
+    obs_assets = sorted(name for _, name in best.values())
 
     if not obs_assets:
-        print(f"No training_observations assets found for {region} v{version}.")
+        print(f"No training_observations assets found for {region}.")
         return
 
-    print(f"training_observations ({region} v{version}): {len(obs_assets)} fire asset(s)")
+    versions_used = sorted({v for v, _ in best.values()})
+    print(f"training_observations ({region}): {len(obs_assets)} fire asset(s) "
+          f"(versions used: {versions_used})")
 
     all_rows = []
     fieldnames = None

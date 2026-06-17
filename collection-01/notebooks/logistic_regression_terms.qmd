@@ -72,13 +72,14 @@ We deliberately exclude:
 | $X_t$ | Value of feature $X$ at the focal observation (pixel-date) |
 | $X_{\text{med}}$ | MapBiomas mosaic **median** of $X$ in year $y(t) - 1$ |
 | $X_{\text{wet}}$ | MapBiomas mosaic **wet-season median** of $X$ in year $y(t) - 1$ |
+| $X_{\text{dry}}$ | MapBiomas mosaic **dry-season median** of $X$ in year $y(t) - 1$ |
 | $X_{\text{sd}}$ | MapBiomas mosaic **within-year standard deviation** of $X$ in year $y(t) - 1$ |
 
 The bare optical-band symbols (BLUE, GREEN, RED, NIR, SWIR1, SWIR2) refer to surface reflectance after harmonization to the OLI domain (Roy et al. 2016).
 
 ## Spectral feature equations
 
-The 17 focal features comprise six optical bands and 11 indices computed from them at the focal observation.
+The base focal feature set comprises **17 features**: six optical bands and 11 indices. The canonical team proposal (see §) extends this to **21** by adding AFRI, kNDVI, EVI2, and NIRv.
 
 | Group | Feature | Definition |
 |:---|:---|:---|
@@ -94,8 +95,12 @@ The 17 focal features comprise six optical bands and 11 indices computed from th
 | Aux. snow | $\text{NDSI}$ | $(\text{GREEN} - \text{SWIR1}) \,/\, (\text{GREEN} + \text{SWIR1})$ |
 | Aux. sparse veg | $\text{SAVI}$ | $\left[(\text{NIR} - \text{RED}) \,/\, (\text{NIR} + \text{RED} + L)\right]\,(1 + L)$, with $L = 0.5$ |
 | Aux. open water | $\text{NDWI}$ | $(\text{GREEN} - \text{NIR}) \,/\, (\text{GREEN} + \text{NIR})$ |
+| Aux. aerosol-free | $\text{AFRI}$ | $(\text{NIR} - 0.5\,\text{SWIR2}) \,/\, (\text{NIR} + 0.5\,\text{SWIR2})$ |
+| Aux. veg. kernel | $\text{kNDVI}$ | $\tanh\!\left(\text{NDVI}^2\right)$ |
+| Aux. enhanced veg | $\text{EVI2}$ | $2.5\,(\text{NIR} - \text{RED}) \,/\, (\text{NIR} + 2.4\,\text{RED} + 1)$ |
+| Aux. NIR veg | $\text{NIRv}$ | $\text{NIR} \times \text{NDVI}$ |
 
-Notes: Tasseled-cap coefficients are Baig et al. (2014) for Landsat 8 OLI. MIRBI is in the raw Trigg & Flasse (2001) orientation; it *increases* after fire (opposite sign of NBR, NBR2, NDVI). NDWI here is McFeeters (1996), distinct from NDMI (Gao 1996).
+Notes: Tasseled-cap coefficients are Baig et al. (2014) for Landsat 8 OLI. MIRBI is in the raw Trigg & Flasse (2001) orientation; it *increases* after fire (opposite sign of NBR, NBR2, NDVI). NDWI here is McFeeters (1996), distinct from NDMI (Gao 1996). The four canonical-team additions: AFRI is AFRI-2100 (Karnieli et al. 2001, Eq. 11a), the 2.1 µm / 0.5-coefficient variant — preferred over AFRI-1600 because the 2.1 µm band penetrates smoke and aerosol better and correlates more tightly with NDVI; kNDVI uses the RBF kernel $k(x,x) = \tanh(\text{NDVI}^2)$ (Camps-Valls et al. 2021); EVI2 is the blue-band-free EVI variant (Jiang et al. 2008); NIRv is the near-infrared reflectance of vegetation (Badgley et al. 2017).
 
 Previous-year variables used beyond the six optical bands are taken directly from the MapBiomas mosaic. For reference:
 
@@ -188,6 +193,86 @@ Example terms: $\text{NPV}_{\text{med}} \times \text{SWIR2}_t$, $\text{NDFI}_{\t
 | 6 | Prev context × focal fire bands | 48 |
 | | **Total** | **300** |
 
+## Canonical team — 427 terms
+
+The **canonical team** proposal extends the canonical design in two directions simultaneously:
+
+1. **Four additional focal predictors** (AFRI, kNDVI, EVI2, NIRv) raise the focal feature set from 17 to **21**.
+2. **Dry-season median** ($\text{dry}$) added as a fourth previous-year summary alongside $\text{med}$, $\text{wet}$, $\text{sd}$.
+
+**On the inclusion of $\text{dry}$:** §3 argues that the dry season coincides with the fire season, so a $y-1$ fire contaminates the dry composite in the same direction as the signal to detect. That argument stands for pixels that *did* burn in $y-1$. For the majority of pixels — which did not burn the previous year — dry-season composites capture peak senescence, deciduous phenology, and end-of-season fuel state, all potentially informative signals. Including $\text{dry}$ lets the elastic net make the call: for non-burned pixels it can assign positive weight; for pixels whose other features already indicate prior-year disturbance, regularization can downweight it. The bias risk is real but bounded, and empirical validation should adjudicate.
+
+**On the four new focal predictors:**
+
+- **AFRI** (AFRI-2100): $(\text{NIR} - 0.5\,\text{SWIR2}) / (\text{NIR} + 0.5\,\text{SWIR2})$. Reduces aerosol interference relative to pure-NIR ratios by weighting the 2.1 µm SWIR2 band; the SWIR is largely transparent to smoke, so under aerosol-affected scenes AFRI tracks the true NDVI far better than NDVI itself (Karnieli et al. 2001). The 2.1 µm / 0.5-coefficient form (Eq. 11a) is preferred over the 1.6 µm / 0.66 form (Eq. 11b): it penetrates the atmospheric column better and correlates more tightly with NDVI ($r=0.98$ in Karnieli et al.).
+- **kNDVI**: $\tanh(\text{NDVI}^2)$. Applies a radial-basis-function kernel to NDVI, expanding the effective dynamic range in dense canopy where linear NDVI saturates. Injects a smooth non-linearity into Block 1 without requiring an explicit quadratic interaction term.
+- **EVI2**: $2.5\,(\text{NIR} - \text{RED}) / (\text{NIR} + 2.4\,\text{RED} + 1)$. Corrects for soil background and canopy reflectance anisotropy without requiring the blue band; better behaved in open shrubland and semi-arid strata where NDVI and kNDVI compress.
+- **NIRv**: $\text{NIR} \times \text{NDVI}$. Near-infrared reflectance of vegetation, proportional to absorbed photosynthetically active radiation; works as a fractional green-canopy signal in mixed pixels and is near-orthogonal to bare-soil brightness in the NIR–red plane.
+
+### Block 1 — focal raw (21)
+
+The 17 canonical focal features plus AFRI, kNDVI, EVI2, and NIRv.
+
+### Block 2 — previous-year raw (40)
+
+Same 10 variables as canonical, each carried with four summaries:
+
+| Variable | Summaries | Count |
+|:---|:---|---:|
+| BLUE, GREEN, RED, NIR, SWIR1, SWIR2 | $\text{med}, \text{wet}, \text{dry}, \text{sd}$ | 24 |
+| NDVI | $\text{med}, \text{wet}, \text{dry}, \text{sd}$ | 4 |
+| NDWI | $\text{med}, \text{wet}, \text{dry}, \text{sd}$ | 4 |
+| NPV | $\text{med}, \text{wet}, \text{dry}, \text{sd}$ | 4 |
+| NDFI | $\text{med}, \text{wet}, \text{dry}, \text{sd}$ | 4 |
+| | | **40** |
+
+### Block 3 — focal × focal pairwise (210)
+
+All unordered pairs of the 21 focal features: $\binom{21}{2} = 210$.
+
+The 74 new pairs (those involving at least one of AFRI, kNDVI, EVI2, NIRv) include physically motivated combinations: AFRI $\times$ MIRBI (concordance of two SWIR-based fire signals), kNDVI $\times$ NBR (non-linear greenness against burn ratio), NIRv $\times$ SWIR2 (photosynthetically active canopy fraction against the primary fire band), EVI2 $\times$ TCW (canopy structure against moisture).
+
+### Block 4 — same-band previous × focal (32)
+
+Eight variables × four summaries × same-band focal:
+
+| Band (prev) × Band (focal) | Summaries | Count |
+|:---|:---|---:|
+| BLUE, GREEN, RED, NIR, SWIR1, SWIR2 | $\text{med}, \text{wet}, \text{dry}, \text{sd}$ | 24 |
+| NDVI | $\text{med}, \text{wet}, \text{dry}, \text{sd}$ | 4 |
+| NDWI | $\text{med}, \text{wet}, \text{dry}, \text{sd}$ | 4 |
+| | | **32** |
+
+### Block 5 — prev context × focal fire indices (60)
+
+Four context variables (NDVI, NDWI, NPV, NDFI) × four summaries × four focal fire indices (NBR, NBR2, MIRBI, NDVI):
+
+$$4 \times 4 \times 4 = 64,$$
+
+minus the four $\text{NDVI}_{\text{stat}} \times \text{NDVI}_t$ terms already in Block 4 ⇒ **60**.
+
+### Block 6 — prev context × focal fire bands (64)
+
+Four context variables × four summaries × four focal fire bands (RED, NIR, SWIR1, SWIR2):
+
+$$4 \times 4 \times 4 = 64.$$
+
+No overlap with Block 4 (same-band) or Block 5 (fire indices vs. fire bands).
+
+### Term-count summary
+
+| Block | Description | Count |
+|:---|:---|---:|
+| 1 | Focal raw | 21 |
+| 2 | Prev raw | 40 |
+| 3 | Focal × focal pairwise | 210 |
+| 4 | Same-band prev × focal | 32 |
+| 5 | Prev context × focal fire indices | 60 |
+| 6 | Prev context × focal fire bands | 64 |
+| | **Total** | **427** |
+
+The 127-term increase over canonical (300 → 427) comes primarily from the expanded pairwise block (Block 3: +74) and from the fourth summary across all blocks (+49, matching the rich (+ dry) delta in the Alternatives table). The GEE block-multiply pattern keeps the compute graph at ~15 nodes regardless: Block 3 produces a 210-band image in a single `.multiply()` call, identical in node count to the canonical 136-band version. The main operational cost increases are a larger coefficient array (~43 % more floats in the `.reduce()` step) and longer R fitting time.
+
 ## Alternatives
 
 A slim or rich variant is available without changing the block structure:
@@ -198,6 +283,7 @@ A slim or rich variant is available without changing the block structure:
 | **Canonical** | as described above | **300** |
 | **Rich** | Add 15 prev-optical-median pairs (new block 7) | 315 |
 | **Rich (+ dry)** | Add $\text{dry}$ as a 4th prev summary across Blocks 2, 4, 5, 6 | 349 |
+| **Canonical team** | Add AFRI, kNDVI, EVI2, NIRv focal + $\text{dry}$ summary | **427** |
 
 - The **slim variant (246)** is appropriate if validation later shows NPV/NDFI add little incremental skill, or if compute pressure forces shrinking the linear predictor. NPV and NDFI contribute 6 prev-raw terms (Block 2), 24 prev × focal-fire-index terms (Block 5), and 24 prev × focal-fire-band terms (Block 6) — 54 in total.
 - The **rich variant (315)** adds the 15 prev-optical-median pairs $\text{B}_{\text{med}} \times \text{B}'_{\text{med}}$ with $\text{B} \neq \text{B}' \in \{\text{BLUE}, \dots, \text{SWIR2}\}$, giving the model a representation of the *position* of the pixel in previous-year color space; this is useful if some veg-type clusters in non-linear regions of that space. Consider this variant only if validation in some region × veg-type cluster is poor with the canonical model.

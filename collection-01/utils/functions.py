@@ -103,11 +103,13 @@ def get_landsat(roi, start_date, end_date):
 
 def add_indices(img):
     """
-    Compute and add all 17 focal-date spectral features.
+    Compute and add all 21 focal-date spectral features.
 
     Input image must have bands: BLUE, GREEN, RED, NIR, SWIR1, SWIR2.
-    Adds: NBR, NBR2, MIRBI, NDVI, TCB, TCG, TCW, NDMI, NDSI, SAVI, NDWI.
+    Adds: NBR, NBR2, MIRBI, NDVI, TCB, TCG, TCW, NDMI, NDSI, SAVI, NDWI,
+    AFRI, kNDVI, EVI2, NIRv.
     MIRBI is NOT sign-flipped (raw formula).
+    AFRI is the 2.1 µm / 0.5-coefficient variant (Karnieli et al. 2001, Eq. 11a).
     """
     b = img.select("BLUE")
     g = img.select("GREEN")
@@ -142,7 +144,20 @@ def add_indices(img):
     ).rename("SAVI")
     ndwi = img.normalizedDifference(["GREEN", "NIR"]).rename("NDWI")  # McFeeters 1996, water
 
-    return img.addBands([nbr, nbr2, ndvi, mirbi, tcb, tcg, tcw, ndmi, ndsi, savi, ndwi])
+    # ─── Canonical-team additions (logistic_regression_terms.qmd §"Canonical team") ──
+    # AFRI uses the 2.1 µm (SWIR2) form with the 0.5 coefficient (Karnieli et al.
+    # 2001, Eq. 11a = AFRI_2.1) — the variant that best penetrates smoke/aerosol.
+    afri  = img.expression(
+        "(N - 0.5*S2) / (N + 0.5*S2)", {"N": n, "S2": s2}
+    ).rename("AFRI")
+    kndvi = ndvi.pow(2).tanh().rename("kNDVI")                 # tanh(NDVI^2), Camps-Valls 2021
+    evi2  = img.expression(
+        "2.5 * (N - R) / (N + 2.4*R + 1)", {"N": n, "R": r}
+    ).rename("EVI2")
+    nirv  = n.multiply(ndvi).rename("NIRv")                    # NIR × NDVI, Badgley 2017
+
+    return img.addBands([nbr, nbr2, ndvi, mirbi, tcb, tcg, tcw, ndmi, ndsi, savi, ndwi,
+                         afri, kndvi, evi2, nirv])
 
 
 def get_mb_class_band(lulc_img, mb_year):
