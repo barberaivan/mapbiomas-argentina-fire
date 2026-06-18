@@ -51,11 +51,19 @@ VERSION      <- if (length(args) >= 1) args[[1]] else "1"
 CLASS_FILTER <- if (length(args) >= 2) args[-1] else character(0)
 REGIONS_ALL  <- c("BA", "CHACO", "PAMPA", "CUYO", "PAT")
 K_TARGET    <- 10
-ALPHAS      <- c(0, 0.25, 0.5, 0.75, 1)
+ALPHAS      <- c(0.25, 0.5, 0.75, 1)   # ridge (a=0) dropped: never best in CV, and slowest to fit
 LAMBDA_RULE <- "1se"   # "1se" (more regularized, sparser) or "min" (best CV deviance)
 CORES       <- as.integer(Sys.getenv("FIT_CORES", unset = "5"))  # parallel CV folds; override per run, e.g. FIT_CORES=2 (grassland is memory-heavy)
 SEED        <- 1
 EPS         <- 1e-15
+# Negative subsampling for large classes (neg_subsample rule). Keep ALL positives;
+# thin negatives so they are at most NEG_RATIO x positives, via a per-(fire,point)
+# date cap (PER_POINT_CAP) + a season x fire ratio trim, with Horvitz-Thompson
+# weights so the weighted fit stays unbiased for the full-data fit (slopes AND
+# intercept). col-0 trained at ~1:5 on ~590k obs; 1:4 mirrors that.
+NEG_RATIO     <- 4    # max negatives : positives (the binding target at the cap below)
+PER_POINT_CAP <- 24   # max negative obs per (fire_uid, point_id), spread across dates; >=24
+                      # lets NEG_RATIO bind (cap then only trims genuinely date-dense points)
 
 root       <- here_root()
 remap_csv  <- file.path(root, "collection-01", "config", "veg_fire_remap.csv")
@@ -68,10 +76,16 @@ dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 # ash_merge: train this class on its own non-ash obs + the pooled ash (negatives)
 #            of all listed classes (when a class alone has too few ash negatives).
 # ash_frac:  downsample this class's ash negatives to this fraction of its unburned.
+# neg_subsample: keep all positives, thin negatives to NEG_RATIO x positives with HT
+#   weights (see subsample_negatives). Applied to classes with >500k obs.
 SAMPLE_RULES <- list(
-  forest_pat    = list(ash_merge = c("forest_pat", "shrubland_pat")),
-  shrubland_pat = list(ash_merge = c("forest_pat", "shrubland_pat")),
-  grassland_pat = list(ash_frac  = 0.10)
+  forest_pat             = list(ash_merge = c("forest_pat", "shrubland_pat")),
+  shrubland_pat          = list(ash_merge = c("forest_pat", "shrubland_pat")),
+  grassland_pat          = list(ash_frac = 0.10, neg_subsample = TRUE, per_point_cap = 16),  # 357k @ 2.9:1
+
+  grassland_pampa        = list(neg_subsample = TRUE, per_point_cap = 16),  # 491k @ 3.2:1 (heaviest class)
+  "forest-cerr_chaco"    = list(neg_subsample = TRUE),                      # 318k @ 4:1
+  "shrubland_cuyo-pampa" = list(neg_subsample = TRUE)                       # 289k @ 4:1
 )
 
 # ── canonical-team design (427 terms; logistic_regression_terms.qmd §"Canonical team") ──
@@ -123,8 +137,9 @@ build_design <- function(d) {
 }
 
 # ── generic helpers ──────────────────────────────────────────────────────────
-log_loss  <- function(y, p) { p <- pmin(pmax(p, EPS), 1 - EPS); -mean(y*log(p)+(1-y)*log(1-p)) }
-brier     <- function(y, p) mean((p - y)^2)
+log_loss  <- function(y, p, w = NULL) { if (is.null(w)) w <- rep(1, length(y))
+  p <- pmin(pmax(p, EPS), 1 - EPS); -sum(w*(y*log(p)+(1-y)*log(1-p))) / sum(w) }
+brier     <- function(y, p, w = NULL) { if (is.null(w)) w <- rep(1, length(y)); sum(w*(p - y)^2) / sum(w) }
 auc <- function(y, p) {
   n1 <- sum(y == 1); n0 <- sum(y == 0); if (n1 == 0 || n0 == 0) return(NA_real_)
   (sum(rank(p)[y == 1]) - n1 * (n1 + 1) / 2) / (n1 * n0)
@@ -154,22 +169,78 @@ make_foldid <- function(d, pure_neg, K) {
   as.integer(foldid)
 }
 
-# Apply the class sample rule; return this class's training rows from the loaded data.
+# Thin the NEGATIVE rows of an assembled class table while preserving fire and point
+# diversity, and attach Horvitz-Thompson weights (w = 1/inclusion-prob) so the weighted
+# fit is unbiased for the full-data fit — slopes AND intercept — making subsampled and
+# fully-fit classes share one probability scale (no manual intercept correction needed).
+# Positives are always kept in full (w = 1). Two stages:
+#   A) per-(fire_uid, point_id) date cap: keep <= `cap` negatives per point, spread
+#      evenly across dates (kills temporal redundancy; sparse-date points kept whole;
+#      short pre-fire windows are pruned only lightly, by construction).
+#   B) if negatives still exceed `ratio` x positives, trim to that, stratified by
+#      season (month) x fire so phenological coverage is not lost.
+subsample_negatives <- function(d, cap, ratio) {
+  setDT(d); set.seed(SEED)
+  pos <- d[burned == 1L]; neg <- d[burned == 0L]
+  if (nrow(pos) == 0L || nrow(neg) == 0L) { d[, w := 1]; return(d[]) }
+
+  # stage A — spread-by-date cap per (fire_uid, point_id)
+  setorder(neg, fire_uid, point_id, date)
+  neg[, ng := .N, by = .(fire_uid, point_id)]
+  neg[, keepA := if (.N <= cap) rep(TRUE, .N)
+                 else seq_len(.N) %in% unique(round(seq(1, .N, length.out = cap))),
+      by = .(fire_uid, point_id)]
+  negA <- neg[keepA == TRUE]
+  negA[, keptA := .N, by = .(fire_uid, point_id)]
+  negA[, pA := keptA / ng]                                   # stage-A inclusion prob
+
+  # stage B — season x fire ratio trim (proportional within stratum)
+  target <- ratio * nrow(pos)
+  if (nrow(negA) > target) {
+    negA[, season := substr(date, 6L, 7L)]                   # month from YYYY-MM-DD
+    negA[, nstr := .N, by = .(fire_uid, season)]
+    frac <- target / nrow(negA)
+    negA[, ksel := pmax(1L, as.integer(round(frac * nstr)))]
+    negA[, selB := if (.N <= ksel[1]) rep(TRUE, .N) else seq_len(.N) %in% sample.int(.N, ksel[1]),
+         by = .(fire_uid, season)]
+    negA[, pB := pmin(1, ksel / nstr)]                       # stage-B inclusion prob
+    negB <- negA[selB == TRUE]
+  } else {
+    negB <- negA[, pB := 1]
+  }
+  negB[, w := 1 / (pA * pB)]
+  pos[, w := 1]
+  cols <- c(names(d), "w")
+  rbind(pos[, ..cols], negB[, ..cols])
+}
+
+# Apply the class sample rule; return this class's training rows (+ HT weight column w).
 assemble_class_data <- function(dt, code, name, name2code, pure_neg) {
   ash <- dt$fire_uid %in% pure_neg         # region-unique ids (see main())
   rule <- SAMPLE_RULES[[name]]
-  if (is.null(rule)) return(dt[veg_fire == code])
-  if (!is.null(rule$ash_merge)) {
-    codes <- name2code[rule$ash_merge]
-    return(rbind(dt[veg_fire == code & !ash], dt[veg_fire %in% codes & ash]))
+  out <-
+    if (is.null(rule)) {
+      dt[veg_fire == code]
+    } else if (!is.null(rule$ash_merge)) {
+      codes <- name2code[rule$ash_merge]
+      rbind(dt[veg_fire == code & !ash], dt[veg_fire %in% codes & ash])
+    } else if (!is.null(rule$ash_frac)) {
+      own_non <- dt[veg_fire == code & !ash]; own_ash <- dt[veg_fire == code & ash]
+      target  <- round(rule$ash_frac / (1 - rule$ash_frac) * sum(own_non$burned == 0))
+      if (nrow(own_ash) > target) own_ash <- own_ash[sample(.N, target)]
+      rbind(own_non, own_ash)
+    } else {
+      dt[veg_fire == code]
+    }
+  # Large classes: thin negatives + HT weights (cap/ratio overridable per class). Else w=1.
+  if (!is.null(rule) && isTRUE(rule$neg_subsample)) {
+    cap <- if (!is.null(rule$per_point_cap)) rule$per_point_cap else PER_POINT_CAP
+    rat <- if (!is.null(rule$neg_ratio))     rule$neg_ratio     else NEG_RATIO
+    out <- subsample_negatives(out, cap, rat)
+  } else {
+    out[, w := 1]
   }
-  if (!is.null(rule$ash_frac)) {
-    own_non <- dt[veg_fire == code & !ash]; own_ash <- dt[veg_fire == code & ash]
-    target  <- round(rule$ash_frac / (1 - rule$ash_frac) * sum(own_non$burned == 0))
-    if (nrow(own_ash) > target) own_ash <- own_ash[sample(.N, target)]
-    return(rbind(own_non, own_ash))
-  }
-  dt[veg_fire == code]
+  out[]
 }
 
 # ── fit one class ─────────────────────────────────────────────────────────────
@@ -185,6 +256,9 @@ fit_one_class <- function(sub, code, name, name2code, pure_neg) {
   if (is.null(foldid)) { message("  too few positive-bearing fires — skipped."); return(NULL) }
   K <- length(unique(foldid))
 
+  wv <- sub$w                                    # Horvitz-Thompson weights (1 unless subsampled)
+  if (any(wv != 1)) message(sprintf("  negatives subsampled: %d rows fed to glmnet, effective N (sum w) = %.0f",
+                                    nrow(sub), sum(wv)))
   Xfull <- build_design(sub); y <- as.numeric(sub$burned)
   all_terms <- colnames(Xfull)                   # canonical 427, block order, GEE names
   keep <- which(apply(Xfull, 2, function(z) sd(z) > 0))
@@ -192,36 +266,65 @@ fit_one_class <- function(sub, code, name, name2code, pure_neg) {
   x <- Xfull[, keep, drop = FALSE]
   rm(Xfull); gc()                                # free the full design (~2 GB for big classes)
 
-  # cv.glmnet handles the lambda path (warm starts), per-fold deviance, the across-
-  # fold SE, and lambda.min/lambda.1se. keep=TRUE returns fit.preval = out-of-fold
-  # fitted values per obs × lambda (link scale for binomial), our source for p_i.
-  results <- vector("list", length(ALPHAS)); tuning <- vector("list", length(ALPHAS))
+  # cv.glmnet handles the lambda path (warm starts), per-fold deviance, the across-fold SE,
+  # and lambda.min/lambda.1se. keep=TRUE returns fit.preval = out-of-fold fitted values per
+  # obs x lambda (link scale), our source for p_i.
+  #
+  # CHECKPOINTING (power-cut resilience): after each alpha we save a COMPACT checkpoint
+  # (.class_NN_ckpt_aJJ.rds) holding only what the final outputs need — the cvm path, the
+  # winning-lambda glmnet path (small, sparse) and the OOF column at the selected lambda —
+  # NOT the multi-GB fit.preval. On (re)start we rebuild sub/x/foldid deterministically
+  # (set.seed) and skip any alpha whose checkpoint exists; checkpoints are deleted only after
+  # the final outputs are written. A stale checkpoint (n/K/alpha changed, e.g. cap/ratio
+  # edited) is ignored and refit. This also bounds memory to one fit at a time.
+  to_prob <- function(v) if (all(v >= 0 & v <= 1, na.rm = TRUE)) v else plogis(v)  # link -> prob
+  ckpt_f  <- function(j) file.path(out_dir, sprintf(".%s_ckpt_a%02d.rds", tag, j))
+
+  ckpts <- vector("list", length(ALPHAS))
   for (j in seq_along(ALPHAS)) {
-    a   <- ALPHAS[j]
-    cvf <- cv.glmnet(x, y, family = "binomial", alpha = a, foldid = foldid,
-                     type.measure = "deviance", keep = TRUE, parallel = TRUE)
-    results[[j]] <- list(alpha = a, cvf = cvf,
-                         imin = match(cvf$lambda.min, cvf$lambda),
-                         i1se = match(cvf$lambda.1se, cvf$lambda))
-    tuning[[j]]  <- data.table(alpha = a, lambda = cvf$lambda, cvm = cvf$cvm, cvsd = cvf$cvsd)
+    a  <- ALPHAS[j]
+    ck <- if (file.exists(ckpt_f(j))) readRDS(ckpt_f(j)) else NULL
+    if (!is.null(ck) && (ck$n_obs != nrow(sub) || ck$K != K || !isTRUE(all.equal(ck$alpha, a)))) {
+      message(sprintf("  [%s] alpha %d/%d — stale checkpoint (n/K/alpha changed), refitting",
+                      tag, j, length(ALPHAS))); ck <- NULL
+    }
+    if (!is.null(ck)) {
+      message(sprintf("  [%s] alpha %d/%d (=%.2f) — RESUMED from checkpoint (lambda.min dev %.4f)",
+                      tag, j, length(ALPHAS), a, ck$cvm_min))
+    } else {
+      message(sprintf("  [%s] alpha %d/%d (=%.2f) — fitting cv.glmnet (%d obs x %d terms, K=%d) ...",
+                      tag, j, length(ALPHAS), a, nrow(x), ncol(x), K))
+      cvf  <- cv.glmnet(x, y, family = "binomial", alpha = a, foldid = foldid, weights = wv,
+                        type.measure = "deviance", keep = TRUE, parallel = TRUE)
+      imin <- match(cvf$lambda.min, cvf$lambda); i1se <- match(cvf$lambda.1se, cvf$lambda)
+      isel <- if (LAMBDA_RULE == "1se") i1se else imin
+      ck <- list(alpha = a, n_obs = nrow(sub), K = K,
+                 lambda = cvf$lambda, cvm = cvf$cvm, cvsd = cvf$cvsd,
+                 lambda_min = cvf$lambda.min, lambda_1se = cvf$lambda.1se, sel_lambda = cvf$lambda[isel],
+                 cvm_min = cvf$cvm[imin], cvm_1se = cvf$cvm[i1se], cvm_sel = cvf$cvm[isel],
+                 glmnet_fit = cvf$glmnet.fit,                  # sparse path: coef + fit.rds
+                 oof_sel = to_prob(cvf$fit.preval[, isel]))    # OOF prob at selected lambda
+      tmp <- paste0(ckpt_f(j), ".tmp"); saveRDS(ck, tmp); file.rename(tmp, ckpt_f(j))  # atomic write
+      message(sprintf("  [%s] alpha %.2f done (lambda.min dev %.4f) — checkpoint saved", tag, a, ck$cvm_min))
+      rm(cvf); gc()
+    }
+    ckpts[[j]] <- ck
   }
-  # alpha chosen on best achievable fit (lambda.min cvm); the lambda rule sets sparsity
-  ja  <- which.min(vapply(results, function(r) r$cvf$cvm[r$imin], numeric(1)))
-  r   <- results[[ja]]; cvf <- r$cvf
-  sel_lambda <- if (LAMBDA_RULE == "1se") cvf$lambda.1se else cvf$lambda.min
-  sel <- match(sel_lambda, cvf$lambda)
-  to_prob <- function(v) if (all(v >= 0 & v <= 1, na.rm = TRUE)) v else plogis(v)  # link → prob
-  best <- list(alpha = r$alpha, lambda = sel_lambda, dev = cvf$cvm[sel],
-               oof = to_prob(cvf$fit.preval[, sel]),
-               lambda_min = cvf$lambda.min, lambda_1se = cvf$lambda.1se,
-               dev_min = cvf$cvm[r$imin], dev_1se = cvf$cvm[r$i1se])
+
+  # winner = alpha with best achievable fit (min lambda.min cvm); the lambda rule sets sparsity
+  ja  <- which.min(vapply(ckpts, function(z) z$cvm_min, numeric(1)))
+  r   <- ckpts[[ja]]; sel_lambda <- r$sel_lambda
+  tuning <- lapply(ckpts, function(z) data.table(alpha = z$alpha, lambda = z$lambda, cvm = z$cvm, cvsd = z$cvsd))
+  best <- list(alpha = r$alpha, lambda = sel_lambda, dev = r$cvm_sel,
+               lambda_min = r$lambda_min, lambda_1se = r$lambda_1se,
+               dev_min = r$cvm_min, dev_1se = r$cvm_1se)
   message(sprintf("  alpha=%.2f | lambda.min=%.4g (dev %.4f), lambda.1se=%.4g (dev %.4f) -> using %s (K=%d)",
                   best$alpha, best$lambda_min, best$dev_min, best$lambda_1se, best$dev_1se, LAMBDA_RULE, K))
 
   # Coefficients on the ORIGINAL feature scale (glmnet standardize=TRUE returns them so).
   # Export the full canonical 427 terms + intercept, block-labelled, in GEE block order,
   # with dropped/zeroed terms set to 0 — so GEE reads coefNames/coefValues positionally safe.
-  glmfit <- cvf$glmnet.fit                       # full-data path already fit by cv.glmnet
+  glmfit <- r$glmnet_fit                         # winning alpha's full-data path (from checkpoint)
   fitted <- coef(glmfit, s = sel_lambda)[, 1]    # named: "(Intercept)" + kept terms
   ic     <- which(names(fitted) == "(Intercept)")
   cf     <- setNames(numeric(length(all_terms)), all_terms)
@@ -229,23 +332,26 @@ fit_one_class <- function(sub, code, name, name2code, pure_neg) {
   coef_dt <- rbind(
     data.table(block = "(intercept)", term = "(Intercept)", coefficient = unname(fitted[ic])),
     data.table(block = rep(names(BLOCKS), BLOCKS), term = all_terms, coefficient = as.numeric(cf)))
-  p <- best$oof
+  p <- r$oof_sel
+  stopifnot(length(p) == nrow(sub))              # checkpoint OOF must align to the rebuilt rows
 
   fwrite(coef_dt, file.path(out_dir, sprintf("%s_coefficients.csv", tag)))
   fwrite(rbindlist(tuning), file.path(out_dir, sprintf("%s_tuning.csv", tag)))
   fwrite(data.table(fire_id = sub$fire_id, point_id = sub$point_id, date = sub$date,
-                    region = sub$region, veg_fire = code, burned = y, foldid = foldid, p_oof = p),
+                    region = sub$region, veg_fire = code, burned = y, foldid = foldid,
+                    p_oof = p, weight = wv),
          file.path(out_dir, sprintf("%s_oof_predictions.csv", tag)))
   saveRDS(glmfit, file.path(out_dir, sprintf("%s_fit.rds", tag)))
 
   m <- data.table(veg_fire = code, veg_fire_name = name, regions = paste(sort(unique(sub$region)), collapse = "+"),
-             n_obs = nrow(sub), n_pos = sum(y), K = K, n_terms = length(keep),
+             n_obs = nrow(sub), n_pos = sum(y), n_eff = sum(wv), K = K, n_terms = length(keep),
              alpha = best$alpha, lambda_rule = LAMBDA_RULE, lambda = best$lambda,
              lambda_min = best$lambda_min, lambda_1se = best$lambda_1se,
-             cv_deviance = best$dev, cv_logloss = log_loss(y, p),
-             cv_brier = brier(y, p), cv_auc = auc(y, p),
+             cv_deviance = best$dev, cv_logloss = log_loss(y, p, wv),
+             cv_brier = brier(y, p, wv), cv_auc = auc(y, p),
              n_nonzero = sum(cf != 0))
   fwrite(m, file.path(out_dir, sprintf("%s_cv_metrics.csv", tag)))   # per-class, self-contained
+  unlink(Sys.glob(file.path(out_dir, sprintf(".%s_ckpt_a*.rds", tag))))  # all outputs written: drop checkpoints
   m
 }
 

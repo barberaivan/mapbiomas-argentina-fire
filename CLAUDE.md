@@ -7,7 +7,75 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Active development is almost always in `collection-01/`, running `.py` scripts from `collection-01/workflow/`.** 
 Default to `collection-01/` context unless the user says otherwise.
 
-## Next steps (work order, as of 2026-06-17 end-of-session)
+## Next steps (work order, as of 2026-06-18 end-of-session)
+
+### ▶▶ IMMEDIATE (2026-06-18): kill old grassland_pat, refit on the new design
+
+The old `grassland_pat` fit (PID 49609, started 2026-06-17 08:17, OLD pre-checkpoint code,
+full 642k obs, 5 alphas incl. ridge, 2 cores) was **KILLED on 2026-06-18** — it had run ~31h,
+was still grinding a single alpha after ~18h, had **no checkpoints** (a power cut = total loss),
+and we couldn't tell which alpha it was on. `02-model_fitting.R` was substantially upgraded this
+session (see "New fitting design" below). **Action for next session (do this in a session with
+remote control):**
+
+```bash
+# from repo root, venv not needed for R
+FIT_CORES=3 Rscript collection-01/workflow/02-model_fitting.R 1 grassland_pat
+```
+
+This writes **`class_16_*` directly** (new remap code for grassland_pat) — so the old
+"rename class_17→16" step is **obsolete** for grassland (no class_17 will be produced).
+Expect ~357k obs (subsampled), 4 alphas, **per-alpha checkpoints** — if it dies, just re-run
+the **same command** and it resumes from the last finished alpha. With the old fit killed,
+~22 GB is free, so `FIT_CORES=3` (even 4) is safe at ~357k rows.
+
+### New fitting design (`02-model_fitting.R`, rewritten 2026-06-18)
+
+- **Alpha grid `{0.25, 0.5, 0.75, 1}`** — ridge (α=0) dropped: never best in CV across the
+  fitted PAT classes (3–5.5% worse deviance) and the slowest to fit. (Diagnostics evidence:
+  agriculture_pat→0.5, forest_pat→0.25, shrubland_pat→0.75; lasso also slightly worse than
+  the interior, so keep the 0.5/0.75 middle.)
+- **Negative subsampling for large classes** (`neg_subsample` rule in `SAMPLE_RULES`). Keep
+  ALL positives; thin negatives to `NEG_RATIO` (=4) × positives via a per-(fire_uid,point_id)
+  **spread-by-date cap** (`PER_POINT_CAP`, default 24; overridable per class via
+  `per_point_cap=`) + a **season×fire ratio trim**, with **Horvitz–Thompson weights**
+  (`w = 1/inclusion-prob`) passed to `cv.glmnet(weights=)`. The weighted fit is unbiased for
+  the full-data fit (slopes AND intercept) → subsampled and fully-fit classes share one
+  probability scale, **no manual intercept correction**. `subsample_negatives()` is verified
+  on synthetic data; HT weights sum back to the full negative total.
+  - Rationale on the intercept: the training design is choice-based (fires were sought, not
+    random) so absolute prevalence is already fictional; the weights exist to keep classes on
+    a common scale for any downstream global threshold, not to recover a "true" base rate.
+  - The per-point cap is usually the **binding** knob below ~cap 24. Cap≥24 lets the 4:1 ratio
+    bind; lower caps trim harder. Post-subsample sizes (capacity-checked 2026-06-18):
+    | class | rule | obs | ratio |
+    |---|---|--:|--:|
+    | grassland_pampa | `neg_subsample, per_point_cap=16` | 491k | 3.2:1 |
+    | grassland_pat | `ash_frac=0.10, neg_subsample, per_point_cap=16` | 357k | 2.9:1 |
+    | forest-cerr_chaco | `neg_subsample` (cap 24) | 318k | 4:1 |
+    | shrubland_cuyo-pampa | `neg_subsample` (cap 24) | 289k | 4:1 |
+  - `ash_frac` (intentional ash downweighting) and `neg_subsample` **compose**: ash_frac runs
+    first (unweighted, intentional bias), then neg_subsample thins the rest with HT weights.
+- **Per-alpha checkpointing (power-cut resilience).** After each alpha a COMPACT checkpoint
+  `.class_NN_ckpt_aJJ.rds` is written **atomically** (`.tmp`→rename) holding only the cvm
+  path, the winning-λ sparse glmnet path, and the OOF column at the selected λ (NOT the
+  multi-GB `fit.preval`). On (re)start, sub/x/foldid are rebuilt deterministically
+  (`set.seed`) and finished alphas are skipped; checkpoints are deleted only after all final
+  outputs are written; a stale checkpoint (n/K/alpha changed, e.g. cap/ratio edited) is
+  ignored and refit. **Verified end-to-end:** resume reproduces byte-identical
+  coefficients/OOF/metrics; prep re-run on resume is ~minutes (NOT hours).
+- **Memory.** True R footprint measured at ~22 GB for the old 642k/2-core run (PSS; system
+  RSS over-counts COW-shared worker pages by ~7–8 GB). Per CV worker ≈ 6.5 GB private.
+  `rm(Xfull);gc()` after the design subset, `rm(dt);gc()` after assembling, and the alpha
+  loop keeps only one fit in memory. **Core guidance:** heaviest class (`grassland_pampa`,
+  ~491k) → `FIT_CORES=2` (3 risks OOM on 31 GB, and K=10 folds only gain ~1.25× from a 3rd
+  core); smaller subsampled classes (~290–360k) → `FIT_CORES=3–4`.
+- **Output additions:** `cv_metrics.csv` gains `n_eff` (= sum of weights); `oof_predictions.csv`
+  gains a `weight` column. When rebuilding `cv_metrics_v1.csv` across old + new classes use
+  `rbindlist(..., fill=TRUE)` (older PAT fits lack `n_eff`).
+- **Progress watcher (optional):** `/tmp/grassland_alpha_watch.sh` logs each cv.glmnet worker
+  generation change (= one alpha done) to `/tmp/grassland_alpha_watch.log` — passive `ps`-only,
+  was watching the now-killed PID 49609.
 
 **▶ Remap v2 RESOLVED (2026-06-17).** The Google Sheet was updated and
 `config/veg_fire_remap.csv` regenerated. The two blocking problems are fixed:
@@ -31,7 +99,7 @@ change in remap v2 — only the integer code moved — so the existing fits are 
 | agriculture_pat | 4 — `class_04_*` | — (class dropped) | **delete `class_04_*`** |
 | agriculture_cuyo-pat | (new) | 2 — `class_02_*` | **fit** (only new fit needed) |
 | forest_pat | 9 — `class_09_*` | 8 — `class_08_*` | **rename** (do not refit) — `class_09` slot is now `forest-cerr_chaco` |
-| grassland_pat | 17 — `class_17_*` | 16 — `class_16_*` | **rename** after the running fit finishes (do not refit) — `class_17` slot is now `grassland-inund_chaco` |
+| grassland_pat | (old fit killed) | 16 — `class_16_*` | **REFIT on new design** (subsampled+checkpointed) — see "IMMEDIATE" above. Writes `class_16` directly. `class_17` slot is now `grassland-inund_chaco` |
 | shrubland_pat | 22 — `class_22_*` | 21 — `class_21_*` | **rename** (do not refit) — `class_22` slot is now `shrubland-closed_chaco` |
 
 Steps:
@@ -50,21 +118,18 @@ Steps:
 4. Rebuild `models/cv_metrics_v1.csv` (see "Fit the remaining classes" below). Then confirm
    the `class_NN` ↔ veg_fire_name mapping against `config/veg_fire_remap.csv`.
 
-**⏳ CURRENTLY RUNNING (as of 2026-06-17 ~15:30):** a `grassland_pat` fit
-(`02-model_fitting.R 1 grassland_pat`, started 08:17 — the heavy one, ~30+ GB).
-**It was launched BEFORE the remap-v2 regen, so it reads the OLD numbering and will write
-`class_17_*` (old grassland_pat code; new code is 16).** Let it finish, then **rename**
-it to code 16 like the other PAT classes (do not refit). Don't start another heavy fit
-alongside it.
+**⏳ NOTHING RUNNING (as of 2026-06-18):** the old `grassland_pat` fit was killed (see
+"IMMEDIATE" above). Next session, launch the new-design grassland_pat refit (writes
+`class_16`), then the other subsampled big classes.
 
-**▶ Models on disk are ALL under the OLD (pre-remap-v2) numbering.** `class_04` (agriculture_pat),
-`class_09` (forest_pat), `class_22` (shrubland_pat), and the in-progress `class_17`
-(grassland_pat) were fit before the code shift. Their *content* is still valid (the PAT
-classes' MB-class membership did not change in remap v2 — only the integer code moved), so
-they are **renamed**, not re-fit (rename the files + fix the `veg_fire` code column inside
-`cv_metrics`/`oof_predictions`). The class→code mapping is in the table above
-(forest_pat 9→8, grassland_pat 17→16,
-shrubland_pat 22→21; agriculture_pat 4 is dropped).
+**▶ Models on disk are under the OLD (pre-remap-v2) numbering, except grassland_pat (refit).**
+`class_04` (agriculture_pat), `class_09` (forest_pat), `class_22` (shrubland_pat) were fit
+before the code shift; their *content* is still valid (MB-class membership unchanged in remap
+v2 — only the integer code moved), so they are **renamed**, not re-fit (rename the files + fix
+the `veg_fire` code column inside `cv_metrics`/`oof_predictions`): forest_pat 9→8,
+shrubland_pat 22→21; agriculture_pat 4 is dropped. **grassland_pat is the exception** — its
+old fit was killed and it is **refit** on the new design (writes `class_16` directly, so no
+rename for it).
 
 **▶ Fit the remaining classes** (remap v2 validated; all 5 regions downloaded — BA includes
 fire_09 v2). **23 fittable classes**, all with usable K (`models/cv_feasibility_v1.csv`);
@@ -76,9 +141,11 @@ codes). Still to fit — every non-PAT class plus the merged `agriculture_cuyo-p
   `grassland_ba` (12), `grassland_chaco` (13), `grassland_cuyo` (14), `grassland_pampa` (15),
   `grassland-inund_chaco` (17); `pasture_ba` (18), `pasture_chaco` (19);
   `shrubland_cuyo-pampa` (20), `shrubland-closed_chaco` (22), `shrubland-open_chaco` (23).
-- Run one class at a time, heavy ones (large PAMPA/CHACO grasslands) with `FIT_CORES=2`
-  (or `1` if RAM is tight). `02-model_fitting.R` filters each class and `rm()`s the full
-  region table before fitting, so memory is lower than the old script.
+- Run one class at a time. Subsampled big classes (see "New fitting design"):
+  `grassland_pampa` → `FIT_CORES=2`; `forest-cerr_chaco`, `shrubland_cuyo-pampa`,
+  `grassland_pat` → `FIT_CORES=3–4`. All are checkpointed — re-run the same command to resume.
+  Example: `FIT_CORES=2 Rscript collection-01/workflow/02-model_fitting.R 1 grassland_pampa`.
+  `02-model_fitting.R` filters each class and `rm()`s the full region table before fitting.
 - Review each in `notebooks/model_fit_diagnostics.qmd` (it auto-discovers every fitted
   `class_*` and renders one section per class).
 - Once all `class_*_cv_metrics.csv` exist, rebuild the summary:
