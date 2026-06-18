@@ -20,14 +20,16 @@ remote control):**
 
 ```bash
 # from repo root, venv not needed for R
-FIT_CORES=3 Rscript collection-01/workflow/02-model_fitting.R 1 grassland_pat
+FIT_CORES=4 Rscript collection-01/workflow/02-model_fitting.R 1 grassland_pat
 ```
 
 This writes **`class_16_*` directly** (new remap code for grassland_pat) — so the old
 "rename class_17→16" step is **obsolete** for grassland (no class_17 will be produced).
 Expect ~357k obs (subsampled), 4 alphas, **per-alpha checkpoints** — if it dies, just re-run
 the **same command** and it resumes from the last finished alpha. With the old fit killed,
-~22 GB is free, so `FIT_CORES=3` (even 4) is safe at ~357k rows.
+~22 GB is free, so `FIT_CORES=4` is the pick at ~357k rows (~20 GB, 3 fold-waves for K=10;
+5 is faster but tighter on RAM). Checkpoints make an OOM recoverable (resume), so 5 is also
+safe to try and fall back from.
 
 ### New fitting design (`02-model_fitting.R`, rewritten 2026-06-18)
 
@@ -143,7 +145,7 @@ codes). Still to fit — every non-PAT class plus the merged `agriculture_cuyo-p
   `shrubland_cuyo-pampa` (20), `shrubland-closed_chaco` (22), `shrubland-open_chaco` (23).
 - Run one class at a time. Subsampled big classes (see "New fitting design"):
   `grassland_pampa` → `FIT_CORES=2`; `forest-cerr_chaco`, `shrubland_cuyo-pampa`,
-  `grassland_pat` → `FIT_CORES=3–4`. All are checkpointed — re-run the same command to resume.
+  `grassland_pat` → `FIT_CORES=4`. All are checkpointed — re-run the same command to resume.
   Example: `FIT_CORES=2 Rscript collection-01/workflow/02-model_fitting.R 1 grassland_pampa`.
   `02-model_fitting.R` filters each class and `rm()`s the full region table before fitting.
 - Review each in `notebooks/model_fit_diagnostics.qmd` (it auto-discovers every fitted
