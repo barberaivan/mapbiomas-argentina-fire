@@ -1,0 +1,2 @@
+veg_fire,veg_fire_name,regions,n_obs,n_pos,n_eff,K,n_terms,alpha,lambda_rule,lambda,lambda_min,lambda_1se,cv_deviance,cv_logloss,cv_brier,cv_auc,n_nonzero
+10,forest-inund-chaco,CHACO,121421,12570,121421,9,129,0.25,min,0.0110037663390658,0.0110037663390658,0.0597358760649452,0.178133635250227,0.0890668137224415,0.0235588081307771,0.980417403580454,51

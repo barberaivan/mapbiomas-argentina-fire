@@ -1,2 +1,2 @@
-veg_fire,veg_fire_name,regions,n_obs,n_pos,K,n_terms,alpha,lambda_rule,lambda,lambda_min,lambda_1se,cv_deviance,cv_logloss,cv_brier,cv_auc,n_nonzero
-9,forest_pat,PAT,246885,42824,10,427,0.25,1se,0.0343449911485879,0.00210737680993932,0.0343449911485879,0.231559633839779,0.115918167535817,0.0298857871675953,,72
+veg_fire,veg_fire_name,regions,n_obs,n_pos,n_eff,K,n_terms,alpha,lambda_rule,lambda,lambda_min,lambda_1se,cv_deviance,cv_logloss,cv_brier,cv_auc,n_nonzero
+9,forest-cerr_chaco,CHACO,700799,63692,700799,10,129,0.5,min,0.000446643908054563,0.000446643908054563,0.00748947216051877,0.186074167291476,0.0933947390513906,0.0202043120363368,0.950750958778734,93

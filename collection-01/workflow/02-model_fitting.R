@@ -32,7 +32,10 @@
 # FITTING (see the qmd's CV-tuning section): the slow convergence was numerical,
 #   not statistical. Full data (no subsampling), nlambda=50, lambda.min.ratio=1e-4,
 #   thresh=1e-4 (relaxed from the 1e-7 default — the real speed lever), alpha grid
-#   {0.25,0.5,0.75}, selected at lambda.min. No per-alpha checkpointing (fits are
+#   {0.25,0.5,0.75}, selected at lambda.min. Per-class starting tol (THRESH_START) +
+#   adaptive fallback: any alpha whose CV exceeds a wall-clock budget (FIT_TIMEOUT_SEC)
+#   is aborted and refit at tol ×5, looping up to THRESH_MAX (then unbounded) — self-
+#   detecting, so no hardcoded slow-class list. No per-alpha checkpointing (fits are
 #   fast). Cores per class are auto-sized to stay within a RAM budget.
 #
 # STRUCTURE (region exceptions stay contained):
@@ -72,7 +75,19 @@ ALPHAS       <- c(0.25, 0.5, 0.75)   # ridge (0) & lasso (1) dropped: never best
 LAMBDA_RULE  <- "min"                # "min" (best CV deviance — data-rich, near-MLE wanted) or "1se" (sparser)
 NLAMBDA          <- 50               # finer path warm-starts better; 50 is smooth enough (curves nearly linear)
 LAMBDA_MIN_RATIO <- 1e-4             # CV optimum sits near the path floor → go deep
-THRESH           <- 1e-4             # glmnet convergence tol (relaxed from 1e-7 default: the real speed lever on this ill-conditioned design)
+THRESH           <- 1e-4             # default glmnet convergence tol (relaxed from 1e-7 default: the real speed lever on this ill-conditioned design)
+# Per-class STARTING tol (keyed by veg_fire_name). Default THRESH (1e-4); classes we already
+# know crawl on this collinear design start looser so they don't burn a full budget first.
+THRESH_START     <- list(`shrubland_cuyo-pampa` = 5e-3)
+# Adaptive fallback: each alpha first tries its starting tol under a FIT_TIMEOUT_SEC wall-clock
+# budget. If a single alpha's cv.glmnet blows the budget (the "slow crawl"), its whole CV is
+# aborted and the alpha is refit at tol ×THRESH_RELAX_FACTOR — looping until it fits the budget
+# or reaches THRESH_MAX, where one final UNBOUNDED fit guarantees the class always completes.
+# Self-detecting, so an uncharacterized slow class is handled automatically (it just pays a few
+# budget cycles climbing from 1e-4 — add it to THRESH_START to skip that next time).
+THRESH_RELAX_FACTOR <- 5             # multiply tol by this on each timeout
+THRESH_MAX          <- 1e-2          # loosest tol; at the cap the fit runs unbounded (no timeout)
+FIT_TIMEOUT_SEC  <- as.numeric(Sys.getenv("FIT_TIMEOUT_SEC", unset = "600"))  # per-alpha wall-clock budget
 SEED         <- 1
 EPS          <- 1e-15
 # Cores for parallel CV folds are auto-sized per class to fit a RAM budget (this PC
@@ -265,23 +280,53 @@ fit_one_class <- function(sub, code, name, name2code, pure_neg) {
 
   to_prob <- function(v) if (all(v >= 0 & v <= 1, na.rm = TRUE)) v else plogis(v)  # link -> prob
 
+  # one cv.glmnet at a given convergence tol (all K folds in parallel + the full-data fit).
+  # tol is set via glmnet.control (passing thresh= to glmnet() directly is deprecated); it is
+  # global but harmless here since fits are sequential and every fit_cv re-sets it.
+  fit_cv <- function(th) {
+    glmnet.control(thresh = th)
+    cv.glmnet(x, y, family = "binomial", alpha = a, foldid = foldid, weights = wv,
+              nlambda = NLAMBDA, lambda.min.ratio = LAMBDA_MIN_RATIO,
+              type.measure = "deviance", keep = TRUE, parallel = TRUE)
+  }
+
+  # starting convergence tol for this class (per-class override, else the THRESH default)
+  th_start <- if (!is.null(THRESH_START[[name]])) THRESH_START[[name]] else THRESH
+
   # alpha grid: fit each cv.glmnet, keep ONLY the running-best alpha's heavy objects
   # (glmnet path + OOF), discard the rest. No checkpointing (fits are fast).
+  # Each alpha starts at th_start under a FIT_TIMEOUT_SEC budget; on timeout (collinear-design
+  # slow crawl) the whole CV is aborted and the alpha is refit at tol ×THRESH_RELAX_FACTOR,
+  # looping up to THRESH_MAX where one final UNBOUNDED fit guarantees completion. Self-detecting
+  # per alpha. (A relaxed alpha's cvm is slightly pessimistic → conservative in the cross-alpha
+  # comparison, never inflated.)
   tuning <- vector("list", length(ALPHAS)); best <- NULL
   for (j in seq_along(ALPHAS)) {
     a <- ALPHAS[j]
-    message(sprintf("  [%s] alpha %d/%d (=%.2f) — fitting cv.glmnet (%d obs x %d terms, K=%d, nlambda=%d) ...",
-                    tag, j, length(ALPHAS), a, nrow(x), ncol(x), K, NLAMBDA))
-    cvf  <- cv.glmnet(x, y, family = "binomial", alpha = a, foldid = foldid, weights = wv,
-                      nlambda = NLAMBDA, lambda.min.ratio = LAMBDA_MIN_RATIO,
-                      type.measure = "deviance", keep = TRUE, parallel = TRUE)
+    th_used <- th_start; cvf <- NULL
+    repeat {
+      bounded <- th_used < THRESH_MAX              # enforce the budget only while we can still relax
+      message(sprintf("  [%s] alpha %d/%d (=%.2f) — fitting cv.glmnet (%d obs x %d terms, K=%d, nlambda=%d, thresh=%.0e, %s) ...",
+                      tag, j, length(ALPHAS), a, nrow(x), ncol(x), K, NLAMBDA, th_used,
+                      if (bounded) sprintf("budget=%gs", FIT_TIMEOUT_SEC) else "UNBOUNDED"))
+      if (bounded) setTimeLimit(elapsed = FIT_TIMEOUT_SEC)
+      cvf <- tryCatch(fit_cv(th_used),
+                      error = function(e) if (grepl("elapsed time limit", conditionMessage(e))) NULL else stop(e))
+      if (bounded) setTimeLimit()                  # clear the budget before any fallback fit
+      if (!is.null(cvf)) break
+      th_next <- min(th_used * THRESH_RELAX_FACTOR, THRESH_MAX)
+      message(sprintf("  [%s] alpha %.2f exceeded %gs at thresh=%.0e — relaxing to thresh=%.0e%s",
+                      tag, a, FIT_TIMEOUT_SEC, th_used, th_next,
+                      if (th_next >= THRESH_MAX) " (cap; next try unbounded)" else ""))
+      th_used <- th_next
+    }
     imin <- match(cvf$lambda.min, cvf$lambda); i1se <- match(cvf$lambda.1se, cvf$lambda)
     isel <- if (LAMBDA_RULE == "1se") i1se else imin
-    tuning[[j]] <- data.table(alpha = a, lambda = cvf$lambda, cvm = cvf$cvm, cvsd = cvf$cvsd)
-    message(sprintf("  [%s] alpha %.2f done — lambda.min dev %.4f (idx %d/%d%s)", tag, a, cvf$cvm[imin],
+    tuning[[j]] <- data.table(alpha = a, lambda = cvf$lambda, cvm = cvf$cvm, cvsd = cvf$cvsd, thresh = th_used)
+    message(sprintf("  [%s] alpha %.2f done (thresh=%.0e) — lambda.min dev %.4f (idx %d/%d%s)", tag, a, th_used, cvf$cvm[imin],
                     imin, length(cvf$lambda), if (imin >= length(cvf$lambda)) ", AT FLOOR — inspect curve" else ""))
     if (is.null(best) || cvf$cvm[imin] < best$cvm_min) {
-      best <- list(alpha = a, K = K, cvm_min = cvf$cvm[imin], cvm_1se = cvf$cvm[i1se], cvm_sel = cvf$cvm[isel],
+      best <- list(alpha = a, K = K, thresh = th_used, cvm_min = cvf$cvm[imin], cvm_1se = cvf$cvm[i1se], cvm_sel = cvf$cvm[isel],
                    lambda_min = cvf$lambda.min, lambda_1se = cvf$lambda.1se, sel_lambda = cvf$lambda[isel],
                    glmnet_fit = cvf$glmnet.fit, oof_sel = to_prob(cvf$fit.preval[, isel]))
     }
@@ -339,7 +384,7 @@ fit_one_class <- function(sub, code, name, name2code, pure_neg) {
 
   m <- data.table(veg_fire = code, veg_fire_name = name, regions = paste(sort(unique(sub$region)), collapse = "+"),
              n_obs = nrow(sub), n_pos = sum(y), n_eff = sum(wv), K = K, n_terms = length(keep),
-             alpha = r$alpha, lambda_rule = LAMBDA_RULE, lambda = sel_lambda,
+             alpha = r$alpha, thresh = r$thresh, lambda_rule = LAMBDA_RULE, lambda = sel_lambda,
              lambda_min = r$lambda_min, lambda_1se = r$lambda_1se,
              cv_deviance = r$cvm_sel, cv_logloss = log_loss(y, p, wv),
              cv_brier = brier(y, p, wv), cv_auc = auc(y, p),
@@ -352,14 +397,18 @@ fit_one_class <- function(sub, code, name, name2code, pure_neg) {
 # ── main: resolve regions per class, load only what's needed, fit ─────────────
 main <- function() {
   stopifnot(file.exists(remap_csv))
-  glmnet.control(thresh = THRESH)                   # set convergence tol globally (avoids per-call deprecation)
+  # thresh is passed per cv.glmnet call (see fit_cv in fit_one_class), not via glmnet.control
   on.exit(stopImplicitCluster(), add = TRUE)
   remap <- fread(remap_csv)
   classes   <- unique(remap[fittable == TRUE, .(veg_fire, veg_fire_name)])[order(veg_fire)]
   name2code <- setNames(classes$veg_fire, classes$veg_fire_name)
   if (length(CLASS_FILTER)) classes <- classes[veg_fire_name %in% CLASS_FILTER]
-  message(sprintf("Design: %d terms (+intercept) | alphas {%s} | nlambda=%d, lambda.min.ratio=%.0e, thresh=%.0e | lambda.%s",
-                  sum(BLOCKS), paste(ALPHAS, collapse = ","), NLAMBDA, LAMBDA_MIN_RATIO, THRESH, LAMBDA_RULE))
+  message(sprintf("Design: %d terms (+intercept) | alphas {%s} | nlambda=%d, lambda.min.ratio=%.0e | lambda.%s",
+                  sum(BLOCKS), paste(ALPHAS, collapse = ","), NLAMBDA, LAMBDA_MIN_RATIO, LAMBDA_RULE))
+  message(sprintf("  thresh=%.0e/alpha (start), ×%g on timeout up to %.0e; budget=%gs%s",
+                  THRESH, THRESH_RELAX_FACTOR, THRESH_MAX, FIT_TIMEOUT_SEC,
+                  if (length(THRESH_START)) sprintf(" | start overrides: %s",
+                    paste(sprintf("%s=%.0e", names(THRESH_START), unlist(THRESH_START)), collapse = ", ")) else ""))
 
   avail <- REGIONS_ALL[file.exists(vapply(REGIONS_ALL, region_csv, character(1)))]
   message(sprintf("Available region tables (v%s): %s", VERSION,

@@ -1,0 +1,2 @@
+veg_fire,veg_fire_name,regions,n_obs,n_pos,n_eff,K,n_terms,alpha,lambda_rule,lambda,lambda_min,lambda_1se,cv_deviance,cv_logloss,cv_brier,cv_auc,n_nonzero
+14,grassland_cuyo,CUYO,145918,13032,145918,10,129,0.75,min,0.00438693349775838,0.00438693349775838,0.0287400541142527,0.240558462711435,0.120297059243467,0.0304861058676891,0.949019416230311,34

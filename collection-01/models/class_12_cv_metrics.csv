@@ -1,0 +1,2 @@
+veg_fire,veg_fire_name,regions,n_obs,n_pos,n_eff,K,n_terms,alpha,lambda_rule,lambda,lambda_min,lambda_1se,cv_deviance,cv_logloss,cv_brier,cv_auc,n_nonzero
+12,grassland_ba,BA,163945,12518,163945,6,129,0.5,min,0.00626976789709633,0.00626976789709633,0.324741040676671,0.341126708281559,0.17056334117013,0.0370954101410037,0.811705734403306,32

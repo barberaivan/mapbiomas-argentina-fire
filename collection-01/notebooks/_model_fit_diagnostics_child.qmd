@@ -52,15 +52,13 @@ ggplot(tuning, aes(log(lambda), cvm, color = factor(alpha))) +
 
 Nonzero coefficients by block (the GEE predictor blocks) and the strongest terms.
 
-Coefficients are on the **original feature scale** — `glmnet` standardizes each
-predictor internally (`standardize = TRUE`) but back-transforms the returned
-coefficients to the raw scale. A clean cross-term comparison would need them on
-the *standardized* scale (multiply each $\beta_j$ by $\mathrm{sd}(x_j)$, i.e. the
-effect of a 1-SD change), but the per-feature SDs are not exported by
-`02-model_fitting.R` and recovering them would mean rebuilding the full 427-column
-design matrix from the region tables here. That is deliberately left out — read the
-magnitudes below as raw-scale, so a large coefficient on a small-variance term need
-not mean a large effect.
+The raw-scale coefficients (`coefficient`) are on the **original feature scale** —
+`glmnet` standardizes internally but back-transforms the returned coefficients to the
+raw deployed-product scale. For a fair cross-term comparison `02-model_fitting.R` also
+exports `coef_std` = $\beta_j \cdot \mathrm{sd}(x_j)$ (the effect of a 1-SD change in
+the deployed column), so a large raw coefficient on a small-variance term no longer
+reads as a large effect. **The top-terms plot below uses `coef_std`** (standardized
+effect size); the per-block count uses raw nonzero status (identical either way).
 
 ```{r}
 #| fig-width: 7
@@ -81,12 +79,12 @@ coefs |>
 #| fig-height: 5
 coefs |>
   filter(block != "(intercept)", coefficient != 0) |>
-  slice_max(abs(coefficient), n = 25) |>
-  mutate(term = fct_reorder(term, coefficient)) |>
-  ggplot(aes(coefficient, term, fill = block)) +
+  slice_max(abs(coef_std), n = 25) |>
+  mutate(term = fct_reorder(term, coef_std)) |>
+  ggplot(aes(coef_std, term, fill = block)) +
   geom_col() +
-  labs(x = "coefficient (original scale)", y = NULL,
-       title = sprintf("%s — top 25 terms by |coefficient|", cls))
+  labs(x = "standardized coefficient (|β|·SD, effect of a 1-SD change)", y = NULL,
+       title = sprintf("%s — top 25 terms by |standardized coefficient|", cls))
 ```
 
 ## Calibration (out-of-fold)
