@@ -347,7 +347,7 @@ Key files:
 
 **LR fitting (steps 02+)**
 - Fitted locally in R using `glmnet` for regularization (not Random Forest, not in GEE).
-- Predictor set: the **canonical-team set** (the agreed-upon term structure), described in `collection-01/notebooks/logistic_regression_terms.qmd`.
+- Predictor set: the design story (canonical-team set → reduced 129-term design) is in `collection-01/notebooks/logistic_regression_design.qmd`.
 - Fire-veg classes (the land-cover remap that defines the per-region fire-classes) are defined in the [Google Sheets table](https://docs.google.com/spreadsheets/d/17ZShb8D0JaJw4nLvBDzt19xF6Fdg8lGHYs4Jogh0X1A/edit?gid=1376068841#gid=1376068841) — see the **MapBiomas land cover remap** decision above.
 - One LR per region × fire-class.
 - The exported training asset is the canonical training set; a large CSV download (all fires together) is used to fit locally.
@@ -358,10 +358,9 @@ All notebooks are Quarto-R (`.qmd`) in `collection-01/notebooks/`. Render with `
 
 | Notebook | What's in it |
 |----------|-------------|
-| `algo-fuego.qmd` | Flowchart of the full fire-mapping algorithm (Mermaid/DOT). No analysis code. |
 | `land_cover_remap.qmd` | Evaluates the **current canonical remap** (`config/veg_fire_remap.csv`) against the full v1 observations. (Supersedes the original proposal-1-vs-2 remap notebook, now deleted.) Two tables: (1) mb_class_raw × region with area, obs, burned/unburned, fires+, per-fire robustness, and proposed veg_fire name/code; (2) proposed remap summary (one row per veg_fire class) matching `cv_feasibility_v1.csv` columns (cross-checked against it — exact match). Plus an unmapped-classes table and a discussion section. As of the remap v2 resolution (2026-06-17): 23 fittable classes, 0 unmapped obs, and the former `agriculture_cuyo`/CUYO-mb19 gaps closed via `agriculture_cuyo-pat`. Low-K (<10 fires) classes are accepted (not flagged). |
 | `data_collection_stats.qmd` | Stats on the field data collection effort: time, authors, points and observations per fire. Requires `fires_table_stats.csv` — if obs CSVs changed, run `scripts/make_fires_table_stats.R` first. |
-| `logistic_regression_terms.qmd` | Design of the LR term structure for the obs-level burn-probability model. Covers which features and interactions to include. |
+| `logistic_regression_design.qmd` | Full design story of the obs-level burn-probability LR: the canonical-team 427-term set → collinearity/convergence diagnosis → reduction protocol (correlation pruning, exact-linear-combo + VIF/eigenvalue analysis) to the final **129-term** elastic-net design, plus fitting config and the GEE block-multiply evaluation. Renders on the full 5.72M-obs training data; matches `workflow/02-model_fitting.R` (source of truth). Merges the former `logistic_regression_terms.qmd` + `predictors_terms_correlations.qmd`. |
 | `logistic_regression_feature_engineering_ideas.qmd` | Exploratory ideas for feature engineering (non-linearities, interactions) for the LR model. Conceptual, not production code. |
 | `burn_prob_ts_metrics.qmd` | Explores summary metrics derived from the intra-annual burn-probability time series. Compares rolling means, forward differences, and other statistics on synthetic signals. |
 

@@ -17,7 +17,7 @@
 #
 # Run scripts/cv_feasibility_report.py FIRST per region to confirm usable K.
 #
-# DESIGN (reduced 129-term set; see notebooks/predictors_terms_correlations.qmd):
+# DESIGN (reduced 129-term set; see notebooks/logistic_regression_design.qmd):
 #   The old canonical 427-term design was highly collinear and slow to fit. It is
 #   reduced to 129 terms (+ intercept): 11 focal mains (MIRBI dropped — exact
 #   linear combo of SWIR1/SWIR2), 32 prev-year mains (blue/red dropped — visible
@@ -122,7 +122,7 @@ SAMPLE_RULES <- list(
   grassland_pat = list(ash_frac = 0.20)
 )
 
-# ── reduced design (129 terms; notebooks/predictors_terms_correlations.qmd) ────
+# ── reduced design (129 terms; notebooks/logistic_regression_design.qmd) ────
 FOCAL     <- c("BLUE","GREEN","RED","NIR","SWIR1","SWIR2","NBR","NBR2","NDVI","NDMI","NDSI")  # 11 (no MIRBI)
 PREV_VARS <- c("green","nir","swir1","swir2","ndvi","ndwi","npv","ndfi")                      # 8 (no blue/red)
 SUMM      <- c(med = "median", wet = "median_wet", dry = "median_dry", sd = "stdDev")          # 4

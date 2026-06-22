@@ -129,11 +129,10 @@ Rscript collection-01/scripts/make_fires_table_stats.R
 
 | Notebook | Purpose | Dependencies |
 |----------|---------|--------------|
-| `algo-fuego.qmd` | Algorithm flowchart (Mermaid/DOT) | — |
 | `land_cover_remap.qmd` | Validate the canonical MB → fire-class remap against full obs; CV feasibility per class | training obs CSVs, `config/veg_fire_remap.csv`, Google Sheets |
 | `model_fit_diagnostics.qmd` | Per-class fit diagnostics (tuning, coefficients, calibration, OOF, omission/commission, by-fire) | `models/class_*` outputs (+ `_model_fit_diagnostics_child.qmd` template) |
 | `data_collection_stats.qmd` | Field collection stats (time, authors, points, obs per fire) | `fires_table_stats.csv` → run `make_fires_table_stats.R` first |
-| `logistic_regression_terms.qmd` | LR model term design for obs-level burn probability | — |
+| `logistic_regression_design.qmd` | Obs-level burn-probability LR design: canonical-team 427-term set → reduction protocol → final 129-term elastic-net design + fitting config | full `data/training_observations_*_v1.csv` |
 | `logistic_regression_feature_engineering_ideas.qmd` | Feature engineering ideas for the LR model | — |
 | `burn_prob_ts_metrics.qmd` | Exploration of burn-probability time-series summary metrics | — |
 | `categorical_vs_bernoulli.qmd` | Categorical vs Bernoulli formulation notes | — |

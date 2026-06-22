@@ -58,7 +58,7 @@ OPTICAL_BANDS = ["BLUE", "GREEN", "RED", "NIR", "SWIR1", "SWIR2"]
 FIRE_INDICES  = ["NBR", "NBR2", "MIRBI", "NDVI"]
 TC_INDICES    = ["TCB", "TCG", "TCW"]        # Tasseled-cap (Baig et al. 2014, OLI coefs)
 EXTRA_INDICES = ["NDMI", "NDSI", "SAVI", "NDWI"]
-# Canonical-team additions (logistic_regression_terms.qmd §"Canonical team").
+# Canonical-team additions (logistic_regression_design.qmd §"Spectral feature equations").
 # AFRI is the 2.1 µm / 0.5-coefficient variant (Karnieli et al. 2001, Eq. 11a).
 CANONICAL_TEAM_INDICES = ["AFRI", "kNDVI", "EVI2", "NIRv"]
 ALL_FOCAL_FEATURES = (

@@ -115,7 +115,7 @@ training CSVs carry MIRBI etc.; the design uses only the 11 FOCAL + 32 PREV colu
 
 - `build_design()` builds the **reduced 129-term** design (6 blocks: 11 focal mains + 32
   prev-year mains + 22 focal×focal + 10 sameband + 22 cross-idx + 32 cross-band; see
-  `notebooks/predictors_terms_correlations.qmd`). Interactions are fit on mean-centered
+  `notebooks/logistic_regression_design.qmd`). Interactions are fit on mean-centered
   factors, then the centering is folded back so the exported coefficients act on raw products.
 - All region/class sample exceptions live in one `SAMPLE_RULES` table; the generic
   fold/CV/fit code never branches on region. Current PAT rules:
