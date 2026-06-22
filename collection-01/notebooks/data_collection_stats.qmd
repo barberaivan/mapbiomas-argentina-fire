@@ -1,6 +1,8 @@
 ---
 title: "Data collection stats"
-format: html
+format:
+  html:
+    embed-resources: true
 execute:
   warning: false
   message: false

@@ -2,7 +2,7 @@
 title: "Burn probability time-series metrics"
 format:
   html:
-    self-contained: true
+    embed-resources: true
     code-fold: true
 execute:
   warning: false

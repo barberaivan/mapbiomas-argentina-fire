@@ -5,6 +5,7 @@ author: ""
 date: ""
 format:
   html:
+    embed-resources: true
     toc: true
     toc-depth: 3
 ---
