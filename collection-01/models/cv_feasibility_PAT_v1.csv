@@ -1,7 +1,0 @@
-region,veg_fire_name,veg_fire,fittable,n_obs,n_pos,n_neg,n_fires_with_pos,realized_K,mean_pos_per_fold,pct_neg_from_pure_neg_fires
-PAT,grassland_pat,17,True,819566,92651,726915,45,10,9265.1,31.9
-PAT,forest_pat,9,True,229233,42824,186409,19,10,4282.4,0.6
-PAT,shrubland_pat,22,True,189039,42320,146719,40,10,4232.0,12.0
-PAT,agriculture_pat,4,True,20069,2506,17563,16,10,250.6,4.5
-PAT,non-burnable,25,False,11434,4089,7345,10,0,0,72.2
-PAT,non-observed,26,False,375,162,213,4,0,0,32.9

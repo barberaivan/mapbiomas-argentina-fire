@@ -1,6 +1,7 @@
-# The repo-root .gitignore drops all *.csv. Re-include the small, non-regenerable-cheaply
-# model artifacts we DO want versioned (coefficients, metrics, tuning, feasibility)...
+# The repo-root .gitignore drops all *.csv and *.rds. Re-include the small,
+# non-regenerable-cheaply model artifacts we DO want versioned (coefficients, metrics,
+# tuning, feasibility, and the lightweight glmnet fits)...
 !*.csv
-# ...but keep the large per-obs predictions and binary fits out of git.
+!*.rds
+# ...but keep the large per-obs predictions out of git.
 *_oof_predictions.csv
-*.rds
