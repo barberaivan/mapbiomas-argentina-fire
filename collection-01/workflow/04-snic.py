@@ -1,7 +1,7 @@
 """
-collection-01/workflow/05-spatial_segmentation_snic.py
+collection-01/workflow/04-snic.py
 
-SNIC region-growing segmentation on annual burn probability layers (step 04).
+SNIC region-growing segmentation on the annual burn-probability metrics (step 03).
 
-TODO: implement after step 04.
+TODO: implement after step 03.
 """
