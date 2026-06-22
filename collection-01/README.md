@@ -36,6 +36,7 @@ Previous-year MapBiomas features (40 mosaic bands — optical + NDVI/NDWI/NPV/ND
 
 ```
 collection-01/
+├── docs/                   # Per-workflow-step development notes (NN-*.md) — start here for design
 ├── utils/
 │   ├── constants.py        # All paths, feature lists, MB reclass table, LR terms
 │   └── functions.py        # GEE helpers: Landsat preprocessing, indices, MB sampling
@@ -162,5 +163,5 @@ Export status across regions: `python collection-01/scripts/status.py`.
 | Step | Status |
 |------|--------|
 | 01 — training data export | Complete for all 5 regions (BA, CHACO, PAMPA, CUYO, PAT), v1. |
-| 02 — model fitting (R, glmnet) | Implemented. PAT classes fitted; remaining classes pending (see CLAUDE.md work order). |
+| 02 — model fitting (R, glmnet) | All 23 `veg_fire` classes fitted (v1); see `models/cv_metrics_v1.csv`. |
 | 03–08 — prediction pipeline | Stubs |
