@@ -40,13 +40,11 @@ cd mapbiomas-arg-fire
 
 Download it once and remember where you put it.
 
-- **Google Drive** (anyone): open the store folder →
-  **<https://drive.google.com/drive/folders/1hmWZWkX1iHcGAGvqtv-5JSynvLnPx7wX>** →
-  download it. Your browser saves it as a `.zip`; unzip it somewhere stable (e.g. your home
-  folder). You should end up with a folder named **`mapbiomas-arg-fire-store`** containing
-  `collection-00/` and `collection-01/` inside.
-- **MapBiomas Argentina team:** if you use Insync, the store is already synced to your machine
-  (typically `~/Insync/MapBiomas/mapbiomas-arg-fire-store`) — no download needed.
+**Google Drive** (anyone): open the store folder →
+**<https://drive.google.com/drive/folders/1hmWZWkX1iHcGAGvqtv-5JSynvLnPx7wX>** →
+download it. Your browser saves it as a `.zip`; unzip it somewhere stable (e.g. your home
+folder). You should end up with a folder named **`mapbiomas-arg-fire-store`** containing
+`collection-00/` and `collection-01/` inside.
 
 ### 3. Link the store into the repo
 
