@@ -38,8 +38,11 @@ Other documentation:
 
 ## Development environment
 
-- **Python venv**: `/home/ivan/.venvs/gee` — always use `/home/ivan/.venvs/gee/bin/python`
-  for collection-01 scripts. Never create a new venv for this repo.
+- **Python interpreter**: run collection-01 scripts with `$PYTHON` (e.g. `$PYTHON
+  collection-01/workflow/01-training_data_export.py …`). `$PYTHON` is machine-local — set by
+  `./setup.sh /path/to/store /path/to/venv/bin/python`, which records it in `.local-paths`
+  (your shell) and `.claude/settings.local.json` (Claude Code's Bash). Use the project's GEE
+  venv; never create a new venv for this repo.
 - **GEE project**: `mapbiomas-fire-485203` (hardcoded in `collection-01/utils/constants.py`).
 - **Run scripts from the repo root**, not from inside `collection-01/` — scripts add
   `collection-01/` to `sys.path` at startup.
@@ -100,7 +103,7 @@ For local processing over ~15 minutes, use `tmux` so the run survives session cl
 
 ```bash
 tmux new-session -d -s <name> \
-  '/home/ivan/.venvs/gee/bin/python -u <script> [args] 2>&1 | tee <logfile>'
+  '$PYTHON -u <script> [args] 2>&1 | tee <logfile>'
 ```
 
 Reattach with `tmux attach -t <name>`; detach with `Ctrl+B D`. If unsure whether a run is

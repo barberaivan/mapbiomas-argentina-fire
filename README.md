@@ -48,14 +48,25 @@ folder). You should end up with a folder named **`mapbiomas-arg-fire-store`** co
 
 ### 3. Link the store into the repo
 
-From the repo root, run `setup.sh` **once**, giving it the path to the store you just got:
+From the repo root, run `setup.sh` **once**, giving it the path to the store you just got and —
+optionally — the path to your GEE Python interpreter:
 
 ```bash
+# store only (Python falls back to system `python3`)
 ./setup.sh /full/path/to/mapbiomas-arg-fire-store
+
+# store + the GEE venv you run pipeline scripts with (recommended)
+./setup.sh /full/path/to/mapbiomas-arg-fire-store /full/path/to/venv/bin/python
 ```
 
-That's it. The script creates the symlinks and remembers the path (in a local, gitignored
+That's it. The script creates the symlinks and remembers both paths (in a local, gitignored
 `.local-paths` file), so any later re-run is just `./setup.sh` with no argument.
+
+> **Why give it the Python path?** Each machine's venv lives somewhere different, so the docs
+> never hardcode it — they say "run with `$PYTHON`". `setup.sh` records your interpreter as
+> `$PYTHON` in `.local-paths` (for your shell — `source .local-paths`) **and** in
+> `.claude/settings.local.json` (so Claude Code's Bash uses the same one). Both files are
+> gitignored, so two machines can each point `$PYTHON` at their own venv with nothing committed.
 
 To confirm it worked:
 

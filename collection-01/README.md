@@ -72,17 +72,19 @@ for the full setup.** Once linked, everything below works against the symlinked 
 
 ## Running the pipeline
 
-Run all scripts from the **repo root**.
+Run all scripts from the **repo root**. Commands below invoke Python as **`$PYTHON`** — the
+project's GEE venv, configured per-machine by `setup.sh` (see the repo-root README). To use it
+in your own terminal, `source .local-paths` first (or run `./setup.sh` once).
 
 ### Step 01 — Export training data
 
 ```bash
 # Test on one fire first, review the asset schema in the GEE Code Editor
-/home/ivan/.venvs/gee/bin/python collection-01/workflow/01-training_data_export.py \
+$PYTHON collection-01/workflow/01-training_data_export.py \
   --region PAT --version 1 --test-fire fire_32
 
 # Full region — submits one GEE task per fire in parallel
-/home/ivan/.venvs/gee/bin/python collection-01/workflow/01-training_data_export.py \
+$PYTHON collection-01/workflow/01-training_data_export.py \
   --region PAT --version 1
 ```
 
@@ -94,11 +96,11 @@ A JSON run log is written to `workflow/01-training_data_export/run_{region}_v{ve
 
 ```bash
 # Check GEE export status across all regions (or one)
-/home/ivan/.venvs/gee/bin/python collection-01/scripts/status.py
-/home/ivan/.venvs/gee/bin/python collection-01/scripts/status.py --region PAT
+$PYTHON collection-01/scripts/status.py
+$PYTHON collection-01/scripts/status.py --region PAT
 
 # Download completed training observations to collection-01/data/ as a local CSV
-/home/ivan/.venvs/gee/bin/python collection-01/scripts/download_observations.py --region PAT --version 1
+$PYTHON collection-01/scripts/download_observations.py --region PAT --version 1
 ```
 
 ### Step 02 — Model fitting (R)
@@ -110,7 +112,7 @@ all available classes or a named subset. Outputs land in `models/` (see `models/
 
 ```bash
 # Pre-flight: confirm each class has enough positive-bearing fires for grouped CV
-/home/ivan/.venvs/gee/bin/python collection-01/scripts/cv_feasibility_report.py --version 1
+$PYTHON collection-01/scripts/cv_feasibility_report.py --version 1
 
 # Fit all fittable classes whose region data is available...
 Rscript collection-01/workflow/02-model_fitting.R 1

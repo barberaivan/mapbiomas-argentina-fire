@@ -25,7 +25,7 @@ lives in the notebook; this note is the operational map.
 
 ```bash
 # pre-flight: confirm each class has enough positive-bearing fires for grouped CV
-/home/ivan/.venvs/gee/bin/python collection-01/scripts/cv_feasibility_report.py --version 1
+$PYTHON collection-01/scripts/cv_feasibility_report.py --version 1
 
 # fit all fittable classes whose region data is downloaded ...
 Rscript collection-01/workflow/02-model_fitting.R 1
