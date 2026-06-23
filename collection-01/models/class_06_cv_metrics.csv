@@ -1,2 +1,0 @@
-veg_fire,veg_fire_name,regions,n_obs,n_pos,n_eff,K,n_terms,alpha,lambda_rule,lambda,lambda_min,lambda_1se,cv_deviance,cv_logloss,cv_brier,cv_auc,n_nonzero
-6,forest_cuyo,CUYO,61799,7977,61799,10,129,0.75,min,0.00271312988589294,0.00271312988589294,0.0964919300740362,0.257611193921099,0.128805570152961,0.0301407467780035,0.944113368146643,51

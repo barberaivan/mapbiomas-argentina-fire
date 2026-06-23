@@ -1,2 +1,0 @@
-veg_fire,veg_fire_name,regions,n_obs,n_pos,n_eff,K,n_terms,alpha,lambda_rule,lambda,lambda_min,lambda_1se,cv_deviance,cv_logloss,cv_brier,cv_auc,n_nonzero
-13,grassland_chaco,CHACO,271665,46409,271665,10,129,0.5,min,0.00217973835977538,0.00217973835977538,0.348727342134644,0.688681808926476,0.345823577460824,0.0816066705960816,0.844456715696428,72

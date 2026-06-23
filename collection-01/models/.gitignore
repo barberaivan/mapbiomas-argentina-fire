@@ -1,7 +1,5 @@
-# The repo-root .gitignore drops all *.csv and *.rds. Re-include the small,
-# non-regenerable-cheaply model artifacts we DO want versioned (coefficients, metrics,
-# tuning, feasibility, and the lightweight glmnet fits)...
-!*.csv
-!*.rds
-# ...but keep the large per-obs predictions out of git.
-*_oof_predictions.csv
+# The repo-root .gitignore drops all *.csv and *.rds. Re-include ONLY the coefficient
+# exports — the small, terminal deliverable consumed by GEE prediction. Everything else
+# heavy (fits, cv_metrics, tuning, oof predictions, prediction_plots) now lives in
+# ../models-store/ (the Insync-synced store, symlinked in by setup.sh).
+!*_coefficients.csv

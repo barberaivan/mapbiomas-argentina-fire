@@ -1,2 +1,0 @@
-veg_fire,veg_fire_name,regions,n_obs,n_pos,n_eff,K,n_terms,alpha,thresh,lambda_rule,lambda,lambda_min,lambda_1se,cv_deviance,cv_logloss,cv_brier,cv_auc,n_nonzero
-20,shrubland_cuyo-pampa,CUYO+PAMPA,554106,57731,554106,10,129,0.75,0.005,min,0.00564103760165462,0.00564103760165462,0.0649506474197262,0.257356254227602,0.128946356847491,0.0254112682945732,0.911429670623793,40

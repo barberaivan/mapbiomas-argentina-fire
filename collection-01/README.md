@@ -41,7 +41,8 @@ collection-01/
 │   ├── constants.py        # All paths, feature lists, MB reclass table, LR terms
 │   └── functions.py        # GEE helpers: Landsat preprocessing, indices, MB sampling
 ├── config/                 # veg_fire_remap.csv — canonical MB→fire-class remap (source of truth)
-├── models/                 # Fitted model outputs (coefficients, CV metrics, tuning); see models/README.md
+├── models/                 # Tracked: *_coefficients.csv (the GEE deliverable) + README; see models/README.md
+├── models-store/           # symlink → Insync store (gitignored): heavy fits, CV metrics, tuning, OOF preds
 ├── workflow/               # Numbered pipeline steps (mixed Python + R)
 │   ├── 01-training_data_export.py   # Export training data (one GEE task per fire)
 │   ├── 02-model_fitting.R           # Fit LR per veg_fire class (R, glmnet)
@@ -55,8 +56,17 @@ collection-01/
 │   └── make_fires_table_stats.R           # Build fires_table_stats.csv from xlsx + obs CSVs
 ├── notebooks/              # Quarto-R (.qmd) exploratory analyses and decisions
 ├── samples/                # ARCHIVE — JS templates from interactive point collection
-└── data/                   # gitignored — local downloads and scratch files
+└── data/                   # symlink → Insync store (gitignored): local downloads and training inputs
 ```
+
+---
+
+## First-time setup (heavy data lives outside git)
+
+Training inputs (`data/`) and heavy model outputs (`models-store/`) are **not** in git — they
+live in the Insync/Drive-synced `mapbiomas-arg-fire-store` folder, symlinked into the repo by
+`setup.sh`. **See the repo-root [README — "Getting started"](../README.md#getting-started-first-time-setup)
+for the full setup.** Once linked, everything below works against the symlinked paths transparently.
 
 ---
 

@@ -5,8 +5,16 @@
 .Rhistory
 .Rproj.user/
 
-# Downloaded / derived data (large files, not for version control)
-collection-01/data/
+# Heavy data/model artifacts live outside git in an Insync-synced "-store" folder,
+# symlinked back into the repo by setup.sh. Ignore the symlinks by their bare names
+# (a trailing-slash pattern won't match a symlink).
+collection-00/models_fit/data
+collection-00/models_fit/exports
+collection-01/data
+collection-01/models-store
+
+# Local machine-specific store location (consumed by setup.sh)
+.local-paths
 
 # Temporary files
 *.tmp

@@ -1,2 +1,0 @@
-veg_fire,veg_fire_name,regions,n_obs,n_pos,n_eff,K,n_terms,alpha,lambda_rule,lambda,lambda_min,lambda_1se,cv_deviance,cv_logloss,cv_brier,cv_auc,n_nonzero
-1,agriculture_chaco,CHACO,65620,8517,65620,10,129,0.75,min,0.000141567967518034,0.000141567967518034,0.00607600409927449,0.372183838541927,0.186655376145867,0.0464114385007819,0.95006651958339,111

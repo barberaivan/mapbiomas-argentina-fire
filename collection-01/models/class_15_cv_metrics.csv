@@ -1,2 +1,0 @@
-veg_fire,veg_fire_name,regions,n_obs,n_pos,n_eff,K,n_terms,alpha,lambda_rule,lambda,lambda_min,lambda_1se,cv_deviance,cv_logloss,cv_brier,cv_auc,n_nonzero
-15,grassland_pampa,PAMPA,1177881,117325,1177881,10,129,0.25,min,0.000553834523686552,0.000553834523686552,0.011207338086849,0.136971832180472,0.0685647190405031,0.0166443710613617,0.980087669343679,98

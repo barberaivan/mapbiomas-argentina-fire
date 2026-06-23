@@ -20,18 +20,19 @@ library(tidyverse)
 library(scales)
 library(knitr)
 
-models_dir <- "../models"                        # notebook runs from collection-01/notebooks/
+models_dir <- "../models"                        # notebook runs from collection-01/notebooks/; tracked coefficients
+store_dir  <- "../models-store"                   # symlink to the Insync store; heavy artifacts (cv_metrics/tuning/oof/fit)
 theme_set(theme_minimal(base_size = 12))
 block_lvls <- c("focal", "prev", "pairs", "sameband", "cross_idx", "cross_band")
 
 # Discover every fitted class from its per-class cv_metrics sidecar, ordered by code.
-metric_files <- Sys.glob(file.path(models_dir, "class_*_cv_metrics.csv"))
+metric_files <- Sys.glob(file.path(store_dir, "class_*_cv_metrics.csv"))
 codes <- sort(as.integer(sub(".*class_0*(\\d+)_cv_metrics\\.csv$", "\\1", metric_files)))
 stopifnot(length(codes) > 0)
 ```
 
 This report renders one top-level section per **fitted veg_fire class** (discovered
-from `models/class_*_cv_metrics.csv`), each with the same subsections: summary,
+from `models-store/class_*_cv_metrics.csv`), each with the same subsections: summary,
 elastic-net tuning, coefficients, calibration, OOF probability distribution, and a
 by-fire breakdown. The per-class plotting code lives in the child template
 `_model_fit_diagnostics_child.qmd`. Currently fitted: **`r length(codes)`** class(es).
@@ -40,10 +41,10 @@ by-fire breakdown. The per-class plotting code lives in the child template
 out <- character()
 for (CLASS_CODE in codes) {
   tag <- sprintf("class_%02d", CLASS_CODE)
-  rd  <- function(suffix) fread(file.path(models_dir, sprintf("%s_%s", tag, suffix)))
+  rd  <- function(suffix) fread(file.path(store_dir, sprintf("%s_%s", tag, suffix)))
   metrics <- rd("cv_metrics.csv")
   tuning  <- rd("tuning.csv")
-  coefs   <- rd("coefficients.csv")
+  coefs   <- fread(file.path(models_dir, sprintf("%s_coefficients.csv", tag)))  # tracked, in models/
   oof     <- rd("oof_predictions.csv")
   cls     <- metrics$veg_fire_name[1]
   out <- c(out, knitr::knit_child("_model_fit_diagnostics_child.qmd",
