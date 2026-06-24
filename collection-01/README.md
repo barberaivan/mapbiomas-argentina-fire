@@ -56,7 +56,7 @@ collection-01/
 │   ├── make_fires_table_stats.R           # Build fires_table_stats.csv from xlsx + obs CSVs
 │   ├── ts_predict_functions.R             # design_raw() + predict_class(): RAW-scale prediction from a class_NN_fit.rds
 │   ├── ts_plot_cache.R                    # Build models-store/ts_plot_cache_v1.rds (in-sample p_pred + n5-smoothed prob, every fitted class)
-│   ├── ts_plot_functions.R                # Shared plot_fire_panel() (NBR/NBR2/smoothed p, Burned-over-Unburned); sourced below and by the notebook
+│   ├── ts_plot_functions.R                # Shared plot_fire_panel() (NBR/NBR2/raw p/smoothed p, Burned-over-Unburned); sourced below and by the notebook
 │   └── ts_plot_by_fire.R                  # Driver: one panel per fire (pooled across classes) -> models-store/prediction_plots/{region}/region_fireNN.png
 ├── notebooks/              # Quarto-R (.qmd) exploratory analyses and decisions
 ├── samples/                # ARCHIVE — JS templates from interactive point collection
@@ -144,8 +144,9 @@ Rscript collection-01/scripts/make_fires_table_stats.R
 
 ### Scripts (R utilities) — time-series diagnostics
 
-Per-fire diagnostic: a 3-row (NBR / NBR2 / smoothed predicted burn probability)
-time series, Burned stacked above Unburned, one line per training point — for
+Per-fire diagnostic: a 4-row (NBR / NBR2 / raw predicted burn probability /
+smoothed predicted burn probability) time series, Burned stacked above Unburned,
+one line per training point — for
 spotting fires whose pre/post-fire date window is mis-defined. Predicts
 **in-sample** (`class_NN_fit.rds`, not OOF) over the full training
 observations; see `models/README.md` for the caveat. Aesthetic (colors, line
@@ -160,17 +161,16 @@ Rscript collection-01/scripts/ts_plot_cache.R
 Rscript collection-01/scripts/ts_plot_by_fire.R
 ```
 
-These same per-fire panels are rebuilt in-memory and combined with `patchwork`
-(max 3 fires per row, one grid per region for cross-region classes) at the end
-of each class's "By fire" section in `notebooks/model_fit_diagnostics.qmd` —
-re-render that notebook after step 1 above to refresh them.
+The median marker is a solid burn-class–colored point for dates whose observations
+were used in fitting (`fit == TRUE`) and a red asterisk for held-out dates
+(`fit == FALSE`). These PNGs are standalone — they are not embedded in any notebook.
 
 ### Notebooks (Quarto-R)
 
 | Notebook | Purpose | Dependencies |
 |----------|---------|--------------|
 | `land_cover_remap.qmd` | Validate the canonical MB → fire-class remap against full obs; CV feasibility per class | training obs CSVs, `config/veg_fire_remap.csv`, Google Sheets |
-| `model_fit_diagnostics.qmd` | Per-class fit diagnostics (tuning, coefficients, calibration, OOF, omission/commission, by-fire + per-fire time-series panels) | `models/class_*_coefficients.csv`, `models-store/class_*` outputs, `models-store/ts_plot_cache_v1.rds` (+ `_model_fit_diagnostics_child.qmd` template) |
+| `model_fit_diagnostics.qmd` | Per-class fit diagnostics (tuning, coefficients, calibration, OOF, omission/commission, by-fire OOF breakdown) | `models/class_*_coefficients.csv`, `models-store/class_*` outputs (+ `_model_fit_diagnostics_child.qmd` template) |
 | `data_collection_stats.qmd` | Field collection stats (time, authors, points, obs per fire) | `fires_table_stats.csv` → run `make_fires_table_stats.R` first |
 | `logistic_regression_design.qmd` | Obs-level burn-probability LR design: canonical-team 427-term set → reduction protocol → final 129-term elastic-net design + fitting config | full `data/training_observations_*_v1.csv` |
 | `logistic_regression_feature_engineering_ideas.qmd` | Feature engineering ideas for the LR model | — |

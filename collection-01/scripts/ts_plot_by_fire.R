@@ -8,12 +8,8 @@
 # every class it appears in -- the cache already carries the correct
 # class-specific p_pred per point, so pooling does not mix models, only rows.
 #
-# This is the canonical per-fire plot. These same per-fire panels are also
-# rebuilt in-memory (not re-read from disk) and combined with patchwork inside
-# notebooks/_model_fit_diagnostics_child.qmd, which separately saves its own
-# per-class combined grids to models-store/prediction_plots/class_NN_*/_combined.png
-# (a different artifact -- a multi-fire grid for the rendered HTML report, not
-# this script's one-fire-pooled-across-classes PNGs).
+# This is the canonical (and only) per-fire plot driver -- the panels are not
+# embedded in any notebook.
 #
 # Run from repo root:
 #   Rscript collection-01/scripts/ts_plot_by_fire.R [version]

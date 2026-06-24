@@ -62,13 +62,15 @@ fold-back / GEE-export details.
 
 - `notebooks/logistic_regression_design.qmd` — the full design story (renders on full data).
 - `notebooks/model_fit_diagnostics.qmd` — per-class diagnostics (tuning, coefficients,
-  calibration, OOF, omission/commission, by-fire + per-fire time-series panels);
-  auto-discovers every fitted `class_*`.
+  calibration, OOF, omission/commission, by-fire OOF breakdown); auto-discovers every fitted
+  `class_*`. The per-fire time-series panels are **not** in this notebook — they are produced
+  only as standalone PNGs by `scripts/ts_plot_by_fire.R` (see below).
 
 ## Per-fire time-series diagnostic plots
 
-For each fitted class, a 3-row panel (NBR / NBR2 / smoothed predicted burn probability)
-per fire, Burned points stacked above Unburned, one line per training point — useful for
+For each fitted class, a 4-row panel (NBR / NBR2 / raw predicted burn probability /
+smoothed predicted burn probability) per fire, Burned points stacked above Unburned, one
+line per training point — useful for
 spotting fires whose pre/post-fire date window is mis-defined. Predicts **in-sample**
 (`class_NN_fit.rds`, not OOF) over the full training observations — see
 [`../models/README.md`](../models/README.md) ("Predicting burn probability") for why that
@@ -83,18 +85,13 @@ Script set (`collection-01/scripts/`):
 - `ts_plot_functions.R` — shared `plot_fire_panel()`. Aesthetic (hex colors, thin-spaghetti +
   bold-median-line geoms, `theme_classic`-based theme) mirrors the top two panels of
   `collection-00/data_viz_Lican/functions.R::plot_tempseg()`, by explicit request.
-- `ts_plot_by_fire.R` — the **canonical** driver: one PNG per fire (pooled across every
-  veg_fire class a fire's points belong to, since a point's class depends on its previous-year
-  land cover) → `models-store/prediction_plots/{region}/{region_fire_id}.png`.
+- `ts_plot_by_fire.R` — the **canonical** (and only) driver: one PNG per fire (pooled across
+  every veg_fire class a fire's points belong to, since a point's class depends on its
+  previous-year land cover) → `models-store/prediction_plots/{region}/{region_fire_id}.png`.
 
-These same per-fire panels are independently rebuilt in-memory (not re-read from disk) inside
-`notebooks/_model_fit_diagnostics_child.qmd` and combined with `patchwork::wrap_plots(ncol = 3)`
-— never a shared ggplot facet across fires, so each fire keeps its own date range. That
-notebook chunk separately saves its own per-class combined grid(s) to
-`models-store/prediction_plots/class_NN_*/_combined.png` (or `_combined_{region}.png` for
-classes spanning more than one region) — a different artifact from `ts_plot_by_fire.R`'s
-one-fire-pooled-across-classes PNGs, built for the rendered HTML report rather than for
-standalone browsing.
+The median marker on each per-fire panel is a solid burn-class–colored point for dates whose
+observations were used in fitting (`fit == TRUE`), and a **red asterisk** for held-out dates
+(`fit == FALSE`) — a quick visual flag for which obs the fit actually saw.
 
-Re-run `ts_plot_cache.R` after any `class_NN_fit.rds` changes, then `ts_plot_by_fire.R` for
-the standalone PNGs and/or re-render `model_fit_diagnostics.qmd` for the notebook grids.
+Re-run `ts_plot_cache.R` after any `class_NN_fit.rds` changes, then `ts_plot_by_fire.R` to
+refresh the standalone PNGs.

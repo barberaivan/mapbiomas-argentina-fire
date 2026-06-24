@@ -10,14 +10,14 @@
 #                         with a soft reference gridline at 0.5
 # Both blocks get monthly x-axis breaks/gridlines. The aesthetic (colors, thin
 # per-point lines + bold per-burn_class median line+point) mirrors the top two
-# panels of collection-00/data_viz_Lican/functions.R::plot_tempseg().
+# panels of collection-00/data_viz_Lican/functions.R::plot_tempseg(). The bold
+# median point is swapped for a red asterisk on dates whose obs were held out
+# of fitting (`fit == FALSE` in training_observations) -- the median line
+# stays color-by-burn_class throughout.
 #
 # dt_fire must already be filtered to one region_fire_id, so each fire's date
 # axis is naturally bounded to its own observations (no shared x-axis across
-# fires). Consumed by ts_plot_by_fire.R (one PNG per fire) and by
-# notebooks/_model_fit_diagnostics_child.qmd, which combines several fires'
-# panels with patchwork::wrap_plots(ncol = 3) (individual legends kept — no
-# guides = "collect").
+# fires). Consumed by ts_plot_by_fire.R (one PNG per fire).
 
 suppressPackageStartupMessages({
   library(data.table)
@@ -47,18 +47,22 @@ nice_ts_theme <- function() {
           legend.text = element_text(size = 8))
 }
 
-# Long-format (date, point_id, burn_class, variable, value, avg) for a set of
-# columns of dt_fire. vars_map: named list, display name -> column name, e.g.
-# list(NBR = "NBR", NBR2 = "NBR2"). avg = per (date, burn_class, variable)
-# cross-point median, for the bold line.
+# Long-format (date, point_id, burn_class, fit, variable, value, avg, fit_avg)
+# for a set of columns of dt_fire. vars_map: named list, display name ->
+# column name, e.g. list(NBR = "NBR", NBR2 = "NBR2"). avg = per (date,
+# burn_class, variable) cross-point median, for the bold line/point.
+# fit_avg = whether the obs feeding that median come from the fitting split
+# (TRUE) or were held out (FALSE) -- a date's points are always uniformly one
+# or the other, so all() correctly recovers that per-date status.
 ts_long <- function(dt_fire, vars_map) {
   long <- rbindlist(lapply(names(vars_map), function(nm) {
-    sub <- dt_fire[, .(date, point_id, burn_class, value = get(vars_map[[nm]]))]
+    sub <- dt_fire[, .(date, point_id, burn_class, fit, value = get(vars_map[[nm]]))]
     sub[, variable := nm]
     sub
   }))
   long[, variable := factor(variable, levels = names(vars_map))]
-  avg <- long[, .(avg = median(value, na.rm = TRUE)), by = .(date, burn_class, variable)]
+  avg <- long[, .(avg = median(value, na.rm = TRUE), fit_avg = all(fit)),
+              by = .(date, burn_class, variable)]
   merge(long, avg, by = c("date", "burn_class", "variable"), all.x = TRUE)
 }
 
@@ -105,8 +109,10 @@ ts_block <- function(dt_fire, vars_map, y_limits = NULL) {
     geom_line(aes(group = point_id), alpha = 0.5, linewidth = 0.1) +
     geom_line(aes(y = avg, color = burn_class_avg), alpha = 0.8, linewidth = 0.8,
                show.legend = FALSE) +
-    geom_point(aes(y = avg, color = burn_class_avg), alpha = 0.8, size = 1.2,
-               show.legend = FALSE) +
+    geom_point(data = d[fit_avg == TRUE], aes(y = avg, color = burn_class_avg),
+               alpha = 0.8, size = 1.2, show.legend = FALSE) +
+    geom_point(data = d[fit_avg == FALSE], aes(y = avg),
+               color = "red", shape = 8, size = 1.5, show.legend = FALSE) +
     scale_color_manual(values = CLASS_COLORS, breaks = c("Burned", "Unburned")) +
     facet_grid(rows = vars(variable), scales = if (is.null(y_limits)) "free_y" else "fixed") +
     scale_x_date(date_breaks = "1 month", date_labels = "%b %Y") +

@@ -21,7 +21,7 @@ suppressPackageStartupMessages({
 })
 source("collection-01/scripts/ts_predict_functions.R")
 
-KEY_COLS <- c("region", "fire_id", "point_id", "date", "burned", "mb_class_raw")
+KEY_COLS <- c("region", "fire_id", "point_id", "date", "burned", "mb_class_raw", "fit")
 
 build_ts_cache <- function(version = "1",
                             data_dir   = "collection-01/data",
@@ -67,7 +67,7 @@ build_ts_cache <- function(version = "1",
       sub[, p_pred := predict_class(sub, fit)]
       message(sprintf("  [class_%02d] %s — %s obs predicted", code, fitted$veg_fire_name[i], format(nrow(sub), big.mark = ",")))
       cache_parts[[length(cache_parts) + 1]] <-
-        sub[, .(region, fire_id, point_id, date, burned, veg_fire, veg_fire_name, NBR, NBR2, p_pred)]
+        sub[, .(region, fire_id, point_id, date, burned, fit, veg_fire, veg_fire_name, NBR, NBR2, p_pred)]
     }
     rm(d); gc()
   }
