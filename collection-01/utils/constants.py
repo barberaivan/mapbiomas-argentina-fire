@@ -102,6 +102,7 @@ def _load_veg_fire_remap(path: Path = VEG_FIRE_REMAP_CSV) -> list[dict]:
                 "arg_name": r["arg_name"] or None,
                 "region": r["region"],
                 "region_num": int(r["region_num"]),
+                "region_class": int(r["region_class"]),
                 "local_class": r["local_class"] or None,
                 "veg_fire": int(r["veg_fire"]),
                 "veg_fire_name": r["veg_fire_name"],
@@ -122,3 +123,11 @@ VEG_FIRE_CLASSES = {
 
 # veg_fire codes that get a model fitted (non-burnable / non-observed excluded).
 FITTABLE_VEG_FIRE = sorted(c for c, v in VEG_FIRE_CLASSES.items() if v["fittable"])
+
+# GEE remap: region_class (region_num*100 + mb_class_raw) → veg_fire.
+# In GEE: region_class_img.remap(REGION_CLASS_FROM, VEG_FIRE_TO, VEG_FIRE_REMAP_DEFAULT)
+# Ghost classes (integration artefacts not present in the remap table) fall through
+# to VEG_FIRE_REMAP_DEFAULT and are treated as non-observed.
+REGION_CLASS_FROM    = [r["region_class"] for r in VEG_FIRE_REMAP]
+VEG_FIRE_TO          = [r["veg_fire"]     for r in VEG_FIRE_REMAP]
+VEG_FIRE_REMAP_DEFAULT = 25  # non-observed
