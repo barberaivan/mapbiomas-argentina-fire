@@ -26,7 +26,14 @@ COLUMNS
                        joins directly.
   arg_name       str   MapBiomas country-level class name (Argentina legend).
   region         str   Region name (BA, CHACO, PAMPA, CUYO, PAT).
-  region_num     int   Region code, matching the GEE region-id raster.
+  region_num     int   Region code, matching the GEE region-id raster
+                       (1=CUYO, 2=PAT, 3=PAMPA, 4=CHACO, 5=BA).
+  region_class   int   Composite key: region_num * 100 + mb_class_raw.
+                       Uniquely identifies each (region, land-cover class) pair
+                       as a single integer. Used in GEE remaps where two-column
+                       lookups are awkward: paint region_class onto the image by
+                       combining the region-id raster and the LULC band, then
+                       remap region_class -> veg_fire in one expression.
   local_class    str   Region-wise name(s) for the class; may list several.
   veg_fire       int   veg_fire class code, 1..K. Fittable classes first, then
                        the non-fittable ones.
@@ -36,12 +43,13 @@ COLUMNS
                        and non-observed.
 
 KEYS / USAGE
-  Join key is (region_num, mb_class_raw): the same MB class maps to different
-  veg_fire classes depending on region.
+  Natural join key is (region_num, mb_class_raw): the same MB class maps to
+  different veg_fire classes depending on region.
   - Model fitting (R): join training observations on (region, mb_class_raw),
     drop rows where fittable == FALSE.
-  - Prediction (GEE/Python): remap (region_num, mb_class_raw) -> veg_fire; pixels
-    of non-fittable classes get no model and are flagged in QA bands.
+  - Prediction (GEE/Python): use region_class (= region_num*100 + mb_class_raw)
+    as a single-integer lookup key to remap -> veg_fire; pixels of non-fittable
+    classes get no model and are flagged in QA bands.
 
 CONVENTIONS
   - Rows with id = NA in the sheet (level-1 grouping rows) are dropped.
@@ -54,3 +62,6 @@ CONVENTIONS
 
 LAST GENERATED
   2026-06-16 — 90 rows, 27 veg_fire classes (25 fittable + non-burnable + non-observed).
+
+CHANGELOG
+  2026-06-24 — added region_class column (region_num * 100 + mb_class_raw).

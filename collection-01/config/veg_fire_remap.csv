@@ -1,75 +1,75 @@
-"mb_class_raw","arg_name","region","region_num","local_class","veg_fire","veg_fire_name","fittable"
-3,"Bosques Cerrados","CUYO",1,"Bosques Cerrados (ID=3)",6,"forest_cuyo",TRUE
-4,"Bosques Abiertos","CUYO",1,"Bosques Abiertos (ID=4)",6,"forest_cuyo",TRUE
-9,"Silvicultura","CUYO",1,"Leñosas cultivadas (ID=9)",2,"agriculture_cuyo-pat",TRUE
-11,"Herbaceas Inundables","CUYO",1,"Herbaceas inundables (ID=11)",14,"grassland_cuyo",TRUE
-12,"Herbaceas","CUYO",1,"Pastizales (ID=12)",14,"grassland_cuyo",TRUE
-19,"Cultivos temporarios","CUYO",1,,2,"agriculture_cuyo-pat",TRUE
-21,"Mosaico de usos","CUYO",1,"Mosaico de Usos (ID=21)",14,"grassland_cuyo",TRUE
-24,"Areas Urbanas","CUYO",1,,24,"non-burnable",FALSE
-25,"Otras áreas no vegetadas","CUYO",1,"Área no vegetada (ID=25)",24,"non-burnable",FALSE
-27,"No Observado","CUYO",1,"No Observado (ID=27)",25,"non-observed",FALSE
-33,"Ríos, lagunas, lagos y océano","CUYO",1,"Ríos, lagunas y lagos (ID=33)",24,"non-burnable",FALSE
-34,"Hielo en superficie y nieve permanente","CUYO",1,"Hielo y nieve en superficie (ID=34)",24,"non-burnable",FALSE
-63,"Mosaico de arbustos y herbaceas","CUYO",1,"Arbustales Dispersos (ID=45); Pastizales (ID=12)",14,"grassland_cuyo",TRUE
-66,"Arbustales cerrados","CUYO",1,"Arbustales cerrados (ID=66)",20,"shrubland_cuyo-pampa",TRUE
-77,"Arbustales abiertos","CUYO",1,"Arbustales abiertos (ID=77)",20,"shrubland_cuyo-pampa",TRUE
-3,"Bosques Cerrados","PAT",2,"Bosque (ID=3)",8,"forest_pat",TRUE
-6,"Bosques Inundables","PAT",2,"Leñosas Inundables (ID=6)",8,"forest_pat",TRUE
-9,"Silvicultura","PAT",2,"Plantaciones Forestales (ID=9)",8,"forest_pat",TRUE
-11,"Herbaceas Inundables","PAT",2,"Vegas/Mallines (ID=11)",16,"grassland_pat",TRUE
-12,"Herbaceas","PAT",2,"Pastizales (ID=12)",16,"grassland_pat",TRUE
-21,"Mosaico de usos","PAT",2,"Mosaico de Usos (ID=21)",2,"agriculture_cuyo-pat",TRUE
-24,"Areas Urbanas","PAT",2,,24,"non-burnable",FALSE
-25,"Otras áreas no vegetadas","PAT",2,"Roca alto andina (ID=29); Desiertos y Eriales (ID=25);",24,"non-burnable",FALSE
-27,"No Observado","PAT",2,"No Observado (sombras) (ID=27)",25,"non-observed",FALSE
-33,"Ríos, lagunas, lagos y océano","PAT",2,"Ríos, lago y océano (ID=33)",24,"non-burnable",FALSE
-34,"Hielo en superficie y nieve permanente","PAT",2,"Glaciar / Nieve y hielo (ID=34)",24,"non-burnable",FALSE
-63,"Mosaico de arbustos y herbaceas","PAT",2,"Estepa (ID=63)",16,"grassland_pat",TRUE
-73,"Turberas","PAT",2,"Turberas (ID=75)",16,"grassland_pat",TRUE
-77,"Arbustales abiertos","PAT",2,"Arbustal (ID=66)",21,"shrubland_pat",TRUE
-3,"Bosques Cerrados","PAMPA",3,"Bosque cerrado (ID=3)",7,"forest_pampa",TRUE
-4,"Bosques Abiertos","PAMPA",3,"Bosque abierto (ID=4)",7,"forest_pampa",TRUE
-6,"Bosques Inundables","PAMPA",3,"Bosque inundable (ID=6)",7,"forest_pampa",TRUE
-9,"Silvicultura","PAMPA",3,"Sivicultura (ID=9)",7,"forest_pampa",TRUE
-11,"Herbaceas Inundables","PAMPA",3,"Pantano y Pastizal Inundable (ID=11)",15,"grassland_pampa",TRUE
-12,"Herbaceas","PAMPA",3,"Pastizal (ID=12)",15,"grassland_pampa",TRUE
-15,"Pasturas","PAMPA",3,"Pasturas (ID=15)",15,"grassland_pampa",TRUE
-19,"Cultivos temporarios","PAMPA",3,"Cultivos anuales (ID=19)",3,"agriculture_pampa",TRUE
-24,"Areas Urbanas","PAMPA",3,,24,"non-burnable",FALSE
-25,"Otras áreas no vegetadas","PAMPA",3,"Áreas no vegetadas (ID=22)",24,"non-burnable",FALSE
-27,"No Observado","PAMPA",3,,25,"non-observed",FALSE
-33,"Ríos, lagunas, lagos y océano","PAMPA",3,"Rios, lago y oceano (ID=33)",24,"non-burnable",FALSE
-34,"Hielo en superficie y nieve permanente","PAMPA",3,,24,"non-burnable",FALSE
-36,"Cultivos perennes (acá van los frutales)","PAMPA",3,"Cultivos arbustivos (ID=36)",7,"forest_pampa",TRUE
-66,"Arbustales cerrados","PAMPA",3,"Arbustales cerrados (ID=66)",20,"shrubland_cuyo-pampa",TRUE
-77,"Arbustales abiertos","PAMPA",3,"Arbustales abiertos (ID=77)",20,"shrubland_cuyo-pampa",TRUE
-3,"Bosques Cerrados","CHACO",4,"Bosque cerrado(ID=3)",9,"forest-cerr_chaco",TRUE
-4,"Bosques Abiertos","CHACO",4,"Bosque abierto (ID=4)",11,"forest-open_chaco",TRUE
-6,"Bosques Inundables","CHACO",4,"Bosque inundable (ID=6)",10,"forest-inund-chaco",TRUE
-9,"Silvicultura","CHACO",4,"Plantación Forestal (ID=9)",9,"forest-cerr_chaco",TRUE
-11,"Herbaceas Inundables","CHACO",4,"Pastizal inundable (ID=11)",17,"grassland-inund_chaco",TRUE
-12,"Herbaceas","CHACO",4,"Pastizal cerrado (ID=43); Pastizal abierto(ID=42)",13,"grassland_chaco",TRUE
-15,"Pasturas","CHACO",4,"Pasturas (ID=15)",19,"pasture_chaco",TRUE
-19,"Cultivos temporarios","CHACO",4,"Cultivos anuales (ID=19)",1,"agriculture_chaco",TRUE
-24,"Areas Urbanas","CHACO",4,"Areas Urbanas - Transversal (ID=24)",24,"non-burnable",FALSE
-25,"Otras áreas no vegetadas","CHACO",4,"Playas y dunas (ID=23);Salares (ID=32); Otras áreas no vegetadas (ID=25)",24,"non-burnable",FALSE
-27,"No Observado","CHACO",4,,25,"non-observed",FALSE
-33,"Ríos, lagunas, lagos y océano","CHACO",4,"Rios, lago y oceano (ID=26)",24,"non-burnable",FALSE
-34,"Hielo en superficie y nieve permanente","CHACO",4,,24,"non-burnable",FALSE
-36,"Cultivos perennes (acá van los frutales)","CHACO",4,"Cultivos Arbustivos (ID=36)",4,"agriculture-per_chaco-ba",TRUE
-63,"Mosaico de arbustos y herbaceas","CHACO",4,"Pastizal Disperso (ID=44); Leñosas Dispersas (ID=45)",23,"shrubland-open_chaco",TRUE
-66,"Arbustales cerrados","CHACO",4,"Arbustales cerrados (ID=66)",22,"shrubland-closed_chaco",TRUE
-77,"Arbustales abiertos","CHACO",4,"Arbustales abiertos (ID=77)",23,"shrubland-open_chaco",TRUE
-3,"Bosques Cerrados","BA",5,"Bosque Cerrado (ID=3)",5,"forest_ba",TRUE
-9,"Silvicultura","BA",5,"Plantaciones Forestales (ID=9)",5,"forest_ba",TRUE
-11,"Herbaceas Inundables","BA",5,"Área húmeda natural no forestal (ID=11)",12,"grassland_ba",TRUE
-12,"Herbaceas","BA",5,"Pastizal (ID=12)",12,"grassland_ba",TRUE
-15,"Pasturas","BA",5,"Pasturas (ID=15)",18,"pasture_ba",TRUE
-19,"Cultivos temporarios","BA",5,"Cultivos anuales (ID=19)",18,"pasture_ba",TRUE
-24,"Areas Urbanas","BA",5,,24,"non-burnable",FALSE
-25,"Otras áreas no vegetadas","BA",5,"Áreas no vegetadas (ID=22)",24,"non-burnable",FALSE
-27,"No Observado","BA",5,,25,"non-observed",FALSE
-33,"Ríos, lagunas, lagos y océano","BA",5,"Rios, lago y oceano (ID=33)",24,"non-burnable",FALSE
-34,"Hielo en superficie y nieve permanente","BA",5,,24,"non-burnable",FALSE
-36,"Cultivos perennes (acá van los frutales)","BA",5,"Té (ID=65), Otros cultivos perennes (ID=48)",4,"agriculture-per_chaco-ba",TRUE
+"mb_class_raw","arg_name","region","region_num","region_class","local_class","veg_fire","veg_fire_name","fittable"
+3,"Bosques Cerrados","CUYO",1,103,"Bosques Cerrados (ID=3)",6,"forest_cuyo","TRUE"
+4,"Bosques Abiertos","CUYO",1,104,"Bosques Abiertos (ID=4)",6,"forest_cuyo","TRUE"
+9,"Silvicultura","CUYO",1,109,"Leñosas cultivadas (ID=9)",2,"agriculture_cuyo-pat","TRUE"
+11,"Herbaceas Inundables","CUYO",1,111,"Herbaceas inundables (ID=11)",14,"grassland_cuyo","TRUE"
+12,"Herbaceas","CUYO",1,112,"Pastizales (ID=12)",14,"grassland_cuyo","TRUE"
+19,"Cultivos temporarios","CUYO",1,119,"",2,"agriculture_cuyo-pat","TRUE"
+21,"Mosaico de usos","CUYO",1,121,"Mosaico de Usos (ID=21)",14,"grassland_cuyo","TRUE"
+24,"Areas Urbanas","CUYO",1,124,"",24,"non-burnable","FALSE"
+25,"Otras áreas no vegetadas","CUYO",1,125,"Área no vegetada (ID=25)",24,"non-burnable","FALSE"
+27,"No Observado","CUYO",1,127,"No Observado (ID=27)",25,"non-observed","FALSE"
+33,"Ríos, lagunas, lagos y océano","CUYO",1,133,"Ríos, lagunas y lagos (ID=33)",24,"non-burnable","FALSE"
+34,"Hielo en superficie y nieve permanente","CUYO",1,134,"Hielo y nieve en superficie (ID=34)",24,"non-burnable","FALSE"
+63,"Mosaico de arbustos y herbaceas","CUYO",1,163,"Arbustales Dispersos (ID=45); Pastizales (ID=12)",14,"grassland_cuyo","TRUE"
+66,"Arbustales cerrados","CUYO",1,166,"Arbustales cerrados (ID=66)",20,"shrubland_cuyo-pampa","TRUE"
+77,"Arbustales abiertos","CUYO",1,177,"Arbustales abiertos (ID=77)",20,"shrubland_cuyo-pampa","TRUE"
+3,"Bosques Cerrados","PAT",2,203,"Bosque (ID=3)",8,"forest_pat","TRUE"
+6,"Bosques Inundables","PAT",2,206,"Leñosas Inundables (ID=6)",8,"forest_pat","TRUE"
+9,"Silvicultura","PAT",2,209,"Plantaciones Forestales (ID=9)",8,"forest_pat","TRUE"
+11,"Herbaceas Inundables","PAT",2,211,"Vegas/Mallines (ID=11)",16,"grassland_pat","TRUE"
+12,"Herbaceas","PAT",2,212,"Pastizales (ID=12)",16,"grassland_pat","TRUE"
+21,"Mosaico de usos","PAT",2,221,"Mosaico de Usos (ID=21)",2,"agriculture_cuyo-pat","TRUE"
+24,"Areas Urbanas","PAT",2,224,"",24,"non-burnable","FALSE"
+25,"Otras áreas no vegetadas","PAT",2,225,"Roca alto andina (ID=29); Desiertos y Eriales (ID=25);",24,"non-burnable","FALSE"
+27,"No Observado","PAT",2,227,"No Observado (sombras) (ID=27)",25,"non-observed","FALSE"
+33,"Ríos, lagunas, lagos y océano","PAT",2,233,"Ríos, lago y océano (ID=33)",24,"non-burnable","FALSE"
+34,"Hielo en superficie y nieve permanente","PAT",2,234,"Glaciar / Nieve y hielo (ID=34)",24,"non-burnable","FALSE"
+63,"Mosaico de arbustos y herbaceas","PAT",2,263,"Estepa (ID=63)",16,"grassland_pat","TRUE"
+73,"Turberas","PAT",2,273,"Turberas (ID=75)",16,"grassland_pat","TRUE"
+77,"Arbustales abiertos","PAT",2,277,"Arbustal (ID=66)",21,"shrubland_pat","TRUE"
+3,"Bosques Cerrados","PAMPA",3,303,"Bosque cerrado (ID=3)",7,"forest_pampa","TRUE"
+4,"Bosques Abiertos","PAMPA",3,304,"Bosque abierto (ID=4)",7,"forest_pampa","TRUE"
+6,"Bosques Inundables","PAMPA",3,306,"Bosque inundable (ID=6)",7,"forest_pampa","TRUE"
+9,"Silvicultura","PAMPA",3,309,"Sivicultura (ID=9)",7,"forest_pampa","TRUE"
+11,"Herbaceas Inundables","PAMPA",3,311,"Pantano y Pastizal Inundable (ID=11)",15,"grassland_pampa","TRUE"
+12,"Herbaceas","PAMPA",3,312,"Pastizal (ID=12)",15,"grassland_pampa","TRUE"
+15,"Pasturas","PAMPA",3,315,"Pasturas (ID=15)",15,"grassland_pampa","TRUE"
+19,"Cultivos temporarios","PAMPA",3,319,"Cultivos anuales (ID=19)",3,"agriculture_pampa","TRUE"
+24,"Areas Urbanas","PAMPA",3,324,"",24,"non-burnable","FALSE"
+25,"Otras áreas no vegetadas","PAMPA",3,325,"Áreas no vegetadas (ID=22)",24,"non-burnable","FALSE"
+27,"No Observado","PAMPA",3,327,"",25,"non-observed","FALSE"
+33,"Ríos, lagunas, lagos y océano","PAMPA",3,333,"Rios, lago y oceano (ID=33)",24,"non-burnable","FALSE"
+34,"Hielo en superficie y nieve permanente","PAMPA",3,334,"",24,"non-burnable","FALSE"
+36,"Cultivos perennes (acá van los frutales)","PAMPA",3,336,"Cultivos arbustivos (ID=36)",7,"forest_pampa","TRUE"
+66,"Arbustales cerrados","PAMPA",3,366,"Arbustales cerrados (ID=66)",20,"shrubland_cuyo-pampa","TRUE"
+77,"Arbustales abiertos","PAMPA",3,377,"Arbustales abiertos (ID=77)",20,"shrubland_cuyo-pampa","TRUE"
+3,"Bosques Cerrados","CHACO",4,403,"Bosque cerrado(ID=3)",9,"forest-cerr_chaco","TRUE"
+4,"Bosques Abiertos","CHACO",4,404,"Bosque abierto (ID=4)",11,"forest-open_chaco","TRUE"
+6,"Bosques Inundables","CHACO",4,406,"Bosque inundable (ID=6)",10,"forest-inund-chaco","TRUE"
+9,"Silvicultura","CHACO",4,409,"Plantación Forestal (ID=9)",9,"forest-cerr_chaco","TRUE"
+11,"Herbaceas Inundables","CHACO",4,411,"Pastizal inundable (ID=11)",17,"grassland-inund_chaco","TRUE"
+12,"Herbaceas","CHACO",4,412,"Pastizal cerrado (ID=43); Pastizal abierto(ID=42)",13,"grassland_chaco","TRUE"
+15,"Pasturas","CHACO",4,415,"Pasturas (ID=15)",19,"pasture_chaco","TRUE"
+19,"Cultivos temporarios","CHACO",4,419,"Cultivos anuales (ID=19)",1,"agriculture_chaco","TRUE"
+24,"Areas Urbanas","CHACO",4,424,"Areas Urbanas - Transversal (ID=24)",24,"non-burnable","FALSE"
+25,"Otras áreas no vegetadas","CHACO",4,425,"Playas y dunas (ID=23);Salares (ID=32); Otras áreas no vegetadas (ID=25)",24,"non-burnable","FALSE"
+27,"No Observado","CHACO",4,427,"",25,"non-observed","FALSE"
+33,"Ríos, lagunas, lagos y océano","CHACO",4,433,"Rios, lago y oceano (ID=26)",24,"non-burnable","FALSE"
+34,"Hielo en superficie y nieve permanente","CHACO",4,434,"",24,"non-burnable","FALSE"
+36,"Cultivos perennes (acá van los frutales)","CHACO",4,436,"Cultivos Arbustivos (ID=36)",4,"agriculture-per_chaco-ba","TRUE"
+63,"Mosaico de arbustos y herbaceas","CHACO",4,463,"Pastizal Disperso (ID=44); Leñosas Dispersas (ID=45)",23,"shrubland-open_chaco","TRUE"
+66,"Arbustales cerrados","CHACO",4,466,"Arbustales cerrados (ID=66)",22,"shrubland-closed_chaco","TRUE"
+77,"Arbustales abiertos","CHACO",4,477,"Arbustales abiertos (ID=77)",23,"shrubland-open_chaco","TRUE"
+3,"Bosques Cerrados","BA",5,503,"Bosque Cerrado (ID=3)",5,"forest_ba","TRUE"
+9,"Silvicultura","BA",5,509,"Plantaciones Forestales (ID=9)",5,"forest_ba","TRUE"
+11,"Herbaceas Inundables","BA",5,511,"Área húmeda natural no forestal (ID=11)",12,"grassland_ba","TRUE"
+12,"Herbaceas","BA",5,512,"Pastizal (ID=12)",12,"grassland_ba","TRUE"
+15,"Pasturas","BA",5,515,"Pasturas (ID=15)",18,"pasture_ba","TRUE"
+19,"Cultivos temporarios","BA",5,519,"Cultivos anuales (ID=19)",18,"pasture_ba","TRUE"
+24,"Areas Urbanas","BA",5,524,"",24,"non-burnable","FALSE"
+25,"Otras áreas no vegetadas","BA",5,525,"Áreas no vegetadas (ID=22)",24,"non-burnable","FALSE"
+27,"No Observado","BA",5,527,"",25,"non-observed","FALSE"
+33,"Ríos, lagunas, lagos y océano","BA",5,533,"Rios, lago y oceano (ID=33)",24,"non-burnable","FALSE"
+34,"Hielo en superficie y nieve permanente","BA",5,534,"",24,"non-burnable","FALSE"
+36,"Cultivos perennes (acá van los frutales)","BA",5,536,"Té (ID=65), Otros cultivos perennes (ID=48)",4,"agriculture-per_chaco-ba","TRUE"
