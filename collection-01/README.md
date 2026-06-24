@@ -36,11 +36,13 @@ Previous-year MapBiomas features (40 mosaic bands — optical + NDVI/NDWI/NPV/ND
 
 ```
 collection-01/
+├── docs/                   # Per-workflow-step development notes (NN-*.md) — start here for design
 ├── utils/
 │   ├── constants.py        # All paths, feature lists, MB reclass table, LR terms
 │   └── functions.py        # GEE helpers: Landsat preprocessing, indices, MB sampling
 ├── config/                 # veg_fire_remap.csv — canonical MB→fire-class remap (source of truth)
-├── models/                 # Fitted model outputs (coefficients, CV metrics, tuning); see models/README.md
+├── models/                 # Tracked: *_coefficients.csv (the GEE deliverable) + README; see models/README.md
+├── models-store/           # symlink → Insync store (gitignored): heavy fits, CV metrics, tuning, OOF preds
 ├── workflow/               # Numbered pipeline steps (mixed Python + R)
 │   ├── 01-training_data_export.py   # Export training data (one GEE task per fire)
 │   ├── 02-model_fitting.R           # Fit LR per veg_fire class (R, glmnet)
@@ -53,29 +55,40 @@ collection-01/
 │   ├── cv_feasibility_report.py           # Pre-flight CV feasibility per veg_fire class (run before fitting)
 │   ├── make_fires_table_stats.R           # Build fires_table_stats.csv from xlsx + obs CSVs
 │   ├── ts_predict_functions.R             # design_raw() + predict_class(): RAW-scale prediction from a class_NN_fit.rds
-│   ├── ts_plot_cache.R                    # Build models/ts_plot_cache_v1.rds (in-sample p_pred + n5-smoothed prob, every fitted class)
+│   ├── ts_plot_cache.R                    # Build models-store/ts_plot_cache_v1.rds (in-sample p_pred + n5-smoothed prob, every fitted class)
 │   ├── ts_plot_functions.R                # Shared plot_fire_panel() (NBR/NBR2/smoothed p, Burned-over-Unburned); sourced below and by the notebook
-│   └── ts_plot_by_fire.R                  # Driver: one panel per fire (pooled across classes) -> models/prediction_plots/{region}/region_fireNN.png
+│   └── ts_plot_by_fire.R                  # Driver: one panel per fire (pooled across classes) -> models-store/prediction_plots/{region}/region_fireNN.png
 ├── notebooks/              # Quarto-R (.qmd) exploratory analyses and decisions
 ├── samples/                # ARCHIVE — JS templates from interactive point collection
-└── data/                   # gitignored — local downloads and scratch files
+└── data/                   # symlink → Insync store (gitignored): local downloads and training inputs
 ```
+
+---
+
+## First-time setup (heavy data lives outside git)
+
+Training inputs (`data/`) and heavy model outputs (`models-store/`) are **not** in git — they
+live in the Insync/Drive-synced `mapbiomas-arg-fire-store` folder, symlinked into the repo by
+`setup.sh`. **See the repo-root [README — "Getting started"](../README.md#getting-started-first-time-setup)
+for the full setup.** Once linked, everything below works against the symlinked paths transparently.
 
 ---
 
 ## Running the pipeline
 
-Run all scripts from the **repo root**.
+Run all scripts from the **repo root**. Commands below invoke Python as **`$PYTHON`** — the
+project's GEE venv, configured per-machine by `setup.sh` (see the repo-root README). To use it
+in your own terminal, `source .local-paths` first (or run `./setup.sh` once).
 
 ### Step 01 — Export training data
 
 ```bash
 # Test on one fire first, review the asset schema in the GEE Code Editor
-/home/ivan/.venvs/gee/bin/python collection-01/workflow/01-training_data_export.py \
+$PYTHON collection-01/workflow/01-training_data_export.py \
   --region PAT --version 1 --test-fire fire_32
 
 # Full region — submits one GEE task per fire in parallel
-/home/ivan/.venvs/gee/bin/python collection-01/workflow/01-training_data_export.py \
+$PYTHON collection-01/workflow/01-training_data_export.py \
   --region PAT --version 1
 ```
 
@@ -87,11 +100,11 @@ A JSON run log is written to `workflow/01-training_data_export/run_{region}_v{ve
 
 ```bash
 # Check GEE export status across all regions (or one)
-/home/ivan/.venvs/gee/bin/python collection-01/scripts/status.py
-/home/ivan/.venvs/gee/bin/python collection-01/scripts/status.py --region PAT
+$PYTHON collection-01/scripts/status.py
+$PYTHON collection-01/scripts/status.py --region PAT
 
 # Download completed training observations to collection-01/data/ as a local CSV
-/home/ivan/.venvs/gee/bin/python collection-01/scripts/download_observations.py --region PAT --version 1
+$PYTHON collection-01/scripts/download_observations.py --region PAT --version 1
 ```
 
 ### Step 02 — Model fitting (R)
@@ -103,7 +116,7 @@ all available classes or a named subset. Outputs land in `models/` (see `models/
 
 ```bash
 # Pre-flight: confirm each class has enough positive-bearing fires for grouped CV
-/home/ivan/.venvs/gee/bin/python collection-01/scripts/cv_feasibility_report.py --version 1
+$PYTHON collection-01/scripts/cv_feasibility_report.py --version 1
 
 # Fit all fittable classes whose region data is available...
 Rscript collection-01/workflow/02-model_fitting.R 1
@@ -143,7 +156,7 @@ geoms, n5 rolling-median smoothing) mirrors
 # 1. Build the prediction cache (re-run after syncing new/updated class_NN_fit.rds)
 Rscript collection-01/scripts/ts_plot_cache.R
 
-# 2. One PNG per fire (pooled across classes) -> models/prediction_plots/{region}/region_fireNN.png
+# 2. One PNG per fire (pooled across classes) -> models-store/prediction_plots/{region}/region_fireNN.png
 Rscript collection-01/scripts/ts_plot_by_fire.R
 ```
 
@@ -157,9 +170,9 @@ re-render that notebook after step 1 above to refresh them.
 | Notebook | Purpose | Dependencies |
 |----------|---------|--------------|
 | `land_cover_remap.qmd` | Validate the canonical MB → fire-class remap against full obs; CV feasibility per class | training obs CSVs, `config/veg_fire_remap.csv`, Google Sheets |
-| `model_fit_diagnostics.qmd` | Per-class fit diagnostics (tuning, coefficients, calibration, OOF, omission/commission, by-fire + per-fire time-series panels) | `models/class_*` outputs, `models/ts_plot_cache_v1.rds` (+ `_model_fit_diagnostics_child.qmd` template) |
+| `model_fit_diagnostics.qmd` | Per-class fit diagnostics (tuning, coefficients, calibration, OOF, omission/commission, by-fire + per-fire time-series panels) | `models/class_*_coefficients.csv`, `models-store/class_*` outputs, `models-store/ts_plot_cache_v1.rds` (+ `_model_fit_diagnostics_child.qmd` template) |
 | `data_collection_stats.qmd` | Field collection stats (time, authors, points, obs per fire) | `fires_table_stats.csv` → run `make_fires_table_stats.R` first |
-| `logistic_regression_terms.qmd` | LR model term design for obs-level burn probability | — |
+| `logistic_regression_design.qmd` | Obs-level burn-probability LR design: canonical-team 427-term set → reduction protocol → final 129-term elastic-net design + fitting config | full `data/training_observations_*_v1.csv` |
 | `logistic_regression_feature_engineering_ideas.qmd` | Feature engineering ideas for the LR model | — |
 | `burn_prob_ts_metrics.qmd` | Exploration of burn-probability time-series summary metrics | — |
 | `categorical_vs_bernoulli.qmd` | Categorical vs Bernoulli formulation notes | — |
@@ -189,5 +202,5 @@ Export status across regions: `python collection-01/scripts/status.py`.
 | Step | Status |
 |------|--------|
 | 01 — training data export | Complete for all 5 regions (BA, CHACO, PAMPA, CUYO, PAT), v1. |
-| 02 — model fitting (R, glmnet) | Implemented. PAT classes fitted; remaining classes pending (see CLAUDE.md work order). |
+| 02 — model fitting (R, glmnet) | All 23 `veg_fire` classes fitted (v1); see `models/cv_metrics_v1.csv`. |
 | 03–08 — prediction pipeline | Stubs |

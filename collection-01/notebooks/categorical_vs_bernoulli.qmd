@@ -1,6 +1,8 @@
 ---
 title: "Categorical vs. Bernoulli: when does modeling class structure help?"
-format: html
+format:
+  html:
+    embed-resources: true
 ---
 
 ## Question

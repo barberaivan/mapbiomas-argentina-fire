@@ -2,7 +2,7 @@
 title: "Burn probability time-series metrics"
 format:
   html:
-    self-contained: true
+    embed-resources: true
     code-fold: true
 execute:
   warning: false
@@ -910,6 +910,109 @@ ggplot(df_ws2, aes(x = doy, y = value,
     y        = NULL,
     title    = "The jumper: Δp · min₃ and its gap-weighted form",
     subtitle = "Last row multiplies by w(Δt) — the sparse-drought spurious jump (Δp across a long gap) is suppressed; fire survives."
+  )
+```
+
+## Pre-jump baseline: `p[t-1]` vs `max₂` vs `mean₂` back
+
+The jump is `Δ_t = minfore_t − baseline_t`, with the forward persistence term
+`minfore_t = min(p_t, p_{t+1}, p_{t+2})` fixed and three choices for the pre-jump baseline:
+
+- **`p[t-1]`** — the single latest observation. Most local: under sparse (cloud-dropped) sampling it never reaches back to a possibly-stale `t-2` obs. But it is noisy — a dip at `t-1` inflates the jump (false positive), a spike at `t-1` kills it (omission).
+- **`max₂ back = max(p_{t-2}, p_{t-1})`** — the most conservative ("minimum plausible jump" = smallest-forward − largest-backward). Robust to a transient pre-period *dip*, but a single pre-period *spike* suppresses the jump. **On a monotone run this equals `diff(median₅)`** (and equals `p[t-1]`). Natural **seed** estimator.
+- **`mean₂ back = ½(p_{t-2} + p_{t-1})`** — variance-reduced compromise, but on a slow ramp it averages in the lower `t-2` value and so **inflates** the jump (~1.5 steps), weakening drought rejection.
+
+All three coincide on a clean monotone increase (where `p[t-1] = max₂ = med₅[t-1]`); they diverge only under pre-period noise and on slow ramps. Δ is dated at `d_t` (anchor `t = 3 … n-2`).
+
+```{r}
+# Three pre-jump baseline estimators, all paired with the same forward
+# persistence term minfore = min(p[t], p[t+1], p[t+2]):
+#   prev     : p[t-1]                (single latest obs; most local, noisiest)
+#   maxback  : max(p[t-2], p[t-1])   (conservative; = diff(median5) on monotone runs)
+#   meanback : mean(p[t-2], p[t-1])  (variance-reduced; inflates Δ on slow ramps)
+# delta_* = minfore - baseline, dated at d[t]. Valid anchor t = 3..(n-2).
+compute_ws3 <- function(p, d) {
+  nn <- length(p)
+  if (nn < 5) return(list())
+  t_idx    <- 3:(nn - 2)
+  minfore  <- pmin(p[3:(nn - 2)], p[4:(nn - 1)], p[5:nn])
+  prev     <- p[2:(nn - 3)]
+  maxback  <- pmax(p[1:(nn - 4)], p[2:(nn - 3)])
+  meanback <- (p[1:(nn - 4)] + p[2:(nn - 3)]) / 2
+  doy_t    <- d[t_idx]
+
+  list(
+    prob       = tibble(doy = d,     value = p),
+    minfore    = tibble(doy = doy_t, value = minfore),
+    delta_prev = tibble(doy = doy_t, value = minfore - prev),
+    delta_max  = tibble(doy = doy_t, value = minfore - maxback),
+    delta_mean = tibble(doy = doy_t, value = minfore - meanback)
+  )
+}
+
+var_ws3_levels <- c("prob", "minfore", "delta_prev", "delta_max", "delta_mean")
+
+df_ws3 <- purrr::imap_dfr(signals_ws, function(sig, sig_id) {
+  mets <- compute_ws3(sig$obs$p, sig$obs$d)
+  purrr::map_dfr(var_ws3_levels, function(vr) {
+    mets[[vr]] |> mutate(
+      signal_id = sig_id,
+      case      = sig$case,
+      level     = sig$level,
+      variable  = vr
+    )
+  })
+}) |>
+  mutate(
+    case      = factor(case,     levels = case2_levels),
+    variable  = factor(variable, levels = var_ws3_levels),
+    color_grp = dplyr::case_when(
+      case == "fire"          & level == "0.80" ~ "Alt",
+      case == "noise"         & level == "down" ~ "Alt",
+      case == "deforestation" & level == "0.70" ~ "Alt",
+      TRUE                                      ~ "Main"
+    )
+  )
+```
+
+```{r}
+#| fig-width: 14
+#| fig-height: 12
+
+var_ws3_labels <- c(
+  prob       = "Burn prob.",
+  minfore    = "minfore = min₃ fwd",
+  delta_prev = "Δ = minfore − p[t-1]",
+  delta_max  = "Δ = minfore − max₂ back",
+  delta_mean = "Δ = minfore − mean₂ back"
+)
+
+ggplot(df_ws3, aes(x = doy, y = value,
+                   group = signal_id, colour = color_grp)) +
+  geom_hline(yintercept = 0, colour = "grey80", linewidth = 0.35) +
+  geom_line(linewidth = 0.65) +
+  geom_point(size = 1.1) +
+  facet_grid(
+    variable ~ case,
+    scales   = "free_y",
+    switch   = "y",
+    labeller = labeller(variable = var_ws3_labels, case = case2_labels)
+  ) +
+  scale_colour_manual(
+    name   = NULL,
+    values = c(Main = "#000004", Alt = "#BB3754"),
+    breaks = c("Main", "Alt")
+  ) +
+  scale_x_continuous(breaks = c(1, 91, 182, 274, 365)) +
+  labs(
+    x        = "Day of year",
+    y        = NULL,
+    title    = "Pre-jump baseline: p[t-1] vs max₂ vs mean₂ back",
+    subtitle = paste0(
+      "All paired with minfore = min(p[t], p[t+1], p[t+2]).  ",
+      "max₂ is most conservative (= diff(median5) on monotone runs); ",
+      "mean₂ inflates Δ on slow ramps (drought); p[t-1] is most local but noisiest."
+    )
   )
 ```
 

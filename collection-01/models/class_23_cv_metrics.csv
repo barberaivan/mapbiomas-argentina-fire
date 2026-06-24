@@ -1,2 +1,0 @@
-veg_fire,veg_fire_name,regions,n_obs,n_pos,n_eff,K,n_terms,alpha,thresh,lambda_rule,lambda,lambda_min,lambda_1se,cv_deviance,cv_logloss,cv_brier,cv_auc,n_nonzero
-23,shrubland-open_chaco,CHACO,120175,8643,120175,10,129,0.75,1e-04,min,0.00105222298998717,0.00105222298998717,0.00571217710243528,0.151185548822969,0.0759049396340042,0.0189096251323829,0.979650482791042,60

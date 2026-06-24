@@ -144,7 +144,7 @@ def add_indices(img):
     ).rename("SAVI")
     ndwi = img.normalizedDifference(["GREEN", "NIR"]).rename("NDWI")  # McFeeters 1996, water
 
-    # ─── Canonical-team additions (logistic_regression_terms.qmd §"Canonical team") ──
+    # ─── Canonical-team additions (logistic_regression_design.qmd §"Spectral feature equations") ──
     # AFRI uses the 2.1 µm (SWIR2) form with the 0.5 coefficient (Karnieli et al.
     # 2001, Eq. 11a = AFRI_2.1) — the variant that best penetrates smoke/aerosol.
     afri  = img.expression(

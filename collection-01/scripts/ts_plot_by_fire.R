@@ -2,7 +2,7 @@
 # collection-01/scripts/ts_plot_by_fire.R
 #
 # One time-series PNG per fire, written to
-# models/prediction_plots/{region}/{region_fire_id}.png. A fire's points can
+# models-store/prediction_plots/{region}/{region_fire_id}.png. A fire's points can
 # belong to more than one veg_fire class (each point's previous-year land
 # cover decides its class), so a fire's panel pools all of its points across
 # every class it appears in -- the cache already carries the correct
@@ -11,7 +11,7 @@
 # This is the canonical per-fire plot. These same per-fire panels are also
 # rebuilt in-memory (not re-read from disk) and combined with patchwork inside
 # notebooks/_model_fit_diagnostics_child.qmd, which separately saves its own
-# per-class combined grids to models/prediction_plots/class_NN_*/_combined.png
+# per-class combined grids to models-store/prediction_plots/class_NN_*/_combined.png
 # (a different artifact -- a multi-fire grid for the rendered HTML report, not
 # this script's one-fire-pooled-across-classes PNGs).
 #
@@ -22,7 +22,7 @@ suppressPackageStartupMessages(library(data.table))
 source("collection-01/scripts/ts_plot_functions.R")
 
 run_by_fire <- function(version = "1",
-                         models_dir = "collection-01/models",
+                         models_dir = "collection-01/models-store",
                          cache_path = file.path(models_dir, sprintf("ts_plot_cache_v%s.rds", version)),
                          out_root   = file.path(models_dir, "prediction_plots")) {
 

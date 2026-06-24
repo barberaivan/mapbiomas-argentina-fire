@@ -25,7 +25,7 @@ KEY_COLS <- c("region", "fire_id", "point_id", "date", "burned", "mb_class_raw")
 
 build_ts_cache <- function(version = "1",
                             data_dir   = "collection-01/data",
-                            models_dir = "collection-01/models",
+                            models_dir = "collection-01/models-store",
                             out_path   = file.path(models_dir, sprintf("ts_plot_cache_v%s.rds", version))) {
 
   remap <- fread("collection-01/config/veg_fire_remap.csv")

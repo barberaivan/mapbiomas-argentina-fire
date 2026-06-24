@@ -17,7 +17,7 @@
 #
 # Run scripts/cv_feasibility_report.py FIRST per region to confirm usable K.
 #
-# DESIGN (reduced 129-term set; see notebooks/predictors_terms_correlations.qmd):
+# DESIGN (reduced 129-term set; see notebooks/logistic_regression_design.qmd):
 #   The old canonical 427-term design was highly collinear and slow to fit. It is
 #   reduced to 129 terms (+ intercept): 11 focal mains (MIRBI dropped — exact
 #   linear combo of SWIR1/SWIR2), 32 prev-year mains (blue/red dropped — visible
@@ -106,10 +106,12 @@ safe_cores <- function(n, K) {
 
 root       <- here_root()
 remap_csv  <- file.path(root, "collection-01", "config", "veg_fire_remap.csv")
-out_dir    <- file.path(root, "collection-01", "models")
+out_dir    <- file.path(root, "collection-01", "models")        # tracked: *_coefficients.csv only
+store_dir  <- file.path(root, "collection-01", "models-store")  # gitignored Insync store (symlink): heavy artifacts
 region_csv <- function(reg) file.path(root, "collection-01", "data",
                        sprintf("training_observations_%s_v%s.csv", reg, VERSION))
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+dir.create(store_dir, showWarnings = FALSE, recursive = TRUE)
 
 # ── class sample exceptions (the ONLY place class-specific logic lives) ───────
 # ash_merge: train this class on its own non-ash obs + the pooled ash (negatives)
@@ -122,7 +124,7 @@ SAMPLE_RULES <- list(
   grassland_pat = list(ash_frac = 0.20)
 )
 
-# ── reduced design (129 terms; notebooks/predictors_terms_correlations.qmd) ────
+# ── reduced design (129 terms; notebooks/logistic_regression_design.qmd) ────
 FOCAL     <- c("BLUE","GREEN","RED","NIR","SWIR1","SWIR2","NBR","NBR2","NDVI","NDMI","NDSI")  # 11 (no MIRBI)
 PREV_VARS <- c("green","nir","swir1","swir2","ndvi","ndwi","npv","ndfi")                      # 8 (no blue/red)
 SUMM      <- c(med = "median", wet = "median_wet", dry = "median_dry", sd = "stdDev")          # 4
@@ -369,18 +371,18 @@ fit_one_class <- function(sub, code, name, name2code, pure_neg) {
                coefficient = as.numeric(raw$beta[all_terms]), coef_std = as.numeric(coef_std)))
 
   p <- r$oof_sel; stopifnot(length(p) == nrow(sub))
-  fwrite(coef_dt, file.path(out_dir, sprintf("%s_coefficients.csv", tag)))
-  fwrite(rbindlist(tuning), file.path(out_dir, sprintf("%s_tuning.csv", tag)))
+  fwrite(coef_dt, file.path(out_dir, sprintf("%s_coefficients.csv", tag)))   # tracked deliverable
+  fwrite(rbindlist(tuning), file.path(store_dir, sprintf("%s_tuning.csv", tag)))
   fwrite(data.table(fire_id = sub$fire_id, point_id = sub$point_id, date = sub$date,
                     region = sub$region, veg_fire = code, burned = y, foldid = foldid,
                     p_oof = p, weight = wv),
-         file.path(out_dir, sprintf("%s_oof_predictions.csv", tag)))
+         file.path(store_dir, sprintf("%s_oof_predictions.csv", tag)))
   # fit.rds: self-contained deployment artifact (raw-scale coef + centering means + the
   # glmnet path). Not read by the diagnostics notebook; kept for inspection/reproducibility.
   saveRDS(list(glmnet_fit = r$glmnet_fit, alpha = r$alpha, lambda = sel_lambda, lambda_rule = LAMBDA_RULE,
                centering_means = means, specs = specs, all_terms = all_terms, blocks = BLOCKS,
                coef_raw = c("(Intercept)" = raw$intercept, raw$beta[all_terms])),
-          file.path(out_dir, sprintf("%s_fit.rds", tag)))
+          file.path(store_dir, sprintf("%s_fit.rds", tag)))
 
   m <- data.table(veg_fire = code, veg_fire_name = name, regions = paste(sort(unique(sub$region)), collapse = "+"),
              n_obs = nrow(sub), n_pos = sum(y), n_eff = sum(wv), K = K, n_terms = length(keep),
@@ -389,7 +391,7 @@ fit_one_class <- function(sub, code, name, name2code, pure_neg) {
              cv_deviance = r$cvm_sel, cv_logloss = log_loss(y, p, wv),
              cv_brier = brier(y, p, wv), cv_auc = auc(y, p),
              n_nonzero = sum(raw$beta != 0))
-  fwrite(m, file.path(out_dir, sprintf("%s_cv_metrics.csv", tag)))   # per-class, self-contained
+  fwrite(m, file.path(store_dir, sprintf("%s_cv_metrics.csv", tag)))   # per-class, self-contained
   message(sprintf("  [%s] outputs written.", tag))
   m
 }
@@ -456,8 +458,8 @@ main <- function() {
   }
 
   if (length(metrics)) {
-    fwrite(rbindlist(metrics, fill = TRUE), file.path(out_dir, sprintf("cv_metrics_v%s.csv", VERSION)))
-    message(sprintf("\nDone. Fitted %d class(es). Outputs in collection-01/models/.", length(metrics)))
+    fwrite(rbindlist(metrics, fill = TRUE), file.path(store_dir, sprintf("cv_metrics_v%s.csv", VERSION)))
+    message(sprintf("\nDone. Fitted %d class(es). Coefficients in collection-01/models/; heavy artifacts in collection-01/models-store/.", length(metrics)))
   } else {
     message("\nNo classes fitted (no complete region data for the requested classes).")
   }

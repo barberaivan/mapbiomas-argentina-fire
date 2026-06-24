@@ -89,7 +89,7 @@ def download_obs(region, version):
     # fire_key = "fire_NN[_partXX]" (version-stripped). We then keep the highest
     # version per fire_key so that re-exports (e.g. fire_09_v2) are picked up
     # automatically even when other fires are still at v1.
-    pat = re.compile(r"training_observations-(fire_\d+)_v(\d+)((?:_part\d+)?)")
+    pat = re.compile(r"training_observations-(fire_\w+?)_v(\d+)((?:_part\d+)?)")
     best: dict[str, tuple[int, str]] = {}  # fire_key → (version, asset_name)
     for a in assets:
         name = a["name"]

@@ -215,20 +215,21 @@ oof |>
 ```
 
 NBR / NBR2 / smoothed burn probability (in-sample, n5 rolling median) per fire,
-Burned stacked above Unburned — built from `models/ts_plot_cache_v1.rds`. Each
+Burned stacked above Unburned — built from `models-store/ts_plot_cache_v1.rds`. Each
 fire's panel is built independently and combined with `patchwork` (not a
 shared facet), so every fire keeps its own date range; no axis is stretched or
-compressed by its neighbors. The same per-fire panels are also saved
-standalone to `models/prediction_plots/class_NN/{region_fire_id}.png` by
-`scripts/ts_plot_by_fire.R`. Classes spanning more than one region get one
-grid per region below. Max 3 fire-panels per row.
+compressed by its neighbors. This combined per-class grid is saved to
+`models-store/prediction_plots/class_NN_*/_combined.png` (one PNG per fire,
+pooled across classes, is saved separately by `scripts/ts_plot_by_fire.R` to
+`models-store/prediction_plots/{region}/`). Classes spanning more than one
+region get one grid per region below. Max 3 fire-panels per row.
 
 ```{r}
 #| results: asis
 #| echo: false
 class_cache <- ts_cache[veg_fire == CLASS_CODE]
 regions_here <- sort(unique(class_cache$region))
-class_dir <- file.path(models_dir, "prediction_plots", sprintf("class_%02d_%s", CLASS_CODE, cls))
+class_dir <- file.path(store_dir, "prediction_plots", sprintf("class_%02d_%s", CLASS_CODE, cls))
 dir.create(class_dir, recursive = TRUE, showWarnings = FALSE)
 
 render_region_grid <- function(d, png_path) {

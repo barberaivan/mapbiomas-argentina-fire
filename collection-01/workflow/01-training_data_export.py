@@ -153,10 +153,11 @@ def _load_locations(fire_id, region):
     For PAT, falls back to collection-00 if not found in collection-01.
     Returns None if not found in either location.
     """
-    # fire_id may be int (32), numeric str ("32"), or prefixed str ("fire_32")
-    fid_str = str(fire_id).removeprefix("fire_").zfill(2)
+    # fire_id is canonical and verbatim — only the "fire_" prefix is guaranteed
+    # (ids like "fire_sde10" are valid); never zero-pad or reconstruct it.
+    token = C.fire_token(fire_id)
 
-    path_col1 = f"{C.TRAINING_DATA_COL1}/{region}/training_locations-fire_{fid_str}"
+    path_col1 = f"{C.TRAINING_DATA_COL1}/{region}/training_locations-{token}"
     try:
         ee.data.getAsset(path_col1)
         return ee.FeatureCollection(path_col1)
@@ -164,7 +165,7 @@ def _load_locations(fire_id, region):
         pass
 
     if region == "PAT":
-        path_col0 = f"{C.TRAINING_DATA_COL0}/training_locations-fire_{fid_str}"
+        path_col0 = f"{C.TRAINING_DATA_COL0}/training_locations-{token}"
         try:
             ee.data.getAsset(path_col0)
             return ee.FeatureCollection(path_col0)
@@ -184,7 +185,10 @@ def main(region, version, test_fire=None):
     fires_info = ee.FeatureCollection(fires_path).getInfo()["features"]
 
     if test_fire is not None:
-        fires_info = [f for f in fires_info if str(f["properties"]["fire_id"]) == str(test_fire)]
+        # accept either the full id ("fire_07") or the bare body ("07", "sde10")
+        want = C.fire_token(test_fire)
+        fires_info = [f for f in fires_info
+                      if C.fire_token(f["properties"]["fire_id"]) == want]
         if not fires_info:
             print(f"Fire {test_fire} not found. Check fire_id in {fires_path}.")
             return
@@ -194,7 +198,7 @@ def main(region, version, test_fire=None):
         props    = feat["properties"]
         geom     = feat["geometry"]
         fire_id  = props["fire_id"]
-        fid_str  = str(fire_id).removeprefix("fire_").zfill(2)
+        token    = C.fire_token(fire_id)
         locations = _load_locations(fire_id, region)
 
         if locations is None:
@@ -257,10 +261,10 @@ def main(region, version, test_fire=None):
         for suffix, loc_chunk, n_chunk in chunks:
             fc = process_fire(props, region, loc_chunk)
             output_path = (f"{C.TRAINING_DATA_COL1}/{region}/"
-                           f"training_observations-fire_{fid_str}_v{version}{suffix}")
+                           f"training_observations-{token}_v{version}{suffix}")
             task = ee.batch.Export.table.toAsset(
                 collection=fc,
-                description=f"training_obs_{region}_fire_{fid_str}_v{version}{suffix}",
+                description=f"training_obs_{region}_{token}_v{version}{suffix}",
                 assetId=output_path,
             )
             task.start()

@@ -1,0 +1,867 @@
+---
+title: "Observation-level burn-probability model — design"
+subtitle: "From the canonical-team term set to the reduced 129-term elastic-net design (MapBiomas Argentina Fuego, Collection 1, step 02)"
+author: "Iván Barberá"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    embed-resources: true
+    theme: cosmo
+    code-fold: true
+    df-print: kable
+    fig-align: center
+fontsize: 11pt
+execute:
+  warning: false
+  message: false
+  cache: false
+---
+
+## What this notebook is
+
+This is the single, end-to-end record of how the Collection-1 observation-level
+burn-probability model was designed. The story runs in one direction:
+
+1. **Term design (the greedy start).** We first wrote down the *maximal* design we
+   were willing to evaluate in Google Earth Engine — the **canonical-team set, 427
+   terms**: 21 focal spectral features, 40 previous-year MapBiomas-mosaic bands, and
+   six interaction blocks built on top of them. The strategy was deliberately greedy:
+   give the elastic net as much flexibility as the GEE compute budget allows and let
+   regularization sort it out.
+2. **The convergence problem.** `glmnet`'s elastic-net path was *slow to converge* on
+   that design. The diagnosis below shows the cause was **numerical, not statistical**:
+   a heavily collinear design matrix makes coordinate descent crawl in the
+   ill-conditioned low-$\lambda$ tail.
+3. **The reduction protocol.** We then reduced the design from **427 → 129 terms** with
+   a specific, reproducible protocol — pairwise-correlation pruning, an exact-linear-
+   combination argument (which is how MIRBI and the tasseled-cap trio leave), a
+   multivariate VIF screen, and a final fitting-config fix. Everything in Part III below
+   **runs on the full 5.72M-observation training set at render time**.
+4. **The final design + fitting config**, matching `workflow/02-model_fitting.R`
+   term-for-term (that script is the source of truth).
+
+> **This notebook renders on the full data.** The correlation, separability, eigenvalue,
+> and VIF chunks read all five region tables (`collection-01/data/training_observations_*_v1.csv`,
+> ~3.8 GB, ~5.72M obs) and compute on the complete set. It is therefore a heavy render
+> (several minutes, several GB of RAM). The big matrices are `rm()`-ed and `gc()`-ed
+> between sections to keep the peak bounded.
+
+---
+
+# Part I — Term design (the greedy start)
+
+## Scope and motivation
+
+MapBiomas Argentina Fuego Collection 1 produces annual burned-area maps for all of
+Argentina over 1999–2025 using Landsat C2 SR. The pipeline relies on a per-observation
+(pixel-date) burn-probability classifier evaluated for **every Landsat scene** intersecting
+the territory and the time window. That prediction step is the cost driver: the model is
+applied many billions of times, so the structure must be **cheap to evaluate** in GEE.
+
+Collection 0 (Patagonia pilot) used a logistic regression with 40 terms per vegetation type,
+four fire-relevant indices (NBR, NBR2, MIRBI, NDVI), and a hand-picked interaction set that
+included custom annual min/max summaries and $\Delta$ values. Collection 1 keeps logistic
+regression — for the same compute reasons — but rebalances the design:
+
+- **More focal flexibility**: many spectral features per observation instead of 4.
+- **Previous-year context from MapBiomas**: replace custom-computed annual summaries with
+  the official MapBiomas Argentina annual mosaic of year $y-1$, which provides
+  phenologically informed composites at no extra preprocessing cost.
+- **No deltas**: with rich pairwise interactions, monotonic effects and the inherent
+  non-linearity of the logistic link absorb most of what $\Delta$ terms did in Collection 0.
+  A 2-way interaction in $\eta$ already implies a roughly 3-way effect on the predicted
+  probability.
+- **Flexibility over interpretability**: this model is for prediction, not inference.
+  Collinearity is acceptable *in principle* and addressed by an elastic-net fit (tuning both
+  $\lambda$ and $\alpha$). The catch — that "acceptable" collinearity still has to be
+  *fittable* in finite time — is the entire subject of Part II.
+- **Stratification**: one model per **region × vegetation type** (using the MapBiomas LULC
+  of year $y-1$, reclassified into a few coarse fire-classes), as in Collection 0.
+
+The original design constraint was roughly **200–300 terms per linear predictor** to keep the
+GEE compute graph small. Below ~200 we lose flexibility; much above ~300 the graph grows
+enough to slow full-territory prediction without obvious gains. The reduction in Part III lands
+the final model comfortably inside that envelope, at **129 terms**.
+
+## Why the MapBiomas annual mosaic (instead of custom summaries)
+
+In Collection 0 we computed our own per-pixel annual minimum and maximum of each fire index
+with a robust order-statistic rule. That was viable for one region × four indices but does not
+scale: doing the same over all of Argentina, for two years per focal year ($y-1$ in addition to
+$y$), with many more features, would multiply preprocessing cost considerably.
+
+The MapBiomas Argentina annual mosaic already provides, for every year, a coherent set of
+pixel-level composites:
+
+- median, dry-season median, wet-season median, minimum, and within-year standard deviation of
+  the six optical bands;
+- the same statistics for a broad set of vegetation and fire-relevant indices (NDVI, NDWI,
+  EVI2, SAVI, GCVI, NDFI, SEFI, WEFI, …);
+- SMA endmember fractions (GV, GVS, NPV, soil, shade, cloud);
+- topographic information.
+
+Using this mosaic instead of recomputing custom summaries removes a heavy preprocessing step,
+ensures consistency with the LULC product used for stratification, offers seasonal composites
+(wet, dry) we never had in Collection 0, and provides physically interpretable derived layers
+(NPV as a fuel-load proxy, NDFI as a fire/disturbance signal). The trade-off: we cannot freely
+define the summaries; we choose among what the mosaic exposes.
+
+## Which previous-year summaries (median, wet, sd — and the dry debate)
+
+A previous-year summary is useful only insofar as it describes the **stable spectral state** of
+the pixel — the baseline against which the focal observation is compared. Summaries that move
+sharply when the pixel itself was disturbed in $y-1$ are confounded by exactly the kind of
+signal we want to detect later.
+
+| Subscript | Meaning |
+|:---|:---|
+| $X_t$ | Value of feature $X$ at the focal observation (pixel-date) |
+| $X_{\text{med}}$ | MapBiomas mosaic **median** of $X$ in year $y(t) - 1$ |
+| $X_{\text{wet}}$ | MapBiomas mosaic **wet-season median** of $X$ in year $y(t) - 1$ |
+| $X_{\text{dry}}$ | MapBiomas mosaic **dry-season median** of $X$ in year $y(t) - 1$ |
+| $X_{\text{sd}}$ | MapBiomas mosaic **within-year standard deviation** of $X$ in year $y(t) - 1$ |
+
+The canonical-team design carried **all four** summaries ($\text{med}, \text{wet}, \text{dry},
+\text{sd}$). The reasoning for and against each:
+
+- $\text{med}$ — robust central tendency. Insensitive to a single fire event unless the fire
+  affected a large fraction of the year's images. **Keep.**
+- $\text{wet}$ — median of wet-season images. The wet season precedes the fire season, so a
+  fire in $y-1$ generally occurs *after* the wet composite is laid down: the most fire-robust
+  baseline in the mosaic. **Keep.**
+- $\text{sd}$ — within-year variability. Contextualizes change: pixels with naturally high
+  $\text{sd}$ should be judged against a more permissive burn threshold. **Keep.**
+- $\text{dry}$ — the dry season *is* the fire season, so a $y-1$ fire contaminates the dry
+  composite in the *same direction* as the future fire we want to detect (dry NDVI drops, dry
+  SWIR rises). For pixels that did **not** burn in $y-1$ (the majority) it still carries peak-
+  senescence / end-of-season fuel signal, so the canonical-team set kept it and let the net
+  decide. In the reduction (Part III) it is dropped from the **interaction** blocks (kept only
+  as a main effect) because it is partly redundant with $\text{med}$ and risks bias on
+  previously-burned pixels.
+
+We never used $\text{amp}$ (max − min, inflated by either fire or normal phenology) or bare
+$\text{min}$/$\text{max}$ (which only supported $\Delta$ features we dropped).
+
+## Spectral feature equations
+
+The base focal feature set is **17 features** (six optical bands + 11 indices); the
+canonical-team proposal extends this to **21** by adding AFRI, kNDVI, EVI2, NIRv.
+
+| Group | Feature | Definition |
+|:---|:---|:---|
+| Optical | BLUE, GREEN, RED, NIR, SWIR1, SWIR2 | Surface-reflectance bands |
+| Fire | $\text{NBR}$ | $(\text{NIR} - \text{SWIR2}) / (\text{NIR} + \text{SWIR2})$ |
+| Fire | $\text{NBR2}$ | $(\text{SWIR1} - \text{SWIR2}) / (\text{SWIR1} + \text{SWIR2})$ |
+| Fire | $\text{MIRBI}$ | $10\,\text{SWIR2} - 9.8\,\text{SWIR1} + 2$ |
+| Fire | $\text{NDVI}$ | $(\text{NIR} - \text{RED}) / (\text{NIR} + \text{RED})$ |
+| Tasseled-cap | $\text{TCB}$ | $0.3029\,\text{BLUE} + 0.2786\,\text{GREEN} + 0.4733\,\text{RED} + 0.5599\,\text{NIR} + 0.5080\,\text{SWIR1} + 0.1872\,\text{SWIR2}$ |
+| Tasseled-cap | $\text{TCG}$ | $-0.2941\,\text{BLUE} - 0.2430\,\text{GREEN} - 0.5424\,\text{RED} + 0.7276\,\text{NIR} + 0.0713\,\text{SWIR1} - 0.1608\,\text{SWIR2}$ |
+| Tasseled-cap | $\text{TCW}$ | $0.1511\,\text{BLUE} + 0.1973\,\text{GREEN} + 0.3283\,\text{RED} + 0.3407\,\text{NIR} - 0.7117\,\text{SWIR1} - 0.4559\,\text{SWIR2}$ |
+| Aux. moisture | $\text{NDMI}$ | $(\text{NIR} - \text{SWIR1}) / (\text{NIR} + \text{SWIR1})$ |
+| Aux. snow | $\text{NDSI}$ | $(\text{GREEN} - \text{SWIR1}) / (\text{GREEN} + \text{SWIR1})$ |
+| Aux. sparse veg | $\text{SAVI}$ | $[(\text{NIR} - \text{RED}) / (\text{NIR} + \text{RED} + L)]\,(1 + L)$, $L = 0.5$ |
+| Aux. open water | $\text{NDWI}$ | $(\text{GREEN} - \text{NIR}) / (\text{GREEN} + \text{NIR})$ |
+| Aux. aerosol-free | $\text{AFRI}$ | $(\text{NIR} - 0.5\,\text{SWIR2}) / (\text{NIR} + 0.5\,\text{SWIR2})$ |
+| Aux. veg. kernel | $\text{kNDVI}$ | $\tanh(\text{NDVI}^2)$ |
+| Aux. enhanced veg | $\text{EVI2}$ | $2.5\,(\text{NIR} - \text{RED}) / (\text{NIR} + 2.4\,\text{RED} + 1)$ |
+| Aux. NIR veg | $\text{NIRv}$ | $\text{NIR} \times \text{NDVI}$ |
+
+Notes: tasseled-cap coefficients are Baig et al. (2014) for Landsat 8 OLI. MIRBI is in the raw
+Trigg & Flasse (2001) orientation; it *increases* after fire (opposite sign of NBR, NBR2, NDVI).
+NDWI here is McFeeters (1996), distinct from NDMI (Gao 1996). AFRI is AFRI-2100 (Karnieli et al.
+2001, Eq. 11a); kNDVI uses the RBF-kernel form (Camps-Valls et al. 2021); EVI2 is the blue-band-
+free EVI (Jiang et al. 2008); NIRv is Badgley et al. (2017).
+
+**Note two facts that drive the whole reduction in Part III:**
+
+- $\text{MIRBI} = 10\,\text{SWIR2} - 9.8\,\text{SWIR1} + 2$ is an **exact linear function** of
+  two raw bands we keep.
+- $\text{TCB}, \text{TCG}, \text{TCW}$ are **exact linear functions** of the six raw bands.
+- $\text{NBR}, \text{NBR2}, \text{NDMI}$ are **ratios** of pairs of raw bands — *near*-functions
+  of them (nonlinear, so not exact, but strongly collinear).
+
+Previous-year variables beyond the six optical bands, taken directly from the mosaic: NDVI and
+NDWI (same formulas as focal), NPV (non-photosynthetic vegetation fraction from SMA — fine-fuel
+proxy), and NDFI (Normalized Difference Fraction Index, Souza et al. 2005 — disturbance signal).
+
+## The canonical-team design — 427 terms
+
+The linear predictor is
+$$\Pr(y_{c,t} = 1) = \sigma\!\Big(\alpha_{k[c]} + \sum_{j} \beta_{j,k[c]}\, x_{j,c,t}\Big),$$
+with $k[c]$ the vegetation cluster of pixel $c$ in year $y-1$ and $\sigma$ the logistic function.
+The canonical-team set organizes the terms into six blocks:
+
+| Block | Description | Count |
+|:---|:---|---:|
+| 1 | Focal raw (21 features) | 21 |
+| 2 | Prev-year raw (10 vars × 4 summaries) | 40 |
+| 3 | Focal × focal pairwise, $\binom{21}{2}$ | 210 |
+| 4 | Same-band prev × focal (8 vars × 4 summaries) | 32 |
+| 5 | Prev context × focal fire **indices** ($4\times4\times4 - 4$) | 60 |
+| 6 | Prev context × focal fire **bands** ($4\times4\times4$) | 64 |
+| | **Total** | **427** |
+
+The modeling claim behind blocks 5–6 is that **the meaning of a focal fire-index value depends
+on the previous-year vegetation context**: a low $\text{NBR}_t$ in a high-NPV, low-NDFI pixel
+(heavy dead biomass, recently disturbed) is far more likely to be fire than the same
+$\text{NBR}_t$ in a low-NPV, high-NDFI pixel. Block 3 (the 210 focal pairs) carries most of the
+raw flexibility. This was the greedy maximum: maximal expressiveness within a ~15-node GEE graph
+(see §[GEE]). The problem was getting it to *fit*.
+
+---
+
+# Part II — The convergence problem
+
+`02-model_fitting.R`'s elastic-net search was **slow to converge** on the 427-term design —
+some classes took many hours per $\alpha$, occasionally not finishing. Two hypotheses:
+
+- **Statistical**: not enough signal / too many obs, intrinsically hard problem.
+- **Numerical**: the design matrix is so collinear that `glmnet`'s coordinate descent crawls in
+  the ill-conditioned, low-$\lambda$ tail (where the active set is large), and a coarse
+  $\lambda$ grid gives poor warm starts.
+
+The leading suspect was numerical. The canonical-team design expands 21 focal features + 40
+mosaic bands into 427 terms via pairwise products and curated crosses. **If the raw inputs are
+already strongly correlated, every interaction block inherits and amplifies that redundancy** —
+products of collinear factors are even more collinear than the factors. Coordinate descent on a
+near-singular Gram matrix converges geometrically slowly.
+
+Part III tests that hypothesis directly (it is correct) and acts on it in two ways: **remove the
+*removable* redundancy** (exact linear combinations and duplicated axes add columns but no
+information, so they only hurt conditioning) and **keep the *irreducible* redundancy** (bands +
+their ratio-indices are intentionally near-collinear; that residual is what the elastic-net
+**ridge** component, $\alpha<1$, is designed to absorb). The leftover knob — `glmnet`'s
+convergence tolerance — turns out to be the single biggest speed lever (§[Fitting]).
+
+---
+
+# Part III — The collinearity-reduction protocol
+
+Everything below executes on the full data. The protocol, in order:
+
+1. **Focal mains**: pairwise correlation + univariate separability → keep 12 → drop MIRBI and
+   the tasseled-cap trio as **exact linear combinations** → **11 focal mains**.
+2. **Prev-year mains**: pairwise correlation → drop the duplicated visible bands → **32**.
+3. **Focal × focal interactions**: prune on **centered-factor** products → **22**.
+4. **Prev × focal interactions**: keep the curated B4–B6 blocks, restricted to median + sd →
+   **64**.
+5. **Multivariate VIF** + the **intentional near-rank-deficiency** (eigenvalues of the
+   bands + ratio-indices block), the redundancy we keep on purpose.
+
+## Setup
+
+```{r setup}
+suppressPackageStartupMessages({
+  library(data.table)
+  library(corrplot)   # clustered correlation heatmaps
+})
+
+# Resolve repo root whether the working dir is repo root or collection-01/notebooks.
+find_root <- function() {
+  for (p in c(".", "..", "../..", "../../..")) {
+    if (file.exists(file.path(p, "collection-01", "config", "veg_fire_remap.csv")))
+      return(normalizePath(p))
+  }
+  stop("Could not locate repo root (collection-01/config/veg_fire_remap.csv not found).")
+}
+ROOT     <- find_root()
+VERSION  <- "1"
+REGIONS  <- c("BA", "CHACO", "PAMPA", "CUYO", "PAT")
+obs_csv  <- function(reg) file.path(ROOT, "collection-01", "data",
+              sprintf("training_observations_%s_v%s.csv", reg, VERSION))
+
+# The full 21-focal / 40-prev canonical-team raw set — the STARTING point we reduce from.
+FOCAL21 <- c("BLUE","GREEN","RED","NIR","SWIR1","SWIR2","NBR","NBR2","MIRBI","NDVI",
+             "TCB","TCG","TCW","NDMI","NDSI","SAVI","NDWI","AFRI","kNDVI","EVI2","NIRv") # 21
+PREV_VARS10 <- c("blue","green","red","nir","swir1","swir2","ndvi","ndwi","npv","ndfi") # 10
+SUMM4       <- c("median", "median_wet", "median_dry", "stdDev")                         # 4
+PREV40 <- as.vector(t(outer(PREV_VARS10, SUMM4,
+            function(v, s) sprintf("mb_mos_%s_%s", v, s))))                              # 40
+stopifnot(length(FOCAL21) == 21, length(PREV40) == 40)
+
+COR_HI <- 0.90        # |r| threshold for "redundant" pair reporting / dropping
+```
+
+```{r load-data}
+# Read only the 61 raw columns (+ region) from all five tables; row-bind. The single slow step.
+keep_cols <- c("region", FOCAL21, PREV40)
+dt <- rbindlist(lapply(REGIONS, function(reg) {
+  message("  reading ", basename(obs_csv(reg)), " ...")
+  fread(obs_csv(reg), select = keep_cols)
+}), use.names = TRUE)
+
+cat(sprintf("Loaded %s obs x %d raw vars (%d focal + %d prev), regions: %s\n",
+            format(nrow(dt), big.mark = ","), length(FOCAL21) + length(PREV40),
+            length(FOCAL21), length(PREV40), paste(REGIONS, collapse = ", ")))
+```
+
+```{r na-report}
+# Non-finite audit per group — high-NA columns distort any correlation.
+na_summary <- function(cols) {
+  s <- dt[, lapply(.SD, function(x) sum(!is.finite(x))), .SDcols = cols]
+  data.table(var = cols, n_nonfinite = as.integer(unlist(s)),
+             pct = round(100 * as.integer(unlist(s)) / nrow(dt), 3))[order(-n_nonfinite)]
+}
+cat("Focal group — non-finite counts (top 8):\n");        print(head(na_summary(FOCAL21), 8))
+cat("\nPrevious-year group — non-finite counts (top 8):\n"); print(head(na_summary(PREV40), 8))
+```
+
+### Correlation helpers (big-data friendly)
+
+`cor_fast` standardizes columns once and forms `crossprod / (n-1)` — a single BLAS matmul, far
+faster than per-pair `cor()` at millions of rows. Rows with any non-finite value in the group are
+dropped (complete-case *within the group*). `cor_spearman` ranks each column first (robust to
+the indices' non-linearity). `find_redundant` is the iterative pairwise pruner from
+`caret::findCorrelation`, reimplemented.
+
+```{r cor-helpers}
+cor_fast <- function(M) {
+  ok <- is.finite(rowSums(M)); M <- M[ok, , drop = FALSE]
+  attr_n <- nrow(M); M <- scale(M)
+  C <- crossprod(M) / (attr_n - 1)
+  C[!is.finite(C)] <- NA
+  attr(C, "n_used") <- attr_n
+  C
+}
+cor_spearman <- function(M) {
+  R <- apply(M, 2, function(x) frank(x, ties.method = "average", na.last = "keep"))
+  cor_fast(R)
+}
+high_pairs <- function(C, thresh = 0) {
+  ut <- which(upper.tri(C), arr.ind = TRUE)
+  d  <- data.table(var1 = rownames(C)[ut[, 1]], var2 = colnames(C)[ut[, 2]], r = C[ut])
+  d  <- d[is.finite(r)][abs(r) >= thresh][order(-abs(r))]
+  d[, r := round(r, 3)][]
+}
+# Display-only sanitizer for corrplot: clamp tiny floating-point overshoot back into [-1,1]
+# and zero out any non-finite cell (e.g. a near-zero-variance mosaic column). Does NOT touch
+# the matrices used for the numeric tables above.
+for_plot <- function(C) { C <- round(C, 6); C[!is.finite(C)] <- 0; pmax(pmin(C, 1), -1) }
+# Greedy redundancy pruning. protect: never dropped. score: higher = keep (drops the
+# lower-scoring member of the worst pair); if NULL, drops the higher-mean-|r| (globally
+# more-redundant) member.
+find_redundant <- function(C, thresh, protect = character(0), score = NULL) {
+  A <- abs(C); diag(A) <- NA; drop <- character(0)
+  repeat {
+    keep <- setdiff(rownames(A), drop)
+    sub  <- A[keep, keep, drop = FALSE]
+    if (!any(sub > thresh, na.rm = TRUE)) break
+    mx   <- which(sub == max(sub, na.rm = TRUE), arr.ind = TRUE)[1, ]
+    cand <- keep[c(mx[1], mx[2])]; free <- setdiff(cand, protect)
+    if (length(free) == 0L) { A[cand[1], cand[2]] <- A[cand[2], cand[1]] <- NA; next }
+    if (length(free) == 1L) { drop <- c(drop, free); next }
+    loser <- if (!is.null(score)) free[which.min(score[free])]
+             else free[which.max(c(mean(sub[free[1], ], na.rm = TRUE),
+                                   mean(sub[free[2], ], na.rm = TRUE)))]
+    drop <- c(drop, loser)
+  }
+  drop
+}
+```
+
+## Step 1 — Focal mains (21 → 11)
+
+```{r focal-matrix}
+Mf  <- as.matrix(dt[, ..FOCAL21])
+Cf_p <- cor_fast(Mf); Cf_s <- cor_spearman(Mf)
+cat(sprintf("Focal Pearson computed on %s complete-case rows.\n",
+            format(attr(Cf_p, "n_used"), big.mark = ",")))
+```
+
+```{r focal-heatmap, fig.width=9, fig.height=9}
+corrplot(for_plot(Cf_p), method = "color", type = "upper", order = "hclust",
+         addCoef.col = "grey25", number.cex = 0.55, tl.cex = 0.8, tl.col = "black",
+         title = "Focal features (21) — Pearson, hclust order", mar = c(0, 0, 1.5, 0))
+```
+
+```{r focal-high-pairs}
+cat("Focal — Pearson |r| >= ", COR_HI, ":\n", sep = ""); print(high_pairs(Cf_p, COR_HI))
+cat("\nFocal — Spearman |r| >= ", COR_HI, " (rank-based):\n", sep = ""); print(high_pairs(Cf_s, COR_HI))
+```
+
+### Univariate separability (burned vs unburned)
+
+How well does each index *alone* separate burned from unburned? Headline is the **AUC**
+(Mann–Whitney, threshold-free): 0.5 = none, 1 = perfect; `sep` $= |\text{AUC}-0.5|\cdot 2$. This
+needs the `burned` label (absent from `dt`), so it does a fresh lightweight full read of
+`burned` + the 21 focal columns.
+
+```{r separability}
+sep_cols <- c("burned", FOCAL21)
+sepdt <- rbindlist(lapply(REGIONS, function(reg) {
+  message("  reading burned+focal from ", basename(obs_csv(reg)), " ...")
+  fread(obs_csv(reg), select = sep_cols)
+}), use.names = TRUE)
+
+auc1 <- function(x, y) {
+  ok <- is.finite(x); x <- x[ok]; y <- y[ok]
+  n1 <- as.numeric(sum(y == 1L)); n0 <- as.numeric(sum(y == 0L))
+  if (n1 == 0 || n0 == 0) return(NA_real_)
+  r <- frank(x, ties.method = "average")
+  (sum(r[y == 1L]) - n1 * (n1 + 1) / 2) / (n1 * n0)
+}
+yb  <- as.integer(sepdt$burned)
+sep <- rbindlist(lapply(FOCAL21, function(f) {
+  x  <- sepdt[[f]]; ok <- is.finite(x)
+  a  <- auc1(x, yb)
+  mb <- mean(x[ok & yb == 1L]); mu <- mean(x[ok & yb == 0L])
+  vb <- var(x[ok & yb == 1L]);  vu <- var(x[ok & yb == 0L])
+  n1 <- sum(ok & yb == 1L);     n0 <- sum(ok & yb == 0L)
+  sp <- sqrt(((n1 - 1) * vb + (n0 - 1) * vu) / (n1 + n0 - 2))
+  data.table(var = f, auc = a, sep = abs(a - 0.5) * 2,
+             cohens_d = (mb - mu) / sp, mean_burned = mb, mean_unburned = mu)
+}))
+sep[, c("auc","sep","cohens_d","mean_burned","mean_unburned") :=
+      .(round(auc,4), round(sep,4), round(cohens_d,3), round(mean_burned,4), round(mean_unburned,4))]
+setorder(sep, -sep); print(sep)
+rm(sepdt); invisible(gc())
+```
+
+### Automatic pruner (protect raw optical + NBR/NBR2; tiebreak by separability)
+
+```{r focal-decision}
+KEEP_FOCAL <- c("NBR", "NBR2", "BLUE", "GREEN", "RED", "NIR", "SWIR1", "SWIR2")  # always keep
+sep_score  <- setNames(sep$sep, sep$var)
+drop_focal <- find_redundant(Cf_p, COR_HI, protect = KEEP_FOCAL, score = sep_score)
+A <- abs(Cf_p); diag(A) <- NA
+focal_summary <- data.table(
+  var = FOCAL21, separability = round(sep_score[FOCAL21], 4),
+  mean_abscor = round(rowMeans(A, na.rm = TRUE), 3),
+  max_abscor  = round(apply(A, 1, max, na.rm = TRUE), 3))
+focal_summary[, status := fifelse(var %in% KEEP_FOCAL, "protected",
+                          fifelse(var %in% drop_focal, "DROP", "keep"))]
+setorder(focal_summary, status, -separability); print(focal_summary)
+cat("\nPairwise pruner DROP:", paste(drop_focal, collapse = ", "), "\n")
+```
+
+### The exact-linear-combination cut (MIRBI + tasseled-cap)
+
+The pairwise pruner is blind to **multivariate** redundancy: it compares two columns at a time,
+so it cannot see that a variable is an exact linear combination of *several* protected ones. Two
+groups of focal features are exactly that, and they leave the design even though their pairwise
+$|r|$ never trips the 0.9 rule:
+
+- **MIRBI** $= 10\,\text{SWIR2} - 9.8\,\text{SWIR1} + 2$ — exactly linear in two bands we keep.
+- **TCB, TCG, TCW** — exact linear combinations of the six raw optical bands (Baig 2014).
+
+With the raw bands protected, a linear model (and the band×· product terms) already **spans**
+these indices: regressing any of them on the bands gives $R^2 \approx 1$. They add columns and
+worsen conditioning but contribute no new direction. We verify the exactness two ways — an
+$R^2$ from the regression, and the **smallest eigenvalue of the relevant correlation submatrix**,
+which is the cleanest fingerprint of rank-deficiency (an exact linear dependence forces an
+**exactly zero** eigenvalue).
+
+```{r exact-combo}
+r2_on <- function(y, xs) {                      # R^2 of y regressed on columns xs (complete cases)
+  M <- as.matrix(dt[, c(y, xs), with = FALSE]); M <- M[is.finite(rowSums(M)), ]
+  summary(lm(M[, 1] ~ M[, -1]))$r.squared
+}
+smallest_eig <- function(vars) {                # min eigenvalue of the correlation matrix
+  C <- cor_fast(as.matrix(dt[, ..vars])); min(eigen(C, symmetric = TRUE)$values)
+}
+exact <- data.table(
+  index   = c("MIRBI", "TCB", "TCG", "TCW"),
+  spanned_by = c("SWIR1+SWIR2", "6 optical", "6 optical", "6 optical"),
+  R2      = c(r2_on("MIRBI", c("SWIR1","SWIR2")),
+              r2_on("TCB", c("BLUE","GREEN","RED","NIR","SWIR1","SWIR2")),
+              r2_on("TCG", c("BLUE","GREEN","RED","NIR","SWIR1","SWIR2")),
+              r2_on("TCW", c("BLUE","GREEN","RED","NIR","SWIR1","SWIR2"))))
+exact[, R2 := round(R2, 6)]; print(exact)
+cat(sprintf("\nmin eigenvalue of cor(SWIR1, SWIR2, MIRBI)      = %.3e  (exact dependence -> ~0)\n",
+            smallest_eig(c("SWIR1","SWIR2","MIRBI"))))
+cat(sprintf("min eigenvalue of cor(6 optical bands + TCB,TCG,TCW) = %.3e  (3 exact deps -> ~0)\n",
+            smallest_eig(c("BLUE","GREEN","RED","NIR","SWIR1","SWIR2","TCB","TCG","TCW"))))
+```
+
+$R^2 = 1$ (to floating-point) and a correlation eigenvalue at machine-epsilon confirm exact
+linear dependence: **drop MIRBI, TCB, TCG, TCW**. The ash/brightness signal TCB was prized for is
+not lost — TCB *is* a fixed weighted sum of the six protected bands, so the model retains full
+access to that contrast through the bands and their products.
+
+### Focal decision — the reduced 11
+
+Combining the pruner with two manual rules (protect one greenness + one moisture index; prefer
+cheap normalized-difference indices over redundant ones) and the exact-combo cut:
+
+**KEEP (11):** `BLUE GREEN RED NIR SWIR1 SWIR2` (raw optical) · `NBR NBR2` (burn) ·
+**`NDVI`** (greenness) · **`NDMI`** (moisture) · `NDSI` (the one genuinely independent extra
+axis, max $|r|\approx0.54$).
+
+**DROP (10):** `MIRBI TCB TCG TCW` (exact linear combos) · `AFRI kNDVI SAVI EVI2 NIRv` (greenness/
+burn cluster, redundant with NDVI/NBR) · `NDWI` (McFeeters NDWI $\approx -$NDVI, $r=-0.977$: a
+greenness axis in disguise, not independent moisture).
+
+Rationale highlights:
+
+- **Greenness = NDVI, not kNDVI**: $r(\text{NDVI},\text{kNDVI})=0.986$, equal separability; NDVI
+  is canonical/cheap and kNDVI's nonlinearity is recoverable from product terms.
+- **Moisture = NDMI, not NDWI/TCW**: NDMI is cheaper than TCW, separates better, and
+  $r(\text{NDMI},\text{TCW})=0.86$ so it covers TCW. We accept one strongly-collinear pair,
+  $r(\text{NDMI},\text{NBR})=0.966$ — the useful moisture/ash signal is NDMI's component
+  *orthogonal* to NBR (ash test: NDMI sep 0.73 vs NBR 0.45), and there is no cheap NIR–SWIR
+  moisture index decorrelated from NBR (they share NIR). **This deliberately-kept pair is part of
+  the irreducible near-rank-deficiency analysed in §[VIF].**
+
+```{r focal-final}
+FOCAL_KEEP <- c("BLUE","GREEN","RED","NIR","SWIR1","SWIR2","NBR","NBR2","NDVI","NDMI","NDSI") # 11
+stopifnot(length(FOCAL_KEEP) == 11)
+rm(Mf, Cf_p, Cf_s, A); invisible(gc())
+cat("Focal mains kept (11):", paste(FOCAL_KEEP, collapse = ", "), "\n")
+```
+
+## Step 2 — Previous-year mains (40 → 32)
+
+```{r prev-matrix}
+Mp  <- as.matrix(dt[, ..PREV40]); Cp_p <- cor_fast(Mp)
+cat(sprintf("Prev-year Pearson computed on %s complete-case rows.\n",
+            format(attr(Cp_p, "n_used"), big.mark = ",")))
+```
+
+```{r prev-heatmap, fig.width=12, fig.height=12}
+corrplot(for_plot(Cp_p), method = "color", type = "upper", order = "hclust", tl.cex = 0.6, tl.col = "black",
+         title = "Previous-year mosaic (40) — Pearson, hclust order", mar = c(0, 0, 1.5, 0))
+```
+
+```{r prev-high-pairs}
+cat("Prev-year — Pearson |r| >= ", COR_HI, ":\n", sep = ""); print(high_pairs(Cp_p, COR_HI))
+```
+
+The prev-year set is far **less collinear than focal** — essentially all $>0.9$ redundancy is one
+structure: the **visible trio** (blue ≈ green ≈ red) are near-duplicates within *every* summary
+($r\approx0.93$–$0.99$). The median/wet/dry/sd summaries of every other variable are distinct
+enough to keep.
+
+**Decision — keep `green` as the single visible representative (all 4 summaries) and drop `blue`
+and `red` entirely (8 columns):** 8 base vars (`green, nir, swir1, swir2, ndvi, ndwi, npv, ndfi`)
+× 4 summaries = **32 main terms**. These are cheap, only mildly collinear main effects; we keep
+them generously. (Which prev bands enter the expensive *interaction* blocks is decided
+separately, in Step 4.)
+
+```{r prev-final}
+PREV_DROP_VARS <- c("blue", "red")
+PREV_MAIN <- PREV40[!grepl(sprintf("mb_mos_(%s)_", paste(PREV_DROP_VARS, collapse = "|")), PREV40)]
+stopifnot(length(PREV_MAIN) == 32)
+rm(Mp, Cp_p); invisible(gc())
+cat("Prev mains kept (32):\n"); print(PREV_MAIN)
+```
+
+## Step 3 — Focal × focal interactions (210 → 22)
+
+With 11 focal mains the pairwise block is $\binom{11}{2}=55$ candidates (down from
+$\binom{21}{2}=210$). We keep an interaction only if it adds structure beyond the mains and the
+other kept interactions — pruning by correlation with the **11 mains protected**.
+
+**Products are built from CENTERED factors**, $(X-\bar X)(Y-\bar Y)$, not raw $X\!\cdot\!Y$ — the
+only honest way to judge interaction redundancy, since a raw product is *mechanically* correlated
+with its parents. Centering the *factors* genuinely changes the column:
+$(X-a)(Y-b) = XY - aY - bX + ab$.
+
+> **Is this just reparameterization?** Only without a penalty. In an unpenalized model that also
+> holds $X$, $Y$ and an intercept, raw and centered products span the same space → identical
+> predictions. **Under glmnet's penalty it is a different model**: the penalty is on the
+> coefficients, which differ between parameterizations for the same surface, so the penalized
+> optimum (selection + shrinkage) differs — in the better-conditioned direction. For
+> **deployment** the distinction vanishes: once fitted, fold the centering constants into the
+> intercept + main slopes, and GEE deploys raw band products (no means vector).
+
+```{r focal-interactions}
+OPT_K <- c("BLUE","GREEN","RED","NIR","SWIR1","SWIR2")
+IDX_K <- c("NBR","NBR2","NDVI","NDMI","NDSI")
+Mk <- as.matrix(dt[, ..FOCAL_KEEP]); Mk <- Mk[is.finite(rowSums(Mk)), ]
+Mc <- sweep(Mk, 2, colMeans(Mk), "-")                    # CENTER factors before multiplying
+pr <- combn(FOCAL_KEEP, 2)                               # 55 distinct pairs
+P  <- vapply(seq_len(ncol(pr)), function(k) Mc[, pr[1, k]] * Mc[, pr[2, k]], numeric(nrow(Mc)))
+colnames(P) <- apply(pr, 2, paste, collapse = ":")
+Cint     <- cor_fast(cbind(Mk[, FOCAL_KEEP], P))         # raw mains + centered products
+drop_int <- find_redundant(Cint, COR_HI, protect = FOCAL_KEEP)
+keep_int_pw <- setdiff(colnames(P), drop_int)
+blk <- function(t) { ab <- strsplit(t, ":")[[1]]
+  if (all(ab %in% OPT_K)) "opt:opt" else if (all(ab %in% IDX_K)) "idx:idx" else "opt:idx" }
+itab <- data.table(term = colnames(P), block = vapply(colnames(P), blk, ""),
+                   status = fifelse(colnames(P) %in% keep_int_pw, "keep", "DROP"))
+cat(sprintf("Pairwise prune: kept %d / 55  (|r| > %.2f, 11 mains protected, centered factors)\n",
+            length(keep_int_pw), COR_HI))
+print(itab[, .(keep = sum(status == "keep"), total = .N), by = block][order(block)])
+rm(Mk, Mc, P, Cint); invisible(gc())
+```
+
+The pairwise prune keeps **25** of 55. A final **VIF-on-mains** screen (§[VIF]) then looks for the
+ones still reproducible from the *main span* (a multivariate redundancy pairwise correlation
+misses). At a strict $R^2_{\text{on mains}}>0.9$ that screen flags 6 (printed in §[VIF]); but none
+of them exceed $R^2=0.95$, so the production design makes the **soft call at ~0.95** and drops only
+the three clearest (`SWIR1:NBR2, SWIR2:NBR, NIR:NDVI`), keeping the three borderline ones
+(`NIR:NBR, SWIR1:NDMI, BLUE:RED`). That yields the **22** focal interactions frozen in
+`02-model_fitting.R` (the authoritative set — a stricter 0.9 cut would trim 3 more, to 19):
+
+```{r focal-int-frozen}
+FOCAL_INT <- c("BLUE:NBR","BLUE:NBR2","BLUE:NDMI","BLUE:RED","BLUE:SWIR1","GREEN:NIR",
+               "NBR:NBR2","NBR:NDMI","NBR2:NDSI","NBR2:NDVI","NDMI:NDSI","NDVI:NDMI",
+               "NDVI:NDSI","NIR:NBR","NIR:NDSI","NIR:SWIR1","NIR:SWIR2","SWIR1:NDMI",
+               "SWIR1:NDSI","SWIR1:NDVI","SWIR1:SWIR2","SWIR2:NDVI")                  # 22
+stopifnot(length(FOCAL_INT) == 22)
+cat("Frozen focal interactions (22), used in fitting:\n"); print(FOCAL_INT)
+```
+
+This is **22 vs the old 210** — the single biggest term-count cut.
+
+## Step 4 — Prev × focal interactions (curated B4–B6, median + sd → 64)
+
+For prev × focal we keep the **curated block structure** rather than crossing everything: the
+blocks encode a *relevance* prior — a band interacts with its own previous-year level (same-band),
+and previous-year vegetation/fraction state modulates the fire signal — which a pure correlation
+prune would discard (it removes *redundant* terms, not *useless* ones). Two reductions vs the
+canonical-team blocks: each block uses the **median + sd** summaries only (dropping
+$\text{wet}\approx\text{med}$ and the partly-redundant $\text{dry}$ from the interactions), and
+block membership is aligned to the reduced main sets (11 focal, 32 prev).
+
+| block | prev side (× med + sd) | × focal side | count |
+|---|---|---|---:|
+| **B4 same-band** | green, nir, swir1, swir2, ndvi | each × its own focal band | 5 × 2 = **10** |
+| **B5 idx × fire-idx** | ndvi, ndwi, npv, ndfi | × {NBR, NBR2, NDVI}; skip ndvi×NDVI | 4×3×2 − 2 = **22** |
+| **B6 idx × fire-band** | ndvi, ndwi, npv, ndfi | × {RED, NIR, SWIR1, SWIR2} | 4×4×2 = **32** |
+| **total** | | | **64** |
+
+These blocks are **not** correlation-pruned among themselves — they are already a curated, sparse
+set. Their multivariate collinearity against the mains is checked next.
+
+## Step 5 — Multivariate collinearity (VIF) and the redundancy we keep on purpose {#sec-vif}
+
+Pairwise correlation can't see when a term is a linear combination of *several* others; VIF can:
+$\text{VIF}_j = 1/(1 - R^2_j)$, with $R^2_j$ from regressing term $j$ on all others ($>5$
+moderate, $>10$ serious). It is **n-invariant** (a function of the correlation matrix only).
+
+**The caveat that dominates here, and your question about the bands + ratio-indices.** We
+deliberately keep the 6 raw optical bands *and* indices that are (near-)functions of them: NBR,
+NBR2, NDMI are **ratios** of NIR/SWIR pairs. That makes the protected main set **intentionally
+near-rank-deficient** — `cor(X)` is numerically near-singular, and naïve `diag(solve(cor(X)))`
+returns garbage (VIFs in the millions). That collinearity is **not** a bug and is **not** removed
+by deleting terms; it is exactly what the **elastic-net ridge component ($\alpha<1$) absorbs**.
+
+### How you *see* near-rank-deficiency: eigenvalues of the correlation matrix
+
+The clean diagnostic is the eigenvalue spectrum of the correlation matrix of the suspect block.
+For a set of $p$ standardized variables, $\sum\lambda_i = p$. An **exact** linear dependence
+forces a $\lambda_i = 0$; a **near** dependence forces a $\lambda_i \approx 0$. The condition
+number $\kappa = \lambda_{\max}/\lambda_{\min}$ measures how close to singular the block is
+($\kappa \gtrsim 30$ is the usual flag; $\kappa \gtrsim 1000$ is severe).
+
+Take the block you asked about — **{NBR, NBR2, NIR, SWIR1, SWIR2}**. NBR and NBR2 are ratios
+built from {NIR, SWIR1, SWIR2}, so five variables live in essentially **three** underlying
+dimensions: we expect the two smallest eigenvalues to collapse toward zero and $\kappa$ to be
+large.
+
+```{r eig-near-rank}
+demo <- c("NBR","NBR2","NIR","SWIR1","SWIR2")
+Cd   <- cor_fast(as.matrix(dt[, ..demo]))
+ed   <- eigen(Cd, symmetric = TRUE)$values
+print(data.table(component = seq_along(ed),
+                 eigenvalue = round(ed, 5),
+                 pct_var = round(100 * ed / sum(ed), 2),
+                 cum_pct = round(100 * cumsum(ed) / sum(ed), 2)))
+cat(sprintf("\nsum of eigenvalues = %.2f (= p = %d)\n", sum(ed), length(ed)))
+cat(sprintf("lambda_max = %.4f,  lambda_min = %.3e\n", max(ed), min(ed)))
+cat(sprintf("condition number  kappa = lambda_max / lambda_min = %.1f\n", max(ed) / min(ed)))
+```
+
+Read the printed spectrum (full-data values): the first two components carry **~95%** of the
+variance, and the smallest eigenvalue collapses to $\lambda_{\min}\approx0.013$ — about **240×
+below** $\lambda_{\max}\approx3.27$, giving $\kappa\approx243$. That is well past the
+$\kappa\gtrsim30$ collinearity flag: five variables effectively live in ~two dominant directions.
+This is *near*-rank-deficiency (ill-conditioning), **not** the exact singularity of
+§[exact-combo]: there MIRBI / the tasseled-caps drove a correlation eigenvalue to *machine
+epsilon* ($\approx10^{-13}$, an exactly-zero direction) and were removed; here the ratio-indices
+are *non-linear* functions of the bands, so the small eigenvalue is small-but-finite — a block we
+**keep** and condition with ridge rather than delete.
+
+**Why keep a near-singular main block at all?** Because (a) the redundancy is *not exact* — the
+ratio-indices carry a small but real component orthogonal to the bands (the ash/moisture signal in
+NDMI⊥NBR is the worked example in Step 1), and (b) dropping a band or a ratio to "fix" the
+condition number would throw that orthogonal component away. The elastic-net **ridge** term
+($\alpha<1$) shrinks along the near-null directions instead of deleting them: it keeps the model
+identifiable and the fit well-posed without discarding signal. This is precisely why the final
+$\alpha$ grid (§[Fitting]) **excludes pure lasso** ($\alpha=1$) — some ridge is needed to
+condition this block.
+
+### VIF used only for the question it can answer: do interactions add anything beyond the mains?
+
+Because the mains are near-singular by design, we use VIF only via a **pseudo-inverse** to ask:
+what is the $R^2$ of each interaction regressed on the **main span**? (Well-defined even when the
+mains are collinear.) Mains are never dropped; only interactions are screened.
+
+```{r design-vif}
+PREV_SUMM2 <- c("median","stdDev")
+SAMEBAND_K <- c("green","nir","swir1","swir2","ndvi")
+CONTEXT_K  <- c("ndvi","ndwi","npv","ndfi")
+FIRE_IDX   <- c("NBR","NBR2","NDVI"); FIRE_BAND <- c("RED","NIR","SWIR1","SWIR2")
+
+need <- unique(c(FOCAL_KEEP, PREV_MAIN))
+D  <- as.matrix(dt[, ..need]); D <- D[is.finite(rowSums(D)), ]
+Dc <- sweep(D, 2, colMeans(D), "-")                              # centered factors
+
+fi  <- strsplit(keep_int_pw, ":")                               # pairwise-kept focal interactions
+Xfi <- vapply(fi, function(ab) Dc[, ab[1]] * Dc[, ab[2]], numeric(nrow(Dc)))
+colnames(Xfi) <- keep_int_pw
+
+specs <- list()                                                  # prev x focal blocks (median+sd)
+for (v in SAMEBAND_K) for (s in PREV_SUMM2)
+  specs <- c(specs, list(c(sprintf("mb_mos_%s_%s", v, s), toupper(v))))
+for (v in CONTEXT_K)  for (s in PREV_SUMM2) for (f in FIRE_IDX)
+  if (!(v == "ndvi" && f == "NDVI")) specs <- c(specs, list(c(sprintf("mb_mos_%s_%s", v, s), f)))
+for (v in CONTEXT_K)  for (s in PREV_SUMM2) for (f in FIRE_BAND)
+  specs <- c(specs, list(c(sprintf("mb_mos_%s_%s", v, s), f)))
+Xpf <- vapply(specs, function(z) Dc[, z[1]] * Dc[, z[2]], numeric(nrow(Dc)))
+colnames(Xpf) <- vapply(specs, function(z) paste(z[1], z[2], sep = ":"), "")
+
+X <- cbind(D[, c(FOCAL_KEEP, PREV_MAIN)], Xfi, Xpf)
+mains <- c(FOCAL_KEEP, PREV_MAIN); ints <- setdiff(colnames(X), mains)
+C  <- cor(X); eA <- eigen(C, symmetric = TRUE)
+rk <- function(M){ e <- eigen(M, symmetric = TRUE)$values; sum(e > max(e) * 1e-8) }
+cat(sprintf("Assembled design: %d terms (%d main + %d interaction)\n",
+            ncol(X), length(mains), length(ints)))
+cat(sprintf("MAIN block rank: %d/%d  |  FULL rank: %d/%d  |  recip-cond %.1e\n",
+            rk(C[mains, mains]), length(mains),
+            sum(eA$values > max(eA$values)*1e-8), ncol(X), min(eA$values)/max(eA$values)))
+
+ev   <- eigen(C[mains, mains], symmetric = TRUE); tol <- max(ev$values) * 1e-8
+pinv <- ev$vectors %*% ((ifelse(ev$values > tol, 1/ev$values, 0)) * t(ev$vectors))
+R2   <- vapply(ints, function(j){ cc <- C[j, mains]
+          min(max(as.numeric(t(cc) %*% pinv %*% cc), 0), 1) }, 0.0)
+vift <- data.table(term = ints, R2_on_mains = round(R2, 3),
+                   vif = round(1/(1 - pmin(R2, 1 - 1e-12)), 1))[order(-R2_on_mains)]
+print(vift[1:12])
+drop_vif <- vift[R2_on_mains > 0.9, term]
+cat(sprintf("\nVIF drop (R^2_on_mains > 0.9 / VIF > 10): %d interactions: %s\n",
+            length(drop_vif), paste(drop_vif, collapse = ", ")))
+rm(D, Dc, Xfi, Xpf, X, C, eA); invisible(gc())
+```
+
+**Reading it (full-data values).** The MAIN block is now **full rank, 43/43** — dropping the
+exact-combo indices (MIRBI, TCB/TCG/TCW) *restored* rank that the canonical-team mains lacked — yet
+it stays **ill-conditioned**, the κ≈243 bands + ratio-indices block above. So the residual here is
+*conditioning*, not rank-deficiency, and it is left to the ridge term, not removed. The full
+assembled design printed as **132 terms** (43 mains + 89 interactions = the 25 pairwise-kept focal
++ 64 prev×focal) is rank **131/132** — one *interaction* is linearly dependent (recip-cond
+$\sim10^{-16}$), which is exactly what the VIF screen catches. At $R^2_{\text{on mains}}>0.9$ it
+flags **6** focal opt×idx pairs (`NIR:NBR, SWIR1:NBR2, SWIR1:NDMI, SWIR2:NBR, BLUE:RED, NIR:NDVI`)
+that survived the pairwise prune but are multivariately ≥90% reproducible from the mains. None
+exceed $R^2=0.95$; production drops the three clearest and keeps three borderline (see Step 3),
+taking the focal interactions to **22** and the design to its final **129** (43 mains + 22 focal +
+64 prev×focal).
+
+---
+
+# Part IV — The final design and fitting config {#sec-fitting}
+
+## Final design — before vs after
+
+| component | canonical-team (427) | reduced (129) |
+|---|--:|--:|
+| focal mains | 21 | **11** |
+| prev-year mains | 40 | **32** |
+| focal × focal | 210 | **22** |
+| prev × focal (B4–B6) | 156 | **64** |
+| **total terms (+ intercept)** | **427** | **129** |
+
+A **~70% cut** (427 → 129), concentrated in the interaction blocks — exactly where coordinate
+descent was crawling. The block structure used in fitting (`workflow/02-model_fitting.R`):
+
+```{r blocks}
+BLOCKS <- c(focal = 11, prev = 32, pairs = 22, sameband = 10, cross_idx = 22, cross_band = 32)
+stopifnot(sum(BLOCKS) == 129)
+print(as.data.table(as.list(BLOCKS))[, total := sum(BLOCKS)][])
+```
+
+## Fitting config — the convergence fix was numerical
+
+The reduction removes the *removable* collinearity; the leftover (intentional) collinearity is
+handled at fit time. The decisive findings, all in `02-model_fitting.R`:
+
+- **`thresh = 1e-4`** (relaxed from glmnet's `1e-7` default) — **the single biggest speed lever.**
+  The default tolerance forces coordinate descent to grind out spurious precision in the
+  ill-conditioned low-$\lambda$ tail; `1e-4` is far below the noise floor of a CV-selected model
+  and converges in a fraction of the iterations. A per-class adaptive fallback loosens further
+  (×5, up to `1e-2`) under a wall-clock budget, so no class can stall.
+- **`nlambda = 50`, `lambda.min.ratio = 1e-4`** — a finer $\lambda$ path gives better warm starts
+  (each fit initialized from the previous $\lambda$); the CV optimum sits near the path floor, so
+  we go deep.
+- **$\alpha$ grid $\{0.25, 0.5, 0.75\}$** — pure ridge ($\alpha=0$) and pure lasso ($\alpha=1$)
+  are both dropped: ridge was never best in CV and is slowest, and lasso lacks the ridge component
+  that **conditions the intentionally near-singular main block** (§[VIF]). The interior keeps that
+  component. Selected at `lambda.min` (data-rich, near-MLE wanted).
+- **Centered-factor interactions, folded back at export** — products are fit from mean-centered
+  factors (better-conditioned under the penalty); after fitting, the centering is folded into the
+  intercept + main slopes so the **exported** coefficients are on the raw-product scale and GEE
+  deploys raw band multiplies (no means vector). Verified numerically (predictions identical) on
+  every fit.
+- **CV design** — grouped K-fold ($K=10$, group = region-unique fire id, so whole fires are held
+  out and within-fire temporal autocorrelation cannot leak), folds packed by stratified greedy
+  balancing of obs + positives, pure-negative fires point-distributed across folds, tuned on
+  binomial deviance. Out-of-fold $p_i$ saved per observation.
+
+With the reduced, conditioned design and the relaxed tolerance, fits that previously ran for hours
+per $\alpha$ complete in minutes — confirming the original problem was **numerical
+(ill-conditioning), not statistical**.
+
+## GEE computational considerations {#sec-gee}
+
+The model is evaluated for every Landsat observation in Argentina, 1999–2025. The implementation
+keeps the GEE compute graph at roughly **15 nodes regardless of term count** by expressing each
+interaction *block* as one `.multiply()` between two parallel multiband images, rather than
+looping per term (which would chain O(n) server-side nodes).
+
+```js
+// ---- build the two source images with distinct band names ----
+var focal = computeFocal(landsat).rename(focalNames);   // 11 bands, e.g. "NBR_t"
+var prev  = mbMosaic.select(prevBandsRaw).rename(prevNames); // 32 bands, e.g. "NDVI_med"
+var X0    = focal.addBands(prev);                        // 43 mains
+
+// ---- each interaction block in ONE multiply (parallel band lists) ----
+var pairs = X0.select(pairs_a).multiply(X0.select(pairs_b)).rename(pairs_names);     // 22
+var same  = X0.select(same_a ).multiply(X0.select(same_b )).rename(same_names);      // 10
+var cidx  = X0.select(cidx_a ).multiply(X0.select(cidx_b )).rename(cidx_names);      // 22
+var cband = X0.select(cband_a).multiply(X0.select(cband_b)).rename(cband_names);     // 32
+
+// ---- assemble 129-band predictor, weighted sum + sigmoid ----
+var X    = X0.addBands(pairs).addBands(same).addBands(cidx).addBands(cband);
+var coef = ee.Image.constant(coefValues).rename(coefNames);   // 129 floats, name-matched
+var eta  = X.multiply(coef).reduce(ee.Reducer.sum()).add(alpha);
+var p    = eta.multiply(-1).exp().add(1).pow(-1);              // sigmoid
+```
+
+The graph size does not grow with the term count: a 500-term version would have the same node
+count as a 50-term one. Band names must be globally unique (the `_t` / `_med` / `_sd` suffix
+convention handles it; `addBands` throws on a clash). SMA-derived layers (NPV, NDFI) are *consumed*
+as ordinary mosaic bands — never recomputed per scene — so they cost zero per-pixel array ops on
+our side. Tasseled-cap, had we kept it, would be one cheap linear `.expression()`; dropping it
+nonetheless removes columns that only hurt the *fit*.
+
+**Numerical precision at prediction.** GEE uses float32 (~7 significant digits, relative). For
+$|\eta|>10$ the sigmoid saturates and precision is irrelevant; near $\eta=0$ the contributions are
+by definition not all large, so float32 summation error in $p$ is $\sim10^{-5}$ — negligible
+against downstream smoothing/region-growing. No prediction-time rescaling required. (Optional
+insurance, if ever needed: a single 32-band centering of the prev mosaic before products, with the
+means stored in the coefficient JSON; one node, reused across all focal scenes via GEE's
+common-subexpression dedup.)
+
+## Summary of design choices
+
+- **Logistic regression**: cheap at prediction, trivial in GEE, sufficient when richly
+  parameterized.
+- **11 focal mains + 22 focal pairs**: capture non-monotonic fire signatures and disambiguate fire
+  from drought, ash, deforestation, defoliation and agriculture — the dominant Collection-0
+  confusions — after dropping exact-linear-combo indices (MIRBI, tasseled-cap) that added columns
+  but no information.
+- **32 prev-year mains + 64 prev × focal interactions**: turn the focal classifier into a
+  *context-aware* one without per-pixel temporal-change features.
+- **Reduction 427 → 129**: removes the *removable* collinearity (exact dependences, duplicated
+  axes) that made coordinate descent crawl; the *irreducible* near-rank-deficiency (bands + their
+  ratio-indices) is kept and handled by the elastic-net ridge component.
+- **Elastic net $\{0.25,0.5,0.75\}$, `lambda.min`, `thresh=1e-4`**: ridge conditions the kept
+  near-singular block; the relaxed tolerance is what actually made fitting fast.
+- **No deltas, no annual min/max, no $\text{dry}$/$\text{amp}$ in interactions**: absorbed by
+  interactions and the logistic non-linearity, or confounded by the very signal we detect.
+```
+

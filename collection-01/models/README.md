@@ -61,7 +61,7 @@ full-data fit would be *in-sample* and over-optimistic, which is the opposite of
 plot needs.
 
 ```r
-oof <- fread("collection-01/models/class_16_oof_predictions.csv")   # grassland_pat
+oof <- fread("collection-01/models-store/class_16_oof_predictions.csv")   # grassland_pat
 ts  <- merge(obs, oof[, .(region, fire_id, point_id, date, p_oof)],
              by = c("region", "fire_id", "point_id", "date"), all.x = TRUE)
 # plot ts$NBR, ts$NBR2, ts$p_oof vs date, one line per point_id, coloured by burned.
@@ -75,7 +75,7 @@ mean-centering used during fitting is already folded into the intercept + main s
 you just rebuild the 129 columns and dot them with the coefficients:
 
 ```r
-fit <- readRDS("collection-01/models/class_16_fit.rds")   # coef_raw, specs, all_terms, alpha, lambda
+fit <- readRDS("collection-01/models-store/class_16_fit.rds")   # coef_raw, specs, all_terms, alpha, lambda
 FOCAL <- c("BLUE","GREEN","RED","NIR","SWIR1","SWIR2","NBR","NBR2","NDVI","NDMI","NDSI")
 PREV  <- c("green","nir","swir1","swir2","ndvi","ndwi","npv","ndfi")
 SUMM  <- c(med="median", wet="median_wet", dry="median_dry", sd="stdDev")
@@ -115,7 +115,7 @@ training CSVs carry MIRBI etc.; the design uses only the 11 FOCAL + 32 PREV colu
 
 - `build_design()` builds the **reduced 129-term** design (6 blocks: 11 focal mains + 32
   prev-year mains + 22 focal×focal + 10 sameband + 22 cross-idx + 32 cross-band; see
-  `notebooks/predictors_terms_correlations.qmd`). Interactions are fit on mean-centered
+  `notebooks/logistic_regression_design.qmd`). Interactions are fit on mean-centered
   factors, then the centering is folded back so the exported coefficients act on raw products.
 - All region/class sample exceptions live in one `SAMPLE_RULES` table; the generic
   fold/CV/fit code never branches on region. Current PAT rules:
