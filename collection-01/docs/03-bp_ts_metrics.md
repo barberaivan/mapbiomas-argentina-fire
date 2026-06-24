@@ -26,17 +26,18 @@ Let `p[t]` be the obs-level burn probability at valid obs `t`, dated `d[t]` (fra
 
 Forward persistence (post-jump level), both window sizes:
 
-- `minfore3[t] = min(p[t], p[t+1], p[t+2])`   (K = 3)
-- `minfore2[t] = min(p[t], p[t+1])`            (K = 2)
+- `minfore3[t] = min(p[t], p[t+1], p[t+2])` (K = 3)
+- `minfore2[t] = min(p[t], p[t+1])`         (K = 2)
 
 Pre-jump baseline (back), two estimators:
 
-- `maxback2[t] = max(p[t-2], p[t-1])`          (conservative; = `diff(median5)` on monotone runs)
-- `prev[t]     = p[t-1]`                        (most local; best under sparse sampling)
+- `maxback3[t] = max(p[t-3], p[t-2], p[t-1])`  (conservative; = `diff(median5)` on monotone runs)
+- `maxback2[t] = max(p[t-2], p[t-1])`           (permissive; = `diff(median3)` on monotone runs)
 
 Time widths (record all — they inform gaps, persistence, and rate of change):
 
-- `prevwidth[t]  = d[t-1] - d[t-2]`   (back-window span; relevant to `maxback2`)
+- `prevwidth3[t]  = d[t-1] - d[t-3]`  (back-window span; relevant to `maxback3`)
+- `prevwidth2[t]  = d[t-1] - d[t-2]`  (back-window span; relevant to `maxback2`)
 - `jumpgap[t]    = d[t]   - d[t-1]`   (gap the jump is measured across)
 - `postwidth3[t] = d[t+2] - d[t]`     (persistence span, K = 3)
 - `postwidth2[t] = d[t+1] - d[t]`     (persistence span, K = 2)
@@ -47,49 +48,67 @@ Change variables (delta), computed from the previous metrics:
 
 Three parameterizations, each a time series over `t`:
 
-- `deltaA[t] = minfore3[t] - maxback2[t]`
-- `deltaB[t] = minfore3[t] - prev[t]`
-- `deltaC[t] = minfore2[t] - prev[t]`
+- `delta3[t] = minfore3[t] - maxback3[t]`  (both K=3 windows)
+- `delta2[t] = minfore2[t] - maxback2[t]`  (both K=2 windows)
 
 ### Collapsing the time series to single annual values (multiband image per year)
 
 We must reduce each per-pixel series to scalars for the SNIC step: 
 
 Treat each delta definition independently: find **its own** argmax `t*`
-over the year, and extract **its own** relevant variables at that `t*`. So `deltaA`, `deltaB`, `deltaC` each yield a self-consistent bundle anchored at their own peak.
+over the year, and extract **its own** relevant variables at that `t*`. So `delta2` and `delta2` each yield a self-consistent bundle anchored at their own peak.
 
-Rationale: the optimal transition obs differs by parameterization (K = 3 vs K = 2, `maxback2` vs `prev`); tying everything to one delta's peak would mis-anchor the others.
+Rationale: the optimal transition obs differs by parameterization (K = 3 vs K = 2); tying everything to one delta's peak would mis-anchor the others.
 
 At each delta's `t*`, extract (its own): 
-- the delta value (the max in the series), 
-- the `minfore` (post level),
-- the back value used (`maxback2` or `prev`), 
+- the delta value (which is the max in the series), 
+- the `minforeK` (post level)
+[backmax is not stored because it can be computed as minforeK-deltaK]
+
 - `jumpgap` (always, no matter which delta)
 - the corresponding `prevwidth`/`postwidth`, depending on the window used
 - the focal date (`date_post = d[t]`). (date_post - jumpgap / 2 gives the middle date, a good burn candidate-date)
 
-A few metrics to export for the whole series (not based on each delta):
-- robust `pmax_f = max_t minfore`: the maximun of minfore_f across the whole series and the maximum raw probability: `pmax1`, `pmax2` and `pmax3`.
-- n: the number of observations in the series (quality band)
-- timediff_med: median(diff(date)), the median gap, transformed to days
-- timediff_max: max(diff(date)), the maximum gap, transformed to days
+A few metrics to export for the whole series (not based on related to each delta's max):
+- `pmax1`: maximum raw probability,
+- `pmax2` = max(`minfore2`)
+- `pmax3` = max(`minfore3`)
+
+And the following quality metrics:
+- `n`: the number of observations in the series (quality band)
+- `timediff_med`: median(diff(date)), the median gap, transformed to days
+- `timediff_max`: max(diff(date)), the maximum gap, transformed to days
 
 All variables exported always; the decision on which to use depends on image density later.
 
+Minimum obs required — implemented as two separately padded arrays with guaranteed structure:
+
+- **K=3 padded array** [3 prev + T focal + 2 next]: requires 3 obs from prev year AND 2 obs from next year to be available; masked otherwise. Minimum T = 1 focal obs → extended length 6. Minimum requirement: `ext_len_k3 >= 6`.
+- **K=2 padded array** [2 prev + T focal + 1 next]: requires 2 obs from prev year AND 1 obs from next year. Minimum T = 1 focal obs → extended length 4. Minimum requirement: `ext_len_k2 >= 4`.
+
+Using two arrays with guaranteed structure (rather than one combined array with variable left-padding) ensures the fixed-offset array slices used to compute window metrics are always correct for unmasked pixels.
+
+Pixels where a padding requirement cannot be met (e.g., the previous year had fewer than 3 valid obs in the Sep–Dec window) will have the corresponding K=3 or K=2 bands masked — not an error, just a quality flag.
+
+Arrays must be masked by availability before computation so GEE does not throw errors on insufficient data.
+
 ### Building the raw burn probability time-series
 
-Using variable-width windows to compute aggregates implies that a series looses a variable number of observations at the extremes: minfore_3 needs 2 extra obs ahead; maxback_2 needs 2 obs before for each t. In turn, minfore_2 needs only 1 ahead, and prev, only 1 before. To make the aggregate time-series have equal length no matter their requirements, we will pad 2 extra obs before and ahead to the year time-series, but the less-requiring metrics will ignore the extreme padded obs. 
+Using variable-width windows to compute aggregates implies that a series looses a variable number of observations at the extremes: `minfore3` needs 2 extra obs ahead; `maxback3` needs 3 obs behind for each t. In turn, `minfore2` needs only 1 ahead, and `maxback2` only 2 behind. To give all metrics enough context at the extremes we pad **3 obs before** and **2 obs after** the focal year, but the narrower metrics will ignore some of the extreme padded obs. 
 
-Suppose we index the raw probability time series within a year as p[1:T]. We concatenate the 2-previous and 2-posterior consecutive obs, getting the series c(p[-1:0], p[1:T], p[(T+1):(T+2)]). We then compute the aggregate metrics over the indices 1:T. This means that when we compute minfore2[T], the T+2 obs will not be used (only the T+1). Similarly, to compute prev[1], the -1 obs is ignored too. This avoids the burn signal being repeated in consecutive years. 
+Suppose we index the raw probability time series within a year as p[1:T]. We concatenate the **3-previous** and **2-posterior** consecutive obs, getting the series c(p[-2:0], p[1:T], p[(T+1):(T+2)]). We then compute the aggregate metrics over the indices 1:T.
 
-This whole treatment is per-pixel, indexing only valid observations (passed quality filters from landsat). Unfortunately, to padd previous- and next-year observations we cannot just take the nearest 2 images from neighbouring years, because they may have missing data. We have to compute the burn probability time series for the M nearest months, create a per-pixel array of probability and take the 2 latest and 2 earliest obs, respectively. 
+The asymmetric padding (3 left, 2 right) is required because `maxback3` at the first focal obs (t=1) looks back three steps — needing p[-2], p[-1], p[0] — while `minfore3` at the last focal obs (t=T) only looks forward two steps — needing p[T+1], p[T+2]. Symmetric padding of 2 on each side would leave `maxback3` under-supplied at t=1.
+
+This means that when we compute `minfore2[T]`, the `T+2` obs is not used (only `T+1`). Similarly, to compute `maxback2[1]`, only two of the three padded prev obs are used (`p[-1]` and `p[0]`). This avoids the burn signal being repeated in consecutive years: the argmax search for any metric is always restricted to the focal indices 1:T; padded obs can only influence the background (`maxback`) context for the first or last focal obs, never become the detected event themselves.
+
+This whole treatment is per-pixel, indexing only valid observations (passed quality filters from Landsat). Unfortunately, to pad previous- and next-year observations we cannot just take the nearest images from neighbouring years, because they may have missing data. We have to compute the burn probability time series for the M nearest months, create a per-pixel array of probability and take the **3 latest** and **2 earliest** obs, respectively.
 M = 4 seems a good starting point.
 
-**Previous-year images to use**: The burn probability model uses the previous-year land cover and previous-year mapbiomas mosaic bands as predictors. Strictly, the burn probability for padded observations from neighbouring years should use *their own* previous year. However, as only the 2 before and after obs are padded, we consider more appropriate to use the focal-year's previous-year, because those padded obs will be probably better represented as if they were in the focal. This is not so in the terrible cases of very low image density, but we cannot solve all. 
+**Previous-year images to use**: The burn probability model uses the previous-year land cover and previous-year mapbiomas mosaic bands as predictors. Strictly, the burn probability for padded observations from neighbouring years should use *their own* previous year. However, as only the 3 before and 2 after obs are padded, we consider more appropriate to use the focal-year's previous-year, because those padded obs will be probably better represented as if they were in the focal year. This is not so in the terrible cases of very low image density, but we cannot solve all. 
 
 Example for target year 2010:
-padd pre-year obs: latest 2 obs from september 2009 to december 2009 (included).
+padd pre-year obs: latest 3 obs from september 2009 to december 2009 (included).
 padd post-year obs: first 2 obs from jan 2011 to april 2011 (included).
 (Beware: in GEE, the end date of filterDate() is exclusive, you have to advance 1 day to get it right).
 All obs, even the padded ones, use the mapbiomas land cover and mosaic data from 2009 to compute burn probability.
-

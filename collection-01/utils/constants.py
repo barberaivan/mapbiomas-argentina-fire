@@ -9,7 +9,7 @@ import csv
 from pathlib import Path
 
 # ─── Year range ───────────────────────────────────────────────────────────────
-YEARS = list(range(1999, 2025))  # 1999–2025
+YEARS = list(range(1999, 2026))  # 1999–2025 inclusive (range() excludes the upper bound)
 MB_LIMIT_YEAR = 2024             # last year available in the MapBiomas LULC asset
 
 # ─── Regions ─────────────────────────────────────────────────────────────────
