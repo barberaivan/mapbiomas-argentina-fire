@@ -73,9 +73,12 @@ above for per-step design.
 
 ## Conventions & gotchas
 
-- **`fire_id`** is the string `"fire_NN"` in GEE assets; get the numeric part with
-  `str(fire_id).removeprefix("fire_").zfill(2)`. Bare `fire_id`s **repeat across regions** —
-  always key fires region-uniquely (`region_fire_id = paste(region, fire_id)`) in any analysis.
+- **`fire_id`** is a verbatim string whose **only guaranteed structure is the `"fire_"`
+  prefix** — the body need not be numeric or two digits (e.g. `"fire_sde10"` alongside
+  `"fire_07"`). **Never zero-pad, parse a numeric part, or reconstruct it**; build asset
+  tokens with `C.fire_token(fire_id)` (`collection-01/utils/constants.py`) and use the id
+  as-is otherwise. Bare `fire_id`s also **repeat across regions** — always key fires
+  region-uniquely (`region_fire_id = paste(region, fire_id)`) in any analysis.
 - **Asset-based processing**: every workflow step exports an intermediate GEE asset; don't
   collapse steps into one in-memory computation.
 - **Prediction tiling**: all image-based GEE predictions run over the MapBiomas *cartas* grid

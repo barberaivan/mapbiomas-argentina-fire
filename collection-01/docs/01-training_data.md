@@ -28,10 +28,11 @@ exports **one GEE asset per fire**:
 
 Conventions (the durable ones are also in `CLAUDE.md`):
 
-- One GEE task per fire; task description `training_obs_{region}_fire_{NN}_v{version}`
+- One GEE task per fire; task description `training_obs_{region}_{fire_id}_v{version}`
   (region included because `fire_id`s repeat across regions).
-- `fire_id` is the string `"fire_NN"` in assets; numeric part via
-  `str(fire_id).removeprefix("fire_").zfill(2)`.
+- `fire_id` is verbatim and only the `"fire_"` prefix is guaranteed — the body need
+  not be numeric or two digits (e.g. `"fire_sde10"`). Build asset tokens with
+  `C.fire_token(fire_id)` (`utils/constants.py`); never zero-pad or reconstruct it.
 - PAT fires 01–30 fall back to `COLLECTION-0/TRAINING-DATA/` for their training_locations.
 - Fires with no burned points (drought/ash negatives, e.g. PAT fire_46/47) export
   unburned-only rather than being skipped.

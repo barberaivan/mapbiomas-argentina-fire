@@ -26,6 +26,25 @@ TRAINING_DATA_COL1 = f"{_FIRE_ROOT}/COLLECTION-1/TRAINING-DATA"
 TRAINING_DATA_COL0 = f"{_FIRE_ROOT}/COLLECTION-0/TRAINING-DATA"
 
 
+# ─── Fire id ─────────────────────────────────────────────────────────────────
+def fire_token(fire_id):
+    """Canonical ``fire_<id>`` asset token for one fire.
+
+    The ONLY guaranteed structure of a fire id is the ``fire_`` prefix; the
+    remainder is verbatim and need not be numeric or two digits — e.g.
+    ``fire_sde10`` is as valid as ``fire_07``. We therefore never zero-pad or
+    coerce the body; we only ensure the prefix is present, so the same value
+    round-trips between the asset's ``fire_id`` property and its asset name.
+
+    Accepts a full id (``"fire_07"`` / ``"fire_sde10"``) or a bare body
+    (``"07"`` / ``"sde10"``); returns the full token unchanged in the first case.
+    Bare numeric ids are NOT padded — pass the id exactly as it appears in
+    ``training_fires`` (the source of truth).
+    """
+    s = str(fire_id)
+    return s if s.startswith("fire_") else f"fire_{s}"
+
+
 # MapBiomas land-cover: multi-band image, one band per year named classification_YYYY
 MAPBIOMAS_LULC = (
     "projects/mapbiomas-argentina/assets/LAND-COVER/COLLECTION-2/INTEGRATION/"

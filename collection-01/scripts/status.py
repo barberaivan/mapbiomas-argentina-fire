@@ -72,10 +72,12 @@ def check_region(region, task_index):
     lines = []
     for feat in fires_info:
         fire_id = feat["properties"]["fire_id"]
-        fid_str = str(fire_id).removeprefix("fire_").zfill(2)
+        token   = C.fire_token(fire_id)
 
-        # Check for any versioned asset
-        done = [n for n in existing if n.startswith(f"training_observations-fire_{fid_str}")]
+        # Check for any versioned asset. The trailing "_v" anchors the match so
+        # e.g. "fire_sde1" does not also match "fire_sde10_v1".
+        done = [n for n in existing
+                if n.startswith(f"training_observations-{token}_v")]
         if done:
             label = "DONE"
             detail = ", ".join(sorted(done))
@@ -83,7 +85,7 @@ def check_region(region, task_index):
             # Look for a matching task
             task_matches = [
                 (desc, t) for desc, t in task_index.items()
-                if f"_{region}_fire_{fid_str}_" in desc
+                if f"_{region}_{token}_" in desc
             ]
             if task_matches:
                 # pick the most recent active one, else the most recent overall
