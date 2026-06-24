@@ -19,10 +19,15 @@ library(data.table)
 library(tidyverse)
 library(scales)
 library(knitr)
+library(patchwork)
 
 models_dir <- "../models"                        # notebook runs from collection-01/notebooks/
 theme_set(theme_minimal(base_size = 12))
 block_lvls <- c("focal", "prev", "pairs", "sameband", "cross_idx", "cross_band")
+
+# By-fire time-series panels (end of each class's "By fire" section, below).
+source("../scripts/ts_plot_functions.R")
+ts_cache <- readRDS(file.path(models_dir, "ts_plot_cache_v1.rds"))
 
 # Discover every fitted class from its per-class cv_metrics sidecar, ordered by code.
 metric_files <- Sys.glob(file.path(models_dir, "class_*_cv_metrics.csv"))

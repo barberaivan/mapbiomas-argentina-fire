@@ -51,7 +51,11 @@ collection-01/
 │   ├── export_region_raster.py            # Export region-ID raster to GEE asset
 │   ├── veg-fire_remap_clean-google-sheet.R # Regenerate config/veg_fire_remap.csv from the Google Sheet
 │   ├── cv_feasibility_report.py           # Pre-flight CV feasibility per veg_fire class (run before fitting)
-│   └── make_fires_table_stats.R           # Build fires_table_stats.csv from xlsx + obs CSVs
+│   ├── make_fires_table_stats.R           # Build fires_table_stats.csv from xlsx + obs CSVs
+│   ├── ts_predict_functions.R             # design_raw() + predict_class(): RAW-scale prediction from a class_NN_fit.rds
+│   ├── ts_plot_cache.R                    # Build models/ts_plot_cache_v1.rds (in-sample p_pred + n5-smoothed prob, every fitted class)
+│   ├── ts_plot_functions.R                # Shared plot_fire_panel() (NBR/NBR2/smoothed p, Burned-over-Unburned); sourced below and by the notebook
+│   └── ts_plot_by_fire.R                  # Driver: one panel per fire (pooled across classes) -> models/prediction_plots/{region}/region_fireNN.png
 ├── notebooks/              # Quarto-R (.qmd) exploratory analyses and decisions
 ├── samples/                # ARCHIVE — JS templates from interactive point collection
 └── data/                   # gitignored — local downloads and scratch files
@@ -125,13 +129,35 @@ In development (Python/GEE). See script stubs in `collection-01/workflow/`.
 Rscript collection-01/scripts/make_fires_table_stats.R
 ```
 
+### Scripts (R utilities) — time-series diagnostics
+
+Per-fire diagnostic: a 3-row (NBR / NBR2 / smoothed predicted burn probability)
+time series, Burned stacked above Unburned, one line per training point — for
+spotting fires whose pre/post-fire date window is mis-defined. Predicts
+**in-sample** (`class_NN_fit.rds`, not OOF) over the full training
+observations; see `models/README.md` for the caveat. Aesthetic (colors, line
+geoms, n5 rolling-median smoothing) mirrors
+`collection-00/data_viz_Lican/functions.R::plot_tempseg()`.
+
+```bash
+# 1. Build the prediction cache (re-run after syncing new/updated class_NN_fit.rds)
+Rscript collection-01/scripts/ts_plot_cache.R
+
+# 2. One PNG per fire (pooled across classes) -> models/prediction_plots/{region}/region_fireNN.png
+Rscript collection-01/scripts/ts_plot_by_fire.R
+```
+
+These same per-fire panels are rebuilt in-memory and combined with `patchwork`
+(max 3 fires per row, one grid per region for cross-region classes) at the end
+of each class's "By fire" section in `notebooks/model_fit_diagnostics.qmd` —
+re-render that notebook after step 1 above to refresh them.
+
 ### Notebooks (Quarto-R)
 
 | Notebook | Purpose | Dependencies |
 |----------|---------|--------------|
-| `algo-fuego.qmd` | Algorithm flowchart (Mermaid/DOT) | — |
 | `land_cover_remap.qmd` | Validate the canonical MB → fire-class remap against full obs; CV feasibility per class | training obs CSVs, `config/veg_fire_remap.csv`, Google Sheets |
-| `model_fit_diagnostics.qmd` | Per-class fit diagnostics (tuning, coefficients, calibration, OOF, omission/commission, by-fire) | `models/class_*` outputs (+ `_model_fit_diagnostics_child.qmd` template) |
+| `model_fit_diagnostics.qmd` | Per-class fit diagnostics (tuning, coefficients, calibration, OOF, omission/commission, by-fire + per-fire time-series panels) | `models/class_*` outputs, `models/ts_plot_cache_v1.rds` (+ `_model_fit_diagnostics_child.qmd` template) |
 | `data_collection_stats.qmd` | Field collection stats (time, authors, points, obs per fire) | `fires_table_stats.csv` → run `make_fires_table_stats.R` first |
 | `logistic_regression_terms.qmd` | LR model term design for obs-level burn probability | — |
 | `logistic_regression_feature_engineering_ideas.qmd` | Feature engineering ideas for the LR model | — |

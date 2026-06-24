@@ -213,3 +213,42 @@ oof |>
   mutate(across(starts_with("mean_p"), \(x) round(x, 3))) |>
   kable()
 ```
+
+NBR / NBR2 / smoothed burn probability (in-sample, n5 rolling median) per fire,
+Burned stacked above Unburned — built from `models/ts_plot_cache_v1.rds`. Each
+fire's panel is built independently and combined with `patchwork` (not a
+shared facet), so every fire keeps its own date range; no axis is stretched or
+compressed by its neighbors. The same per-fire panels are also saved
+standalone to `models/prediction_plots/class_NN/{region_fire_id}.png` by
+`scripts/ts_plot_by_fire.R`. Classes spanning more than one region get one
+grid per region below. Max 3 fire-panels per row.
+
+```{r}
+#| results: asis
+#| echo: false
+class_cache <- ts_cache[veg_fire == CLASS_CODE]
+regions_here <- sort(unique(class_cache$region))
+class_dir <- file.path(models_dir, "prediction_plots", sprintf("class_%02d_%s", CLASS_CODE, cls))
+dir.create(class_dir, recursive = TRUE, showWarnings = FALSE)
+
+render_region_grid <- function(d, png_path) {
+  fires <- sort(unique(d$region_fire_id))
+  ncol_grid <- min(3, length(fires))
+  nrow_grid <- ceiling(length(fires) / ncol_grid)
+  panels <- lapply(fires, function(rf) plot_fire_panel(d[region_fire_id == rf], title = rf))
+  grid <- wrap_plots(panels, ncol = ncol_grid)
+  ggsave(png_path, grid, width = 3.3 * ncol_grid, height = 7.3 * nrow_grid,
+         dpi = 110, bg = "white", limitsize = FALSE)
+  cat(sprintf("\n\n![](%s)\n\n", png_path))
+}
+
+if (length(regions_here) > 1) {
+  for (reg in regions_here) {
+    cat(sprintf("\n\n#### %s\n\n", reg))
+    render_region_grid(class_cache[region == reg],
+                        file.path(class_dir, sprintf("_combined_%s.png", reg)))
+  }
+} else {
+  render_region_grid(class_cache, file.path(class_dir, "_combined.png"))
+}
+```

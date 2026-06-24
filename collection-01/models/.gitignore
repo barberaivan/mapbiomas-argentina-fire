@@ -5,3 +5,8 @@
 !*.rds
 # ...but keep the large per-obs predictions out of git.
 *_oof_predictions.csv
+# ...and the time-series diagnostic cache (scripts/ts_plot_cache.R) - large, regenerable,
+# would otherwise be swept back in by the !*.rds re-include above.
+ts_plot_cache_v*.rds
+# Per-fire diagnostic PNGs (scripts/ts_plot_by_fire.R) are derived/regenerable too.
+prediction_plots/

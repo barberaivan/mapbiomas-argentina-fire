@@ -153,40 +153,41 @@ codes). Still to fit — every non-PAT class plus the merged `agriculture_cuyo-p
 - Once all `class_*_cv_metrics.csv` exist, rebuild the summary:
   `Rscript -e "library(data.table); fwrite(rbindlist(lapply(Sys.glob('collection-01/models/class_*_cv_metrics.csv'), fread)), 'collection-01/models/cv_metrics_v1.csv')"`
 
-**▶ TASK FOR LICAN — per-fire NBR / NBR2 / burn-probability time-series plot.**
-Add a per-fire diagnostic to `notebooks/model_fit_diagnostics.qmd` (or a sibling notebook)
-to help spot fires whose **pre-/post-fire date windows are mis-defined**. Lican has
-reference code from collection-00 that produced this plot; it is **not in this repo** — adapt it.
+**▶ TASK FOR LICAN — per-fire NBR / NBR2 / burn-probability time-series plot — RESOLVED,
+final design (historical reference, 2026-06-22).** The first implementation (a standalone
+`notebooks/ts_diagnostics.qmd` aggregating 4 driver scripts — by_fire/flagged/by_class/
+by_region — into `models/figures/`) was replaced same-day by a simpler design: the per-fire
+panels now live **inside the existing** `notebooks/model_fit_diagnostics.qmd`, appended at
+the end of each class's "By fire" section, instead of a separate notebook. Final script set
+in `collection-01/scripts/`: `ts_predict_functions.R` (unchanged — `design_raw()` /
+`predict_class()`); `ts_plot_cache.R` (builds `models/ts_plot_cache_v1.rds`; adds
+`burn_class`, a Burned-first factor, and `p_pred_smooth`, an n5 rolling-median of `p_pred`
+per point via `slider::slide_dbl`, mirroring collection-00's `p_med5`); `ts_plot_functions.R`
++ `ts_plot_by_fire.R` (one `plot_fire_panel()` per class×fire: 3 `patchwork`-stacked rows —
+NBR / NBR2 / smoothed probability — each `facet_grid`-ed Burned-over-Unburned). Aesthetic
+(hex colors, thin-spaghetti + bold-median-line geoms, `theme_classic`-based theme) mirrors
+the top two panels of `collection-00/data_viz_Lican/functions.R::plot_tempseg()` by explicit
+request, replacing the first implementation's ad-hoc styling. The 4 old drivers
+(`ts_plot_flagged_fires.R`, `ts_plot_by_class.R`, `ts_plot_by_region.R`) and the standalone
+`ts_diagnostics.qmd`/`.html` were deleted — the auto-flagging concept was dropped, since
+every fire's panel is now visible in the notebook in order. `ts_plot_by_fire.R` still saves
+one PNG per fire standalone, now under
+`models/prediction_plots/{region}/{region_fire_id}.png` — pooled across every veg_fire class
+a fire's points belong to (one fire, one PNG; not one PNG per class×fire). Inside
+`_model_fit_diagnostics_child.qmd`, these same per-fire panels are rebuilt in-memory (not
+re-read from disk) and combined with `patchwork::wrap_plots(ncol = 3)` — never a shared
+ggplot facet across fires — so each fire keeps its own date range no matter how many fires
+share a page; classes spanning more than one region (e.g. `agriculture_cuyo-pat`) get one
+combined grid per region instead of one mixed grid. See `collection-01/README.md` for run
+commands.
 
-*Plot.* A 3-facet "spaghetti" time series per fire:
-- facets (rows): **NBR**, **NBR2**, and the **OOF-predicted burn probability**;
-- x-axis: observation date; one **line per training point** (`point_id`), each vertex an
-  observation;
-- colour by label: **burned vs unburned** point.
-Reading it: if burned points' predicted probability stays **low across the post-fire
-window**, the post-fire date was likely set too generously (or the pre/post boundary is
-off) for that fire.
-
-*Use the OOF probability* (`p_oof` from `models/class_NN_oof_predictions.csv`) — the
-cross-validated, honest estimate — not any in-sample refit.
-
-*Which fires to plot — AUTOMATIC (decided).* Default to flagging fires automatically rather
-than by hand: for each fire, compute the **median `p_oof` over its burned observations** and
-plot only fires where that median is **below a threshold (default 0.6)** — these are the
-suspicious ones. Expose the threshold as a notebook parameter, and allow an optional manual
-`fire_id` override list for ad-hoc inspection. (A handful of fires will qualify per class;
-one faceted figure each.)
-
-*Data Lican needs (NOT in git — download separately):*
-- `collection-01/data/training_observations_{region}_v1.csv` — the per-observation spectral
-  time series (has `NBR`, `NBR2`, `date`, `point_id`, `fire_id`, `region`, `burned`). This
-  `data/` folder is git-ignored (large); **download it from Google Drive — ask Iván for the
-  link.**
-- `collection-01/models/class_NN_oof_predictions.csv` — the per-obs OOF probability
-  (`p_oof`). These large sidecars are git-ignored too; get them with the models output (ask
-  Iván / regenerate by fitting).
-Join the two on `(region, fire_id, point_id, date)`. Key fires region-uniquely
-(`region_fire_id = paste(region, fire_id)`) since bare `fire_id`s repeat across regions.
+**▶ `prediction_plots/class_NN_*/` folders deleted (2026-06-23), regenerate on next render.**
+These hold `_combined.png` / `_combined_{region}.png` — a per-class multi-fire grid embedded
+into the rendered `model_fit_diagnostics.html`, written by the chunk in
+`_model_fit_diagnostics_child.qmd` (not by `ts_plot_by_fire.R`, and not a stale leftover —
+this is a second, currently-active artifact alongside the by-region/by-fire PNGs from
+`ts_plot_by_fire.R`). They were deleted as stale-on-disk scratch (regenerable, gitignored);
+re-rendering `model_fit_diagnostics.qmd` recreates them.
 
 
 ## Remap v2 — RESOLVED 2026-06-17 (historical reference)

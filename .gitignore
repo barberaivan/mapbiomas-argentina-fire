@@ -8,6 +8,9 @@
 # Downloaded / derived data (large files, not for version control)
 collection-01/data/
 
+# Local-only scratch work, not for version control
+collection-00/data_viz_Lican/
+
 # Temporary files
 *.tmp
 *.bak
