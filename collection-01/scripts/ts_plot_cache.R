@@ -63,8 +63,8 @@ build_ts_cache <- function(version = "1",
       code <- fitted$veg_fire[i]
       sub <- d[veg_fire == code]
       if (!nrow(sub)) next
-      fit <- readRDS(fitted$fit_path[i])
-      sub[, p_pred := predict_class(sub, fit)]
+      mdl <- readRDS(fitted$fit_path[i])              # not `fit`: would be shadowed by the `fit` column in sub's j-scope
+      sub[, p_pred := predict_class(sub, mdl)]
       message(sprintf("  [class_%02d] %s — %s obs predicted", code, fitted$veg_fire_name[i], format(nrow(sub), big.mark = ",")))
       cache_parts[[length(cache_parts) + 1]] <-
         sub[, .(region, fire_id, point_id, date, burned, fit, veg_fire, veg_fire_name, NBR, NBR2, p_pred)]

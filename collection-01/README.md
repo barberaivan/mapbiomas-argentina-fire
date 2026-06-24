@@ -50,6 +50,7 @@ collection-01/
 ├── scripts/                # Ad-hoc utilities — not mandatory pipeline steps
 │   ├── status.py                          # Check GEE export status across all regions
 │   ├── download_observations.py           # Download training observations to local CSV
+│   ├── data_cleaning.R                     # Add the `fit` gate column (base window filter + per-fire edits) — REQUIRED before step 02; see docs/02-data_cleaning.md
 │   ├── export_region_raster.py            # Export region-ID raster to GEE asset
 │   ├── veg-fire_remap_clean-google-sheet.R # Regenerate config/veg_fire_remap.csv from the Google Sheet
 │   ├── cv_feasibility_report.py           # Pre-flight CV feasibility per veg_fire class (run before fitting)
@@ -105,6 +106,19 @@ $PYTHON collection-01/scripts/status.py --region PAT
 
 # Download completed training observations to collection-01/data/ as a local CSV
 $PYTHON collection-01/scripts/download_observations.py --region PAT --version 1
+```
+
+### Observation cleaning — the `fit` gate (R, REQUIRED before step 02)
+
+Adds a boolean `fit` column to each `data/training_observations_{region}_v1.csv`: a base
+window filter plus the per-fire manual edits transcribed from `data/data_cleaning.xlsx`.
+`02-model_fitting.R` errors out if the column is missing and fits only `fit == TRUE` rows.
+Idempotent — re-run after editing the rule table. See `docs/02-data_cleaning.md` (it documents
+the date-ordering semantics, which are easy to get wrong).
+
+```bash
+Rscript collection-01/scripts/data_cleaning.R 1                       # all regions, version 1
+CLEAN_REGIONS=CHACO Rscript collection-01/scripts/data_cleaning.R 1   # one region (debugging)
 ```
 
 ### Step 02 — Model fitting (R)

@@ -419,6 +419,13 @@ main <- function() {
   load_region <- function(reg) {
     message(sprintf("  loading %s ...", basename(region_csv(reg))))
     d <- fread(region_csv(reg))
+    # Cleaning gate (see docs/02-data_cleaning.md): the `fit` column is produced by
+    # scripts/data_cleaning.R; fit only the rows it kept.
+    if (!"fit" %in% names(d))
+      stop("The required dataset did not pass the cleaning step; run it in scripts/data_cleaning.R")
+    n_pre <- nrow(d); d <- d[fit == TRUE]; d[, fit := NULL]
+    message(sprintf("    cleaning gate: %s/%s obs kept (fit==TRUE)",
+                    format(nrow(d), big.mark = ","), format(n_pre, big.mark = ",")))
     obs_regs <- unique(as.character(d$region))
     if (!all(obs_regs == reg))
       stop(sprintf("Region label mismatch in %s: 'region' column = {%s} but expected '%s'. ",
