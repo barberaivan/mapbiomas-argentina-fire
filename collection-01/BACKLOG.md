@@ -21,7 +21,7 @@ This is probably for collection 2.
 
 ## Diagnostics / notebooks
 
-- [ ] **Per-fire NBR / NBR2 / burn-probability time-series plot (for Lican).** Add a per-fire
+- [x] **Per-fire NBR / NBR2 / burn-probability time-series plot (for Lican).** Add a per-fire
   diagnostic to `notebooks/model_fit_diagnostics.qmd` (or a sibling) to spot fires whose
   pre-/post-fire date windows are mis-defined. A 3-facet "spaghetti" time series per fire —
   rows: **NBR**, **NBR2**, **OOF-predicted burn probability**; x-axis: observation date; one
