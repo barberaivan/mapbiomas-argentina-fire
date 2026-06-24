@@ -116,12 +116,12 @@ dir.create(store_dir, showWarnings = FALSE, recursive = TRUE)
 # ── class sample exceptions (the ONLY place class-specific logic lives) ───────
 # ash_merge: train this class on its own non-ash obs + the pooled ash (negatives)
 #            of all listed classes (when a class alone has too few ash negatives).
-# ash_frac:  downsample this class's ash negatives to this fraction of its unburned.
-# No negative subsampling: full data fits in RAM for every class.
+#            This AUGMENTS negatives; it never drops any.
+# No negative subsampling whatsoever: every class uses ALL its observations, with
+# the full ash/drought false-positive negatives included. Full data fits in RAM.
 SAMPLE_RULES <- list(
   forest_pat    = list(ash_merge = c("forest_pat", "shrubland_pat")),
-  shrubland_pat = list(ash_merge = c("forest_pat", "shrubland_pat")),
-  grassland_pat = list(ash_frac = 0.20)
+  shrubland_pat = list(ash_merge = c("forest_pat", "shrubland_pat"))
 )
 
 # ── reduced design (129 terms; notebooks/logistic_regression_design.qmd) ────
@@ -242,11 +242,6 @@ assemble_class_data <- function(dt, code, name, name2code, pure_neg) {
     } else if (!is.null(rule$ash_merge)) {
       codes <- name2code[rule$ash_merge]
       rbind(dt[veg_fire == code & !ash], dt[veg_fire %in% codes & ash])
-    } else if (!is.null(rule$ash_frac)) {
-      own_non <- dt[veg_fire == code & !ash]; own_ash <- dt[veg_fire == code & ash]
-      target  <- round(rule$ash_frac / (1 - rule$ash_frac) * sum(own_non$burned == 0))
-      if (nrow(own_ash) > target) own_ash <- own_ash[sample(.N, target)]
-      rbind(own_non, own_ash)
     } else {
       dt[veg_fire == code]
     }
