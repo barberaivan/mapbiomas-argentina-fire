@@ -188,14 +188,19 @@ search is always restricted to focal indices `1:T`, so padded obs only ever serv
 adjacent years.
 
 Padded obs can't be taken as the literal nearest neighbour images (those may be cloud-masked at
-this pixel), so we compute burn probability for **M=4 months** on each side (`C.PAD_MONTHS`),
+this pixel), so we compute burn probability for **M months** on each side (`C.pad_months(year)`),
 build the per-pixel array, and take the **3 latest** prev and **2 earliest** next obs
 (`C.PAD_OBS_LEFT`/`RIGHT`). All padded obs use the **focal year's** previous-year LULC/mosaic
 (strictly they'd use their own; but for only 3+2 obs the focal year's context is the better
 approximation — except under very low image density, which we can't fully solve).
 
-Landsat window for focal year `y`: **Sep 1 (y−1) → May 1 (y+1)** exclusive (`filterDate` end is
-exclusive — advance one day). Split into prev `[Sep–Dec y−1]`, focal `[y]`, next `[Jan–Apr y+1]`.
+**M is year-dependent** (`C.pad_months`): **2 months for 2001+**, but **4 for 1999** and **3 for
+2000** — the early Landsat era is sparse (L7 launched mid-1999), so those years pad wider to still
+gather the 3+2 obs. A narrower pad is also much cheaper (fewer scenes → less per-image cost; §8).
+
+Landsat window for focal year `y` (default 2-month pad): **Nov 1 (y−1) → Mar 1 (y+1)** exclusive
+(`filterDate` end is exclusive). Split into prev `[(13−M)…Dec y−1]`, focal `[y]`, next
+`[Jan…M y+1]` — e.g. for 2001+ prev = `[Nov–Dec y−1]`, next = `[Jan–Feb y+1]`.
 
 ### 3.5 Two guaranteed-structure padded arrays (instead of one)
 

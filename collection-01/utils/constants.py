@@ -161,11 +161,23 @@ ARG_BUFFER_FC       = "projects/mapbiomas-argentina/assets/ANCILLARY_DATA/VECTOR
 BP_TS_METRICS_COL = f"{_FIRE_ROOT}/COLLECTION-1/WORKFLOW-EXPORTS/bp_ts_metrics"
 
 # Landsat padding window: how many months of context to pull from the neighbouring
-# years (Sep of y-1 through Apr of y+1, i.e. PAD_MONTHS on each side of the focal year),
-# and how many padded observations are kept on each side when building the per-pixel array.
-PAD_MONTHS    = 4   # months of Landsat context before/after the focal year
+# years (PAD_MONTHS on each side of the focal year), and how many padded observations
+# are kept on each side when building the per-pixel array.
+#
+# Most years need only 2 months to harvest the 3+2 padding obs, and a narrower window
+# is much cheaper (fewer scenes → less per-image LR/cloud-mask/plumbing; see
+# docs/03-bpts.md §8).  The early Landsat era is sparse (L7 launched mid-1999), so the
+# first focal years pad wider to still gather enough context: 1999 → 4 months,
+# 2000 → 3 months, 2001+ → 2 months.
+PAD_MONTHS_DEFAULT = 2
+PAD_MONTHS_BY_YEAR = {1999: 4, 2000: 3}
 PAD_OBS_LEFT  = 3   # max prev-year obs pulled into the padded array (K=3 back window)
 PAD_OBS_RIGHT = 2   # max next-year obs pulled into the padded array (K=3 forward window)
+
+
+def pad_months(year):
+    """Months of Landsat context to pad before/after a focal year (see above)."""
+    return PAD_MONTHS_BY_YEAR.get(year, PAD_MONTHS_DEFAULT)
 
 # CSV prev-block term suffix → MapBiomas mosaic band suffix.
 # e.g. 'GREEN_med' (CSV) → mb_mos_green_median (mosaic band).  Used when parsing

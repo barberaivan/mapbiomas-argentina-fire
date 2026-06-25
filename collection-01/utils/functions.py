@@ -683,17 +683,19 @@ def _tiles_in_buffer():
 
 def _year_dates(year):
     """
-    The six Landsat filter boundaries for a focal year, padded ``PAD_MONTHS`` on
-    each side.  filterDate's end is exclusive, so e.g. ``next_end`` = May 1 keeps
-    observations through April 30.
+    The six Landsat filter boundaries for a focal year, padded ``C.pad_months(year)``
+    on each side (2 months for most years; 4 for 1999, 3 for 2000 — the sparse early
+    Landsat era).  filterDate's end is exclusive, so e.g. with a 2-month pad
+    ``next_end`` = Mar 1 keeps observations through the last day of February.
     """
+    pad = C.pad_months(year)
     return {
-        "prev_start":  ee.Date.fromYMD(year - 1, 12 - C.PAD_MONTHS + 1, 1),  # Sep 1, y-1
+        "prev_start":  ee.Date.fromYMD(year - 1, 12 - pad + 1, 1),  # (13-pad) 1, y-1
         "prev_end":    ee.Date.fromYMD(year, 1, 1),
         "focal_start": ee.Date.fromYMD(year, 1, 1),
         "focal_end":   ee.Date.fromYMD(year + 1, 1, 1),
         "next_start":  ee.Date.fromYMD(year + 1, 1, 1),
-        "next_end":    ee.Date.fromYMD(year + 1, C.PAD_MONTHS + 1, 1),       # May 1, y+1
+        "next_end":    ee.Date.fromYMD(year + 1, pad + 1, 1),       # (pad+1) 1, y+1
     }
 
 
@@ -721,7 +723,8 @@ def burn_prob_collection(year, tile_id, terms=None, keep_indices=False):
 
     Loads the prev-year veg_fire class and MapBiomas mosaic, precomputes the
     static linear-predictor pieces, then maps the logistic regression over every
-    (date-mosaicked) Landsat image in the padded Sep(y-1)–Apr(y+1) window.
+    (date-mosaicked) Landsat image in the padded window (C.pad_months(year) on each
+    side of the focal year; default 2 months, wider for 1999/2000).
 
     Returns ``(bp_col, veg_fire_img)`` where ``bp_col`` is an ImageCollection of
     2-band [prob, day_num] images masked to fittable classes.  With
