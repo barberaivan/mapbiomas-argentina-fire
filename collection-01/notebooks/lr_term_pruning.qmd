@@ -92,6 +92,7 @@ block. Minor gridlines every 20 mark candidate cut points — read where bars fl
 ggplot(terms, aes(rank_in_class, abs_z, fill = block)) +
   geom_col(width = 1) +
   facet_wrap(~ class, scales = "free_y", ncol = 4) +
+  scale_fill_viridis_d(option = "magma", end = 0.7) +
   scale_x_continuous(breaks = seq(0, n_terms, 20),
                      minor_breaks = seq(0, n_terms, 10), expand = c(0, 0)) +
   labs(x = "term rank within class (use to read off p)", y = expression("|" * beta[z] * "|"),
@@ -193,6 +194,7 @@ awL[, name := factor(name, levels = awn[order(w_area), name])]   # y ordered by 
 ggplot(awL, aes(weight, name, fill = transform)) +
   geom_col() +
   facet_wrap(~ transform, ncol = 3, scales = "free_x") +   # free weight axis → compare shape
+  scale_fill_viridis_d(option = "magma", end = 0.7) +
   labs(x = "class weight (normalized to sum 1)", y = NULL,
        title = "Area weights by smoothing: area^(1/K) then normalize (free x per facet → compare shape)") +
   theme(axis.text.y = element_text(size = 7), legend.position = "none")
@@ -218,6 +220,7 @@ impL[, rank := frank(-importance, ties.method = "first"), by = weight]
 ggplot(impL, aes(rank, importance, fill = block)) +
   geom_col(width = 1) +
   facet_wrap(~ weight, ncol = 1, scales = "free_y") +
+  scale_fill_viridis_d(option = "magma", end = 0.7) +
   scale_x_continuous(breaks = seq(0, n_terms, 40),
                      minor_breaks = seq(0, n_terms, 20), expand = c(0, 0)) +
   labs(x = "global term rank", y = "weighted importance", fill = "block",
@@ -245,6 +248,7 @@ ggplot(gl, aes(importance, key, fill = block)) +
   geom_col() +
   geom_hline(yintercept = cuts, linetype = "dashed", linewidth = 0.4) +
   facet_wrap(~ weight, scales = "free_y", ncol = 3) +
+  scale_fill_viridis_d(option = "magma", end = 0.7) +
   scale_y_discrete(labels = function(x) sub("___.*$", "", x)) +
   labs(x = "area-weighted importance", y = NULL, fill = "block",
        title = "Global term ranking per scheme (rank in label; dashed = p cuts 30 / 40 / 60)") +
@@ -313,12 +317,149 @@ if (!file.exists(mpath)) {
              variable.name = "metric", value.name = "value")
   mL[, metric := factor(metric, levels = c("cv_brier", "cv_auc"),
                         labels = c("Brier (lower better)", "AUC (higher better)"))]
-  ggplot(mL, aes(Px, value, fill = metric)) +
-    geom_col() +
-    facet_grid(rows = vars(name), cols = vars(metric), scales = "free_y", switch = "y") +
+  ggplot(mL, aes(Px, value, color = metric, group = 1)) +
+    geom_line() +
+    geom_point(size = 1.3) +
+    # facet_grid2 + independent="y": each Brier/AUC panel autoscales, so the tiny
+    # across-P variation is visible (plain facet_grid shares y across the row's columns).
+    ggh4x::facet_grid2(rows = vars(name), cols = vars(metric),
+                       scales = "free_y", independent = "y", switch = "y") +
+    scale_color_viridis_d(option = "magma", end = 0.6) +
+    scale_y_continuous(labels = scales::label_number(accuracy = 1e-5)) +
     labs(x = "P (terms kept; 'full' = 129)", y = NULL,
          title = "Reduced-model OOF metrics by P and class (rows: decreasing area weight)") +
-    theme(legend.position = "none", strip.text.y.left = element_text(angle = 0, size = 7),
+    theme(legend.position = "none", strip.placement = "outside",
+          strip.text.y.left = element_text(angle = 0, size = 7),
           axis.text.x = element_text(size = 7))
+}
+```
+
+## All classes overlaid (one line per class)
+
+Same metrics, no per-class facet: every `veg_fire` class overlaid as a coloured spaghetti line,
+faceted only by metric (each with its own y).
+
+```{r metrics-overlay, fig.width=10, fig.height=5}
+mpath <- here::here("..", "models-store", "pruning", "metrics_by_P.csv")
+if (!file.exists(mpath)) {
+  cat("metrics_by_P.csv not found yet — run scripts/refit_pruning_sweep.R first.\n")
+} else {
+  met <- fread(mpath, colClasses = list(character = "P"))
+  met[, Px := factor(P, levels = c(as.character(sort(P_TEST)), "full"))]
+  mL <- melt(met, id.vars = c("veg_fire_name", "Px"), measure.vars = c("cv_brier", "cv_auc"),
+             variable.name = "metric", value.name = "value")
+  mL[, metric := factor(metric, levels = c("cv_brier", "cv_auc"),
+                        labels = c("Brier (lower better)", "AUC (higher better)"))]
+  ggplot(mL, aes(Px, value, color = veg_fire_name, group = veg_fire_name)) +
+    geom_line() + geom_point(size = 1) +
+    facet_wrap(~ metric, scales = "free_y") +
+    scale_color_viridis_d(option = "magma", end = 0.9) +
+    labs(x = "P (terms kept; 'full' = 129)", y = NULL, color = "veg_fire class",
+         title = "Reduced-model OOF metrics by P — all classes overlaid") +
+    theme(legend.text = element_text(size = 6), axis.text.x = element_text(size = 7))
+}
+```
+
+## Change vs full-129 (same spaghetti, as a difference)
+
+Each line is `metric(P) − metric(full)`, so the full-129 baseline is the horizontal 0. ΔBrier < 0 =
+reduced model better (lower); ΔAUC > 0 = better. Flat lines ≈ lossless; a class that dips in ΔAUC
+(or rises in ΔBrier) is one the shared set underserves.
+
+```{r metrics-overlay-diff, fig.width=10, fig.height=5}
+mpath <- here::here("..", "models-store", "pruning", "metrics_by_P.csv")
+if (!file.exists(mpath)) {
+  cat("metrics_by_P.csv not found yet — run scripts/refit_pruning_sweep.R first.\n")
+} else {
+  met  <- fread(mpath, colClasses = list(character = "P"))
+  base <- met[P == "full", .(veg_fire_name, b_full = cv_brier, a_full = cv_auc)]
+  d    <- merge(met[P != "full"], base, by = "veg_fire_name")
+  d[, `:=`(dBrier = cv_brier - b_full, dAUC = cv_auc - a_full)]
+  d[, Px := factor(P, levels = as.character(sort(P_TEST)))]
+  dL <- melt(d, id.vars = c("veg_fire_name", "Px"), measure.vars = c("dBrier", "dAUC"),
+             variable.name = "metric", value.name = "delta")
+  dL[, metric := factor(metric, levels = c("dBrier", "dAUC"),
+                        labels = c("ΔBrier (P − full; <0 better)",
+                                   "ΔAUC (P − full; >0 better)"))]
+  ggplot(dL, aes(Px, delta, color = veg_fire_name, group = veg_fire_name)) +
+    geom_hline(yintercept = 0, linewidth = 0.4, color = "grey60") +
+    geom_line() + geom_point(size = 1) +
+    facet_wrap(~ metric, scales = "free_y") +
+    scale_color_viridis_d(option = "magma", end = 0.9) +
+    scale_y_continuous(labels = scales::label_number(accuracy = 1e-5)) +
+    labs(x = "P (terms kept)", y = "metric(P) − metric(full)", color = "veg_fire class",
+         title = "Reduced-model OOF metric change vs full-129 — all classes") +
+    theme(legend.text = element_text(size = 6), axis.text.x = element_text(size = 7))
+}
+```
+
+## % change vs full-129 (same spaghetti, relative)
+
+`100 · (metric(P) − metric(full)) / metric(full)`. Normalizes the change by each class's own
+baseline, so classes with very different absolute Brier/AUC are comparable. (AUC % moves are tiny
+since AUC ≈ 1; Brier % moves are larger because Brier is small.)
+
+```{r metrics-overlay-pct, fig.width=10, fig.height=5}
+mpath <- here::here("..", "models-store", "pruning", "metrics_by_P.csv")
+if (!file.exists(mpath)) {
+  cat("metrics_by_P.csv not found yet — run scripts/refit_pruning_sweep.R first.\n")
+} else {
+  met  <- fread(mpath, colClasses = list(character = "P"))
+  base <- met[P == "full", .(veg_fire_name, b_full = cv_brier, a_full = cv_auc)]
+  d    <- merge(met[P != "full"], base, by = "veg_fire_name")
+  d[, `:=`(pBrier = 100 * (cv_brier - b_full) / b_full,
+           pAUC   = 100 * (cv_auc   - a_full) / a_full)]
+  d[, Px := factor(P, levels = as.character(sort(P_TEST)))]
+  dL <- melt(d, id.vars = c("veg_fire_name", "Px"), measure.vars = c("pBrier", "pAUC"),
+             variable.name = "metric", value.name = "pct")
+  dL[, metric := factor(metric, levels = c("pBrier", "pAUC"),
+                        labels = c("Brier % change (<0 better)", "AUC % change (>0 better)"))]
+  ggplot(dL, aes(Px, pct, color = veg_fire_name, group = veg_fire_name)) +
+    geom_hline(yintercept = 0, linewidth = 0.4, color = "grey60") +
+    geom_line() + geom_point(size = 1) +
+    facet_wrap(~ metric, scales = "free_y") +
+    scale_color_viridis_d(option = "magma", end = 0.9) +
+    labs(x = "P (terms kept)", y = "% change vs full-129", color = "veg_fire class",
+         title = "Reduced-model OOF metric % change vs full-129 — all classes") +
+    theme(legend.text = element_text(size = 6), axis.text.x = element_text(size = 7))
+}
+```
+
+## Area-weighted mean change vs full (decision summary)
+
+Collapses the spaghetti to one number per P: the **area-weighted mean** of each metric's change vs
+full-129 across the 23 classes, under each of the three area weightings (K=1 area, K=2 √area, K=3
+∛area). Heavier-tailed K (=1) leans on the big classes (so grassland_pat dominates); flatter K (=3)
+spreads weight to rarer classes. Both metrics side by side; 0 = full baseline.
+
+```{r metrics-wavg, fig.width=9, fig.height=4}
+mpath <- here::here("..", "models-store", "pruning", "metrics_by_P.csv")
+if (!file.exists(mpath)) {
+  cat("metrics_by_P.csv not found yet — run scripts/refit_pruning_sweep.R first.\n")
+} else {
+  met  <- fread(mpath, colClasses = list(character = "P"))
+  base <- met[P == "full", .(veg_fire, b_full = cv_brier, a_full = cv_auc)]
+  d    <- merge(met[P != "full"], base, by = "veg_fire")
+  d[, `:=`(dBrier = cv_brier - b_full, dAUC = cv_auc - a_full)]
+  d <- merge(d, aw[, .(veg_fire = class, w_area, w_sqrt, w_cbrt)], by = "veg_fire")
+  dM <- melt(d, id.vars = c("veg_fire", "P", "w_area", "w_sqrt", "w_cbrt"),
+             measure.vars = c("dBrier", "dAUC"), variable.name = "metric", value.name = "delta")
+  wL <- melt(dM, id.vars = c("veg_fire", "P", "metric", "delta"),
+             measure.vars = c("w_area", "w_sqrt", "w_cbrt"), variable.name = "K", value.name = "w")
+  wavg <- wL[, .(wmean = sum(w * delta) / sum(w)), by = .(P, metric, K)]
+  wavg[, K := factor(K, levels = c("w_area", "w_sqrt", "w_cbrt"),
+                     labels = c("K=1 (area)", "K=2 (√area)", "K=3 (∛area)"))]
+  wavg[, metric := factor(metric, levels = c("dBrier", "dAUC"),
+                          labels = c("ΔBrier (<0 better)", "ΔAUC (>0 better)"))]
+  wavg[, Px := factor(P, levels = as.character(sort(P_TEST)))]
+  ggplot(wavg, aes(Px, wmean, color = K, group = K)) +
+    geom_hline(yintercept = 0, linewidth = 0.4, color = "grey60") +
+    geom_line() + geom_point(size = 1.5) +
+    facet_wrap(~ metric, scales = "free_y") +
+    scale_color_viridis_d(option = "magma", end = 0.7) +
+    scale_y_continuous(labels = scales::label_number(accuracy = 1e-5)) +
+    labs(x = "P (terms kept)", y = "area-weighted mean change vs full-129", color = "area weight",
+         title = "Area-weighted mean OOF metric change vs full, by P and weighting K") +
+    theme(axis.text.x = element_text(size = 8))
 }
 ```
