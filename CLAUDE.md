@@ -22,7 +22,8 @@ one step, e.g. the remap and the fit are both inputs to step 02):
 | `collection-01/docs/02-vegetation_remap.md` | the `veg_fire` fire-class remap (input to step 02) |
 | `collection-01/docs/02-data_cleaning.md` | the `fit`-column cleaning gate (input to step 02) |
 | `collection-01/docs/02-model_fitting.md` | step 02 — elastic-net LR fitting |
-| `collection-01/docs/03-bp_ts_metrics.md` | step 03+ — burn-probability time-series metrics (stub) |
+| `collection-01/docs/03-bpts.md` | step 03 — burn-probability time-series metrics: full design, implementation + GEE array gotchas |
+| `collection-01/docs/03-colab_multi_export.md` | step 03 — distributed multi-account export via Colab (admin notes) |
 
 > **When a workflow step is in play, read the matching `collection-01/docs/NN-*.md` first.**
 > Those notes point onward to the production files (`config/`, `models/`, `workflow/`) and to

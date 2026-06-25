@@ -506,7 +506,7 @@ def compute_bp_ts_metrics(focal_arr, prev_arr, next_arr):
     (fractional year), sorted ascending by date.
 
     Two independently padded arrays are built so that fixed-offset array slices
-    are always correct for unmasked pixels (see docs/03-bp_ts_metrics.md):
+    are always correct for unmasked pixels (see docs/03-bpts.md):
 
       K=3 array: up to 3 prev + focal + up to 2 next  (delta3 / minfore3 family)
       K=2 array: up to 2 prev + focal + up to 1 next  (delta2 / minfore2 family)
@@ -738,7 +738,7 @@ def burn_prob_collection(year, tile_id, terms=None, keep_indices=False):
 def bpts_image(year, tile_id, terms=None):
     """
     Compute the 18-band burn-probability time-series-metrics image for one
-    tile-year (the unit exported by ``bpts``).  See docs/03-bp_ts_metrics.md.
+    tile-year (the unit exported by ``bpts``).  See docs/03-bpts.md.
     """
     terms = terms if terms is not None else load_all_coefficients()
     bp_col, veg_fire = burn_prob_collection(year, tile_id, terms)
