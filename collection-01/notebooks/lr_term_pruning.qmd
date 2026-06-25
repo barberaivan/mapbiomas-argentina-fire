@@ -28,11 +28,43 @@ theme_set(theme_minimal(base_size = 11))
 block_lvls <- c("focal", "prev", "pairs", "sameband", "cross_idx", "cross_band")
 ```
 
-Goal: a **single reduced predictor set shared by all `veg_fire` classes** (uniform GEE
-structure). We rank each term by `|β_z|` (`coef_std`), view per-class profiles, then aggregate
-to a **global, area-weighted** importance. Class weights use **relative area in Argentina**, and
-we compare three smoothings of that weight — `area`, `√area`, `∛area` — since raw area lets a few
-huge classes dominate. Within-class coefficients are **normalized to sum 1** before weighting.
+# Context & constraints (read first)
+
+**Why prune.** The burn-probability model is applied per Landsat observation over ~150
+date-mosaicked scenes per tile in the GEE prediction step (`workflow/03-bp_ts_metrics.py`).
+Profiling (`docs/03-bpts.md §8`) showed the **130-term elastic-net LR dominates per-tile compute** —
+the per-term band selects / multiplies / sums, and the computation-graph "plumbing" they generate,
+scale with the term count, while the clever time-series array metrics are <1% of cost. So fewer
+terms ⇒ cheaper prediction across all 248 tiles × 27 years. This notebook decides *which* terms to
+keep.
+
+**The hard constraint — one shared set across classes.** The model is fit **per `veg_fire` class**
+(23 fittable classes; elastic-net already zeros ~half the terms, but a *different* half per class,
+so their union is nearly the full 129). We deliberately want a **single predictor set used by every
+class** — the surviving terms keep their own per-class coefficients, but the *set itself is
+identical* — so the deployed GEE coefficient image stays a uniform fixed block of bands. The
+question is therefore not "which terms matter for class X" but "which matter *across the
+landscape*", answered here by ranking + area-weighted aggregation.
+
+**The interaction–main hierarchy constraint.** Of the 129 terms, 86 are interactions (`A__B`). The
+fit centers each interaction's factors and folds that centering back into the main slopes
+(`02-model_fitting.R`); consequently a kept interaction's two mains **must also be kept**, or the
+fold-back has nowhere to place its adjustment. So we **close the hierarchy**: any kept `A__B` forces
+mains `A` and `B` into the set (also the statistically standard choice). Here this expands the
+nominal top-P by only 0–2 terms, because the top interactions' mains are themselves high-ranked.
+
+**Method.** (1) rank each class's terms by the standardized coefficient `|β_z|` = `coef_std`
+(`|β|·sd` of the raw design column — an effect size comparable across predictors of different
+scales); (2) normalize each class's `|β_z|` to **sum 1**, so a class with large-magnitude
+coefficients doesn't dominate by scale; (3) aggregate to a **global importance** =
+`Σ_class (area_weight × normalized |β_z|)`, weighting classes by their **relative area in
+Argentina** so the shared set reflects the landscape that actually burns — comparing three
+smoothings (`area`, `√area`, `∛area`) since raw area lets a few huge classes dominate; (4) cut at
+the top-P and close the hierarchy.
+
+**Validation (final section).** Each candidate P is refit (`scripts/refit_pruning_sweep.R`, reusing
+the same CV machinery) and compared to the full-129 model on **out-of-fold** AUC + Brier per class.
+We keep the smallest P whose area-weighted metrics match full within noise.
 
 # Load coefficients
 
