@@ -456,3 +456,71 @@ burnable — so even empty tiles cost ~the floor as a full export, and the per-t
    capped at ~2–3 tasks, so a single year is bounded at ~2–3 days; splitting a year's tiles across
    N accounts (disjoint subsets) is the only lever that helps immediately — see
    `03-colab_multi_export.md` (currently splits *by year*, not within a year).
+
+---
+
+## 9. Reduced-LR pruning + EECU test — STATUS / HANDOFF (in progress)
+
+Goal: deploy a **single reduced predictor set shared by all classes** to cut step-03 compute
+(lever #2 of §8). Full pipeline and rationale: `notebooks/lr_term_pruning.qmd` (has a "Context &
+constraints" intro for auditors).
+
+**What's decided.** Rank terms by standardized coef `|β_z|` (= `coef_std` in the model CSVs),
+normalize each class to sum-1, aggregate to a global importance weighted by **relative area in
+Argentina** (smoothing **K=3**, `area^(1/3)`). Candidate sizes **P ∈ {30,40,50,60,80}** were refit
+and compared on **out-of-fold AUC + Brier** vs full-129. Result: reduced set is ~lossless for every
+class **except `grassland_pat`** (the #1-area class, 22%), which dips most at P=40 and recovers by
+**P=50**. Area-weighted mean ΔAUC is ~0 at P≥50 under all weightings. **Leaning P=50.**
+
+**Pipeline artifacts (all reproducible).**
+- `config/pruning_terms.csv` — the candidate shared term sets (K3, each P; interaction hierarchy
+  closed so a kept `A__B` keeps mains `A`,`B`). Written by the notebook.
+- `scripts/refit_pruning_sweep.R` — refits all classes per P via `02-model_fitting.R`'s
+  `KEEP_TERMS_CSV`+`RUN_TAG` hooks; outputs to `models-store/pruning/K3_P<P>/`, aggregates
+  per-class OOF metrics to `models-store/pruning/metrics_by_P.csv` (read by the notebook plots).
+  **DONE — all 5×23 fits complete.** Canonical `models/` was NOT touched.
+- `02-model_fitting.R` hooks: `KEEP_TERMS_CSV` (glmnet `exclude`s non-listed cols) + `RUN_TAG`
+  (outputs → `models-store/<tag>/`). Unset → full-129 to `models/`, as before.
+
+**Key deployment fact.** GEE prediction is **term-count-driven**: `load_all_coefficients(models_dir)`
+reads whatever rows are in the CSVs and `build_coeff_image`/`compute_burn_prob_img` build one band
+per term — so **fewer rows → fewer bands → less compute**. The sweep's reduced CSVs still have 129
+rows (zeros for pruned terms), which would compute like full-129. So deployment must use CSVs
+**trimmed to the P-set rows**. Trimmed deploy sets already built:
+`models-store/pruning/deploy_K3_P30/` (33 rows = intercept+32) and `deploy_K3_P50/` (52 = +51).
+
+**EECU A/B/C test — RUNNING (read when SUCCEEDED).** Three Cholila exports, identical tile
+(`SK-19-Y-A`, 2015) and **2-month padding** (the old full-129 run's 45.8 EECU-h used 4-month
+padding so is NOT comparable), differing only in term count:
+
+| task / asset (in `C.BP_TS_METRICS_COL`) | terms | interim EECU-h (mid-run) |
+|---|---|---|
+| `bpts_eecutest_full129_SK-19-Y-A` | 130 | (running) |
+| `bpts_eecutest_K3P50_SK-19-Y-A`   | 52  | ~20.3 |
+| `bpts_eecutest_K3P30_SK-19-Y-A`   | 33  | ~18.2 |
+
+Read finals with `ee.data.listOperations()` → filter `description` contains `eecutest` →
+`metadata['batchEecuUsageSeconds']/3600`. (Interim values are not final; wait for `SUCCEEDED`.)
+The whole-tile EECU includes the term-independent fixed cost (scene load, mosaic, array metrics),
+so the saving ratio is **less** than 52/130 — it's the *realized* tile-level payoff. Test assets
+are deletable afterward (user runs deletions).
+
+**NEXT STEPS for the continuing session.**
+1. Read final EECU for the three tasks; tabulate the realized full→P50→P30 saving.
+2. If P=50 holds, **step 5 — promote**: copy `models-store/pruning/deploy_K3_P50/class_*.csv` →
+   `models/` (the canonical set GEE reads), and write `models/MODEL_SELECTION.md` recording
+   scheme=K3, P=50, the term set, date, and the OOF-metric + EECU justification. (`models/` is the
+   single deployed location; experiments stay under gitignored `models-store/pruning/`.)
+3. Then re-export 2015 with the promoted reduced model (overwrite or delete the old full-129
+   tiles first). Note: the earlier 2015 queue was cancelled precisely because it was the obsolete
+   full-129 model.
+
+**Downstream design notes reached this session (step 04 SNIC / regions).** Define fire-regions as
+**unions of cartas with boundaries in low-fire zones**; build the SNIC input as a mosaic of *only*
+those cartas. GEE's neighborhood ops fetch margins **only from the input image's definition** — a
+region-only input has masked edges and imports nothing extra, so **no edge buffer is needed**
+(boundaries avoid fires) and compute is minimal. The residual concern is GEE-SNIC's **internal
+~256-px tile seams** (independent of region boundaries) — verify on one test segmentation before
+committing the step-04 tiling. Step-03 export tiling and downstream regions are decoupled for
+correctness but NOT cost: cheapest downstream is region = exact union of step-03 tiles, no buffer,
+so align the export tiling to the hand-drawn fire-regions where export limits allow.
