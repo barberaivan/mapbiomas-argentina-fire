@@ -389,9 +389,65 @@ not-yet-exported buffered raster:
 - **`date_post` timing:** over the Cholila scar mean `date_post3` ≈ DOY 220 (early August 2015),
   later than the Feb–Mar fire — likely the delta-argmax favouring a post-winter persistence jump.
   Worth a domain look; it's exactly what the manual masking/review step exists to catch.
-- **Cost lever:** per-tile-year recomputes the 130-band coefficient image and re-reads the
-  Landsat series. If the full run is too heavy, the lever is the model's *predictor count*
-  (BACKLOG: prune correlated terms per class), not the orchestration. Coarser export tiling
-  (region-year) would cut task count but risks per-task limits — the carta grid exists to avoid
-  them.
+- **Cost lever:** profiled in §8. The cost is the 130-term LR + cloud-masking + graph plumbing,
+  evaluated over ~150 mosaicked scenes; the time-series array metrics are < 1%. So the levers are
+  **predictor pruning** (BACKLOG: prune correlated terms per class) and a **shorter padded
+  window**, not the array code or the orchestration. Coarser export tiling (region-year) would cut
+  task count but risks per-task limits — the carta grid exists to avoid them.
 - **Not stored:** the previous-year `veg_fire` (cheap to recompute; not worth the memory).
+
+---
+
+## 8. Performance profile — where the per-tile time goes
+
+A real export is **compute-bound, not I/O-bound**, and the cost is dominated by per-image
+processing repeated over the ~150 date-mosaicked Landsat scenes — **not** by the time-series
+array work. Two measurements pin this down.
+
+**Wall-clock vs. burnable area** (real export tasks, scale 30):
+
+| tile | fittable area | run time |
+|---|---|---|
+| `SK-19-Y-A` (Cholila, dense) | 11,287 km² | 52 min |
+| `SF-19-X-D` (near-empty) | 451 km² | 19 min |
+
+Two points → runtime ≈ **~17 min fixed floor + ~0.003 min/km²**. The floor is per-tile overhead
+(building the ~294-scene series, the LR graph, export setup) paid regardless of how much land is
+burnable — so even empty tiles cost ~the floor as a full export, and the per-tile **mean is
+~20–25 min** (a tail of dense tiles pulls it up). At 2 tasks/account in parallel that's
+**~2–3 days/year on one account**.
+
+> Measure burnable area with `ee.Image.pixelArea().updateMask(is_fittable).reduceRegion(sum)` —
+> **not** a `frequencyHistogram` of the class band, which `bestEffort` resampling distorts badly
+> (it reported `SF-19-X-D` as 74% fittable when the area integral says 2.6%).
+
+**True EECU breakdown** (genuine GEE profiler via `ee.profilePrinting()`, full bpts graph over a
+6 km box @30m; the array machinery is exercised but cheap):
+
+| group | EECU·s | operations |
+|---|---|---|
+| 130-term LR arithmetic | **~610** | `Image.reduce` (per-term sum), `select` (2.1M band selects), `multiply`+`add`, `updateMask`/`float`/`addBands` |
+| graph plumbing | **~490** | infrastructure for a **5.6M-node** graph (scales with images × terms) |
+| cloud masking | **~219** | `bitwiseAnd`/`or`/`not` — `_mask_clouds` decoding QA_PIXEL bits per scene |
+| `mosaic_by_date` | **~80** | per-date mosaicking |
+| **array + time-series metrics** | **~8** | `arrayReduce`/`arrayCat`/`arraySlice`/`toArray`/`arrayGet` combined — **< 1%** |
+
+*(Excludes the profiling harness's own `reduce.mean`.) Reproduce with `scripts/profile_bpts.py`.*
+
+**Conclusions / optimization priorities:**
+
+1. **Do not optimize the array/metric code** — it's < 1% of cost. The careful padded-array design
+   is essentially free; the expense is everything *upstream* of it.
+2. **Prune predictors (highest-leverage, already in `BACKLOG.md`).** The LR arithmetic (~610) and
+   much of the plumbing (~490) scale with term count; the `select` line alone is pure per-term
+   band-selection overhead. 130 → ~40 terms could roughly halve total cost. Requires a refit +
+   re-validation.
+3. **Trim the padded window (#2 lever).** It cuts *every* per-image cost (LR, masking, mosaic,
+   plumbing) in proportion to image count. The Sep(y−1)–Apr(y+1) window exists only to harvest
+   3+2 padding obs; a shorter pad is a smaller change than pruning and needs no refit.
+4. **Cloud masking is a surprising ~15%** (`_mask_clouds`, 6 bitwise ops × ~150 scenes) — reducible
+   but riskier to touch.
+5. **Wall-clock, today, with no code risk:** distribute across accounts. Per-account parallelism is
+   capped at ~2–3 tasks, so a single year is bounded at ~2–3 days; splitting a year's tiles across
+   N accounts (disjoint subsets) is the only lever that helps immediately — see
+   `03-colab_multi_export.md` (currently splits *by year*, not within a year).
