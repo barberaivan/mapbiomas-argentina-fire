@@ -8,6 +8,13 @@ Pending work items not yet scheduled. Add new items at the top of each section.
 
 This is probably for collection 2.
 
+- [ ] **Reconcile CHACO `id_local` gaps in the `areas_regiones` sheet vs the remap.** The remap's
+  `local_class` "ID=NN" ids are missing from the sheet for some Chaco classes, so the long-run
+  area crosswalk drops/undercounts them: **grassland_chaco (veg_fire 13)** ids 42/43 → 0 km²,
+  **shrubland-open_chaco (veg_fire 23)** ids 44/45 → undercounted. This biases the area weights in
+  `notebooks/lr_term_pruning.qmd` (worked around by imputing the **median** area to zero-area
+  classes) and `land_cover_remap.qmd`'s `area_frac`. Fix the sheet ids (or the remap
+  `local_class`), then drop the median workaround.
 - [ ] Sample training points for the 3 missing fires in BA (check `training_locations_status.txt`). The fires are commented in the script that creates the training_fires asset. They must be included in that asset and then, points must be sampled.
 - [ ] Add a column to the `toma_de_muestras` Drive table to flag whether the exported GEE asset exists and is validated. A lot of `training_locations` files were not exported, and doing that takes time.
 

@@ -1,0 +1,240 @@
+---
+title: "LR term pruning — choosing a common reduced predictor set"
+subtitle: "Rank standardized coefficients (|β_z|) per veg_fire class; compare area-weight transforms for global importance"
+author: "Iván Barberá"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    number-sections: true
+    embed-resources: true
+    theme: cosmo
+    fig-align: center
+    code-fold: true
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+library(data.table)
+library(tidyverse)
+library(scales)
+library(knitr)
+
+models_dir <- "../models"     # tracked per-class coefficient CSVs (block, term, coefficient, coef_std)
+theme_set(theme_minimal(base_size = 11))
+
+# coef_std = β · sd(raw column)  (02-model_fitting.R) == the standardized effect size |β_z|.
+# Same 129-term universe & order in every class file.
+block_lvls <- c("focal", "prev", "pairs", "sameband", "cross_idx", "cross_band")
+```
+
+Goal: a **single reduced predictor set shared by all `veg_fire` classes** (uniform GEE
+structure). We rank each term by `|β_z|` (`coef_std`), view per-class profiles, then aggregate
+to a **global, area-weighted** importance. Class weights use **relative area in Argentina**, and
+we compare three smoothings of that weight — `area`, `√area`, `∛area` — since raw area lets a few
+huge classes dominate. Within-class coefficients are **normalized to sum 1** before weighting.
+
+# Load coefficients
+
+```{r load}
+files <- Sys.glob(file.path(models_dir, "class_*_coefficients.csv"))
+stopifnot(length(files) > 0)
+coefs <- rbindlist(lapply(files, function(f) {
+  cls <- as.integer(sub(".*class_0*(\\d+)_coefficients\\.csv$", "\\1", f))
+  fread(f)[, class := cls]
+}))
+terms <- coefs[block != "(intercept)"]                 # 129 predictors (intercept has NA coef_std)
+terms[, block := factor(block, levels = block_lvls)]
+terms[, abs_z := abs(coef_std)][is.na(abs_z), abs_z := 0]
+terms[, rank_in_class := frank(-abs_z, ties.method = "first"), by = class]
+n_terms <- uniqueN(terms$term)
+cat(sprintf("Loaded %d classes x %d predictor terms.\n", uniqueN(terms$class), n_terms))
+```
+
+# Plot 1 — within-class ranked |β_z|
+
+Each panel is one class; its 129 terms ranked by `|β_z|` (decreasing, x unlabelled), coloured by
+block. Minor gridlines every 20 mark candidate cut points — read where bars flatten into the tail.
+
+```{r plot1, fig.width=11, fig.height=9}
+ggplot(terms, aes(rank_in_class, abs_z, fill = block)) +
+  geom_col(width = 1) +
+  facet_wrap(~ class, scales = "free_y", ncol = 4) +
+  scale_x_continuous(breaks = seq(0, n_terms, 20),
+                     minor_breaks = seq(0, n_terms, 10), expand = c(0, 0)) +
+  labs(x = "term rank within class (use to read off p)", y = expression("|" * beta[z] * "|"),
+       fill = "block", title = "Per-class standardized-coefficient profiles") +
+  theme(axis.text.x = element_text(size = 6),
+        panel.grid.minor.x = element_line(linewidth = 0.3),
+        panel.grid.major.x = element_line(linewidth = 0.5),
+        legend.position = "bottom")
+```
+
+# Class area weights (and their smoothings)
+
+Absolute area per `veg_fire` class, computed correctly as **within-region class fraction ×
+absolute region area**:
+
+- *within-region fraction* — long-run (1999–2023) mapped area per region-class from the
+  `areas_regiones` Google Sheet (same source as `land_cover_remap.qmd`), as a fraction of its
+  region's mapped total. The sheet's raw areas are **not** comparable across regions, so we only
+  use them for within-region composition.
+- *absolute region area* — `config/region_areas.csv`, the geometry area (km²) of each of the 5
+  regions from the unbuffered regions FC (`scripts/region_areas.py`).
+
+`area(veg_fire) = Σ_region  region_area · (region-class mapped fraction)`, then normalized across
+the fittable classes. If the sheet is unreachable we fall back to equal weights.
+
+```{r areas, message=FALSE, warning=FALSE}
+remap     <- fread(here::here("..", "config", "veg_fire_remap.csv"))
+reg_area  <- fread(here::here("..", "config", "region_areas.csv"))   # region, region_num, area_km2
+sheet_url <- "https://docs.google.com/spreadsheets/d/17ZShb8D0JaJw4nLvBDzt19xF6Fdg8lGHYs4Jogh0X1A"
+
+area_by_vegfire <- tryCatch({
+  library(googlesheets4); gs4_deauth()
+  araw <- read_sheet(sheet_url, sheet = "areas_regiones")
+  year_cols <- names(araw)[suppressWarnings(!is.na(as.integer(names(araw)))) &
+                           suppressWarnings(as.integer(names(araw)) >= 1999) &
+                           suppressWarnings(as.integer(names(araw)) <= 2023)]
+  areas <- araw |>
+    mutate(id_local = suppressWarnings(as.integer(unlist(id_local)))) |>
+    filter(!is.na(id_local)) |>
+    mutate(mean_area = rowMeans(pick(all_of(year_cols)), na.rm = TRUE)) |>
+    select(region, id_local, mean_area)
+  crosswalk <- as_tibble(remap) |>
+    filter(!is.na(local_class), local_class != "") |>
+    select(region, mb_class_raw, veg_fire, local_class) |>
+    mutate(id_local = str_extract_all(local_class, "(?<=ID=)\\s*\\d+") |>
+                      map(~ as.integer(str_trim(.x)))) |>
+    unnest(id_local) |>
+    distinct(region, mb_class_raw, veg_fire, id_local)
+  # area per region-class, then within-region fraction, then × absolute region area.
+  rc <- crosswalk |>
+    left_join(areas, by = c("region", "id_local"), relationship = "many-to-many") |>
+    group_by(region, mb_class_raw, veg_fire) |>
+    summarise(mean_area = sum(mean_area, na.rm = TRUE), .groups = "drop") |>
+    group_by(region) |>
+    mutate(frac = mean_area / sum(mean_area, na.rm = TRUE)) |>
+    ungroup() |>
+    left_join(as_tibble(reg_area)[, c("region", "area_km2")], by = "region") |>
+    mutate(abs_area = frac * area_km2)
+  as.data.table(rc) |>
+    (\(d) d[, .(area = sum(abs_area, na.rm = TRUE)), by = veg_fire])()
+}, error = function(e) { message("Area sheet read failed: ", conditionMessage(e));
+                         data.table(veg_fire = integer(), area = double()) })
+
+classes <- sort(unique(terms$class))
+aw <- merge(data.table(class = classes),
+            area_by_vegfire[, .(class = veg_fire, area)], by = "class", all.x = TRUE)
+aw[is.na(area), area := 0]
+if (sum(aw$area) == 0) { message("EQUAL WEIGHTS fallback"); aw[, area := 1] }
+
+# Classes with no crosswalked area (sheet id_local gaps — e.g. grassland_chaco, whose
+# Chaco ids 42/43 are absent from the sheet) get the MEDIAN of the classes that do have
+# area, so they still cast a typical (non-zero) vote instead of being silently dropped.
+zero_cls <- aw[area == 0, class]
+if (length(zero_cls)) {
+  med <- median(aw[area > 0, area])
+  aw[area == 0, area := med]
+  message("Assigned median area (", round(med), " km2) to zero-area class(es): ",
+          paste(zero_cls, collapse = ", "))
+}
+
+# transform = area^(1/K) THEN normalize to sum 1
+aw[, w_area := area / sum(area)]
+aw[, w_sqrt := sqrt(area) / sum(sqrt(area))]
+aw[, w_cbrt := area^(1/3) / sum(area^(1/3))]
+```
+
+```{r weights-plot, fig.width=10, fig.height=8}
+# weight transform = area^(1/K) THEN normalize to sum 1 (K = 1, 2, 3).
+vf_names <- unique(as.data.table(remap)[, .(class = veg_fire, name = veg_fire_name)])
+awn <- merge(aw, vf_names, by = "class", all.x = TRUE)
+awn[is.na(name), name := paste0("class_", class)]
+awL <- melt(awn, id.vars = c("class", "name"),
+            measure.vars = c("w_area", "w_sqrt", "w_cbrt"),
+            variable.name = "transform", value.name = "weight")
+awL[, transform := factor(transform, levels = c("w_area", "w_sqrt", "w_cbrt"),
+       labels = c("area (K=1)", "sqrt(area) (K=2)", "area^(1/3) (K=3)"))]
+awL[, name := factor(name, levels = awn[order(-w_area), name])]   # x ordered by area desc
+
+ggplot(awL, aes(name, weight, fill = transform)) +
+  geom_col() +
+  facet_wrap(~ transform, ncol = 1) +              # scales="fixed" (default) → comparable y
+  labs(x = NULL, y = "class weight (normalized to sum 1)",
+       title = "Area weights by smoothing: area^(1/K) then normalize (flatter K → rarer classes count more)") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 7),
+        legend.position = "none")
+```
+
+# Global importance under each weight transform
+
+`global(t) = Σ_c  w_c · z_norm[c, t]`, with `z_norm` = within-class `|β_z|` normalized to sum 1,
+and `w_c` one of the three area smoothings. Each panel is independently ranked; minor grid every 20.
+
+```{r global, fig.width=11, fig.height=8}
+g <- copy(terms)
+g[, z_norm := { s <- sum(abs_z); if (s > 0) abs_z / s else abs_z }, by = class]
+g <- merge(g, aw[, .(class, w_area, w_sqrt, w_cbrt)], by = "class")
+
+imp <- g[, .(area       = sum(w_area * z_norm),
+             `sqrt(area)`= sum(w_sqrt * z_norm),
+             `area^(1/3)`= sum(w_cbrt * z_norm)), by = .(term, block)]
+impL <- melt(imp, id.vars = c("term", "block"), variable.name = "weight", value.name = "importance")
+impL[, weight := factor(weight, levels = c("area", "sqrt(area)", "area^(1/3)"))]
+impL[, rank := frank(-importance, ties.method = "first"), by = weight]
+
+ggplot(impL, aes(rank, importance, fill = block)) +
+  geom_col(width = 1) +
+  facet_wrap(~ weight, ncol = 1, scales = "free_y") +
+  scale_x_continuous(breaks = seq(0, n_terms, 40),
+                     minor_breaks = seq(0, n_terms, 20), expand = c(0, 0)) +
+  labs(x = "global term rank", y = "weighted importance", fill = "block",
+       title = "Global term importance by area-weight smoothing") +
+  theme(panel.grid.minor.x = element_line(linewidth = 0.3),
+        panel.grid.major.x = element_line(linewidth = 0.5), legend.position = "bottom")
+```
+
+## Ranked term names per scheme
+
+The same three rankings flipped so term **names** read on the y-axis, each prefixed with its rank
+(so every position is legible). Dashed lines mark the **p = 30 / 40 / 60** cuts. Each panel is
+ordered by its own scheme; compare which terms cross each cut.
+
+```{r global-named, fig.width=13, fig.height=22}
+gl <- copy(impL)
+gl[, lab := sprintf("%3d. %s", rank, term)]
+setorder(gl, weight, -importance)                    # rank 1 (highest) first within each scheme
+gl[, key := paste(lab, weight, sep = "___")]
+gl[, key := factor(key, levels = rev(unique(key)))]  # so rank 1 lands at the TOP
+
+cuts <- n_terms - c(30, 40, 60) + 0.5                # discrete positions of the p-cuts (1=bottom)
+
+ggplot(gl, aes(importance, key, fill = block)) +
+  geom_col() +
+  geom_hline(yintercept = cuts, linetype = "dashed", linewidth = 0.4) +
+  facet_wrap(~ weight, scales = "free_y", ncol = 3) +
+  scale_y_discrete(labels = function(x) sub("___.*$", "", x)) +
+  labs(x = "area-weighted importance", y = NULL, fill = "block",
+       title = "Global term ranking per scheme (rank in label; dashed = p cuts 30 / 40 / 60)") +
+  theme(axis.text.y = element_text(size = 5), legend.position = "bottom")
+```
+
+```{r topn-compare}
+# How much do the three smoothings agree on the top-40? (overlap of the shared sets)
+top40 <- impL[rank <= 40, .(term = list(term)), by = weight]
+sets <- setNames(top40$term, as.character(top40$weight))
+cat("Top-40 overlap across smoothings:\n")
+cat("  area ∩ sqrt :", length(intersect(sets[["area"]], sets[["sqrt(area)"]])), "/ 40\n")
+cat("  area ∩ cbrt :", length(intersect(sets[["area"]], sets[["area^(1/3)"]])), "/ 40\n")
+cat("  sqrt ∩ cbrt :", length(intersect(sets[["sqrt(area)"]], sets[["area^(1/3)"]])), "/ 40\n")
+cat("  in all three:", length(Reduce(intersect, sets)), "/ 40\n")
+```
+
+# Next
+
+After eyeballing Plot 1 and the three global rankings, pick the weight smoothing and the
+candidate p values to test. Then take `impL[weight == <chosen>][rank <= p, term]` as the shared
+set, **refit** `02-model_fitting.R` restricted to it (all classes), and compare out-of-fold
+AUC/Brier (area-weighted) against the full-129 baseline.
+```
