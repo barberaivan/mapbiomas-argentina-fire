@@ -160,6 +160,15 @@ def main(phase):
         t = submit_fc_export()
         print("FC export submitted:", t.id, "→", VECTOR_ASSET)
     elif phase == "raster":
+        # Gated + idempotent so it is safe to drive from a retry loop
+        # (e.g. `until ... --phase raster; do sleep 60; done`) while the FC export
+        # is still running: exit 0 if already done, exit 1 (retry) if FC not ready.
+        if _asset_exists(RASTER_ASSET):
+            print("Raster already exists, nothing to do:", RASTER_ASSET)
+            return
+        if not _asset_exists(VECTOR_ASSET):
+            print("FC asset not ready yet, retry later:", VECTOR_ASSET)
+            sys.exit(1)
         t = submit_raster_export()
         print("Raster export submitted:", t.id, "→", RASTER_ASSET)
     else:
