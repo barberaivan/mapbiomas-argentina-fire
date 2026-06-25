@@ -400,21 +400,33 @@ def build_cross_factor1_coef(coeff_img, mb_mosaic_img, terms):
     return coef.multiply(feat1)            # band names kept from `coef` (term names)
 
 
-def _frac_year(img):
-    """Fractional calendar year of an image's date (2010-07-02 → ~2010.50)."""
+def _day_num(img, focal_year):
+    """
+    Integer day-number of an image's date relative to Jan 1 of the focal year,
+    using EE's exact, calendar-aware ``'day'`` unit.
+
+    Focal-year obs get 0..365 (so DOY = ``day_num + 1``); prev-year padding obs
+    are negative (e.g. Dec y-1 ≈ -12) and next-year padding obs are > 365 — so
+    date *differences* are exact integer day counts that stay correct across the
+    year boundary.  This replaces the old fractional-year column, which divided
+    elapsed time by EE's fixed 365.2425-day mean year and so could not yield
+    exact whole-day gaps or an exact day-of-year.
+    """
     d = ee.Date(img.get("system:time_start"))
-    year = ee.Number(d.get("year"))
-    frac = d.difference(ee.Date.fromYMD(year, 1, 1), "year")
-    return ee.Image.constant(year.add(frac)).toFloat().rename("frac_year")
+    day_num = d.difference(ee.Date.fromYMD(focal_year, 1, 1), "day")
+    return ee.Image.constant(day_num).toFloat().rename("day_num")
 
 
-def compute_burn_prob_img(img, prev_scalar, coeff_img, cross_f1_coef_img, terms):
+def compute_burn_prob_img(img, prev_scalar, coeff_img, cross_f1_coef_img, terms,
+                          focal_year):
     """
     Compute burn probability for one Landsat image (with spectral indices added).
 
-    Returns a 2-band image ['prob', 'frac_year'].  Both bands carry the image's
-    valid-data mask, so cloudy / no-data pixels are excluded from the per-pixel
-    array later — never assigned a spurious probability.
+    Returns a 2-band image ['prob', 'day_num'] where ``day_num`` is the date as
+    integer days relative to Jan 1 of ``focal_year`` (see ``_day_num``).  Both
+    bands carry the image's valid-data mask, so cloudy / no-data pixels are
+    excluded from the per-pixel array later — never assigned a spurious
+    probability.
 
     Predictors are used on their RAW scale (no centering/standardisation).
     """
@@ -442,10 +454,10 @@ def compute_burn_prob_img(img, prev_scalar, coeff_img, cross_f1_coef_img, terms)
 
     eta = prev_scalar.add(focal_main).add(pairs_contrib).add(cross_contrib)
     prob = eta.multiply(-1).exp().add(1).pow(-1).rename("prob")   # logistic
-    frac = _frac_year(img).updateMask(prob.mask())                # same mask as prob
+    day = _day_num(img, focal_year).updateMask(prob.mask())       # same mask as prob
     # Carry system:time_start so the caller can filterDate() the resulting
     # collection into prev / focal / next windows (a fresh image would lose it).
-    return prob.addBands(frac).set("system:time_start", img.get("system:time_start"))
+    return prob.addBands(day).set("system:time_start", img.get("system:time_start"))
 
 
 # ─── Landsat time-series assembly ────────────────────────────────────────────
@@ -476,7 +488,7 @@ def mosaic_by_date(imgcol):
 
 def safe_to_array(imgcol):
     """
-    Convert a 2-band [prob, frac_year] ImageCollection (already sorted by time)
+    Convert a 2-band [prob, day_num] ImageCollection (already sorted by time)
     into an [N×2] array image, robust to a globally-empty collection.
 
     ``toArray`` stacks images along axis 0 and bands along axis 1 → [N, 2].  The
@@ -488,7 +500,7 @@ def safe_to_array(imgcol):
     contributes no per-pixel array elements — pixels with no real observation
     just come back masked (length 0), exactly as before.
     """
-    sentinel = (ee.Image.constant([0.0, 0.0]).rename(["prob", "frac_year"]).toFloat()
+    sentinel = (ee.Image.constant([0.0, 0.0]).rename(["prob", "day_num"]).toFloat()
                 .updateMask(ee.Image.constant(0))          # masked everywhere
                 .set("system:time_start", 0))
     return ee.ImageCollection([sentinel]).merge(imgcol).toArray()
@@ -496,14 +508,14 @@ def safe_to_array(imgcol):
 
 # ─── Per-pixel time-series → annual metrics ──────────────────────────────────
 
-_DAYS_PER_YEAR = 365.25   # convert fractional-year date differences to days
-
-
 def compute_bp_ts_metrics(focal_arr, prev_arr, next_arr):
     """
     Reduce per-pixel burn-probability time-series arrays to 18 annual metric
-    bands.  All arrays are [N, 2] with column 0 = prob, column 1 = date
-    (fractional year), sorted ascending by date.
+    bands.  All arrays are [N, 2] with column 0 = prob, column 1 = day-number
+    (integer days relative to focal-year Jan 1; see ``_day_num``), sorted
+    ascending by date.  Date differences are therefore exact whole-day counts,
+    and ``date_post`` = ``day_num[t*] + 1`` is an exact day-of-year (t* is always
+    a focal obs, so it lands in 1..366).
 
     Two independently padded arrays are built so that fixed-offset array slices
     are always correct for unmasked pixels (see docs/03-bpts.md):
@@ -515,8 +527,6 @@ def compute_bp_ts_metrics(focal_arr, prev_arr, next_arr):
     define that window — a quality flag, not an error.  The ``n`` band is never
     masked (caller applies the -1/-2 sentinels for non-burnable / non-observed).
     """
-    days = _DAYS_PER_YEAR
-
     # ── K=3 padded array: [≤3 prev | T focal | ≤2 next] ──────────────────────
     # arraySlice clamps when a side has fewer obs; the length>=6 mask then keeps
     # only pixels wide enough that, after dropping the 3 leading and 2 trailing
@@ -562,10 +572,10 @@ def compute_bp_ts_metrics(focal_arr, prev_arr, next_arr):
     d_b1_3 = peak3.arrayGet([0, 3])
     d_b3_3 = peak3.arrayGet([0, 4])
     d_f2_3 = peak3.arrayGet([0, 5])
-    jumpgap3   = d_t3.subtract(d_b1_3).multiply(days).rename("jumpgap3")      # d[t]-d[t-1]
-    prevwidth3 = d_b1_3.subtract(d_b3_3).multiply(days).rename("prevwidth3")  # d[t-1]-d[t-3]
-    postwidth3 = d_f2_3.subtract(d_t3).multiply(days).rename("postwidth3")    # d[t+2]-d[t]
-    date_post3 = d_t3.rename("date_post3")
+    jumpgap3   = d_t3.subtract(d_b1_3).rename("jumpgap3")      # d[t]-d[t-1], days
+    prevwidth3 = d_b1_3.subtract(d_b3_3).rename("prevwidth3")  # d[t-1]-d[t-3], days
+    postwidth3 = d_f2_3.subtract(d_t3).rename("postwidth3")    # d[t+2]-d[t], days
+    date_post3 = d_t3.add(1).rename("date_post3")              # day-of-year (1..366)
 
     # ── K=2 padded array: [≤2 prev | T focal | ≤1 next] ──────────────────────
     prev_tail2 = prev_arr.arraySlice(0, -2)
@@ -599,10 +609,10 @@ def compute_bp_ts_metrics(focal_arr, prev_arr, next_arr):
     d_b1_2 = peak2.arrayGet([0, 3])
     d_b2_2 = peak2.arrayGet([0, 4])
     d_f1_2 = peak2.arrayGet([0, 5])
-    jumpgap2   = d_t2.subtract(d_b1_2).multiply(days).rename("jumpgap2")      # d[t]-d[t-1]
-    prevwidth2 = d_b1_2.subtract(d_b2_2).multiply(days).rename("prevwidth2")  # d[t-1]-d[t-2]
-    postwidth2 = d_f1_2.subtract(d_t2).multiply(days).rename("postwidth2")    # d[t+1]-d[t]
-    date_post2 = d_t2.rename("date_post2")
+    jumpgap2   = d_t2.subtract(d_b1_2).rename("jumpgap2")      # d[t]-d[t-1], days
+    prevwidth2 = d_b1_2.subtract(d_b2_2).rename("prevwidth2")  # d[t-1]-d[t-2], days
+    postwidth2 = d_f1_2.subtract(d_t2).rename("postwidth2")    # d[t+1]-d[t], days
+    date_post2 = d_t2.add(1).rename("date_post2")              # day-of-year (1..366)
 
     # ── Whole-series metrics (from the focal array directly) ──────────────────
     p_focal = focal_arr.arraySlice(1, 0, 1)
@@ -623,7 +633,6 @@ def compute_bp_ts_metrics(focal_arr, prev_arr, next_arr):
     # col-0 pattern), so only n>=2 pixels actually reduce.
     diffs = (d_focal.arraySlice(0, 1)
              .subtract(d_focal.arraySlice(0, 0, -1))
-             .multiply(days)
              .updateMask(n.gte(2)))
     timediff_med = diffs.arrayReduce(ee.Reducer.median(), [0]).arrayGet([0, 0]).rename("timediff_med")
     timediff_max = diffs.arrayReduce(ee.Reducer.max(),    [0]).arrayGet([0, 0]).rename("timediff_max")
@@ -641,6 +650,19 @@ NON_N_BANDS = [
     "delta2_peak", "minfore2_peak", "jumpgap2", "prevwidth2", "postwidth2", "date_post2",
     "pmax3", "pmax2", "pmax1", "timediff_med", "timediff_max",
 ]
+
+# Integer-encoding band groups for export (see docs/03-bpts.md §3.7).  Every band is
+# stored as signed int16: probabilities are scaled by PROB_SCALE (decode: value /
+# PROB_SCALE) and delta* are signed (range −1..1); day-widths/gaps, inter-obs gaps and
+# date_post* (day-of-year 1..366) are whole numbers stored as-is; `n` keeps its -1/-2
+# sentinels.  All fit in ±32767.  See bpts_image for why signed, not uint16.
+PROB_SCALE  = 10000
+PROB_BANDS  = ["delta3_peak", "minfore3_peak", "delta2_peak", "minfore2_peak",
+               "pmax3", "pmax2", "pmax1"]
+DAY_BANDS   = ["jumpgap3", "prevwidth3", "postwidth3",
+               "jumpgap2", "prevwidth2", "postwidth2",
+               "timediff_med", "timediff_max"]
+DOY_BANDS   = ["date_post3", "date_post2"]
 
 
 # ─── Per-tile-year orchestration ─────────────────────────────────────────────
@@ -702,7 +724,7 @@ def burn_prob_collection(year, tile_id, terms=None, keep_indices=False):
     (date-mosaicked) Landsat image in the padded Sep(y-1)–Apr(y+1) window.
 
     Returns ``(bp_col, veg_fire_img)`` where ``bp_col`` is an ImageCollection of
-    2-band [prob, frac_year] images masked to fittable classes.  With
+    2-band [prob, day_num] images masked to fittable classes.  With
     ``keep_indices=True`` each image also carries its spectral bands/indices
     (handy for inspecting NBR/NBR2 vs prob in the Code Editor inspector).
     """
@@ -728,7 +750,7 @@ def burn_prob_collection(year, tile_id, terms=None, keep_indices=False):
     def _add_bp(img):
         img = add_indices(img)
         bp = compute_burn_prob_img(
-            img, prev_scalar, coeff_img, cross_f1_coef, terms
+            img, prev_scalar, coeff_img, cross_f1_coef, terms, year
         ).updateMask(is_fittable)
         return img.addBands(bp).updateMask(is_fittable) if keep_indices else bp
 
@@ -742,7 +764,7 @@ def bpts_image(year, tile_id, terms=None):
     """
     terms = terms if terms is not None else load_all_coefficients()
     bp_col, veg_fire = burn_prob_collection(year, tile_id, terms)
-    bp_col = bp_col.select(["prob", "frac_year"])
+    bp_col = bp_col.select(["prob", "day_num"])
     dates = _year_dates(year)
 
     # Split the padded series into prev / focal / next, each a sorted [N×2] array.
@@ -761,7 +783,20 @@ def bpts_image(year, tile_id, terms=None):
                .where(veg_fire.eq(C.VEG_FIRE_NON_BURNABLE), ee.Image.constant(-1))
                .where(veg_fire.eq(C.VEG_FIRE_NON_OBSERVED), ee.Image.constant(-2)))
 
-    result = metrics.select(NON_N_BANDS).addBands(n_final.rename("n")).toFloat()
+    # Integer encoding for storage (≈half the float32 size; see docs/03-bpts.md
+    # §3.7).  Everything is int16 (signed): probabilities ×PROB_SCALE fit ±10000,
+    # day-gaps (≲250) and DOY (1..366) fit well under 32767, and `n` keeps its
+    # -1/-2 sentinels.  Signed (not uint16) on purpose — day-gaps are guaranteed
+    # ≥0 by the ascending-date sort, but a stray negative would stay visibly
+    # negative rather than silently wrapping to a huge unsigned value.  Masks are
+    # preserved by the casts, so short-window bands stay masked.
+    prob_int = metrics.select(PROB_BANDS).multiply(PROB_SCALE).round().toInt16()
+    day_int  = metrics.select(DAY_BANDS).round().toInt16()
+    doy_int  = metrics.select(DOY_BANDS).round().toInt16()
+    n_int    = n_final.round().toInt16().rename("n")
+
+    result = (prob_int.addBands(day_int).addBands(doy_int).addBands(n_int)
+              .select(NON_N_BANDS + ["n"]))
     return result.set({
         "year": year,
         "tile_id": tile_id,

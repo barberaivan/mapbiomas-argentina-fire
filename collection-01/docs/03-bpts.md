@@ -145,7 +145,11 @@ Everything is on the **probability scale** (neither logit nor log).
 
 ### 3.2 Per-observation quantities
 
-For valid obs `t` with prob `p[t]` at fractional-year date `d[t]`:
+For valid obs `t` with prob `p[t]` at date `d[t]` — the **day-number** (integer days
+relative to focal-year Jan 1; `_day_num`, computed with EE's exact calendar-aware `'day'`
+unit). Focal obs get 0–365 (so DOY = `d[t]+1`); prev-year padding obs are negative, next-year
+obs are >365, so all date differences below are exact whole-day counts that stay correct across
+the year boundary:
 
 - forward persistence: `minfore3[t]=min(p[t],p[t+1],p[t+2])`, `minfore2[t]=min(p[t],p[t+1])`
 - pre-jump baseline: `maxback3[t]=max(p[t-3..t-1])` (conservative), `maxback2[t]=max(p[t-2..t-1])` (permissive)
@@ -162,8 +166,9 @@ Each delta is treated **independently**: find *its own* argmax `t*` over the foc
 extract *its own* bundle at that `t*`. Tying K=3 and K=2 to one peak would mis-anchor the
 other (the optimal transition obs differs by window). At each delta's `t*` we store the delta
 value, `minforeK` (post level; `maxback = minforeK − deltaK` so it isn't stored separately),
-`jumpgap`, the relevant `prevwidth`/`postwidth`, and `date_post = d[t*]`
-(`date_post − jumpgap/2` ≈ a good candidate burn date).
+`jumpgap`, the relevant `prevwidth`/`postwidth`, and `date_post = d[t*]+1` — the **day-of-year**
+(1–366) of the post-jump obs (`date_post − jumpgap/2` ≈ a good candidate burn date). Because
+`t*` is always a focal obs, `date_post` is guaranteed to fall within the focal year.
 
 Whole-series (not tied to a delta peak): `pmax1`=max raw prob, `pmax2`=max(minfore2),
 `pmax3`=max(minfore3). Quality: `n` (obs count), `timediff_med`/`timediff_max` (median/max
@@ -222,30 +227,43 @@ All six are length `L-5`, so they `arrayCat` along axis 1 and reduce cleanly. K=
 
 Bundle everything needed at `t*` into one `[T,6]` array `[delta, minfore, d_t, d_{t-1},
 d_{t-3}, d_{t+2}]`, sort rows **descending by delta**, take the top row, read the six scalars
-with `arrayGet`. Widths/gaps are then date differences × 365.25.
+with `arrayGet`. Widths/gaps are exact whole-day differences (the date column is already in
+integer days), and `date_post` is `d[t*]+1`.
 
-### 3.7 Output bands (18, all float)
+### 3.7 Output bands (18) and integer encoding
 
-| band | definition | masked when |
-|---|---|---|
-| `delta3_peak` | max(delta3) over focal year | K=3 array short |
-| `minfore3_peak` | minfore3 at delta3 argmax | K=3 array short |
-| `jumpgap3` | d[t*]−d[t*−1], days | K=3 array short |
-| `prevwidth3` | d[t*−1]−d[t*−3], days | K=3 array short |
-| `postwidth3` | d[t*+2]−d[t*], days | K=3 array short |
-| `date_post3` | d[t*] (frac year) | K=3 array short |
-| `delta2_peak` | max(delta2) | K=2 array short |
-| `minfore2_peak` | minfore2 at delta2 argmax | K=2 array short |
-| `jumpgap2` | days | K=2 array short |
-| `prevwidth2` | d[t*−1]−d[t*−2], days | K=2 array short |
-| `postwidth2` | d[t*+1]−d[t*], days | K=2 array short |
-| `date_post2` | frac year | K=2 array short |
-| `pmax3` | max(minfore3) whole series | K=3 array short |
-| `pmax2` | max(minfore2) whole series | K=2 array short |
-| `pmax1` | max raw prob whole series | n = 0 |
-| `n` | focal obs count; **−1** non-burnable, **−2** non-observed | **never masked** |
-| `timediff_med` | median inter-obs gap, days | n < 2 |
-| `timediff_max` | max inter-obs gap, days | n < 2 |
+All bands are **int16-encoded for export** (≈half the float32 asset size). The encoding is
+applied in `bpts_image`; the `decode` column below is how to recover each band. The band groups
+and `PROB_SCALE` live in `utils/functions.py` (`PROB_BANDS`/`DAY_BANDS`/`DOY_BANDS`). Everything
+is a single signed dtype (int16, −32768…32767) on purpose — see the note below the table.
+
+| band | definition | decode | masked when |
+|---|---|---|---|
+| `delta3_peak` | max(delta3) over focal year | ÷10000 | K=3 array short |
+| `minfore3_peak` | minfore3 at delta3 argmax | ÷10000 | K=3 array short |
+| `jumpgap3` | d[t*]−d[t*−1], days | as-is | K=3 array short |
+| `prevwidth3` | d[t*−1]−d[t*−3], days | as-is | K=3 array short |
+| `postwidth3` | d[t*+2]−d[t*], days | as-is | K=3 array short |
+| `date_post3` | d[t*]+1, day-of-year (1–366) | as-is | K=3 array short |
+| `delta2_peak` | max(delta2) | ÷10000 | K=2 array short |
+| `minfore2_peak` | minfore2 at delta2 argmax | ÷10000 | K=2 array short |
+| `jumpgap2` | d[t*]−d[t*−1], days | as-is | K=2 array short |
+| `prevwidth2` | d[t*−1]−d[t*−2], days | as-is | K=2 array short |
+| `postwidth2` | d[t*+1]−d[t*], days | as-is | K=2 array short |
+| `date_post2` | d[t*]+1, day-of-year (1–366) | as-is | K=2 array short |
+| `pmax3` | max(minfore3) whole series | ÷10000 | K=3 array short |
+| `pmax2` | max(minfore2) whole series | ÷10000 | K=2 array short |
+| `pmax1` | max raw prob whole series | ÷10000 | n = 0 |
+| `n` | focal obs count; **−1** non-burnable, **−2** non-observed | as-is | **never masked** |
+| `timediff_med` | median inter-obs gap, days | as-is | n < 2 |
+| `timediff_max` | max inter-obs gap, days | as-is | n < 2 |
+
+**Why all int16 (signed), not uint16 for the day bands.** Every encoded value fits well inside
+±32767: probabilities ×10000 span 0…10000, `delta*` are **signed** (−10000…10000), day-gaps are
+≲250, DOY is 1–366, and `n` carries −1/−2. The day-gaps are mathematically ≥0 (the array is
+sorted ascending by date, so within the argmax row `d[t−3] ≤ d[t−1] ≤ d[t] ≤ d[t+2]`), but we
+keep them **signed** anyway: a stray negative then stays visibly negative instead of wrapping to
+a huge unsigned value. A single signed dtype also makes downstream reads uniform.
 
 Missing data is never given a probability — masked pixels simply don't contribute to the
 array, so no-obs fittable pixels get `n = 0`. The `n` band is the quality/sentinel channel: it
@@ -278,10 +296,10 @@ bpts(year=None, tile_id=None, export=True, overwrite=False)
 
 Per-tile-year flow (see `bpts_image` / `burn_prob_collection`): build `veg_fire`, mosaic, the
 static LR components and `is_fittable`; `get_landsat` over the padded window; `mosaic_by_date`
-to dedupe same-day scenes; map the LR to a 2-band `[prob, frac_year]` collection masked to
-fittable; split by `filterDate` into prev/focal/next arrays via `safe_to_array`; reduce with
-`compute_bp_ts_metrics`; apply the `n` sentinels; export at scale 30, `EPSG:4326`,
-`maxPixels=1e10`.
+to dedupe same-day scenes; map the LR to a 2-band `[prob, day_num]` collection masked to
+fittable (`day_num` = integer days from focal-year Jan 1, see §3.2); split by `filterDate` into
+prev/focal/next arrays via `safe_to_array`; reduce with `compute_bp_ts_metrics`; apply the `n`
+sentinels; int16-encode (§3.7); export at scale 30, `EPSG:4326`, `maxPixels=1e10`.
 
 CLI (also good from Positron): `workflow/03-bp_ts_metrics.py --year 2003 [--tile … |
 --status | --overwrite | --project …]`. Distributed multi-account runs: see
@@ -314,7 +332,7 @@ reach either a *non-empty* array or a *masked* pixel. Two consequences bit us:
    elements (no-obs pixels still come back masked, `n = 0`).
 
 3. **`compute_burn_prob_img` must carry `system:time_start`.** It builds a fresh
-   `prob.addBands(frac_year)` image; without copying the timestamp, the downstream
+   `prob.addBands(day_num)` image; without copying the timestamp, the downstream
    `filterDate` split into prev/focal/next returns **empty** and every pixel gets `n = 0`
    (the product looked structurally fine but was all-empty — a silent, expensive failure that
    only showed after a full export).
@@ -329,7 +347,7 @@ reach either a *non-empty* array or a *masked* pixel. Two consequences bit us:
 **Other array notes:**
 - `updateMask(cond.gte(threshold))` leaves UNMASKED where the condition holds.
 - `ImageCollection.toArray()` stacks images on axis 0, bands on axis 1 → `[N, bands]`; select
-  `['prob','frac_year']` first so column 0 = prob, column 1 = date.
+  `['prob','day_num']` first so column 0 = prob, column 1 = date.
 - `n = focal_arr.arrayLength(0).unmask(0)` — `arrayLength` is the one array op that's safe on an
   empty array; `unmask(0)` guarantees `n` is never masked, then the −1/−2 sentinels are applied
   by `veg_fire.eq(24/25)`.
@@ -368,9 +386,9 @@ not-yet-exported buffered raster:
   read as non-observed (`n = −2`). (That export is slow not from compute but from re-rasterizing
   lazily-computed buffer/difference geometries over ~3 B pixels — materialize the buffered FC
   first if speed matters.)
-- **`date_post` timing:** over the Cholila scar mean `date_post3` lands ~July 2015, later than
-  the Feb–Mar fire — likely the delta-argmax favouring a post-winter persistence jump. Worth a
-  domain look; it's exactly what the manual masking/review step exists to catch.
+- **`date_post` timing:** over the Cholila scar mean `date_post3` ≈ DOY 220 (early August 2015),
+  later than the Feb–Mar fire — likely the delta-argmax favouring a post-winter persistence jump.
+  Worth a domain look; it's exactly what the manual masking/review step exists to catch.
 - **Cost lever:** per-tile-year recomputes the 130-band coefficient image and re-reads the
   Landsat series. If the full run is too heavy, the lever is the model's *predictor count*
   (BACKLOG: prune correlated terms per class), not the orchestration. Coarser export tiling
