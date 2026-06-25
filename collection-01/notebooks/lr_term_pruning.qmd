@@ -146,7 +146,7 @@ aw[, w_sqrt := sqrt(area) / sum(sqrt(area))]
 aw[, w_cbrt := area^(1/3) / sum(area^(1/3))]
 ```
 
-```{r weights-plot, fig.width=10, fig.height=8}
+```{r weights-plot, fig.width=11, fig.height=7}
 # weight transform = area^(1/K) THEN normalize to sum 1 (K = 1, 2, 3).
 vf_names <- unique(as.data.table(remap)[, .(class = veg_fire, name = veg_fire_name)])
 awn <- merge(aw, vf_names, by = "class", all.x = TRUE)
@@ -156,15 +156,14 @@ awL <- melt(awn, id.vars = c("class", "name"),
             variable.name = "transform", value.name = "weight")
 awL[, transform := factor(transform, levels = c("w_area", "w_sqrt", "w_cbrt"),
        labels = c("area (K=1)", "sqrt(area) (K=2)", "area^(1/3) (K=3)"))]
-awL[, name := factor(name, levels = awn[order(-w_area), name])]   # x ordered by area desc
+awL[, name := factor(name, levels = awn[order(w_area), name])]   # y ordered by area (largest on top)
 
-ggplot(awL, aes(name, weight, fill = transform)) +
+ggplot(awL, aes(weight, name, fill = transform)) +
   geom_col() +
-  facet_wrap(~ transform, ncol = 1) +              # scales="fixed" (default) → comparable y
-  labs(x = NULL, y = "class weight (normalized to sum 1)",
-       title = "Area weights by smoothing: area^(1/K) then normalize (flatter K → rarer classes count more)") +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 7),
-        legend.position = "none")
+  facet_wrap(~ transform, ncol = 3, scales = "free_x") +   # free weight axis → compare shape
+  labs(x = "class weight (normalized to sum 1)", y = NULL,
+       title = "Area weights by smoothing: area^(1/K) then normalize (free x per facet → compare shape)") +
+  theme(axis.text.y = element_text(size = 7), legend.position = "none")
 ```
 
 # Global importance under each weight transform
