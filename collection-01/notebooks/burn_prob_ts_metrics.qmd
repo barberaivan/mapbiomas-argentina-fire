@@ -1016,3 +1016,276 @@ ggplot(df_ws3, aes(x = doy, y = value,
   )
 ```
 
+## Order statistics vs. rolling means: `min−max` vs `mean−mean`
+
+The exported metric (`delta3` / `delta2` in `functions.py::compute_bp_ts_metrics`) is a
+**window difference** at anchor `t`: a `K`-obs pre window `[t-K … t-1]` and a `K`-obs post
+window `[t … t+K-1]`, reduced and subtracted. The code uses **order statistics**:
+
+$$
+\Delta^{\text{ord}}_{K,t} \;=\; \underbrace{\min(p_t,\dots,p_{t+K-1})}_{\text{minfore}}
+                              \;-\; \underbrace{\max(p_{t-K},\dots,p_{t-1})}_{\text{maxback}} .
+$$
+
+The proposed cheaper variant keeps the *same two windows* but swaps the reducers for
+**means** (one rolling-mean pass, then a fixed-offset difference of the mean array,
+`meansArr[t] − meansArr[t-K]`):
+
+$$
+\Delta^{\text{mean}}_{K,t} \;=\; \overline{p}_{[t,\,t+K-1]} \;-\; \overline{p}_{[t-K,\,t-1]} .
+$$
+
+So the only change is *min/max → mean*. Three things follow, and they are in tension:
+
+1. **Compute.** `mean` drops the two `arrayReduce(min/max)` calls (it is element-wise
+   addition over the array), but `min`/`max` over a length-`K` axis is selection — O(`K`),
+   not a sort. The genuinely costly ordering op is the `arraySort` that finds the argmax
+   `t*`, and **that is unchanged**. Net: a small constant saving, not an order of magnitude.
+
+2. **Signal (your first intuition — higher maximum).** `min−max` is the *most conservative*
+   jump: it needs **every** post obs above **every** pre obs (a fully separated step). A fire
+   caught **mid-window** — post `= {0.05, 0.98, 0.98}` — gives `min = 0.05 ⇒ Δ ≈ 0` (missed),
+   whereas `mean = 0.67 ⇒ Δ ≈ 0.62` (detected). So `mean−mean` has a higher max and catches
+   partial-window / low-severity transitions that `min−max` discards.
+
+3. **Null (your second intuition — higher no-signal floor).** Under pure noise the order
+   statistics are *biased*: `E[min(post)] < μ < E[max(pre)]`, so `E[Δ^{ord}] < 0` — noise
+   produces **negative** deltas, pushing the null *below* zero. The means are unbiased:
+   `E[Δ^{mean}] = 0`, variance `2σ²/K`, so ~half of pure-noise anchors are **positive** and the
+   floor sits higher — your intuition is correct on the floor. **But a higher floor is not the
+   same as worse detection.** The mean also has lower *variance*, and against symmetric noise
+   that variance reduction wins: the Monte-Carlo below shows `mean−mean` *out*-separating
+   `min−max` vs iid noise. The floor argument only bites against the **right** confounder.
+
+That confounder is a **single spike**, not symmetric noise. One bright obs (a cloud/sensor
+artifact) barely dents a window *min* but drags a window *mean* up by `≈ 1/K` of its height —
+and `max`-back is purpose-built to catch a pre-period spike. So `mean−mean`'s floor blows up
+exactly where it matters and `min−max`'s order statistics are robust. There is also a confound
+unique to the mean: the mid-window high-severity case `{0.05,0.98,0.98}` (mean `0.67`) is
+**indistinguishable** from a *uniform low-severity* fire `{0.67,0.67,0.67}` (mean `0.67`) — it
+collapses severity and window-phase into one number. Same lesson as the previous section
+(`meanback` inflated Δ on ramps); means on **both** sides double it. The Monte-Carlo makes the
+spike-vs-noise flip explicit.
+
+```{r}
+# Window-difference jump at anchor t: K-obs pre window [t-K .. t-1] and K-obs
+# post window [t .. t+K-1], reduced two ways and subtracted.
+#   delta_ord  = min(post) - max(pre)    <- the exported metric (delta3 / delta2)
+#   delta_mean = mean(post) - mean(pre)  <- the rolling-mean-difference variant
+# Anchor t valid on K+1 .. n-K+1; Δ dated at d[t] (first post obs).
+delta_windows <- function(p, d, K) {
+  nn <- length(p)
+  t0 <- K + 1L; t1 <- nn - K + 1L
+  if (t1 < t0) return(NULL)
+  tt <- t0:t1
+  post_min <- post_mean <- pre_max <- pre_mean <- numeric(length(tt))
+  for (j in seq_along(tt)) {
+    t    <- tt[j]
+    post <- p[t:(t + K - 1L)]
+    pre  <- p[(t - K):(t - 1L)]
+    post_min[j]  <- min(post);  post_mean[j] <- mean(post)
+    pre_max[j]   <- max(pre);   pre_mean[j]  <- mean(pre)
+  }
+  tibble(doy = d[tt],
+         delta_ord  = post_min  - pre_max,
+         delta_mean = post_mean - pre_mean)
+}
+
+build_wd <- function(sig) {
+  out <- list(prob = tibble(doy = sig$obs$d, value = sig$obs$p))
+  for (K in c(3L, 2L)) {
+    w <- delta_windows(sig$obs$p, sig$obs$d, K)
+    if (!is.null(w)) {
+      out[[paste0("delta_ord",  K)]] <- tibble(doy = w$doy, value = w$delta_ord)
+      out[[paste0("delta_mean", K)]] <- tibble(doy = w$doy, value = w$delta_mean)
+    }
+  }
+  out
+}
+
+var_wd_levels <- c("prob", "delta_ord3", "delta_mean3", "delta_ord2", "delta_mean2")
+
+df_wd <- purrr::imap_dfr(signals_ws, function(sig, sig_id) {
+  mets <- build_wd(sig)
+  purrr::map_dfr(intersect(var_wd_levels, names(mets)), function(vr) {
+    mets[[vr]] |> mutate(signal_id = sig_id, case = sig$case,
+                         level = sig$level, variable = vr)
+  })
+}) |>
+  mutate(
+    case     = factor(case,     levels = case2_levels),
+    variable = factor(variable, levels = var_wd_levels),
+    color_grp = dplyr::case_when(
+      case == "fire"          & level == "0.80" ~ "Alt",
+      case == "noise"         & level == "down" ~ "Alt",
+      case == "deforestation" & level == "0.70" ~ "Alt",
+      TRUE                                      ~ "Main"
+    )
+  )
+```
+
+```{r}
+#| fig-width: 14
+#| fig-height: 12
+
+var_wd_labels <- c(
+  prob        = "Burn prob.",
+  delta_ord3  = "Δ = min₃ − max₃  (code, K=3)",
+  delta_mean3 = "Δ = mean₃ − mean₃  (K=3)",
+  delta_ord2  = "Δ = min₂ − max₂  (code, K=2)",
+  delta_mean2 = "Δ = mean₂ − mean₂  (K=2)"
+)
+
+ggplot(df_wd, aes(x = doy, y = value, group = signal_id, colour = color_grp)) +
+  geom_hline(yintercept = 0, colour = "grey80", linewidth = 0.35) +
+  geom_line(linewidth = 0.65) +
+  geom_point(size = 1.1) +
+  facet_grid(
+    variable ~ case,
+    scales   = "free_y",
+    switch   = "y",
+    labeller = labeller(variable = var_wd_labels, case = case2_labels)
+  ) +
+  scale_colour_manual(
+    name = NULL, values = c(Main = "#000004", Alt = "#BB3754"),
+    breaks = c("Main", "Alt")
+  ) +
+  scale_x_continuous(breaks = c(1, 91, 182, 274, 365)) +
+  labs(
+    x        = "Day of year",
+    y        = NULL,
+    title    = "Window difference: order statistics (min−max) vs rolling means (mean−mean)",
+    subtitle = paste0(
+      "Same K-obs pre/post windows, two reducers.  min−max needs a clean fully-separated step; ",
+      "mean−mean fires higher on partial / sparse-drought windows (see drought_sparse, noise)."
+    )
+  )
+```
+
+### The deciding question: does the larger signal survive the larger null?
+
+The deterministic panels show *signal* behaviour but not the *null*, and a "higher floor"
+only matters relative to how it separates from fire. Detection thresholds the **annual max**
+of Δ over `t`, so the right object is the distribution of that annual max under each process.
+Crucially, the null is **not just symmetric noise** — the real false positives are
+**transient spikes** (single-obs cloud/sensor artifacts) and **drought ramps**. We simulate a
+faint fire against all three and compare.
+
+> **Why the null class matters.** Against symmetric iid noise, `mean−mean` actually *wins*:
+> variance reduction (`σ²/K`) more than offsets its higher mean floor. But a single high
+> **spike** inflates a window *mean* far more than it survives a window *min* — and `max`-back
+> is built to catch a pre-period spike. So the comparison flips entirely depending on which
+> confounder you test against. That flip is the whole point.
+
+```{r}
+set.seed(42)
+n_obs  <- 23L      # obs per year (matches the synthetic sampling)
+R      <- 3000L    # Monte-Carlo replicates per class
+b0     <- 0.06     # unburned baseline mean prob
+sd0    <- 0.10     # per-obs noise sd (truncated to [0,1])
+sev    <- 0.30     # FAINT post-fire mean prob (the hard, decision-relevant regime)
+t_fire <- 12L      # fire onset observation (mid-year)
+
+trunc01 <- function(x) pmin(pmax(x, 0), 1)
+
+# Annual max of each estimator for one probability series.
+am <- function(p) {
+  d  <- seq_along(p)
+  w3 <- delta_windows(p, d, 3L); w2 <- delta_windows(p, d, 2L)
+  tibble(
+    `min−max · K3` = max(w3$delta_ord),  `mean · K3` = max(w3$delta_mean),
+    `min−max · K2` = max(w2$delta_ord),  `mean · K2` = max(w2$delta_mean)
+  )
+}
+
+# One series per process kind, then its annual-max Δ for all four estimators.
+#   fire    : faint step (the signal we want to keep)
+#   noise   : iid noise only          (symmetric — favours the mean)
+#   spike   : iid noise + one ~0.95 single-obs spike (favours min−max strongly)
+#   drought : slow monotone ramp + iid noise (hard for both; handled elsewhere)
+gen <- function(kind) {
+  p <- trunc01(rnorm(n_obs, b0, sd0))
+  if (kind == "fire")    p[t_fire:n_obs] <- trunc01(rnorm(n_obs - t_fire + 1L, sev, sd0))
+  if (kind == "spike")   p[sample(2:(n_obs - 1L), 1)] <- trunc01(rnorm(1, 0.95, 0.05))
+  if (kind == "drought") p <- trunc01(seq(0, 0.55, length.out = n_obs) + rnorm(n_obs, 0, sd0))
+  am(p)
+}
+
+class_levels <- c("fire (faint)", "noise", "spike", "drought ramp")
+kinds        <- c(fire = "fire (faint)", noise = "noise",
+                  spike = "spike", drought = "drought ramp")
+est_levels   <- c("min−max · K3", "mean · K3", "min−max · K2", "mean · K2")
+
+df_mc <- purrr::imap_dfr(kinds, function(lab, k) {
+  purrr::map_dfr(seq_len(R), ~gen(k)) |> mutate(class = lab)
+}) |>
+  pivot_longer(-class, names_to = "estimator", values_to = "annual_max") |>
+  mutate(estimator = factor(estimator, levels = est_levels),
+         class     = factor(class, levels = class_levels))
+```
+
+```{r}
+#| fig-width: 13
+#| fig-height: 8
+mc_cols <- c("fire (faint)" = "#BB3754", "noise" = "#1F9E89",
+             "spike" = "#FCA50A", "drought ramp" = "#7301A8")
+ggplot(df_mc, aes(annual_max, fill = class, colour = class)) +
+  geom_vline(xintercept = 0, colour = "grey80", linewidth = 0.35) +
+  geom_density(alpha = 0.35, linewidth = 0.4) +
+  facet_wrap(~estimator, ncol = 2, scales = "free") +
+  scale_fill_manual(name = NULL, values = mc_cols) +
+  scale_colour_manual(name = NULL, values = mc_cols) +
+  labs(
+    x = "annual-max Δ", y = "density",
+    title    = "Annual-max Δ: faint fire vs three real confounders",
+    subtitle = paste0(
+      "Faint fire (step to ", sev, ") vs iid noise, a single ~0.95 spike, and a drought ramp.  ",
+      "Under mean−mean the spike (orange) overruns the fire; under min−max it stays low."
+    )
+  )
+```
+
+```{r}
+# Per estimator, AUC of the faint fire against EACH confounder (rank-based; 0.5 =
+# chance, <0.5 = the confounder scores HIGHER than fire, i.e. worse than useless).
+auc_fn <- function(pos, neg) {
+  r <- rank(c(pos, neg))
+  (sum(r[seq_along(pos)]) - length(pos) * (length(pos) + 1) / 2) /
+    (length(pos) * length(neg))
+}
+fire_vals <- df_mc |> filter(class == "fire (faint)")
+sep_tbl <- df_mc |>
+  filter(class != "fire (faint)") |>
+  group_by(estimator, confounder = class) |>
+  summarise(
+    AUC = auc_fn(fire_vals$annual_max[fire_vals$estimator == dplyr::first(estimator)],
+                 annual_max),
+    .groups = "drop"
+  ) |>
+  tidyr::pivot_wider(names_from = confounder, values_from = AUC)
+knitr::kable(sep_tbl, digits = 3,
+             caption = "AUC of faint fire vs each confounder (rank-based; <0.5 = confounder wins).")
+```
+
+**Reading it.** Your two intuitions both hold — `mean−mean` posts a higher signal *and* a
+higher floor — but whether that nets out **depends entirely on the confounder**:
+
+- **vs iid noise** — `mean−mean` *wins* (higher AUC). Variance reduction (`σ²/K`) beats its
+  higher mean floor; against symmetric noise the mean is genuinely the better detector. So the
+  plain "means are noisier" story is *too pessimistic* — for symmetric noise it's the opposite.
+- **vs a single spike** — `mean−mean` is **catastrophic** (AUC ≪ 0.5: the spike scores higher
+  than real fire). One bright obs dominates a window *mean*; a window *min* shrugs it off and
+  `max`-back actively guards the pre side. Single-obs artifacts are pervasive in real Landsat
+  burn-prob series, so this case dominates the decision.
+- **vs a drought ramp** — both are weak (AUC near chance); raw Δ is the wrong tool here, which
+  is why the notebook leans on gap-weighting and persistence (`min₃`, `J = Δp·min₃`) for
+  drought, not on the choice of reducer.
+
+**Bottom line.** Keep `min−max` (the current `delta3`/`delta2`) as the **primary** exported
+metric — its spike robustness is non-negotiable on real imagery, and the compute saving from
+`mean` is marginal (the `arraySort` for the argmax stays either way). `mean−mean` is worth
+carrying only as a **secondary, persistence-gated** channel for the clean low-severity
+forest-burn regime (e.g. `mean₃ × minfore`, or `mean` thresholded *after* a `min`-based spike
+guard), where its better SNR against symmetric noise can be cashed in without letting spikes
+through.
+
