@@ -6,6 +6,7 @@ Update this file when adapting to a new collection or year range.
 """
 
 import csv
+import os
 from pathlib import Path
 
 # ─── Year range ───────────────────────────────────────────────────────────────
@@ -17,7 +18,12 @@ MB_LIMIT_YEAR = 2024             # last year available in the MapBiomas LULC ass
 REGIONS = ["BA", "CHACO", "PAMPA", "CUYO", "PAT"]
 
 # ─── GEE project ─────────────────────────────────────────────────────────────
-GEE_PROJECT = "mapbiomas-fire-485203"
+# The Cloud project that pays for / quotas the GEE compute (NOT where assets land).
+# Contributors run from different projects (e.g. MapBiomas Argentina vs Fire): each
+# sets their own via the GEE_PROJECT env var, or passes project= to ee.Initialize.
+# Asset destinations are fixed regardless of compute project; every contributor's
+# account just needs write access to BP_TS_METRICS_COL.
+GEE_PROJECT = os.environ.get("GEE_PROJECT", "mapbiomas-fire-485203")
 
 # ─── Asset paths ─────────────────────────────────────────────────────────────
 _FIRE_ROOT = "projects/mapbiomas-argentina/assets/FIRE"
@@ -131,3 +137,42 @@ FITTABLE_VEG_FIRE = sorted(c for c, v in VEG_FIRE_CLASSES.items() if v["fittable
 REGION_CLASS_FROM    = [r["region_class"] for r in VEG_FIRE_REMAP]
 VEG_FIRE_TO          = [r["veg_fire"]     for r in VEG_FIRE_REMAP]
 VEG_FIRE_REMAP_DEFAULT = 25  # non-observed
+
+# Sentinel veg_fire codes used in the burn-probability product's `n` band.
+VEG_FIRE_NON_BURNABLE = 24   # burnable=FALSE land cover (e.g. water, urban) → n = -1
+VEG_FIRE_NON_OBSERVED = 25   # outside the remap / non-observed                → n = -2
+
+# ─── Step 03 — burn-probability time-series metrics ──────────────────────────
+# Fitted-model coefficient CSVs (one per veg_fire class), written by step 02.
+MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
+
+# Region-id raster (1–5, with a 2 km buffer beyond the Argentina boundary) and the
+# band that holds the region code.  Built by scripts/export_region_raster.py.
+REGION_RASTER      = "projects/mapbiomas-argentina/assets/ANCILLARY_DATA/RASTER/ARG/ARG-Regiones-MapBiomas-buffer2km"
+REGION_RASTER_BAND = "region_id"
+
+# Prediction tiling grid (MapBiomas cartas) and its tile-id property, plus the
+# buffered-Argentina polygon used to select the tiles to process.
+CARTAS_FC           = "projects/mapbiomas-chaco/BASE/cartas-argentina"
+CARTAS_ID_PROPERTY  = "grid_name"   # e.g. 'SK-19-Y-A'
+ARG_BUFFER_FC       = "projects/mapbiomas-argentina/assets/ANCILLARY_DATA/VECTOR/ARG/ARG-Political_Level_1-Pais_buffer"
+
+# Output ImageCollection for this step (asset name pattern: bpts_YYYY_<tile-id>).
+BP_TS_METRICS_COL = f"{_FIRE_ROOT}/COLLECTION-1/WORKFLOW-EXPORTS/bp_ts_metrics"
+
+# Landsat padding window: how many months of context to pull from the neighbouring
+# years (Sep of y-1 through Apr of y+1, i.e. PAD_MONTHS on each side of the focal year),
+# and how many padded observations are kept on each side when building the per-pixel array.
+PAD_MONTHS    = 4   # months of Landsat context before/after the focal year
+PAD_OBS_LEFT  = 3   # max prev-year obs pulled into the padded array (K=3 back window)
+PAD_OBS_RIGHT = 2   # max next-year obs pulled into the padded array (K=3 forward window)
+
+# CSV prev-block term suffix → MapBiomas mosaic band suffix.
+# e.g. 'GREEN_med' (CSV) → mb_mos_green_median (mosaic band).  Used when parsing
+# the fitted coefficients into GEE feature names.
+PREV_SUFFIX_MAP = {
+    "med": "median",
+    "wet": "median_wet",
+    "dry": "median_dry",
+    "sd":  "stdDev",
+}

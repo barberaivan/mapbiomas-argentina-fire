@@ -112,3 +112,47 @@ padd pre-year obs: latest 3 obs from september 2009 to december 2009 (included).
 padd post-year obs: first 2 obs from jan 2011 to april 2011 (included).
 (Beware: in GEE, the end date of filterDate() is exclusive, you have to advance 1 day to get it right).
 All obs, even the padded ones, use the mapbiomas land cover and mosaic data from 2009 to compute burn probability.
+
+## Implementation (done)
+
+Implemented per `docs/03-plan.md`. Code lives in:
+
+- `utils/functions.py` — the building blocks and the `bpts(year, tile_id, export=...)`
+  driver: coefficient loading/parsing (`load_all_coefficients`), the GEE linear-predictor
+  builders (`build_coeff_image`, `build_prev_scalar`, `build_cross_factor1_coef`,
+  `compute_burn_prob_img`), the Landsat assembly (`mosaic_by_date`, `safe_to_array`), and the
+  array metrics (`compute_bp_ts_metrics`). New constants in `utils/constants.py`
+  (`MODELS_DIR`, `REGION_RASTER`, `CARTAS_FC`/`CARTAS_ID_PROPERTY`, `ARG_BUFFER_FC`,
+  `BP_TS_METRICS_COL`, `PAD_*`, `PREV_SUFFIX_MAP`).
+- `workflow/03-bp_ts_metrics.py` — thin CLI: `--year`/`--tile` (both optional; omit = all).
+- `scripts/test-03-bp_ts.py` — interactive map + headless `validate()` (default 2015 / SK-19-Y-A).
+
+**Prerequisite — not yet satisfied:** `C.REGION_RASTER`
+(`…/ARG-Regiones-MapBiomas-buffer2km`) does not exist yet; export it first with
+`scripts/export_region_raster.py`. (Validation used the older non-buffered
+`…/ARG-Regiones-MapBiomas` as a stand-in.)
+
+**Validation done** (band `region_id`, classes 1–5; tile grid property `grid_name`; 248 tiles
+intersect the buffer): coefficient parsing exact (130 terms, 7 blocks); GEE burn probability
+reproduces the hand-computed raw-scale logit to ~7e-9 (band alignment + raw products correct);
+all 18 metric bands verified on a synthetic series; insufficient-padding pixels mask cleanly
+(GEE short-circuits masked raster pixels — the col-0 pattern). Note: interactive
+`getInfo`/`reduceRegion` on the full graph can hit the user memory limit; the batch
+`Export.image.toAsset` tiles and is the intended run path.
+
+> **Array gotchas (all fixed during impl — verified by exporting `bpts_2015_SK-19-Y-A`):**
+> 1. `arraySort(keys)` requires `keys` to have the **same dimensionality** as the array, with
+>    multiple elements only along the sort axis — pass the `[T,1]` delta column negated, **not**
+>    an `arrayProject([0])`'d 1-D key.
+> 2. An **empty `ee.Array` cannot stay 2-D** (slicing to zero rows collapses it to 1-D), which
+>    breaks `arraySlice(1, …)`. `safe_to_array` therefore prepends a **fully-masked 2-band
+>    sentinel** image instead of returning an empty stub, so `toArray()` is always statically 2-D.
+> 3. `compute_burn_prob_img` must **carry `system:time_start`** onto its output, or the
+>    `filterDate` split into prev/focal/next returns empty (symptom: `n = 0` everywhere).
+> 4. Whole-series reducers over `focal_arr` aren't covered by the padded-array masks: the
+>    inter-obs `diffs` array is **empty & unmasked at `n = 1` pixels**, so `updateMask(n.gte(2))`
+>    before reducing (`timediff_*`) is required to avoid an out-of-bounds `arrayReduce`.
+>
+> General rule (from col-0): empty arrays only throw on **unmasked** pixels and on **constant**
+> array images (eager eval); masked raster pixels short-circuit cleanly. So every
+> `arrayReduce`/`arrayGet` site must reach either a non-empty array or a masked pixel.
