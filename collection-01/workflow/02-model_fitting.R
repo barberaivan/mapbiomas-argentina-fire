@@ -69,6 +69,14 @@ here_root <- function() {
 args         <- commandArgs(trailingOnly = TRUE)
 VERSION      <- if (length(args) >= 1) args[[1]] else "1"
 CLASS_FILTER <- if (length(args) >= 2) args[-1] else character(0)
+# Reduced-fit experiment hooks (both optional; unset → full 129-term fit to models/, as before):
+#   KEEP_TERMS_CSV — path to a CSV with a `term` column; glmnet EXCLUDES every design column not
+#                    listed (coef forced to 0), so the same machinery fits the reduced model.
+#                    Caller must close the interaction hierarchy (an A__B term keeps mains A,B) or
+#                    the centering fold-back misplaces a coefficient — see config/pruning_terms.csv.
+#   RUN_TAG        — when set, ALL outputs go to models-store/<RUN_TAG>/ (keeps models/ canonical).
+KEEP_TERMS_CSV <- Sys.getenv("KEEP_TERMS_CSV", "")
+RUN_TAG        <- Sys.getenv("RUN_TAG", "")
 REGIONS_ALL  <- c("BA", "CHACO", "PAMPA", "CUYO", "PAT")
 K_TARGET     <- 10
 ALPHAS       <- c(0.25, 0.5, 0.75)   # ridge (0) & lasso (1) dropped: never best in CV; interior keeps the ridge component that conditions the collinear design
@@ -110,6 +118,12 @@ out_dir    <- file.path(root, "collection-01", "models")        # tracked: *_coe
 store_dir  <- file.path(root, "collection-01", "models-store")  # gitignored Insync store (symlink): heavy artifacts
 region_csv <- function(reg) file.path(root, "collection-01", "data",
                        sprintf("training_observations_%s_v%s.csv", reg, VERSION))
+
+# Reduced-fit experiment: load the keep-set and redirect all outputs into models-store/<RUN_TAG>/
+# so the canonical models/ deliverable is never touched by an experiment.
+KEEP_TERMS <- if (nzchar(KEEP_TERMS_CSV)) unique(fread(KEEP_TERMS_CSV)$term) else character(0)
+if (nzchar(RUN_TAG)) { out_dir <- store_dir <- file.path(store_dir, RUN_TAG) }
+
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 dir.create(store_dir, showWarnings = FALSE, recursive = TRUE)
 
@@ -275,6 +289,14 @@ fit_one_class <- function(sub, code, name, name2code, pure_neg) {
   MM <- des$MM; means <- des$means; specs <- des$specs
   rm(des); gc()                                  # free the full design; x (kept) + MM remain
 
+  # Reduced fit (KEEP_TERMS set): force every non-kept column to coef 0 via glmnet `exclude`.
+  # Same machinery, same export — pruned terms simply come out 0 (and the fold-back skips them,
+  # which is why the caller must keep any kept interaction's mains). integer(0) → exclude nothing.
+  excl <- if (length(KEEP_TERMS)) which(!(colnames(x) %in% KEEP_TERMS)) else NULL
+  if (length(excl))
+    message(sprintf("  reduced fit: keeping %d/%d terms, excluding %d (KEEP_TERMS)",
+                    ncol(x) - length(excl), ncol(x), length(excl)))
+
   to_prob <- function(v) if (all(v >= 0 & v <= 1, na.rm = TRUE)) v else plogis(v)  # link -> prob
 
   # one cv.glmnet at a given convergence tol (all K folds in parallel + the full-data fit).
@@ -283,6 +305,7 @@ fit_one_class <- function(sub, code, name, name2code, pure_neg) {
   fit_cv <- function(th) {
     glmnet.control(thresh = th)
     cv.glmnet(x, y, family = "binomial", alpha = a, foldid = foldid, weights = wv,
+              exclude = excl,
               nlambda = NLAMBDA, lambda.min.ratio = LAMBDA_MIN_RATIO,
               type.measure = "deviance", keep = TRUE, parallel = TRUE)
   }

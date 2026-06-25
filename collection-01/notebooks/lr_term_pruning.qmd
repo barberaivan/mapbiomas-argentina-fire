@@ -230,10 +230,63 @@ cat("  sqrt ∩ cbrt :", length(intersect(sets[["sqrt(area)"]], sets[["area^(1/3
 cat("  in all three:", length(Reduce(intersect, sets)), "/ 40\n")
 ```
 
-# Next
+# Write candidate reduced sets for refitting
 
-After eyeballing Plot 1 and the three global rankings, pick the weight smoothing and the
-candidate p values to test. Then take `impL[weight == <chosen>][rank <= p, term]` as the shared
-set, **refit** `02-model_fitting.R` restricted to it (all classes), and compare out-of-fold
-AUC/Brier (area-weighted) against the full-129 baseline.
+Chosen scheme: **K = 3** (`area^(1/3)` smoothing). For each candidate `P` we take the top-P terms
+by global importance, then **close the interaction hierarchy** — any kept `A__B` term forces its
+mains `A`, `B` into the set, so the centering fold-back in `02-model_fitting.R` stays valid. The
+effective fitted set can therefore exceed the nominal P; both are recorded. Written to
+`config/pruning_terms.csv`, consumed by `scripts/refit_pruning_sweep.R`.
+
+```{r write-pruning-terms}
+SCHEME <- "area^(1/3)"                 # K = 3
+P_TEST <- c(30, 40, 50, 60, 80)
+
+rank_sel <- impL[weight == SCHEME][order(rank), .(term, rank)]
+close_hier <- function(kept) {         # add main factors of any kept "A__B" interaction
+  ints  <- kept[grepl("__", kept, fixed = TRUE)]
+  mains <- unique(unlist(strsplit(ints, "__", fixed = TRUE)))
+  union(kept, mains)
+}
+pruning_terms <- rbindlist(lapply(P_TEST, function(P) {
+  topP <- rank_sel[rank <= P, term]
+  full <- close_hier(topP)
+  data.table(scheme = "area_cbrt_K3", P = P, term = full,
+             nominal_rank = rank_sel$rank[match(full, rank_sel$term)],
+             added_by_hierarchy = !(full %in% topP))
+}))
+fwrite(pruning_terms, here::here("..", "config", "pruning_terms.csv"))
+pruning_terms[, .(nominal_P = P[1], effective = .N, added_for_hierarchy = sum(added_by_hierarchy)), by = P]
+```
+
+# Reduced-model OOF metrics (after the refit sweep)
+
+Populated once `scripts/refit_pruning_sweep.R` has run (it refits all classes per P and aggregates
+the per-class OOF metrics to `models-store/pruning/metrics_by_P.csv`). Brier (left, **lower** =
+better) and AUC (right, **higher** = better) per class; rows sorted by decreasing area weight; the
+**full-129** baseline is the `full` x-category.
+
+```{r metrics-plot, fig.width=10, fig.height=26}
+mpath <- here::here("..", "models-store", "pruning", "metrics_by_P.csv")
+if (!file.exists(mpath)) {
+  cat("metrics_by_P.csv not found yet — run scripts/refit_pruning_sweep.R first.\n")
+} else {
+  met <- fread(mpath, colClasses = list(character = "P"))   # P incl. 'full'; veg_fire, cv_brier, cv_auc
+  nm  <- unique(as.data.table(remap)[, .(veg_fire, name = veg_fire_name)])
+  ord <- awn[order(-w_area), class]                          # decreasing area weight
+  met <- merge(met, nm, by = "veg_fire", all.x = TRUE)
+  met[, name := factor(name, levels = nm$name[match(ord, nm$veg_fire)])]
+  met[, Px   := factor(P, levels = c(as.character(sort(P_TEST)), "full"))]
+  mL <- melt(met, id.vars = c("name", "Px"), measure.vars = c("cv_brier", "cv_auc"),
+             variable.name = "metric", value.name = "value")
+  mL[, metric := factor(metric, levels = c("cv_brier", "cv_auc"),
+                        labels = c("Brier (lower better)", "AUC (higher better)"))]
+  ggplot(mL, aes(Px, value, fill = metric)) +
+    geom_col() +
+    facet_grid(rows = vars(name), cols = vars(metric), scales = "free_y", switch = "y") +
+    labs(x = "P (terms kept; 'full' = 129)", y = NULL,
+         title = "Reduced-model OOF metrics by P and class (rows: decreasing area weight)") +
+    theme(legend.position = "none", strip.text.y.left = element_text(angle = 0, size = 7),
+          axis.text.x = element_text(size = 7))
+}
 ```
