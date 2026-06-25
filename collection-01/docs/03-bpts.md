@@ -501,6 +501,14 @@ padding so is NOT comparable), differing only in term count:
 
 Read finals with `ee.data.listOperations()` → filter `description` contains `eecutest` →
 `metadata['batchEecuUsageSeconds']/3600`. (Interim values are not final; wait for `SUCCEEDED`.)
+
+**Partial result (full129 final, others mid-run):** full129 = **27.3 EECU-h** / 22.8 min (SUCCEEDED);
+K3P50 ≈ 20.3 EECU-h, K3P30 ≈ 18.2 EECU-h (both still RUNNING, will rise). **EECU drops
+monotonically with term count → confirms the trimmed sets really deploy fewer bands (NOT 129
+zeroed — those would match full's EECU).** Note wall-clock is scheduling/overhead-bound, not
+compute-bound: full129 finished before K3P50 despite more EECU (same start time, different worker
+allocation). So pruning's payoff is in **EECU (quota/cost/throughput at collection scale)**, not
+necessarily single-task wall-clock. Re-read all three at SUCCEEDED for the final ratio.
 The whole-tile EECU includes the term-independent fixed cost (scene load, mosaic, array metrics),
 so the saving ratio is **less** than 52/130 — it's the *realized* tile-level payoff. Test assets
 are deletable afterward (user runs deletions).
