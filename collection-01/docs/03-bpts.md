@@ -502,13 +502,22 @@ padding so is NOT comparable), differing only in term count:
 Read finals with `ee.data.listOperations()` → filter `description` contains `eecutest` →
 `metadata['batchEecuUsageSeconds']/3600`. (Interim values are not final; wait for `SUCCEEDED`.)
 
-**Partial result (full129 final, others mid-run):** full129 = **27.3 EECU-h** / 22.8 min (SUCCEEDED);
-K3P50 ≈ 20.3 EECU-h, K3P30 ≈ 18.2 EECU-h (both still RUNNING, will rise). **EECU drops
-monotonically with term count → confirms the trimmed sets really deploy fewer bands (NOT 129
-zeroed — those would match full's EECU).** Note wall-clock is scheduling/overhead-bound, not
-compute-bound: full129 finished before K3P50 despite more EECU (same start time, different worker
-allocation). So pruning's payoff is in **EECU (quota/cost/throughput at collection scale)**, not
-necessarily single-task wall-clock. Re-read all three at SUCCEEDED for the final ratio.
+**FINAL result (all SUCCEEDED):**
+
+| task | terms | EECU-h | attempt | wall-clock |
+|---|---|---|---|---|
+| full129 | 130 | 27.3 | 1 | 22.8 min |
+| K3P50 | 52 | **20.6** | 1 | 44.1 min |
+| K3P30 | 33 | 24.0 | **2 (retried!)** | 39.8 min |
+
+**Read it via the clean attempt-1 pair: full129 27.3 → P50 20.6 = ~25% less EECU** for 60% fewer
+terms — monotonic, confirms the trimmed sets deploy fewer bands (not 129 zeroed). **K3P30's 24.0 is
+a measurement artifact: `attempt=2` means it ran twice and `batchEecuUsageSeconds` bills retries
+cumulatively** — its true single-run EECU would be well below P50's. (Re-run K3P30 if a clean P30
+number is wanted.) Caveats: (a) 60% fewer terms → only ~25% EECU ⇒ a large *term-independent* fixed
+cost (scene load, mosaic, array metrics; §8) that pruning can't cut; (b) **wall-clock is pure
+scheduling/retry noise** (P50, lightest by EECU, took the longest) — use EECU@attempt-1 only, and
+treat single-tile EECU as noisy (retries/worker variance).
 The whole-tile EECU includes the term-independent fixed cost (scene load, mosaic, array metrics),
 so the saving ratio is **less** than 52/130 — it's the *realized* tile-level payoff. Test assets
 are deletable afterward (user runs deletions).
