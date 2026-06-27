@@ -844,6 +844,36 @@ def _existing_bpts_names():
             return names
 
 
+def _inflight_bpts_names():
+    """
+    Set of asset leaf names (e.g. ``{'bpts_2015_SK-19-Y-A', …}``) that currently have
+    a PENDING or RUNNING export task, from ``ee.data.listOperations()``.  The task
+    ``description`` is set to the asset name in ``_export_bpts_image``, so the match is
+    exact.  Combined with ``_existing_bpts_names`` (completed assets), this lets a
+    killed-and-rerun bulk launch resume without re-submitting tiles whose task is still
+    queued/running — GEE would otherwise accept a duplicate task that then fails on the
+    "cannot overwrite asset" write.
+
+    SCOPE: ``listOperations`` only sees the **account that runs it**.  This makes a
+    same-account resume safe; it does NOT see other accounts' in-flight tasks, so the
+    multi-account flow still coordinates via the per-year sign-out
+    (docs/03-colab_multi_export.md).  (Completed-asset skipping IS cross-account — that
+    side reads the shared collection.)
+    """
+    names = set()
+    try:
+        ops = ee.data.listOperations()
+    except Exception:
+        return names                            # no perms / none → treat as nothing in flight
+    for op in ops:
+        md = op.get("metadata", {})
+        if md.get("state") in ("PENDING", "RUNNING"):
+            desc = md.get("description", "")
+            if desc.startswith("bpts_"):
+                names.add(desc)
+    return names
+
+
 def bpts(year=None, tile_id=None, export=True, overwrite=False):
     """
     Burn-probability time-series metrics for tile-year(s).
@@ -855,10 +885,13 @@ def bpts(year=None, tile_id=None, export=True, overwrite=False):
                                (e.g. 'SK-19-Y-A')
     export    : bool         — False returns the ee.Image for inspection and
                                requires both ``year`` and ``tile_id``
-    overwrite : bool         — by default tile-years whose asset already exists
-                               are skipped (safe to re-run / resume a year).  Set
-                               True to submit them anyway — but GEE will not
-                               overwrite an existing asset, so delete it first.
+    overwrite : bool         — by default a tile-year is skipped if its asset already
+                               exists (completed) OR it has a PENDING/RUNNING task — so a
+                               killed bulk launch can be re-run idempotently without
+                               duplicating in-flight tiles.  Set True to submit anyway —
+                               but GEE will not overwrite an existing asset, so delete it
+                               first.  The skip is keyed on the full ``bpts_<year>_<tile>``
+                               name, so the same tile in a different year is unaffected.
 
     Returns
     -------
@@ -875,19 +908,31 @@ def bpts(year=None, tile_id=None, export=True, overwrite=False):
     years = [year] if year is not None else list(C.YEARS)
     tile_ids = [tile_id] if tile_id is not None else _tiles_in_buffer()
 
-    existing = set() if overwrite else _existing_bpts_names()
+    # Skip tile-years already done (completed asset) or already in flight (PENDING/RUNNING
+    # task on this account).  Both sets are keyed on the year-qualified bpts_<year>_<tile>
+    # name, so cross-year reuse of a tile never collides.  See _inflight_bpts_names for the
+    # cross-account caveat (in-flight is per-account; completed is shared).
+    done = set() if overwrite else _existing_bpts_names()
+    inflight = set() if overwrite else _inflight_bpts_names()
 
-    tasks, skipped = [], 0
+    tasks, skip_done, skip_inflight = [], 0, 0
     for tid in tile_ids:
         tile_geom = _tile_geometry(tid)
         for y in years:
-            if f"bpts_{y}_{tid}" in existing:
-                skipped += 1
+            name = f"bpts_{y}_{tid}"
+            if name in done:
+                skip_done += 1
+                continue
+            if name in inflight:
+                skip_inflight += 1
                 continue
             img = bpts_image(y, tid, terms)
             tasks.append(_export_bpts_image(img, y, tid, tile_geom))
+    skip_msg = ", ".join(s for s in (
+        f"{skip_done} already exported" if skip_done else "",
+        f"{skip_inflight} in flight" if skip_inflight else "") if s)
     print(f"Submitted {len(tasks)} bpts export task(s)"
-          f"{f', skipped {skipped} already exported' if skipped else ''}"
+          f"{f' (skipped {skip_msg})' if skip_msg else ''}"
           f" → {C.BP_TS_METRICS_COL}")
     return tasks
 

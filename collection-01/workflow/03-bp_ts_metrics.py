@@ -13,17 +13,24 @@ driven interactively from ``scripts/test-03-bp_ts.py``; this file is the CLI.
 
 Run from the repo root:
 
-    # one tile-year
+    # one tile-year (foreground is fine — one task)
     $PYTHON collection-01/workflow/03-bp_ts_metrics.py --year 2015 --tile SK-19-Y-A
-    # all tiles for one year
-    $PYTHON collection-01/workflow/03-bp_ts_metrics.py --year 2015
+    # all tiles for one year — submits ~one task per carta (hundreds); run in tmux:
+    tmux new-session -d -s bpts2015 \
+      '$PYTHON -u collection-01/workflow/03-bp_ts_metrics.py --year 2015 2>&1 | tee bpts2015.log'
     # all years for one tile
     $PYTHON collection-01/workflow/03-bp_ts_metrics.py --tile SK-19-Y-A
-    # everything (all years × all tiles — thousands of tasks)
+    # everything (all years × all tiles — thousands of tasks; always tmux)
     $PYTHON collection-01/workflow/03-bp_ts_metrics.py
 
-Each invocation submits GEE export tasks and exits; monitor them in the Code
-Editor Tasks panel or with scripts/status.py.
+A bulk launch submits hundreds/thousands of tasks (many minutes of task.start()
+round-trips) — run it in tmux so it survives session closure (see CLAUDE.md
+"Running long scripts").  The launch is idempotent: tile-years that are already
+exported OR have a PENDING/RUNNING task are skipped, so a killed run can simply be
+re-run without duplicating in-flight tiles.
+
+Each invocation submits GEE export tasks and exits; monitor with --status or in the
+Code Editor Tasks panel.
 """
 
 import argparse
