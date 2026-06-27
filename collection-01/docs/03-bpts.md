@@ -20,7 +20,7 @@ For every **year × MapBiomas carta tile**:
    logistic regression applied per pixel-date),
 2. reduce that per-pixel time series to **annual summary metrics** (magnitude, persistence,
    change, plus quality bands),
-3. export an 18-band image to the target collection.
+3. export a 16-band image to the target collection.
 
 - **Output collection:** `projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/WORKFLOW-EXPORTS/bp_ts_metrics`
   (`C.BP_TS_METRICS_COL`).
@@ -171,9 +171,12 @@ value, `minforeK` (post level; `maxback = minforeK − deltaK` so it isn't store
 `t*` is always a focal obs, `date_post` is guaranteed to fall within the focal year.
 
 Whole-series (not tied to a delta peak): `pmax1`=max raw prob, `pmax2`=max(minfore2),
-`pmax3`=max(minfore3). Quality: `n` (obs count), `timediff_med`/`timediff_max` (median/max
-inter-obs gap, days). All bands are always exported; which to trust is decided later by image
-density.
+`pmax3`=max(minfore3). Quality: `n` (obs count) — the sole density/quality channel. All bands
+are always exported; which to trust is decided later by image density.
+
+> The per-pixel inter-obs gap bands `timediff_med`/`timediff_max` were **dropped** (2026-06):
+> largely redundant with `n` as a density signal, and removing them saves storage. The code no
+> longer computes the `diffs` array — see §3.7.
 
 ### 3.4 The padding strategy (the subtle part)
 
@@ -235,7 +238,7 @@ d_{t-3}, d_{t+2}]`, sort rows **descending by delta**, take the top row, read th
 with `arrayGet`. Widths/gaps are exact whole-day differences (the date column is already in
 integer days), and `date_post` is `d[t*]+1`.
 
-### 3.7 Output bands (18) and integer encoding
+### 3.7 Output bands (16) and integer encoding
 
 All bands are **int16-encoded for export** (≈half the float32 asset size). The encoding is
 applied in `bpts_image`; the `decode` column below is how to recover each band. The band groups
@@ -260,8 +263,11 @@ is a single signed dtype (int16, −32768…32767) on purpose — see the note b
 | `pmax2` | max(minfore2) whole series | ÷10000 | K=2 array short |
 | `pmax1` | max raw prob whole series | ÷10000 | n = 0 |
 | `n` | focal obs count; **−1** non-burnable, **−2** non-observed | as-is | **never masked** |
-| `timediff_med` | median inter-obs gap, days | as-is | n < 2 |
-| `timediff_max` | max inter-obs gap, days | as-is | n < 2 |
+
+> **Dropped (2026-06):** `timediff_med` / `timediff_max` (median/max inter-obs gap, days). They
+> were largely redundant with `n` as a density signal, so they were removed to save storage — the
+> output went from 18 → **16 bands** and `compute_bp_ts_metrics` no longer builds the `diffs`
+> array. The §5 gotcha #4 (the `n>=2` mask that guarded those reducers) is now moot.
 
 **Why all int16 (signed), not uint16 for the day bands.** Every encoded value fits well inside
 ±32767: probabilities ×10000 span 0…10000, `delta*` are **signed** (−10000…10000), day-gaps are
@@ -342,11 +348,13 @@ reach either a *non-empty* array or a *masked* pixel. Two consequences bit us:
    (the product looked structurally fine but was all-empty — a silent, expensive failure that
    only showed after a full export).
 
-4. **Whole-series reducers over `focal_arr` aren't covered by the padded-array masks.** A
-   fittable pixel with exactly **1 focal obs** has a non-empty `focal_arr` (so it isn't masked)
-   but an **empty `diffs` array** (length `n−1 = 0`); reducing it throws an out-of-bounds
-   `arrayGet`. This is common (sparse Landsat) and crashed a 22-minute export. Fix:
-   `diffs.updateMask(n.gte(2))` before the `timediff_*` reducers, so n<2 pixels short-circuit.
+4. **Whole-series reducers over `focal_arr` aren't covered by the padded-array masks.** *(Now
+   historical — the `timediff_*` bands this guarded were dropped, §3.7. Kept here because the
+   same trap will reappear if any future whole-series reducer over a length-`n−1` array is
+   added.)* A fittable pixel with exactly **1 focal obs** has a non-empty `focal_arr` (so it
+   isn't masked) but an **empty `diffs` array** (length `n−1 = 0`); reducing it throws an
+   out-of-bounds `arrayGet`. This is common (sparse Landsat) and crashed a 22-minute export. Fix
+   that was used: `diffs.updateMask(n.gte(2))` before the reducers, so n<2 pixels short-circuit.
    (`pmax1` is safe: n=1 reduces fine, n=0 is already masked.)
 
 **Other array notes:**
@@ -375,8 +383,9 @@ not-yet-exported buffered raster:
 - **Burn probability:** GEE `prob` reproduces the hand-computed raw-scale logit to **~7e-9**
   for a real pixel (`veg_fire = 21`) — confirms coefficient ordering, band alignment, raw
   products, the `veg_fire→coef` remap, and the sigmoid.
-- **Metrics:** all 18 bands verified by hand on a synthetic series (delta/minfore peaks, jumpgap
-  / widths, pmax1/2/3, timediff med/max, K=2 family).
+- **Metrics:** all bands verified by hand on a synthetic series (delta/minfore peaks, jumpgap
+  / widths, pmax1/2/3, K=2 family). *(Validation predates the §3.7 drop of `timediff_*`; the
+  remaining 16 bands are unchanged.)*
 - **Masking:** insufficient-padding and no-obs pixels mask cleanly (no errors), `n = 0`.
 - **Realism:** over the exported tile `n` averages 25 (max 54), with `−2` sentinels present;
   ~**29,300 ha** of strong persistent detections (`delta3>0.5 & pmax3>0.5`) centred at
@@ -531,6 +540,33 @@ are deletable afterward (user runs deletions).
 3. Then re-export 2015 with the promoted reduced model (overwrite or delete the old full-129
    tiles first). Note: the earlier 2015 queue was cancelled precisely because it was the obsolete
    full-129 model.
+
+## 10. Tile-merge export test — STATUS / HANDOFF (in progress, 2026-06-26)
+
+Question: does exporting several cartas as **one merged image** take similar **wall-clock** to a
+single tile? If yes, merging tiles per task amortises the ~17-min per-task fixed floor (§8) and
+cuts wall-clock. It does **not** cut compute or storage (the merged image still processes every
+tile's area) — acknowledged going in; the only payoff is paying the fixed floor once.
+
+**Setup.** `scripts/test-03-tilemerge.py` submits three 2015 exports with the **reduced P=50
+model** (`models-store/pruning/deploy_K3_P50`) and the new 16-band output, identical except for
+how many cartas are merged into one image. The four tiles form a 2×2 square:
+`tl=SK-19-V-B  tr=SK-19-X-A  bl=SK-19-V-D  br=SK-19-X-C` (each carta ~14k km²).
+
+| asset (in `C.BP_TS_METRICS_COL`) | tiles merged | union area | EECU-h | wall-clock |
+|---|---|---|---|---|
+| `bpts_2015_tilemerge_1` | 1 (tl) | ~14k km² | (running) | (running) |
+| `bpts_2015_tilemerge_2` | 2 (tl,tr) | ~28k km² | (running) | (running) |
+| `bpts_2015_tilemerge_4` | 4 (square) | ~56k km² | (running) | (running) |
+
+Read finals once SUCCEEDED via `ee.data.listOperations()` → filter `description` contains
+`tilemerge` → `metadata['batchEecuUsageSeconds']/3600` and `startTime`/`endTime`. Decision rule:
+if `tilemerge_4` wall-clock ≪ 4× `tilemerge_1`, merge tiles for production export (align the merge
+groups to the §"Downstream design notes" fire-regions). Test assets are deletable afterward.
+
+**Enabling code change (kept, generally useful).** `burn_prob_collection` and `bpts_image` gained
+an optional `tile_geom=` override: pass a dissolved union of cartas to compute one merged image;
+`tile_id` then serves only as the asset/property label. Default path (single tile) is unchanged.
 
 **Downstream design notes reached this session (step 04 SNIC / regions).** Define fire-regions as
 **unions of cartas with boundaries in low-fire zones**; build the SNIC input as a mosaic of *only*

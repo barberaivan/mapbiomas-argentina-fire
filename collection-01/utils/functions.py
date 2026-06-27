@@ -510,7 +510,7 @@ def safe_to_array(imgcol):
 
 def compute_bp_ts_metrics(focal_arr, prev_arr, next_arr):
     """
-    Reduce per-pixel burn-probability time-series arrays to 18 annual metric
+    Reduce per-pixel burn-probability time-series arrays to 16 annual metric
     bands.  All arrays are [N, 2] with column 0 = prob, column 1 = day-number
     (integer days relative to focal-year Jan 1; see ``_day_num``), sorted
     ascending by date.  Date differences are therefore exact whole-day counts,
@@ -616,7 +616,6 @@ def compute_bp_ts_metrics(focal_arr, prev_arr, next_arr):
 
     # ── Whole-series metrics (from the focal array directly) ──────────────────
     p_focal = focal_arr.arraySlice(1, 0, 1)
-    d_focal = focal_arr.arraySlice(1, 1, 2)
 
     pmax1 = p_focal.arrayReduce(ee.Reducer.max(), [0]).arrayGet([0, 0]).rename("pmax1")
     pmax3 = minfore3.arrayReduce(ee.Reducer.max(), [0]).arrayGet([0, 0]).rename("pmax3")
@@ -626,21 +625,14 @@ def compute_bp_ts_metrics(focal_arr, prev_arr, next_arr):
     # array (n=0); sentinels for non-burnable/non-observed are applied by caller.
     n = focal_arr.arrayLength(0).unmask(0).rename("n")
 
-    # Inter-observation gaps (days): defined only when n >= 2.  A pixel with
-    # exactly 1 focal obs has an EMPTY diff array that is NOT mask-propagated
-    # (focal_arr is non-empty), so reducing it directly would throw.  Mask the
-    # diff array by n>=2 first: masked pixels short-circuit the reducer (the
-    # col-0 pattern), so only n>=2 pixels actually reduce.
-    diffs = (d_focal.arraySlice(0, 1)
-             .subtract(d_focal.arraySlice(0, 0, -1))
-             .updateMask(n.gte(2)))
-    timediff_med = diffs.arrayReduce(ee.Reducer.median(), [0]).arrayGet([0, 0]).rename("timediff_med")
-    timediff_max = diffs.arrayReduce(ee.Reducer.max(),    [0]).arrayGet([0, 0]).rename("timediff_max")
+    # Note: the per-pixel inter-observation gap bands (timediff_med / timediff_max)
+    # were dropped to save storage — they were largely redundant with `n` as an
+    # image-density / quality signal.  See docs/03-bpts.md §3.7.
 
     return ee.Image.cat([
         delta3_peak, minfore3_peak, jumpgap3, prevwidth3, postwidth3, date_post3,
         delta2_peak, minfore2_peak, jumpgap2, prevwidth2, postwidth2, date_post2,
-        pmax3, pmax2, pmax1, n, timediff_med, timediff_max,
+        pmax3, pmax2, pmax1, n,
     ])
 
 
@@ -648,7 +640,7 @@ def compute_bp_ts_metrics(focal_arr, prev_arr, next_arr):
 NON_N_BANDS = [
     "delta3_peak", "minfore3_peak", "jumpgap3", "prevwidth3", "postwidth3", "date_post3",
     "delta2_peak", "minfore2_peak", "jumpgap2", "prevwidth2", "postwidth2", "date_post2",
-    "pmax3", "pmax2", "pmax1", "timediff_med", "timediff_max",
+    "pmax3", "pmax2", "pmax1",
 ]
 
 # Integer-encoding band groups for export (see docs/03-bpts.md §3.7).  Every band is
@@ -660,8 +652,7 @@ PROB_SCALE  = 10000
 PROB_BANDS  = ["delta3_peak", "minfore3_peak", "delta2_peak", "minfore2_peak",
                "pmax3", "pmax2", "pmax1"]
 DAY_BANDS   = ["jumpgap3", "prevwidth3", "postwidth3",
-               "jumpgap2", "prevwidth2", "postwidth2",
-               "timediff_med", "timediff_max"]
+               "jumpgap2", "prevwidth2", "postwidth2"]
 DOY_BANDS   = ["date_post3", "date_post2"]
 
 
@@ -717,7 +708,7 @@ def veg_fire_image(year):
     ).rename("veg_fire")
 
 
-def burn_prob_collection(year, tile_id, terms=None, keep_indices=False):
+def burn_prob_collection(year, tile_id, terms=None, keep_indices=False, tile_geom=None):
     """
     Build the per-date burn-probability collection for one tile-year.
 
@@ -732,7 +723,7 @@ def burn_prob_collection(year, tile_id, terms=None, keep_indices=False):
     (handy for inspecting NBR/NBR2 vs prob in the Code Editor inspector).
     """
     terms = terms if terms is not None else load_all_coefficients()
-    tile_geom = _tile_geometry(tile_id)
+    tile_geom = tile_geom if tile_geom is not None else _tile_geometry(tile_id)
     mb_year = min(year - 1, C.MB_LIMIT_YEAR)
 
     veg_fire = veg_fire_image(year)
@@ -760,13 +751,17 @@ def burn_prob_collection(year, tile_id, terms=None, keep_indices=False):
     return col.map(_add_bp), veg_fire
 
 
-def bpts_image(year, tile_id, terms=None):
+def bpts_image(year, tile_id, terms=None, tile_geom=None):
     """
-    Compute the 18-band burn-probability time-series-metrics image for one
+    Compute the 16-band burn-probability time-series-metrics image for one
     tile-year (the unit exported by ``bpts``).  See docs/03-bpts.md.
+
+    ``tile_geom`` overrides the per-tile geometry: pass a union of several
+    cartas to compute one merged image over them (the ``tile_id`` is then used
+    only as the asset/property label).  Defaults to the single tile's geometry.
     """
     terms = terms if terms is not None else load_all_coefficients()
-    bp_col, veg_fire = burn_prob_collection(year, tile_id, terms)
+    bp_col, veg_fire = burn_prob_collection(year, tile_id, terms, tile_geom=tile_geom)
     bp_col = bp_col.select(["prob", "day_num"])
     dates = _year_dates(year)
 

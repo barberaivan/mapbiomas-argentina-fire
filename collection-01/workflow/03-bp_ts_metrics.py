@@ -6,7 +6,7 @@ observation over the country, producing an observation-level burn-probability
 time series, then reduce it to annual summary metrics for the downstream
 segmentation step.
 
-For each focal year × MapBiomas carta tile this exports an 18-band image
+For each focal year × MapBiomas carta tile this exports a 16-band image
 ``bpts_YYYY_<tile-id>`` to ``C.BP_TS_METRICS_COL``.  The heavy lifting lives in
 ``utils/functions.py`` (``bpts`` and its building blocks) so the same code can be
 driven interactively from ``scripts/test-03-bp_ts.py``; this file is the CLI.
