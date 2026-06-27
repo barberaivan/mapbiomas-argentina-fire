@@ -531,42 +531,44 @@ The whole-tile EECU includes the term-independent fixed cost (scene load, mosaic
 so the saving ratio is **less** than 52/130 — it's the *realized* tile-level payoff. Test assets
 are deletable afterward (user runs deletions).
 
-**NEXT STEPS for the continuing session.**
-1. Read final EECU for the three tasks; tabulate the realized full→P50→P30 saving.
-2. If P=50 holds, **step 5 — promote**: copy `models-store/pruning/deploy_K3_P50/class_*.csv` →
-   `models/` (the canonical set GEE reads), and write `models/MODEL_SELECTION.md` recording
-   scheme=K3, P=50, the term set, date, and the OOF-metric + EECU justification. (`models/` is the
-   single deployed location; experiments stay under gitignored `models-store/pruning/`.)
-3. Then re-export 2015 with the promoted reduced model (overwrite or delete the old full-129
-   tiles first). Note: the earlier 2015 queue was cancelled precisely because it was the obsolete
-   full-129 model.
+**RESOLVED (2026-06-27) — see §11.** P=50 was adopted. Rather than promoting into a single `models/`
+deliverable, the coefficient sets were reorganised into git-tracked per-model folders
+(`models/P129/`, `models/P050/`, …) so the deployed set travels with the repo for the Colab
+multi-account export; `C.DEPLOYED_MODEL = "P050"` selects it. 2015 is being re-exported with P=50
+(the earlier 2015 queue was the obsolete full-129 model and was cancelled).
 
-## 10. Tile-merge export test — STATUS / HANDOFF (in progress, 2026-06-26)
+## 10. Tile-merge export test — DONE (2026-06-27): merging REJECTED
 
 Question: does exporting several cartas as **one merged image** take similar **wall-clock** to a
-single tile? If yes, merging tiles per task amortises the ~17-min per-task fixed floor (§8) and
-cuts wall-clock. It does **not** cut compute or storage (the merged image still processes every
-tile's area) — acknowledged going in; the only payoff is paying the fixed floor once.
+single tile? If yes, merging tiles per task would amortise the ~17-min per-task fixed floor (§8)
+and cut wall-clock. It never cuts compute or storage (the merged image still processes every
+tile's area) — acknowledged going in; the only hoped-for payoff was paying the fixed floor once.
 
-**Setup.** `scripts/test-03-tilemerge.py` submits three 2015 exports with the **reduced P=50
-model** (`models-store/pruning/deploy_K3_P50`) and the new 16-band output, identical except for
-how many cartas are merged into one image. The four tiles form a 2×2 square:
+**Setup.** `scripts/test-03-tilemerge.py` submitted three 2015 exports with the **reduced P=50
+model** (`models-store/pruning/deploy_K3_P50`) and the 16-band output, identical except for how
+many cartas were merged into one image. The four tiles formed a 2×2 square:
 `tl=SK-19-V-B  tr=SK-19-X-A  bl=SK-19-V-D  br=SK-19-X-C` (each carta ~14k km²).
 
-| asset (in `C.BP_TS_METRICS_COL`) | tiles merged | union area | EECU-h | wall-clock |
-|---|---|---|---|---|
-| `bpts_2015_tilemerge_1` | 1 (tl) | ~14k km² | (running) | (running) |
-| `bpts_2015_tilemerge_2` | 2 (tl,tr) | ~28k km² | (running) | (running) |
-| `bpts_2015_tilemerge_4` | 4 (square) | ~56k km² | (running) | (running) |
+**FINAL result (all SUCCEEDED, attempt 1):**
 
-Read finals once SUCCEEDED via `ee.data.listOperations()` → filter `description` contains
-`tilemerge` → `metadata['batchEecuUsageSeconds']/3600` and `startTime`/`endTime`. Decision rule:
-if `tilemerge_4` wall-clock ≪ 4× `tilemerge_1`, merge tiles for production export (align the merge
-groups to the §"Downstream design notes" fire-regions). Test assets are deletable afterward.
+| asset | tiles | EECU-h | wall-min | wall/tile | EECU-h/tile | wall vs 1× |
+|---|---|---|---|---|---|---|
+| `bpts_2015_tilemerge_1` | 1 | 38.3 | 48.9 | 48.9 | 38.3 | 1.0× |
+| `bpts_2015_tilemerge_2` | 2 | 145.8 | 146.7 | 73.4 | 72.9 | **3.0×** |
+| `bpts_2015_tilemerge_4` | 4 | 251.7 | 250.7 | 62.7 | 62.9 | **5.1×** |
 
-**Enabling code change (kept, generally useful).** `burn_prob_collection` and `bpts_image` gained
-an optional `tile_geom=` override: pass a dissolved union of cartas to compute one merged image;
-`tile_id` then serves only as the asset/property label. Default path (single tile) is unchanged.
+**Conclusion — DO NOT merge tiles; production exports one carta per task.** Both wall-clock and
+EECU grow **super-linearly** with merged area (4× tiles → 5.1× wall, 6.6× EECU), so per-tile cost
+*rises* when merging (~49→~63–73 wall-min/tile). The decision rule was "merge only if `tilemerge_4`
+wall ≪ 4× `tilemerge_1`" (≪ 195.6 min); it came in at **250.7**, *above* 4×. Why the floor doesn't
+help: the single tile is the only run where wall (48.9) > EECU-h (38.3) — that ~10-min gap *is* the
+fixed floor (§8) — but once merged, wall ≈ EECU-h (the task becomes purely compute-bound) and the
+floor is swamped by the extra area's compute. Test assets (`tilemerge_2`/`_4`) are deletable; the
+single-tile `tilemerge_1` was renamed to its production name `bpts_2015_SK-19-V-B` (it is a valid
+P50/16-band export, so renaming avoids re-running that tile).
+
+> The `tile_geom=` override added to `burn_prob_collection`/`bpts_image` for this test was
+> **reverted** after the result — there is no production use for it. Single-tile geometry only.
 
 **Downstream design notes reached this session (step 04 SNIC / regions).** Define fire-regions as
 **unions of cartas with boundaries in low-fire zones**; build the SNIC input as a mosaic of *only*
@@ -577,3 +579,40 @@ region-only input has masked edges and imports nothing extra, so **no edge buffe
 committing the step-04 tiling. Step-03 export tiling and downstream regions are decoupled for
 correctness but NOT cost: cheapest downstream is region = exact union of step-03 tiles, no buffer,
 so align the export tiling to the hand-drawn fire-regions where export limits allow.
+
+## 11. Deployed model — P=50 term-pruning (decided 2026-06-27)
+
+**All production prediction/export uses the reduced P=50 model** (52 terms: intercept + 51), not
+the full step-02 fit (130 terms).
+
+**Where the coefficients live.** Each model variant has its own git-tracked folder under
+`collection-01/models/`, named `P<NNN>` (3-digit, leading zeros; all are CV scheme **K=3**, so K is
+not in the name):
+
+| Folder | Model | Rows |
+|---|---|---|
+| `models/P129/` | full fit | 130 |
+| `models/P080/` `P060/` `P040/` `P030/` | pruning variants (top-P cut) | 81 / 62 / 42 / 33 |
+| `models/P050/` | **DEPLOYED** | 52 |
+
+`P` is the top-P percentile cut on the global term ranking, *not* the term count. Reduced folders
+hold only `intercept + kept terms` (trimmed at write time by `02-model_fitting.R`), so GEE builds
+only the deployed bands — prediction is term-count-driven (§9). **These CSVs are git-tracked** so
+the Colab multi-account export (`03-colab_multi_export.md`) gets them from a plain `git clone`; the
+old `models-store/pruning/deploy_K3_P*` sets lived under the gitignored Insync symlink and could not
+travel with the repo — that was the reason for this reorg.
+
+**Wired as the default.** `C.DEPLOYED_MODEL = "P050"` and `C.COEF_DIR = models/P050`;
+`load_all_coefficients()` reads `C.COEF_DIR` when called with no `models_dir`, so `bpts()` and every
+export — all years, all worker accounts — use P=50 automatically. **Redeploy = change that one
+line.** Pass an explicit folder (e.g. `C.MODELS_DIR / "P129"`) only for diagnostics.
+
+**Why P=50.** The §9 term-pruning sweep (K3, P ∈ {30,40,50,60,80}) showed OOF predictive skill
+essentially flat from the full model down to P≈50, with a real drop only below that. P=50 keeps the
+skill of the full model while cutting terms 130→52, and realises ~25% lower EECU per tile than
+full-129 at attempt-1 (§9 EECU test) — the rest being the term-independent fixed cost (scene load,
+mosaic, array metrics; §8). It's the best skill-preserving point on the curve.
+
+**Reproducing the folders.** `scripts/refit_pruning_sweep.R` re-runs each P (it sets `COEF_TAG=P<NNN>`
++ `KEEP_TERMS_CSV`); `02-model_fitting.R` with no env writes the full fit to `P129/`. The trimming is
+deterministic: `models/P0<P>/` = the K3_P<P> reduced fit filtered to `intercept + keep_K3_P<P>` terms.

@@ -20,7 +20,8 @@ library(tidyverse)
 library(scales)
 library(knitr)
 
-models_dir <- "../models"     # tracked per-class coefficient CSVs (block, term, coefficient, coef_std)
+models_dir <- "../models/P129"     # FULL fit: tracked per-class coefficient CSVs (block, term, coefficient, coef_std)
+N_FITTABLE <- 23L                   # all fittable veg_fire classes (constants.FITTABLE_VEG_FIRE)
 theme_set(theme_minimal(base_size = 11))
 
 # coef_std = β · sd(raw column)  (02-model_fitting.R) == the standardized effect size |β_z|.
@@ -70,11 +71,13 @@ We keep the smallest P whose area-weighted metrics match full within noise.
 
 ```{r load}
 files <- Sys.glob(file.path(models_dir, "class_*_coefficients.csv"))
-stopifnot(length(files) > 0)
+# Must load EVERY fittable class — a partial load would silently bias the global term ranking.
+stopifnot(length(files) == N_FITTABLE)
 coefs <- rbindlist(lapply(files, function(f) {
   cls <- as.integer(sub(".*class_0*(\\d+)_coefficients\\.csv$", "\\1", f))
   fread(f)[, class := cls]
 }))
+stopifnot(uniqueN(coefs$class) == N_FITTABLE)   # 23 distinct class codes, no dup/missing
 terms <- coefs[block != "(intercept)"]                 # 129 predictors (intercept has NA coef_std)
 terms[, block := factor(block, levels = block_lvls)]
 terms[, abs_z := abs(coef_std)][is.na(abs_z), abs_z := 0]

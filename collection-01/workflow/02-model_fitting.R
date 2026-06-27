@@ -69,13 +69,19 @@ here_root <- function() {
 args         <- commandArgs(trailingOnly = TRUE)
 VERSION      <- if (length(args) >= 1) args[[1]] else "1"
 CLASS_FILTER <- if (length(args) >= 2) args[-1] else character(0)
-# Reduced-fit experiment hooks (both optional; unset → full 129-term fit to models/, as before):
+# Reduced-fit hooks (all optional; unset → full fit written to models/P129/):
 #   KEEP_TERMS_CSV — path to a CSV with a `term` column; glmnet EXCLUDES every design column not
-#                    listed (coef forced to 0), so the same machinery fits the reduced model.
+#                    listed (coef forced to 0), so the same machinery fits the reduced model, and
+#                    the exported coefficient CSV is TRIMMED to (intercept + kept terms).
 #                    Caller must close the interaction hierarchy (an A__B term keeps mains A,B) or
 #                    the centering fold-back misplaces a coefficient — see config/pruning_terms.csv.
-#   RUN_TAG        — when set, ALL outputs go to models-store/<RUN_TAG>/ (keeps models/ canonical).
+#   COEF_TAG       — per-model subfolder under models/ for the tracked coefficient CSVs
+#                    (default "P129"; the sweep passes "P030"…"P080").  This is the deliverable
+#                    GEE/Colab read — see utils/constants.py COEF_DIR.
+#   RUN_TAG        — heavy-artifact subfolder under models-store/ (tuning/oof/fit/cv_metrics);
+#                    unset → models-store/ root.  Keeps experiments out of the canonical store.
 KEEP_TERMS_CSV <- Sys.getenv("KEEP_TERMS_CSV", "")
+COEF_TAG       <- Sys.getenv("COEF_TAG", "P129")
 RUN_TAG        <- Sys.getenv("RUN_TAG", "")
 REGIONS_ALL  <- c("BA", "CHACO", "PAMPA", "CUYO", "PAT")
 K_TARGET     <- 10
@@ -114,17 +120,19 @@ safe_cores <- function(n, K) {
 
 root       <- here_root()
 remap_csv  <- file.path(root, "collection-01", "config", "veg_fire_remap.csv")
-out_dir    <- file.path(root, "collection-01", "models")        # tracked: *_coefficients.csv only
-store_dir  <- file.path(root, "collection-01", "models-store")  # gitignored Insync store (symlink): heavy artifacts
+# Tracked coefficient CSVs go one-folder-per-model under models/<COEF_TAG>/; heavy artifacts go to
+# the gitignored Insync store (symlink), optionally under a RUN_TAG experiment subfolder.
+coef_dir   <- file.path(root, "collection-01", "models", COEF_TAG)   # tracked: *_coefficients.csv only
+store_dir  <- file.path(root, "collection-01", "models-store")
 region_csv <- function(reg) file.path(root, "collection-01", "data",
                        sprintf("training_observations_%s_v%s.csv", reg, VERSION))
 
-# Reduced-fit experiment: load the keep-set and redirect all outputs into models-store/<RUN_TAG>/
-# so the canonical models/ deliverable is never touched by an experiment.
+# Reduced-fit: load the keep-set (used both to exclude design columns in glmnet AND to trim the
+# exported coefficient CSV down to intercept + kept terms — see the coef write below).
 KEEP_TERMS <- if (nzchar(KEEP_TERMS_CSV)) unique(fread(KEEP_TERMS_CSV)$term) else character(0)
-if (nzchar(RUN_TAG)) { out_dir <- store_dir <- file.path(store_dir, RUN_TAG) }
+if (nzchar(RUN_TAG)) store_dir <- file.path(store_dir, RUN_TAG)
 
-dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+dir.create(coef_dir, showWarnings = FALSE, recursive = TRUE)
 dir.create(store_dir, showWarnings = FALSE, recursive = TRUE)
 
 # ── class sample exceptions (the ONLY place class-specific logic lives) ───────
@@ -387,9 +395,13 @@ fit_one_class <- function(sub, code, name, name2code, pure_neg) {
     data.table(block = "(intercept)", term = "(Intercept)", coefficient = raw$intercept, coef_std = NA_real_),
     data.table(block = rep(names(BLOCKS), BLOCKS), term = all_terms,
                coefficient = as.numeric(raw$beta[all_terms]), coef_std = as.numeric(coef_std)))
+  # Reduced fit: trim the exported CSV to (intercept + kept terms) so the deployed folder holds
+  # ONLY the deployed bands — GEE prediction is term-count-driven (docs/03-bpts.md §9), so a
+  # zero-padded full-length CSV would compute like the full model.  Row ORDER is preserved.
+  if (length(KEEP_TERMS)) coef_dt <- coef_dt[block == "(intercept)" | term %chin% KEEP_TERMS]
 
   p <- r$oof_sel; stopifnot(length(p) == nrow(sub))
-  fwrite(coef_dt, file.path(out_dir, sprintf("%s_coefficients.csv", tag)))   # tracked deliverable
+  fwrite(coef_dt, file.path(coef_dir, sprintf("%s_coefficients.csv", tag)))   # tracked deliverable → models/<COEF_TAG>/
   fwrite(rbindlist(tuning), file.path(store_dir, sprintf("%s_tuning.csv", tag)))
   fwrite(data.table(fire_id = sub$fire_id, point_id = sub$point_id, date = sub$date,
                     region = sub$region, veg_fire = code, burned = y, foldid = foldid,
@@ -484,7 +496,7 @@ main <- function() {
 
   if (length(metrics)) {
     fwrite(rbindlist(metrics, fill = TRUE), file.path(store_dir, sprintf("cv_metrics_v%s.csv", VERSION)))
-    message(sprintf("\nDone. Fitted %d class(es). Coefficients in collection-01/models/; heavy artifacts in collection-01/models-store/.", length(metrics)))
+    message(sprintf("\nDone. Fitted %d class(es). Coefficients in collection-01/models/%s/; heavy artifacts in collection-01/models-store/%s.", length(metrics), COEF_TAG, if (nzchar(RUN_TAG)) RUN_TAG else ""))
   } else {
     message("\nNo classes fitted (no complete region data for the requested classes).")
   }

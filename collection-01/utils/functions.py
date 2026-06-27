@@ -294,7 +294,10 @@ def load_all_coefficients(models_dir=None, classes=None):
 
     Parameters
     ----------
-    models_dir : Path or str, optional — defaults to ``C.MODELS_DIR``
+    models_dir : Path or str, optional — defaults to ``C.COEF_DIR`` (the deployed
+                 model folder, currently ``models/P050`` — the reduced P=50 set,
+                 52 terms; see docs/03-bpts.md §11).  Pass an explicit per-model
+                 folder (e.g. ``C.MODELS_DIR / "P129"``) to load another variant.
     classes    : list[int], optional   — defaults to ``C.FITTABLE_VEG_FIRE``
 
     Returns
@@ -302,7 +305,7 @@ def load_all_coefficients(models_dir=None, classes=None):
     list[dict] — 130 term dicts in CSV order (the order is reused everywhere so
     coefficient bands and feature bands stay aligned).
     """
-    models_dir = Path(models_dir) if models_dir is not None else C.MODELS_DIR
+    models_dir = Path(models_dir) if models_dir is not None else C.COEF_DIR
     classes = list(classes) if classes is not None else list(C.FITTABLE_VEG_FIRE)
 
     terms = None            # canonical term list (from the first class read)
@@ -708,7 +711,7 @@ def veg_fire_image(year):
     ).rename("veg_fire")
 
 
-def burn_prob_collection(year, tile_id, terms=None, keep_indices=False, tile_geom=None):
+def burn_prob_collection(year, tile_id, terms=None, keep_indices=False):
     """
     Build the per-date burn-probability collection for one tile-year.
 
@@ -723,7 +726,7 @@ def burn_prob_collection(year, tile_id, terms=None, keep_indices=False, tile_geo
     (handy for inspecting NBR/NBR2 vs prob in the Code Editor inspector).
     """
     terms = terms if terms is not None else load_all_coefficients()
-    tile_geom = tile_geom if tile_geom is not None else _tile_geometry(tile_id)
+    tile_geom = _tile_geometry(tile_id)
     mb_year = min(year - 1, C.MB_LIMIT_YEAR)
 
     veg_fire = veg_fire_image(year)
@@ -751,17 +754,13 @@ def burn_prob_collection(year, tile_id, terms=None, keep_indices=False, tile_geo
     return col.map(_add_bp), veg_fire
 
 
-def bpts_image(year, tile_id, terms=None, tile_geom=None):
+def bpts_image(year, tile_id, terms=None):
     """
     Compute the 16-band burn-probability time-series-metrics image for one
     tile-year (the unit exported by ``bpts``).  See docs/03-bpts.md.
-
-    ``tile_geom`` overrides the per-tile geometry: pass a union of several
-    cartas to compute one merged image over them (the ``tile_id`` is then used
-    only as the asset/property label).  Defaults to the single tile's geometry.
     """
     terms = terms if terms is not None else load_all_coefficients()
-    bp_col, veg_fire = burn_prob_collection(year, tile_id, terms, tile_geom=tile_geom)
+    bp_col, veg_fire = burn_prob_collection(year, tile_id, terms)
     bp_col = bp_col.select(["prob", "day_num"])
     dates = _year_dates(year)
 

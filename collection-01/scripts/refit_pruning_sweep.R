@@ -5,8 +5,10 @@
 # config/pruning_terms.csv (written by notebooks/lr_term_pruning.qmd), reusing the
 # full machinery of workflow/02-model_fitting.R via its KEEP_TERMS_CSV / RUN_TAG hooks.
 #
-# Each P is a full all-classes fit written to models-store/pruning/K3_P<P>/ (the canonical
-# models/ deliverable is never touched). Afterwards, per-class OOF metrics from every run
+# Each P is a full all-classes fit: trimmed coefficient CSVs (intercept + kept terms) land in the
+# tracked models/P<NNN>/ folder (COEF_TAG), heavy artifacts in models-store/pruning/K3_P<P>/
+# (RUN_TAG). The full-129 deliverable (models/P129/) is never touched. Afterwards, per-class OOF
+# metrics from every run
 # plus the full-129 baseline (models-store/class_*_cv_metrics.csv) are aggregated to
 # models-store/pruning/metrics_by_P.csv for the comparison plot in lr_term_pruning.qmd.
 #
@@ -43,16 +45,18 @@ for (Pval in P_LIST) {
   keep      <- pterms[P == Pval, .(term)]
   keep_file <- file.path(sweep_dir, sprintf("keep_K3_P%d.csv", Pval))
   fwrite(keep, keep_file)
-  tag <- sprintf("pruning/K3_P%d", Pval)
+  tag      <- sprintf("pruning/K3_P%d", Pval)   # heavy artifacts → models-store/pruning/K3_P<P>/
+  coef_tag <- sprintf("P%03d", Pval)            # tracked trimmed coefficients → models/P<NNN>/
   cat(sprintf("\n=================================================================\n"))
-  cat(sprintf(">>> REFIT  P = %d   (%d terms)   ->  models-store/%s\n", Pval, nrow(keep), tag))
+  cat(sprintf(">>> REFIT  P = %d   (%d terms)   ->  models/%s + models-store/%s\n",
+              Pval, nrow(keep), coef_tag, tag))
   cat(sprintf("=================================================================\n"))
   flush.console()
-  Sys.setenv(KEEP_TERMS_CSV = keep_file, RUN_TAG = tag)
+  Sys.setenv(KEEP_TERMS_CSV = keep_file, RUN_TAG = tag, COEF_TAG = coef_tag)
   st <- system2("Rscript", c(fit_script, VERSION, class_filter), stdout = "", stderr = "")
   if (st != 0) stop(sprintf("fit for P=%d exited with status %d", Pval, st))
 }
-Sys.unsetenv(c("KEEP_TERMS_CSV", "RUN_TAG"))
+Sys.unsetenv(c("KEEP_TERMS_CSV", "RUN_TAG", "COEF_TAG"))
 
 # ── aggregate per-class OOF metrics: each reduced run + the full-129 baseline ────────────────
 read_metrics <- function(dir, Plabel) {

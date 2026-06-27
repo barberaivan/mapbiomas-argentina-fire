@@ -20,7 +20,7 @@ library(tidyverse)
 library(scales)
 library(knitr)
 
-models_dir <- "../models"                        # notebook runs from collection-01/notebooks/; tracked coefficients
+models_dir <- "../models/P129"                   # notebook runs from collection-01/notebooks/; FULL-fit tracked coefficients
 store_dir  <- "../models-store"                   # symlink to the Insync store; heavy artifacts (cv_metrics/tuning/oof/fit)
 theme_set(theme_minimal(base_size = 12))
 block_lvls <- c("focal", "prev", "pairs", "sameband", "cross_idx", "cross_band")

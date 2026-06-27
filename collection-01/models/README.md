@@ -4,6 +4,27 @@ Fitted model outputs from `workflow/02-model_fitting.R` (one elastic-net logisti
 regression per **veg_fire class**, pooling regions where a class spans regions).
 Inputs/reference data live in `data/`; this directory is outputs only.
 
+## Per-model folders (`P<NNN>/`)
+
+Coefficient CSVs live **one folder per model variant**, named `P<NNN>` (3-digit, leading
+zeros). All variants share CV scheme **K=3** (so it's *not* in the name — recorded here once):
+
+| Folder | Model | Rows (incl. intercept) |
+|--------|-------|------------------------|
+| `P129/` | full fit (all terms) | 130 |
+| `P080/` | term-pruning, top-P=80 | 81 |
+| `P060/` | top-P=60 | 62 |
+| `P050/` | top-P=50 — **DEPLOYED** (see `utils/constants.py` `DEPLOYED_MODEL`) | 52 |
+| `P040/` | top-P=40 | 42 |
+| `P030/` | top-P=30 | 33 |
+
+`P` is the top-P percentile cut on the global term ranking, **not** the term count (e.g. `P050`
+has 52 rows). The reduced folders hold only `intercept + kept terms` (trimmed at write time) so GEE
+prediction builds only the deployed bands — see `docs/03-bpts.md` §9/§11. Each folder is
+(re)produced by `02-model_fitting.R` writing to `models/<COEF_TAG>/` (`COEF_TAG` defaults to
+`P129`; `scripts/refit_pruning_sweep.R` sets `P030`…`P080`). Only `*_coefficients.csv` are tracked
+(see `.gitignore`); heavy artifacts stay in `models-store/`.
+
 The fitting unit is the **class**, not the region: the driver reads each class's
 regions from `config/veg_fire_remap.csv`, loads only those `data/training_observations_{region}_v{ver}.csv`
 tables, and **skips** classes whose regions aren't all exported yet (logged). So a

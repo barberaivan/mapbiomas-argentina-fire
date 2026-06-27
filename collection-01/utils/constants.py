@@ -143,8 +143,22 @@ VEG_FIRE_NON_BURNABLE = 24   # burnable=FALSE land cover (e.g. water, urban) →
 VEG_FIRE_NON_OBSERVED = 25   # outside the remap / non-observed                → n = -2
 
 # ─── Step 03 — burn-probability time-series metrics ──────────────────────────
-# Fitted-model coefficient CSVs (one per veg_fire class), written by step 02.
+# Fitted-model coefficient CSVs live one-folder-per-model under MODELS_DIR:
+#   models/P129/  full fit (130 terms incl. intercept)
+#   models/P030/ … P080/   reduced term-pruning variants (P = top-P percentile cut;
+#                          rows = intercept + kept terms, so P050 = 52 rows, etc.)
+# All variants use CV scheme K=3 (not in the folder name; see docs/03-bpts.md §11).
+# The CSVs are git-tracked (models/.gitignore re-includes *_coefficients.csv at any
+# depth) so the Colab multi-account export clones them directly — do NOT depend on
+# the models-store symlink for deployment.  Each folder is (re)produced by
+# workflow/02-model_fitting.R writing to models/<COEF_TAG>/ (see that script).
 MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
+
+# The single deployed model used by ALL production prediction/export, across every
+# year and worker account.  Chosen P=50 (see docs/03-bpts.md §11 for rationale).
+# load_all_coefficients() reads this by default; change this ONE line to redeploy.
+DEPLOYED_MODEL = "P050"
+COEF_DIR       = MODELS_DIR / DEPLOYED_MODEL
 
 # Region-id raster (1–5, with a 2 km buffer beyond the Argentina boundary) and the
 # band that holds the region code.  Built by scripts/export_region_raster.py.
