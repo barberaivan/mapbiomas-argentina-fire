@@ -103,8 +103,12 @@ repo is the sole source of truth for GEE JS code; do not keep `.js` copies here.
 
 ## Running long scripts
 
-For local processing over ~15 minutes, use `tmux` so the run survives session closure
-(GEE task-submission scripts are short enough to run normally):
+**Always launch anything that runs more than a couple of minutes inside `tmux`** (or another
+detached, long-surviving mechanism) so it survives session/terminal closure. This includes not
+only local processing but **GEE task-submission scripts that fan out over many tiles** — e.g. a
+full-year step-03 launch (`03-bp_ts_metrics.py --year YYYY`) submits one export task per *carta*
+(hundreds of `task.start()` round-trips) and takes well over the few-minutes a foreground call
+tolerates. Only a single-tile / handful-of-tasks submission is safe to run in the foreground.
 
 ```bash
 tmux new-session -d -s <name> \
@@ -112,4 +116,7 @@ tmux new-session -d -s <name> \
 ```
 
 Reattach with `tmux attach -t <name>`; detach with `Ctrl+B D`. If unsure whether a run is
-heavy enough, ask before launching.
+heavy enough, default to `tmux`.
+
+> Make bulk launchers **idempotent / resumable**: skip tiles that already have a completed asset
+> *or* an in-flight (PENDING/RUNNING) task, so a killed-and-rerun launch never duplicates work.
