@@ -47,4 +47,15 @@ This is probably for collection 2.
 
 ---
 
+## Prediction pipeline (step 03 — bp-ts export)
+
+- [ ] **Make the compute project selectable in the Colab export notebook
+  (`scripts/colab_bpts_export.ipynb`).** `GEE_PROJECT` is hardcoded to `'mapbiomas-fire-485203'`
+  in Celda 2, but the `mapbiomas-fire` (fuego) project works for some users and not others. Let
+  users choose between `mapbiomas-fire` and `mapbiomas-argentina` as the compute project (e.g. a
+  variable at the top of Celda 2 with the alternative commented). Confirm which project each
+  account can actually initialize/export with before making it the default.
+
+---
+
 *Format: `- [ ]` open, `- [x]` done.*
