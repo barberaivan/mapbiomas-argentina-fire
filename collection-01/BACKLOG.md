@@ -49,6 +49,16 @@ This is probably for collection 2.
 
 ## Prediction pipeline (step 03 — bp-ts export)
 
+- [ ] **Handle write-permission failures on the output collection.** Several users hit
+  `Error: Insufficient permissions to create asset
+  'projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/WORKFLOW-EXPORTS/bp_ts_metrics/bpts_YYYY_<carta>'`
+  (Error code 3). It's a **write-ACL** problem on the destination collection (separate from the
+  Celda 2 compute project): the authenticated account lacks Writer on `.../bp_ts_metrics`, or they
+  authenticated with an email not in the permissions table. Two things to build:
+  - A **pre-flight check** in the notebook that, right after auth, verifies the account can write
+    to the output collection and fails loudly with a clear message — instead of failing tile by tile.
+  - An admin **batch-grant script/checklist**: give Writer on `.../WORKFLOW-EXPORTS/bp_ts_metrics`
+    (or a parent folder) to every email in the permissions table.
 - [ ] **Make the compute project selectable in the Colab export notebook
   (`scripts/colab_bpts_export.ipynb`).** Celda 2 now hardcodes `GEE_PROJECT = 'mapbiomas-argentina'`
   (switched from `mapbiomas-fire-485203`, which kept failing for several accounts). If the fire
