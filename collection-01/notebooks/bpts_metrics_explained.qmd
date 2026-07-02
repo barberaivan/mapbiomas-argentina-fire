@@ -1,0 +1,398 @@
+---
+title: "Cómo funcionan las métricas de la serie temporal de probabilidad de quema"
+subtitle: "Paso 03 del mapeo de fuego — explicación para el equipo"
+format:
+  html:
+    embed-resources: true
+    code-fold: true
+execute:
+  warning: false
+  message: false
+---
+
+## Dónde encaja este paso
+
+En el paso **03** del mapeo (`03-bp_ts_metrics.py`) hacemos, para cada **año × carta**:
+
+1. Calculamos la **probabilidad de quema por observación** — aplicamos la regresión
+   logística del paso 02 a *cada* imagen Landsat, píxel por píxel, fecha por fecha.
+2. Cada píxel queda así con una **serie temporal intra-anual** de probabilidades en fechas
+   irregulares (según cuándo hubo imágenes sin nubes).
+3. Reducimos esa serie a un puñado de **métricas anuales** que resumen la señal de fuego, y
+   exportamos una imagen de 16 bandas.
+
+Un incendio deja una firma característica en esa serie: la probabilidad **salta** de valores
+bajos a valores altos y **se mantiene alta**. Las métricas están diseñadas para capturar ese
+salto sostenido y distinguirlo de ruido, sequía o deforestación (ver el notebook
+`burn_prob_ts_metrics.qmd` para esa exploración). Todo se mide en la **escala de probabilidad**
+(0–1) y con **K = 3 observaciones** por ventana.
+
+> Este notebook usa los **nombres de banda tal como salen en la imagen exportada** (16 bandas).
+> Cada métrica del salto existe en **dos versiones** — K = 3 (robusta) y K = 2 (sensible) —; los
+> gráficos de más abajo muestran ambas.
+
+## Las variables exportadas, por concepto
+
+Vista rápida de las 16 bandas agrupadas por qué miden (**sin el sufijo K**):
+
+| Concepto | Variable | Qué significa |
+|---|---|---|
+| **Magnitud** | `pmax` | Probabilidad de quema máxima sostenida en el año — cuán **alta** llega la señal |
+| **Persistencia** | `minfore` | Piso de la probabilidad justo **después** del salto — que la señal alta se mantenga |
+| **Cambio (el salto)** | `delta` | Tamaño del salto sostenido = piso posterior − techo previo; **indicador central de fuego** |
+| **Temporalidad** | `jumpgap` | **Días** entre la última obs baja y la primera alta — nitidez de la transición |
+| | `prevwidth` / `postwidth` | Amplitud en días de la ventana previa / posterior — contexto de densidad de imágenes |
+| | `date_post` | Día del año de la obs posterior — **fecha candidata** de la quema |
+| **Calidad** | `n` | Nº de observaciones válidas del año (centinelas −1 = no quemable, −2 = no observado) |
+
+Cada variable del salto se exporta en **dos anchos de ventana** (sufijo `3` y `2`:
+`delta3_peak`/`delta2_peak`, `minfore3_peak`/`minfore2_peak`, …); `pmax` va en **tres**
+(`pmax1/2/3`) y `n` es **única**. El detalle formal está abajo.
+
+## Las métricas del salto en detalle
+
+Todo (salvo `pmax*` y `n`) se ancla en `t*`: la observación donde el **salto `delta` es máximo**
+en el año (el "momento del incendio"). Alrededor de `t*` se define una **ventana previa** y una
+**ventana posterior** de K observaciones cada una.
+
+| Banda (K = 3 / K = 2) | Qué es | Definición K = 3 | Definición K = 2 |
+|---|---|---|---|
+| `minfore3_peak` / `minfore2_peak` | Piso posterior al salto — **persistencia** de la señal alta | `min(p[t*], p[t*+1], p[t*+2])` | `min(p[t*], p[t*+1])` |
+| `maxback3` / `maxback2` *(no se exportan; = `minforeK_peak − deltaK_peak`)* | **Techo** previo — línea base antes del salto | `max(p[t*−3], p[t*−2], p[t*−1])` | `max(p[t*−2], p[t*−1])` |
+| `delta3_peak` / `delta2_peak` | El **salto** sostenido | `minfore3_peak − maxback3` | `minfore2_peak − maxback2` |
+| `jumpgap3` / `jumpgap2` | Días entre la última obs previa y la primera posterior. Corto ⇒ evidencia fuerte de fuego; largo ⇒ cambio lento o baja densidad | `d[t*] − d[t*−1]` | `d[t*] − d[t*−1]` |
+| `prevwidth3` / `prevwidth2` | Amplitud (días) de la ventana previa | `d[t*−1] − d[t*−3]` | `d[t*−1] − d[t*−2]` |
+| `postwidth3` / `postwidth2` | Amplitud (días) de la ventana posterior | `d[t*+2] − d[t*]` | `d[t*+1] − d[t*]` |
+| `date_post3` / `date_post2` | DOY (1–366) de la obs posterior; `− jumpgap/2` ≈ fecha de quema | `d[t*] + 1` | `d[t*] + 1` |
+
+`jumpgap*` y `date_post*` comparten fórmula entre familias, pero cada K usa **su propio `t*`**
+(el argmax de *su* `delta`), que puede caer en observaciones distintas. Aparte, sin anclarse a
+`t*`: `pmax1` = máx. probabilidad cruda del año, `pmax2`/`pmax3` = máx. de `minfore2`/`minfore3`
+(magnitud persistente), y `n` = cantidad de observaciones válidas.
+
+La idea clave del `delta`: usamos el **mínimo** hacia adelante (la señal alta tiene que
+*sostenerse* en las K obs siguientes — un solo pico aislado no alcanza) menos el **máximo**
+hacia atrás (basta un valor alto previo para *anular* el salto — así una quema vieja no se
+vuelve a detectar). Es el salto más conservador posible: exige un escalón limpio.
+
+## El gráfico
+
+```{r}
+library(tidyverse)
+
+# Mismo tema que el resto de los notebooks del repo (única fuente de estilo).
+theme_burn <- function(base_size = 16) {
+  theme_minimal(base_size = base_size) +
+    theme(
+      strip.text.x     = element_text(face = "bold", size = base_size,
+                                      margin = margin(b = 6)),
+      panel.spacing    = unit(1.1, "lines"),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      panel.grid.major.y = element_line(colour = "grey90", linewidth = 0.35),
+      axis.line        = element_line(colour = "grey50", linewidth = 0.4),
+      plot.title       = element_text(face = "bold", size = base_size + 2,
+                                      margin = margin(b = 6)),
+      plot.subtitle    = element_text(size = base_size - 3, colour = "grey45",
+                                      margin = margin(b = 8)),
+      legend.position  = "top"
+    )
+}
+theme_set(theme_burn())
+```
+
+```{r}
+# --- Serie sintética: muchos ceros -> salto -> muchos ~1, con un poco de ruido ---
+set.seed(7)
+n   <- 20
+doy <- round(seq(15, 355, length.out = n))          # ~18 d de separación
+base  <- c(rep(0, 10), rep(1, 10))                    # escalón limpio
+noise <- rnorm(n, 0, 0.045)
+p     <- pmin(pmax(base + noise, 0), 1)               # recorte a [0, 1]
+
+# t* = primera obs posterior al salto. Ventana previa = t*-3..t*-1, posterior = t*..t*+2
+tstar <- 11L
+prev_idx <- c(8L, 9L, 10L)     # t*-3, t*-2, t*-1
+post_idx <- c(11L, 12L, 13L)   # t*,   t*+1, t*+2
+
+maxback3   <- max(p[prev_idx])                 # techo previo
+minfore3   <- min(p[post_idx])                 # piso posterior
+delta3     <- minfore3 - maxback3              # el salto
+jumpgap3   <- doy[tstar] - doy[tstar - 1L]     # días entre t*-1 y t*
+prevwidth3 <- doy[tstar - 1L] - doy[tstar - 3L]
+postwidth3 <- doy[tstar + 2L] - doy[tstar]
+date_post3 <- doy[tstar] + 1L
+
+# Rol de cada observación (para colorear los puntos de las ventanas K=3).
+role <- rep("otra", n)
+role[prev_idx] <- "previa (K=3)"
+role[post_idx] <- "posterior (K=3)"
+role <- factor(role, levels = c("previa (K=3)", "posterior (K=3)", "otra"))
+
+panel_levels <- c(
+  "A · El salto:  delta3_peak, minfore3_peak, maxback3, jumpgap3",
+  "B · Las ventanas temporales:  prevwidth3, postwidth3, date_post3"
+)
+
+# La misma serie se dibuja en los dos paneles.
+df_prob <- tidyr::crossing(
+  panel = factor(panel_levels, levels = panel_levels),
+  tibble(doy = doy, p = p, role = role)
+)
+```
+
+```{r}
+#| fig-width: 12
+#| fig-height: 11
+
+pA <- panel_levels[1]
+pB <- panel_levels[2]
+col_prev <- "#2C7FB8"; col_post <- "#D95F0E"
+
+arr <- arrow(length = unit(0.11, "inches"), ends = "both", type = "closed")
+
+# ---- Panel A: segmentos de nivel, salto (delta) y jumpgap ----
+segA <- tibble(
+  panel = factor(c(pA, pA, pA), levels = panel_levels),
+  x    = c(doy[prev_idx[1]], doy[post_idx[1]], doy[post_idx[1]]),
+  xend = c(doy[prev_idx[3]], doy[post_idx[3]], doy[post_idx[3]]),
+  y    = c(maxback3, minfore3, maxback3),   # 3ra fila = guía punteada de maxback3
+  yend = c(maxback3, minfore3, maxback3),
+  kind = c("nivel", "nivel", "guia")
+)
+# Flecha vertical del salto (delta3) un poco a la derecha de t*.
+x_delta <- doy[post_idx[2]]
+arrA_delta <- tibble(panel = factor(pA, levels = panel_levels),
+                     x = x_delta, xend = x_delta, y = maxback3, yend = minfore3)
+guiaA_delta <- tibble(panel = factor(pA, levels = panel_levels),   # base hasta la flecha
+                      x = doy[prev_idx[3]], xend = x_delta,
+                      y = maxback3, yend = maxback3)
+# Flecha horizontal del jumpgap.
+y_gap <- 0.5
+arrA_gap <- tibble(panel = factor(pA, levels = panel_levels),
+                   x = doy[tstar - 1L], xend = doy[tstar], y = y_gap, yend = y_gap)
+
+txtA <- tibble(
+  panel = factor(pA, levels = panel_levels),
+  x = c(doy[prev_idx[2]], doy[post_idx[2]], x_delta + 6, (doy[tstar-1L]+doy[tstar])/2),
+  y = c(maxback3 - 0.09, minfore3 + 0.07, (maxback3 + minfore3)/2, y_gap - 0.08),
+  label = c("maxback3", "minfore3",
+            sprintf("delta3_peak\n= %.2f", delta3),
+            sprintf("jumpgap3\n= %d d", jumpgap3)),
+  hjust = c(0.5, 0.5, 0, 0.5)
+)
+
+# ---- Panel B: anchos de ventana y date_post3 ----
+arrB <- tibble(
+  panel = factor(c(pB, pB), levels = panel_levels),
+  x    = c(doy[prev_idx[1]], doy[post_idx[1]]),
+  xend = c(doy[prev_idx[3]], doy[post_idx[3]]),
+  y    = c(maxback3 + 0.12, minfore3 - 0.12),
+  yend = c(maxback3 + 0.12, minfore3 - 0.12)
+)
+vlineB <- tibble(panel = factor(pB, levels = panel_levels), x = date_post3)
+txtB <- tibble(
+  panel = factor(c(pB, pB, pB), levels = panel_levels),
+  x = c(doy[prev_idx[2]], doy[post_idx[2]], date_post3 + 4),
+  y = c(maxback3 + 0.20, minfore3 - 0.20, 0.30),
+  label = c(sprintf("prevwidth3 = %d d", prevwidth3),
+            sprintf("postwidth3 = %d d", postwidth3),
+            sprintf("date_post3 = DOY %d", date_post3)),
+  hjust = c(0.5, 0.5, 0)
+)
+
+ggplot(df_prob, aes(doy, p)) +
+  # nivel de referencia
+  geom_hline(yintercept = 0, colour = "grey85", linewidth = 0.35) +
+  # --- panel A ---
+  geom_segment(data = segA %>% filter(kind == "guia"),
+               aes(x = x, xend = xend, y = y, yend = yend),
+               linetype = "dotted", colour = "grey55", linewidth = 0.5) +
+  geom_segment(data = segA %>% filter(kind == "nivel"),
+               aes(x = x, xend = xend, y = y, yend = yend),
+               colour = "grey20", linewidth = 1.1) +
+  geom_segment(data = guiaA_delta, aes(x = x, xend = xend, y = y, yend = yend),
+               linetype = "dotted", colour = "grey55", linewidth = 0.5) +
+  geom_segment(data = arrA_delta, aes(x = x, xend = xend, y = y, yend = yend),
+               arrow = arr, colour = "#B30000", linewidth = 0.8) +
+  geom_segment(data = arrA_gap, aes(x = x, xend = xend, y = y, yend = yend),
+               arrow = arr, colour = "#6A51A3", linewidth = 0.8) +
+  # --- panel B ---
+  geom_vline(data = vlineB, aes(xintercept = x),
+             linetype = "dashed", colour = "#1B7837", linewidth = 0.7) +
+  geom_segment(data = arrB, aes(x = x, xend = xend, y = y, yend = yend),
+               arrow = arr, colour = "grey20", linewidth = 0.8) +
+  # --- serie (en ambos paneles) ---
+  geom_line(colour = "grey55", linewidth = 0.55) +
+  geom_point(aes(fill = role, size = role), shape = 21, colour = "grey25",
+             stroke = 0.5) +
+  # --- etiquetas ---
+  geom_text(data = txtA, aes(x = x, y = y, label = label, hjust = hjust),
+            size = 3.7, lineheight = 0.9, colour = "grey15") +
+  geom_text(data = txtB, aes(x = x, y = y, label = label, hjust = hjust),
+            size = 3.7, lineheight = 0.9, colour = "grey15") +
+  facet_wrap(~ panel, ncol = 1) +
+  scale_fill_manual(name = NULL,
+                    values = c("previa (K=3)" = col_prev,
+                               "posterior (K=3)" = col_post,
+                               "otra" = "grey80")) +
+  scale_size_manual(guide = "none",
+                    values = c("previa (K=3)" = 3.2,
+                               "posterior (K=3)" = 3.2, "otra" = 2.0)) +
+  scale_x_continuous(breaks = c(1, 91, 182, 274, 365)) +
+  scale_y_continuous(limits = c(-0.15, 1.15), breaks = c(0, 0.5, 1)) +
+  labs(
+    x = "Día del año",
+    y = "Probabilidad de quema",
+    title = "Métricas K = 3 sobre una serie de probabilidad de quema",
+    subtitle = paste0(
+      "Misma serie en ambos paneles (t* = obs de máximo salto). ",
+      "Azul = ventana previa (3 obs), naranja = ventana posterior (3 obs)."
+    )
+  )
+```
+
+**Cómo leer el gráfico**
+
+- **Panel A** — el salto. La línea negra sobre las 3 obs **previas** marca `maxback3` (su
+  *máximo*); la línea negra sobre las 3 obs **posteriores** marca `minfore3_peak` (su
+  *mínimo*). La flecha vertical roja es `delta3_peak` = `minfore3 − maxback3`, la magnitud del
+  salto sostenido. La flecha horizontal violeta es `jumpgap3`, los días entre la última obs
+  previa y la primera posterior (corto ⇒ transición nítida, evidencia fuerte de fuego).
+- **Panel B** — el tiempo que abarcan las ventanas. `prevwidth3` y `postwidth3` son la amplitud
+  en días de cada ventana de 3 obs (bajo baja densidad de imágenes se ensanchan). La línea
+  verde punteada es `date_post3`, el día del año de la obs posterior — el ancla para estimar la
+  **fecha de quema** (`date_post3 − jumpgap3/2`).
+
+## La familia gemela K = 2
+
+La familia K = 2 es **idéntica en construcción, pero con ventanas de solo 2 observaciones** (ver
+la tabla detallada arriba). Con ventanas más angostas es **más permisiva y sensible** (necesita
+menos obs consecutivas para confirmar el salto), útil bajo **baja densidad de imágenes**;
+K = 3 es **más robusta** (exige que la señal alta se sostenga en 3 obs, no en 2). Cada `deltaK`
+busca su **propio `t*`** de forma independiente; sobre un escalón limpio como este ambos
+coinciden, pero en series ruidosas el óptimo puede diferir por ventana.
+
+```{r}
+#| fig-width: 12
+#| fig-height: 11
+
+# Misma serie, mismo t*. Ventanas K=2: previa = t*-2..t*-1, posterior = t*..t*+1
+prev_idx2 <- c(9L, 10L)     # t*-2, t*-1
+post_idx2 <- c(11L, 12L)    # t*,   t*+1
+
+maxback2   <- max(p[prev_idx2])
+minfore2   <- min(p[post_idx2])
+delta2     <- minfore2 - maxback2
+jumpgap2   <- doy[tstar] - doy[tstar - 1L]
+prevwidth2 <- doy[tstar - 1L] - doy[tstar - 2L]
+postwidth2 <- doy[tstar + 1L] - doy[tstar]
+date_post2 <- doy[tstar] + 1L
+
+role2 <- rep("otra", n)
+role2[prev_idx2] <- "previa (K=2)"
+role2[post_idx2] <- "posterior (K=2)"
+role2 <- factor(role2, levels = c("previa (K=2)", "posterior (K=2)", "otra"))
+
+panel2_levels <- c(
+  "A · El salto:  delta2_peak, minfore2_peak, maxback2, jumpgap2",
+  "B · Las ventanas temporales:  prevwidth2, postwidth2, date_post2"
+)
+df_prob2 <- tidyr::crossing(
+  panel = factor(panel2_levels, levels = panel2_levels),
+  tibble(doy = doy, p = p, role = role2)
+)
+
+p2A <- panel2_levels[1]; p2B <- panel2_levels[2]
+
+# ---- Panel A ----
+segA2 <- tibble(
+  panel = factor(c(p2A, p2A), levels = panel2_levels),
+  x    = c(doy[prev_idx2[1]], doy[post_idx2[1]]),
+  xend = c(doy[prev_idx2[2]], doy[post_idx2[2]]),
+  y    = c(maxback2, minfore2), yend = c(maxback2, minfore2)
+)
+x_delta2 <- doy[post_idx2[2]]
+arrA2_delta <- tibble(panel = factor(p2A, levels = panel2_levels),
+                      x = x_delta2, xend = x_delta2, y = maxback2, yend = minfore2)
+guiaA2_delta <- tibble(panel = factor(p2A, levels = panel2_levels),
+                       x = doy[prev_idx2[2]], xend = x_delta2,
+                       y = maxback2, yend = maxback2)
+arrA2_gap <- tibble(panel = factor(p2A, levels = panel2_levels),
+                    x = doy[tstar - 1L], xend = doy[tstar], y = 0.5, yend = 0.5)
+txtA2 <- tibble(
+  panel = factor(p2A, levels = panel2_levels),
+  x = c(mean(doy[prev_idx2]), mean(doy[post_idx2]), x_delta2 + 6,
+        (doy[tstar-1L]+doy[tstar])/2),
+  y = c(maxback2 - 0.09, minfore2 + 0.07, (maxback2 + minfore2)/2, 0.42),
+  label = c("maxback2", "minfore2",
+            sprintf("delta2_peak\n= %.2f", delta2),
+            sprintf("jumpgap2\n= %d d", jumpgap2)),
+  hjust = c(0.5, 0.5, 0, 0.5)
+)
+
+# ---- Panel B ----
+arrB2 <- tibble(
+  panel = factor(c(p2B, p2B), levels = panel2_levels),
+  x    = c(doy[prev_idx2[1]], doy[post_idx2[1]]),
+  xend = c(doy[prev_idx2[2]], doy[post_idx2[2]]),
+  y    = c(maxback2 + 0.12, minfore2 - 0.12),
+  yend = c(maxback2 + 0.12, minfore2 - 0.12)
+)
+vlineB2 <- tibble(panel = factor(p2B, levels = panel2_levels), x = date_post2)
+txtB2 <- tibble(
+  panel = factor(c(p2B, p2B, p2B), levels = panel2_levels),
+  x = c(mean(doy[prev_idx2]) - 6, mean(doy[post_idx2]) + 6, date_post2 + 4),
+  y = c(maxback2 + 0.22, minfore2 - 0.22, 0.30),
+  label = c(sprintf("prevwidth2\n= %d d", prevwidth2),
+            sprintf("postwidth2\n= %d d", postwidth2),
+            sprintf("date_post2 = DOY %d", date_post2)),
+  hjust = c(1, 0, 0)
+)
+
+ggplot(df_prob2, aes(doy, p)) +
+  geom_hline(yintercept = 0, colour = "grey85", linewidth = 0.35) +
+  geom_segment(data = guiaA2_delta, aes(x = x, xend = xend, y = y, yend = yend),
+               linetype = "dotted", colour = "grey55", linewidth = 0.5) +
+  geom_segment(data = segA2, aes(x = x, xend = xend, y = y, yend = yend),
+               colour = "grey20", linewidth = 1.1) +
+  geom_segment(data = arrA2_delta, aes(x = x, xend = xend, y = y, yend = yend),
+               arrow = arr, colour = "#B30000", linewidth = 0.8) +
+  geom_segment(data = arrA2_gap, aes(x = x, xend = xend, y = y, yend = yend),
+               arrow = arr, colour = "#6A51A3", linewidth = 0.8) +
+  geom_vline(data = vlineB2, aes(xintercept = x),
+             linetype = "dashed", colour = "#1B7837", linewidth = 0.7) +
+  geom_segment(data = arrB2, aes(x = x, xend = xend, y = y, yend = yend),
+               arrow = arr, colour = "grey20", linewidth = 0.8) +
+  geom_line(colour = "grey55", linewidth = 0.55) +
+  geom_point(aes(fill = role, size = role), shape = 21, colour = "grey25",
+             stroke = 0.5) +
+  geom_text(data = txtA2, aes(x = x, y = y, label = label, hjust = hjust),
+            size = 3.7, lineheight = 0.9, colour = "grey15") +
+  geom_text(data = txtB2, aes(x = x, y = y, label = label, hjust = hjust),
+            size = 3.7, lineheight = 0.9, colour = "grey15") +
+  facet_wrap(~ panel, ncol = 1) +
+  scale_fill_manual(name = NULL,
+                    values = c("previa (K=2)" = col_prev,
+                               "posterior (K=2)" = col_post,
+                               "otra" = "grey80")) +
+  scale_size_manual(guide = "none",
+                    values = c("previa (K=2)" = 3.2,
+                               "posterior (K=2)" = 3.2, "otra" = 2.0)) +
+  scale_x_continuous(breaks = c(1, 91, 182, 274, 365)) +
+  scale_y_continuous(limits = c(-0.15, 1.15), breaks = c(0, 0.5, 1)) +
+  labs(
+    x = "Día del año",
+    y = "Probabilidad de quema",
+    title = "Métricas K = 2 sobre la misma serie",
+    subtitle = paste0(
+      "Idéntico a K = 3 pero con ventanas de 2 obs. ",
+      "Azul = ventana previa (2 obs), naranja = ventana posterior (2 obs)."
+    )
+  )
+```
+
+Los valores numéricos de los gráficos (`delta3_peak`/`delta2_peak`, `jumpgap*`, `prevwidth*`,
+`postwidth*`, `date_post*`) son exactamente lo que queda guardado en cada píxel de la imagen
+exportada; los umbrales para decidir qué es fuego se aplican **después**, en función de la
+densidad de observaciones (banda `n`) y de los pasos de segmentación y enmascarado.
