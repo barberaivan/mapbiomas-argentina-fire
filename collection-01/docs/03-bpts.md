@@ -474,6 +474,20 @@ burnable — so even empty tiles cost ~the floor as a full export, and the per-t
    N accounts (disjoint subsets) is the only lever that helps immediately — see
    `03-colab_multi_export.md` (currently splits *by year*, not within a year).
 
+### 8.1 Storage footprint (for planning the next collection)
+
+Measured from `sizeBytes` on the exported assets (`ee.data.listAssets` over `BP_TS_METRICS_COL`),
+averaged across the 9 fully-complete years (248/248 tiles: 2015–2021, 2024, 2025) as of 2026-07-03:
+
+- **~54.7 GiB per complete year** (≈ 58.7 GB), for the 16-band `int` output at 30 m over the 248
+  ARG *cartas*. Tight spread — every complete year is 51–57 GiB, so this is a reliable per-year
+  figure.
+- **Full 27-year run (1999–2025) ≈ 1.44 TiB** (27 × 54.7 GiB) once every year is complete.
+  Incomplete years track in line (e.g. 2022 at 200/248 tiles = ~49.7 GiB).
+
+Use these to size the next collection's asset quota up front. The figure scales with band count and
+output dtype (§3.7), so a pruned/rescaled output would shift it proportionally.
+
 ---
 
 ## 9. Reduced-LR pruning + EECU test — STATUS / HANDOFF (in progress)
