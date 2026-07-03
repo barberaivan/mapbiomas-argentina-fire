@@ -297,13 +297,21 @@ bpts(year=None, tile_id=None, export=True, overwrite=False)
 | `bpts()` | exports everything (all years × tiles) |
 
 - `export=False` requires both `year` and `tile_id`.
-- **Skip-if-exists:** before submitting, `bpts` lists the output collection once and **skips
-  tile-years already exported** — so re-running a year is idempotent and resubmits only
-  missing/failed tiles. `overwrite=True` forces resubmission (but GEE won't overwrite — delete
-  the asset first). Caveat: an asset only appears once its task *completes*, so a RUNNING tile
-  isn't in the skip set — don't run the same year from two places at once.
-- `bpts_status(year)` prints `done/248` and returns `{year: [missing tile-ids]}` (no compute,
-  just `listAssets`).
+- **Skip-if-done-or-in-flight:** before submitting, `bpts` **skips any tile-year that is
+  already exported OR already has a PENDING/RUNNING task** — so re-running a year is idempotent
+  and resubmits only genuinely-missing tiles. Both checks are **cross-account and
+  cross-project**: completed comes from the shared output collection; in-flight comes from
+  `listOperations`, which is *project-scoped* (returns every user's tasks in the project), run
+  over every project in `C.BPTS_TASK_PROJECTS` (`mapbiomas-argentina`, `mapbiomas-fire-485203`)
+  plus the active `GEE_PROJECT`. So no contributor re-launches something already running,
+  regardless of who launched it or which project it was billed to. If the running account
+  can't read one of those projects, a `UserWarning` names which projects *were* evaluated (that
+  gap still relies on the per-year Excel sign-out). `overwrite=True` forces resubmission (but
+  GEE won't overwrite — delete the asset first).
+- `bpts_status(year)` classifies each tile-year as **done / in flight / to launch** (same three
+  states the launcher skips on) — prints one line per year and returns
+  `{year: {"done": [...], "in_flight": [...], "to_launch": [...]}}`. No GEE compute — just
+  `listAssets` + `listOperations`.
 
 Per-tile-year flow (see `bpts_image` / `burn_prob_collection`): build `veg_fire`, mosaic, the
 static LR components and `is_fittable`; `get_landsat` over the padded window; `mosaic_by_date`

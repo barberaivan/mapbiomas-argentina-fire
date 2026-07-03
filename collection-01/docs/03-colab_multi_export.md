@@ -46,15 +46,21 @@ when it reads "✓ complete".
 
 ## Skip / resume / monitor (built into `bpts`)
 
-- `F.bpts(year=Y)` submits all ~248 tiles for year `Y` and **skips tiles already
-  exported** — safe to re-run to resume a partially-finished year (only missing/failed
-  tiles are resubmitted). `overwrite=True` forces resubmission, but GEE won't overwrite,
-  so delete the asset first.
-- `F.bpts_status(Y)` → prints `done/248` and returns `{Y: [missing tile-ids]}`. No
-  compute (just a `listAssets`); anyone who can read the collection can run it.
-- Caveat: an asset only appears once its task **completes**, so a RUNNING tile isn't in
-  the skip set — don't run the same year from two places at once (the per-year Excel
-  sign-out prevents this).
+- `F.bpts(year=Y)` submits all ~248 tiles for year `Y` and **skips tiles that are already
+  exported OR already have a PENDING/RUNNING task** — safe to re-run to resume a
+  partially-finished year, and safe to launch from two accounts: neither re-submits a tile the
+  other is already running. The in-flight check is **cross-account and cross-project** — it runs
+  `listOperations` (project-scoped, sees every user's tasks) over both `mapbiomas-argentina` and
+  `mapbiomas-fire-485203` (`C.BPTS_TASK_PROJECTS`). `overwrite=True` forces resubmission, but
+  GEE won't overwrite, so delete the asset first.
+- `F.bpts_status(Y)` → classifies each tile as **done / in flight / to launch**, prints one line
+  per year, and returns `{Y: {"done": [...], "in_flight": [...], "to_launch": [...]}}`. No GEE
+  compute (`listAssets` + `listOperations`); anyone who can read the collection can run it.
+- Caveat: `listOperations` needs read access to each project. Most contributors can read
+  `mapbiomas-argentina` but **not** the Fire compute project — if a project can't be read it's
+  skipped with a `UserWarning` naming which projects were evaluated. A tile running only under an
+  unreadable project is invisible to the skip, so the **per-year Excel sign-out still governs**
+  that residual case (don't sign out a year another account is working).
 
 ## CLI equivalent (for running locally, e.g. Positron)
 

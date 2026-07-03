@@ -81,7 +81,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--status",
         action="store_true",
-        help="Print export progress (done/missing tiles) for --year instead of exporting.",
+        help="Print export progress (done / in-flight / to-launch tiles, cross-account "
+             "and cross-project) for --year instead of exporting.",
     )
     args = parser.parse_args()
     main(args.year, args.tile, args.project, args.overwrite, args.status)

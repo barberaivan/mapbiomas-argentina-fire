@@ -6,6 +6,7 @@ Ported from collection-00/utils/functions.js, keeping only what is needed.
 """
 
 import csv
+import warnings
 from pathlib import Path
 
 import ee
@@ -847,30 +848,51 @@ def _existing_bpts_names():
 def _inflight_bpts_names():
     """
     Set of asset leaf names (e.g. ``{'bpts_2015_SK-19-Y-A', …}``) that currently have
-    a PENDING or RUNNING export task, from ``ee.data.listOperations()``.  The task
+    a PENDING or RUNNING export task, unioned across every compute project in
+    ``C.BPTS_TASK_PROJECTS`` (plus the active ``C.GEE_PROJECT``).  The task
     ``description`` is set to the asset name in ``_export_bpts_image``, so the match is
-    exact.  Combined with ``_existing_bpts_names`` (completed assets), this lets a
-    killed-and-rerun bulk launch resume without re-submitting tiles whose task is still
-    queued/running — GEE would otherwise accept a duplicate task that then fails on the
-    "cannot overwrite asset" write.
+    exact.  Combined with ``_existing_bpts_names`` (completed assets), this lets *any*
+    contributor launch without re-submitting a tile-year that is already completed,
+    running, or queued — no matter who launched it or which project it was billed to.
+    GEE would otherwise accept a duplicate task that then fails on the "cannot overwrite
+    asset" write.
 
-    SCOPE: ``listOperations`` only sees the **account that runs it**.  This makes a
-    same-account resume safe; it does NOT see other accounts' in-flight tasks, so the
-    multi-account flow still coordinates via the per-year sign-out
-    (docs/03-colab_multi_export.md).  (Completed-asset skipping IS cross-account — that
-    side reads the shared collection.)
+    SCOPE: ``ee.data.listOperations(project=P)`` is **project-scoped, not per-account** —
+    it returns *every* user's tasks in project ``P`` (verified empirically). Scanning
+    both the MapBiomas and Fire compute projects therefore covers all contributors, so
+    the skip is fully cross-account and cross-project. Completed-asset skipping is
+    independently cross-account via the shared collection.
+
+    A project the running account cannot read (e.g. most contributors have no access to
+    the Fire compute project) is skipped, and a ``UserWarning`` names which projects were
+    actually evaluated — because an unreadable project means a tile-year running there
+    would be invisible here and could be re-submitted. The warning is the signal to
+    coordinate via the per-year sign-out (docs/03-colab_multi_export.md) for that gap.
     """
     names = set()
-    try:
-        ops = ee.data.listOperations()
-    except Exception:
-        return names                            # no perms / none → treat as nothing in flight
-    for op in ops:
-        md = op.get("metadata", {})
-        if md.get("state") in ("PENDING", "RUNNING"):
-            desc = md.get("description", "")
-            if desc.startswith("bpts_"):
-                names.add(desc)
+    projects = sorted(set(C.BPTS_TASK_PROJECTS) | {C.GEE_PROJECT})
+    scanned, skipped = [], []
+    for project in projects:
+        try:
+            ops = ee.data.listOperations(project=f"projects/{project}")
+        except Exception:
+            skipped.append(project)             # no perms for this project → skip it
+            continue
+        scanned.append(project)
+        for op in ops:
+            md = op.get("metadata", {})
+            if md.get("state") in ("PENDING", "RUNNING"):
+                desc = md.get("description", "")
+                if desc.startswith("bpts_"):
+                    names.add(desc)
+    if skipped:
+        warnings.warn(
+            f"Could not read tasks in {skipped} (no permission); only in-flight tasks in "
+            f"{scanned} were evaluated. A tile-year already running under a skipped project "
+            f"will NOT be detected and could be re-submitted — coordinate via the per-year "
+            f"sign-out (docs/03-colab_multi_export.md).",
+            stacklevel=2,
+        )
     return names
 
 
@@ -909,9 +931,10 @@ def bpts(year=None, tile_id=None, export=True, overwrite=False):
     tile_ids = [tile_id] if tile_id is not None else _tiles_in_buffer()
 
     # Skip tile-years already done (completed asset) or already in flight (PENDING/RUNNING
-    # task on this account).  Both sets are keyed on the year-qualified bpts_<year>_<tile>
-    # name, so cross-year reuse of a tile never collides.  See _inflight_bpts_names for the
-    # cross-account caveat (in-flight is per-account; completed is shared).
+    # task in any C.BPTS_TASK_PROJECTS project).  Both sets are keyed on the year-qualified
+    # bpts_<year>_<tile> name, so cross-year reuse of a tile never collides.  Both are fully
+    # cross-account/cross-project (completed via the shared collection, in-flight via
+    # project-scoped listOperations) — see _inflight_bpts_names.
     done = set() if overwrite else _existing_bpts_names()
     inflight = set() if overwrite else _inflight_bpts_names()
 
@@ -941,20 +964,45 @@ def bpts_status(year=None):
     """
     Report export progress against the expected tile list (all tiles intersecting
     the ARG buffer).  Run it any time, from any account that can read the output
-    collection — it only does a ``listAssets`` (no compute).
+    collection — it does a ``listAssets`` plus a project-scoped ``listOperations``
+    over ``C.BPTS_TASK_PROJECTS`` (no GEE compute).
 
-    Prints ``done / total`` per year and returns ``{year: [missing tile-ids]}`` so
-    you can mark the Excel done and resume exactly the tiles that failed.
+    Each tile-year is classified into exactly one of three buckets, matching what the
+    launcher skips on (see ``bpts``):
+
+      * **done**     — asset exists in the shared collection (cross-account/project).
+      * **in flight**— has a PENDING/RUNNING task in any tracked project (cross-account).
+      * **to launch**— neither: a real gap a new launch would (re)submit.
+
+    Prints one line per year and returns
+    ``{year: {"done": [...], "in_flight": [...], "to_launch": [...]}}`` so you can
+    resume exactly the tiles that still need launching (``to_launch``) without touching
+    ones already running elsewhere.
     """
     existing = _existing_bpts_names()
+    inflight = _inflight_bpts_names()
     tiles = _tiles_in_buffer()
     years = [year] if year is not None else list(C.YEARS)
+    n = len(tiles)
 
-    missing_by_year = {}
+    status_by_year = {}
     for y in years:
-        missing = [t for t in tiles if f"bpts_{y}_{t}" not in existing]
-        missing_by_year[y] = missing
-        done = len(tiles) - len(missing)
-        flag = " ✓ complete" if not missing else f", {len(missing)} missing"
-        print(f"{y}: {done}/{len(tiles)} tiles done{flag}")
-    return missing_by_year
+        done, in_flight, to_launch = [], [], []
+        for t in tiles:
+            name = f"bpts_{y}_{t}"
+            if name in existing:
+                done.append(t)
+            elif name in inflight:
+                in_flight.append(t)
+            else:
+                to_launch.append(t)
+        status_by_year[y] = {"done": done, "in_flight": in_flight, "to_launch": to_launch}
+
+        parts = [f"{len(done)}/{n} done"]
+        if in_flight:
+            parts.append(f"{len(in_flight)} in flight")
+        if to_launch:
+            parts.append(f"{len(to_launch)} to launch")
+        flag = " ✓ complete" if len(done) == n else ""
+        print(f"{y}: " + ", ".join(parts) + flag)
+    return status_by_year

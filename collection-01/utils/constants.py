@@ -25,6 +25,14 @@ REGIONS = ["BA", "CHACO", "PAMPA", "CUYO", "PAT"]
 # account just needs write access to BP_TS_METRICS_COL.
 GEE_PROJECT = os.environ.get("GEE_PROJECT", "mapbiomas-fire-485203")
 
+# Compute projects that contributors submit bpts export tasks from.  The in-flight
+# skip (functions._inflight_bpts_names) scans ALL of these — plus GEE_PROJECT — and
+# unions the result, so a launch never re-submits a tile-year that is already
+# PENDING/RUNNING under any of them, no matter which account/project queued it.
+# ``ee.data.listOperations(project=…)`` is project-scoped (returns every user's tasks
+# in the project), so this list is the whole cross-account/cross-project picture.
+BPTS_TASK_PROJECTS = ["mapbiomas-argentina", "mapbiomas-fire-485203"]
+
 # ─── Asset paths ─────────────────────────────────────────────────────────────
 _FIRE_ROOT = "projects/mapbiomas-argentina/assets/FIRE"
 
