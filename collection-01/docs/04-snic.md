@@ -20,6 +20,10 @@ fire-region footprints (unions of cartas) that SNIC then runs over. Deliberately
 segmentation on a small ROI. Thresholds here are a starting point; finalise them in
 `explore_snic_IB`.
 
+Use case: a **fast, country-wide, deliberately coarse (non-30 m)** look at where fire happened,
+so you can scan the whole country and pick candidate **test ROIs** — which then go into
+`explore_snic_IB` for the exact 30 m, scale-stable tuning.
+
 ## Output is the SNIC *mask*, not `cluster_id`
 
 Downstream we use **only the binary SNIC `burned` mask** (clusters that contain a seed) — the
