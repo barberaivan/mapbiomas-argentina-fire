@@ -802,13 +802,20 @@ def bpts_image(year, tile_id, terms=None):
     })
 
 
-def _export_bpts_image(img, year, tile_id, tile_geom):
-    """Submit one ``bpts_YYYY_<tile-id>`` image-to-asset export task."""
+def _export_bpts_image(img, year, tile_id, tile_geom, target_col=None):
+    """Submit one ``bpts_YYYY_<tile-id>`` image-to-asset export task.
+
+    ``target_col`` is the destination ImageCollection; when None it is resolved per
+    year via ``C.bpts_target_col`` (1999–2009 → mapbiomas-chaco, else the Argentina
+    collection).  The task ``description`` stays the bare ``bpts_<year>_<tile>`` name
+    regardless of destination, so the in-flight skip works across both collections.
+    """
+    target_col = target_col or C.bpts_target_col(year)
     asset_name = f"bpts_{year}_{tile_id}"
     task = ee.batch.Export.image.toAsset(
         image=img,
         description=asset_name,
-        assetId=f"{C.BP_TS_METRICS_COL}/{asset_name}",
+        assetId=f"{target_col}/{asset_name}",
         region=tile_geom,
         scale=30,
         crs="EPSG:4326",
@@ -818,20 +825,24 @@ def _export_bpts_image(img, year, tile_id, tile_geom):
     return task
 
 
-def _existing_bpts_names():
+def _existing_bpts_names(target_col=None):
     """
     Set of already-exported asset leaf names (e.g. ``{'bpts_2015_SK-19-Y-A', …}``)
-    in ``C.BP_TS_METRICS_COL``.  One paged ``listAssets`` call.
+    in ``target_col`` (default ``C.BP_TS_METRICS_COL``).  One paged ``listAssets`` call.
+    Early years live in a different collection (``C.BP_TS_METRICS_COL_CHACO``); callers
+    that span both years pass each collection in turn and union the results — safe because
+    names are year-qualified and each year maps to exactly one collection.
 
     Note: an asset only appears here once its export has *completed* — a task
     that is still RUNNING is not listed.  So don't run the same year from two
     places at once (the per-year Excel sign-out is what prevents that); the
     skip just makes re-running / resuming a year idempotent.
     """
+    target_col = target_col or C.BP_TS_METRICS_COL
     names = set()
     page_token = None
     while True:
-        params = {"parent": C.BP_TS_METRICS_COL}
+        params = {"parent": target_col}
         if page_token:
             params["pageToken"] = page_token
         try:
@@ -896,7 +907,7 @@ def _inflight_bpts_names():
     return names
 
 
-def bpts(year=None, tile_id=None, export=True, overwrite=False):
+def bpts(year=None, tile_id=None, export=True, overwrite=False, target_col=None):
     """
     Burn-probability time-series metrics for tile-year(s).
 
@@ -914,6 +925,10 @@ def bpts(year=None, tile_id=None, export=True, overwrite=False):
                                but GEE will not overwrite an existing asset, so delete it
                                first.  The skip is keyed on the full ``bpts_<year>_<tile>``
                                name, so the same tile in a different year is unaffected.
+    target_col: str or None  — destination ImageCollection override.  None (default) routes
+                               each year automatically via ``C.bpts_target_col`` (1999–2009
+                               → mapbiomas-chaco, else the Argentina collection).  Pass a
+                               path to force every requested year to one collection.
 
     Returns
     -------
@@ -930,12 +945,19 @@ def bpts(year=None, tile_id=None, export=True, overwrite=False):
     years = [year] if year is not None else list(C.YEARS)
     tile_ids = [tile_id] if tile_id is not None else _tiles_in_buffer()
 
+    # Destination per year: 1999–2009 overflow to mapbiomas-chaco (C.bpts_target_col);
+    # target_col forces one collection for all requested years.
+    year_col = {y: (target_col or C.bpts_target_col(y)) for y in years}
+
     # Skip tile-years already done (completed asset) or already in flight (PENDING/RUNNING
     # task in any C.BPTS_TASK_PROJECTS project).  Both sets are keyed on the year-qualified
-    # bpts_<year>_<tile> name, so cross-year reuse of a tile never collides.  Both are fully
-    # cross-account/cross-project (completed via the shared collection, in-flight via
-    # project-scoped listOperations) — see _inflight_bpts_names.
-    done = set() if overwrite else _existing_bpts_names()
+    # bpts_<year>_<tile> name, so cross-year reuse of a tile never collides.  The done-scan
+    # visits each distinct destination collection once (a year requested here may live in
+    # either); in-flight is project-scoped (destination-agnostic) — see _inflight_bpts_names.
+    done = set()
+    if not overwrite:
+        for col in set(year_col.values()):
+            done |= _existing_bpts_names(col)
     inflight = set() if overwrite else _inflight_bpts_names()
 
     tasks, skip_done, skip_inflight = [], 0, 0
@@ -950,22 +972,24 @@ def bpts(year=None, tile_id=None, export=True, overwrite=False):
                 skip_inflight += 1
                 continue
             img = bpts_image(y, tid, terms)
-            tasks.append(_export_bpts_image(img, y, tid, tile_geom))
+            tasks.append(_export_bpts_image(img, y, tid, tile_geom, year_col[y]))
     skip_msg = ", ".join(s for s in (
         f"{skip_done} already exported" if skip_done else "",
         f"{skip_inflight} in flight" if skip_inflight else "") if s)
+    dest = ", ".join(sorted(set(year_col.values())))
     print(f"Submitted {len(tasks)} bpts export task(s)"
           f"{f' (skipped {skip_msg})' if skip_msg else ''}"
-          f" → {C.BP_TS_METRICS_COL}")
+          f" → {dest}")
     return tasks
 
 
-def bpts_status(year=None):
+def bpts_status(year=None, target_col=None):
     """
     Report export progress against the expected tile list (all tiles intersecting
     the ARG buffer).  Run it any time, from any account that can read the output
     collection — it does a ``listAssets`` plus a project-scoped ``listOperations``
-    over ``C.BPTS_TASK_PROJECTS`` (no GEE compute).
+    over ``C.BPTS_TASK_PROJECTS`` (no GEE compute).  Destination is resolved per year
+    (early years live in mapbiomas-chaco); ``target_col`` forces one collection.
 
     Each tile-year is classified into exactly one of three buckets, matching what the
     launcher skips on (see ``bpts``):
@@ -979,10 +1003,15 @@ def bpts_status(year=None):
     resume exactly the tiles that still need launching (``to_launch``) without touching
     ones already running elsewhere.
     """
-    existing = _existing_bpts_names()
     inflight = _inflight_bpts_names()
     tiles = _tiles_in_buffer()
     years = [year] if year is not None else list(C.YEARS)
+    # Scan each distinct destination collection once and union (names are year-qualified,
+    # each year maps to one collection, so no collision) — see _existing_bpts_names.
+    year_col = {y: (target_col or C.bpts_target_col(y)) for y in years}
+    existing = set()
+    for col in set(year_col.values()):
+        existing |= _existing_bpts_names(col)
     n = len(tiles)
 
     status_by_year = {}

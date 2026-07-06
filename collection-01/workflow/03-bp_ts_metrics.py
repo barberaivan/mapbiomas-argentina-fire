@@ -45,12 +45,14 @@ from utils import constants as C
 from utils import functions as F
 
 
-def main(year=None, tile_id=None, project=None, overwrite=False, status=False):
+def main(year=None, tile_id=None, project=None, overwrite=False, status=False,
+         target_col=None):
     ee.Initialize(project=project or C.GEE_PROJECT)
     if status:
-        F.bpts_status(year=year)
+        F.bpts_status(year=year, target_col=target_col)
         return
-    F.bpts(year=year, tile_id=tile_id, export=True, overwrite=overwrite)
+    F.bpts(year=year, tile_id=tile_id, export=True, overwrite=overwrite,
+           target_col=target_col)
 
 
 if __name__ == "__main__":
@@ -84,5 +86,11 @@ if __name__ == "__main__":
         help="Print export progress (done / in-flight / to-launch tiles, cross-account "
              "and cross-project) for --year instead of exporting.",
     )
+    parser.add_argument(
+        "--target-col",
+        default=None,
+        help="Force the destination ImageCollection for all requested years (default: "
+             "auto per year — 1999-2009 → mapbiomas-chaco, else the Argentina collection).",
+    )
     args = parser.parse_args()
-    main(args.year, args.tile, args.project, args.overwrite, args.status)
+    main(args.year, args.tile, args.project, args.overwrite, args.status, args.target_col)

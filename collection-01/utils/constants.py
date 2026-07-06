@@ -182,6 +182,20 @@ ARG_BUFFER_FC       = "projects/mapbiomas-argentina/assets/ANCILLARY_DATA/VECTOR
 # Output ImageCollection for this step (asset name pattern: bpts_YYYY_<tile-id>).
 BP_TS_METRICS_COL = f"{_FIRE_ROOT}/COLLECTION-1/WORKFLOW-EXPORTS/bp_ts_metrics"
 
+# Overflow destination for the early years: the mapbiomas-argentina asset is out of
+# space, so 1999–2009 are exported into the mapbiomas-chaco project instead.  NOTE this
+# is a LEGACY-ROOTED project — its asset home is `projects/mapbiomas-chaco/` directly,
+# with NO `/assets/` segment (verified: `.../assets/FIRE/...` is denied / nonexistent,
+# `.../FIRE/...` works).  Same asset-name pattern (bpts_YYYY_<tile-id>).
+BP_TS_METRICS_COL_CHACO   = "projects/mapbiomas-chaco/FIRE/bp_ts_metrics"
+BP_TS_METRICS_CHACO_YEARS = set(range(1999, 2010))   # 1999–2009 inclusive → chaco
+
+
+def bpts_target_col(year):
+    """Destination ImageCollection for a bpts tile-year: chaco for 1999–2009 (the
+    Argentina asset is out of space), the Argentina collection otherwise."""
+    return BP_TS_METRICS_COL_CHACO if year in BP_TS_METRICS_CHACO_YEARS else BP_TS_METRICS_COL
+
 # Landsat padding window: how many months of context to pull from the neighbouring
 # years (PAD_MONTHS on each side of the focal year), and how many padded observations
 # are kept on each side when building the per-pixel array.
