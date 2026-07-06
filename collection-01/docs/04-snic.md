@@ -1,99 +1,115 @@
-# 04 — SNIC spatial segmentation
+# 04 — SNIC 3D approximation (spatio-temporal burned-area segmentation)
 
 Step 04 grows the per-pixel burn-probability metrics from step 03 (`bpts`) into **spatial
-objects** (fire scars) with SNIC region-growing, so downstream metrics and manual review
-operate on segments rather than pixels. **Status: in development** — the Python driver
-`workflow/04-snic.py` is still a stub. The design work so far lives in an interactive GEE
-exploration tool (below); the productionised Python export will follow the step-03 pattern
-(export one asset per *carta*).
+objects** (fire scars), approximating a full space × space × time clustering with per-year 2D
+SNIC plus temporal safeguards (§1). Downstream metrics, manual review, and the final products
+then operate on segments rather than pixels.
 
-See also the downstream design notes in `03-bpts.md §10` (fire-regions as unions of cartas,
-no edge buffer needed, watch SNIC's internal ~256-px tile seams).
+**Status: design in progress.** This is the living design record for step 04, matured from
+Iván's notes (`misc/SNIC 3D notes.odt`). Code stubs: `workflow/04-snic.py` (segmentation), with
+the object-based follow-on in `workflow/05-objects_metrics.py` and
+`workflow/06-object_filtering.py`. **Read `docs/03-bpts.md` first** — step 04 consumes the
+burn-probability time-series metrics produced there (see also `03-bpts.md §10`: fire-regions as
+unions of cartas, no edge buffer needed, watch SNIC's internal ~256-px tile seams).
 
-## Delineating fire-regions (visual, prerequisite)
+> This doc captures decisions **and open questions**. Items marked **[OPEN]** still need Iván's
+> call before implementation; **[DECIDED]** items reflect the current agreed direction and can
+> still be revisited.
 
-`snic_regions_definition` — fuego repo, `collection-01/visualization-misc/`. Paints every
-pixel that was **ever a seed (red) or candidate (orange) in any year** (`bpts.map(...).max()`),
-other pixels masked, with the carta grid drawn as borders-only on top. Used by eye to trace the
-fire-region footprints (unions of cartas) that SNIC then runs over. Deliberately no `reproject`
-(pan-the-country overview) — unlike `explore_snic_IB`, which pins to 30 m for exact
-segmentation on a small ROI. Thresholds here are a starting point; finalise them in
-`explore_snic_IB`.
+---
+
+## 1. The ideal, and why we approximate it
+
+The **ideal** algorithm would cluster the full Landsat archive in 3D (space × space × time),
+directly deciding *which pixels and dates* are burned and grouping them into **fire events**.
+That is out of reach here: it needs custom clustering code and the full Landsat stack exported
+*out* of GEE — too expensive to run at country scale.
+
+So step 04 is an **approximation** built from the annual step-03 metrics:
+
+- step 03 already reduces each pixel's Landsat probability series to **annual** change/magnitude
+  metrics, from which seeds and candidates are derived (see "Getting started" below and §2 —
+  treated as a solved upstream step);
+- step 04 runs **SNIC in 2D space, per year**, and approximates the temporal (3rd) dimension
+  with a **neighbour-year window** plus **date-based firebreaks**.
+
+Two structural problems the approximation must handle:
+
+1. **Cross-year fires.** A fire straddling the New Year is bisected by the annual images. SNIC
+   run on year `y` alone cannot exploit the spatial continuity of a scar whose other half lives
+   in year `y−1` (or `y+1`).
+2. **Recurring fire.** A single pixel can burn in more than one year; the representation must
+   not confuse two fires a year apart for one.
+
+**Key reframing (resolves several of the notes' doubts).** Step-03 padding already *attributes*
+every pixel to the correct year: the delta argmax is restricted to focal-year observations and
+`date_post` is guaranteed to fall inside the focal year. So cross-year fires are **not an
+attribution problem** — each pixel is already dated to the right year. What's missing is purely
+**spatial**: SNIC on year `y` won't connect the Dec-`y−1` portion of a scar to its Jan-`y`
+portion. Therefore the neighbour-year window exists to lend year `y`'s segmentation the
+neighbour-year **seeds/pixels** of a boundary-crossing scar — not to re-date anything.
+
+---
+
+## Getting started — delineate regions, tune seeds & candidates (do this first)
+
+Before any of the algorithm design below, two hands-on GEE tools set up its inputs: the
+**fire-regions** SNIC runs over (§7.3), and the **seed/candidate thresholds** it grows from (the
+`candseed` surface §2 treats as given). Both live in the **fuego** GEE repo (not this one), under
+`collection-01/visualization-misc/`; see CLAUDE.md → "GEE Code Editor scripts" for the repo
+location and the pull/edit/push workflow. Their reusable pieces live in the fuego repo's
+`collection-01/utils/` (below).
+
+### Delineate fire-regions — `snic_regions_definition`
+
+Paints every pixel that was **ever a seed (red) or candidate (orange) in any year**
+(`bpts.map(...).max()`), other pixels masked, with the carta grid drawn as borders-only on top.
+Used by eye to trace the fire-region footprints (unions of cartas) that SNIC then runs over.
+Deliberately **no `reproject`** (pan-the-country overview) — unlike `explore_snic_IB`, which pins
+to 30 m for exact segmentation on a small ROI.
 
 Use case: a **fast, country-wide, deliberately coarse (non-30 m)** look at where fire happened,
 so you can scan the whole country and pick candidate **test ROIs** — which then go into
-`explore_snic_IB` for the exact 30 m, scale-stable tuning.
+`explore_snic_IB` for the exact 30 m, scale-stable tuning. Thresholds here are a starting point;
+finalise them in `explore_snic_IB`.
 
-## Output is the SNIC *mask*, not `cluster_id`
+### Tune seeds & candidates — `explore_snic_IB`
 
-Downstream we use **only the binary SNIC `burned` mask** (clusters that contain a seed) — the
-`cluster_id` label band is never exported or consumed. Two consequences:
-
-- **No label-consistency concern across the export split.** Cluster IDs are only unique within
-  one SNIC run; if we exported them, tiling would need care. Since we drop the labels, the
-  export tiling below is a pure transport split.
-- The exported layer is a sparse binary mask → compresses to almost nothing as a COG.
-
-## Export (operationalisation)
-
-SNIC must see the whole contiguous footprint, so run it over a **region mosaic (union of
-cartas), one asset per region + year**:
-
-1. **`toAsset`, per region + year.** No per-dimension cap (only `maxPixels`, raise to ~1e13);
-   assets are internally-tiled pyramids, so a region-wide mosaic is fine. This asset also
-   materialises the heavy neighborhood computation once.
-2. **`toDrive` as tiled Cloud-Optimized GeoTIFFs**, off `ee.Image(region_year_asset)` (fast
-   copy, no recompute). **No Cloud Storage bucket needed** — `cloudOptimized: true` *is*
-   supported on `toDrive` (contrary to a common belief that COG is CS-only); a COG is
-   DEFLATE/LZW-compressed + tiled, so the sparse mask stays tiny, same as the asset. Use
-   `fileDimensions` (multiple of 256, e.g. 8192) to control the split and `skipEmptyTiles=True`
-   to drop all-masked tiles. The 10k-px file cap applies here (Drive/CS files), **not** to the
-   asset.
-   - **Tile inside the single `toDrive()` call (via `fileDimensions`), do *not* loop over the
-     cartas grid.** SNIC already ran at region level → the asset; `toDrive` is pure transport,
-     so transport tiles need not honor the cartas grid (which governs *computation* tiling
-     elsewhere). One task per region+year beats hundreds of per-carta tasks, and terra
-     reassembles by geolocation regardless of how the split aligns.
-3. **Reassemble in R with terra:** `terra::vrt(tiles)` (virtual mosaic, no copy) or
-   `merge()`/`mosaic()`. Tiles are exact non-overlapping subsets and carry only the mask, so
-   reassembly is a plain stitch — no relabeling.
-
-## Interactive exploration tool (GEE repo)
-
-`explore_snic_IB` — in the **fuego** GEE repo (not this one), at
-`collection-01/visualization-misc/explore_snic_IB`. See CLAUDE.md → "GEE Code Editor scripts"
-for the repo location and the pull/edit/push workflow.
-
-Purpose: tune the SNIC **seed** and **candidate** thresholds *on the fly* (no export), while
-avoiding SNIC's scale-dependence. For a chosen year it: merges the two bpts collections
-(Argentina + the mapbiomas-chaco 1999–2009 overflow), filters to the year, mosaics the tiles
-over a ROI, **decodes the 7 probability bands to probability scale** (÷10000; the day / DOY /
-count bands are left as-is), then thresholds seeds + candidates and runs SNIC.
+Tunes the SNIC **seed** and **candidate** thresholds *on the fly* (no export), while avoiding
+SNIC's scale-dependence. For a chosen year it: merges the two bpts collections (Argentina + the
+mapbiomas-chaco 1999–2009 overflow), filters to the year, mosaics the tiles over a ROI, **decodes
+the 7 probability bands to probability scale** (÷10000; the day / DOY / count bands are left
+as-is), then thresholds seeds + candidates and runs SNIC. This is a **simplified single-year
+SNIC for threshold tuning** — the full production per-year algorithm (gap-fill + firebreaks +
+supervised SNIC) is §3–§6.
 
 Key design points:
 
 - **Scale-independence.** SNIC and `connectedPixelCount` are neighborhood ops, so the
-  interactive map would otherwise evaluate them at the zoom-pyramid scale (result changes as
-  you zoom). The decoded mosaic is `reproject()`-ed to the assets' native 30 m grid **before**
-  any neighborhood op, and the SNIC output is reprojected too — pinning the whole computation
-  to 30 m at any zoom. (Keep the ROI modest; a 30 m-pinned neighborhood over a whole carta can
-  hit interactive memory/timeout limits.)
+  interactive map would otherwise evaluate them at the zoom-pyramid scale (result changes as you
+  zoom). The decoded mosaic is `reproject()`-ed to the assets' native 30 m grid **before** any
+  neighborhood op, and the SNIC output is reprojected too — pinning the whole computation to 30 m
+  at any zoom. (Keep the ROI modest; a 30 m-pinned neighborhood over a whole carta can hit
+  interactive memory/timeout limits.)
 - **Seeds (strict) vs candidates (loose)**, adapted from the col-0 method
-  (`collection-00/misc/snic_visualization` in the GEE repo). Seeds use high magnitude
-  (`pmax3`) + change (`delta3_peak`) + persistence (`minfore3_peak`); candidates use the loose
-  versions and define the footprint SNIC may grow into. A `connectedPixelCount` filter **drops
-  seed components of ≤ P pixels (P = 5)** — so a fire-cluster must be seeded by ≥ 6 connected
-  pixels — which removes a lot of speckle noise. `burned` = SNIC clusters that contain a seed.
-  All thresholds are tunable variables at the top of the script.
+  (`collection-00/misc/snic_visualization` in the GEE repo). Seeds use high magnitude (`pmax3`) +
+  change (`delta3_peak`) + persistence (`minfore3_peak`); candidates use the loose versions and
+  define the footprint SNIC may grow into. A `connectedPixelCount` filter **drops seed components
+  of ≤ P pixels (P = 5)** — so a fire-cluster must be seeded by ≥ 6 connected pixels — which
+  removes a lot of speckle noise. `burned` = SNIC clusters that contain a seed. All thresholds
+  are tunable variables at the top of the script.
 - **Previous-year land cover.** Displays the `y−1` raw MapBiomas classes and the `veg_fire`
-  classes (the exact land-cover context step 03 used), with a compact legend of the 25
-  `veg_fire` classes.
-- **NBR + NBR2 series.** A cheap NBR/NBR2-only Landsat collection (`y−1 … y+1`) added at
-  opacity 0 — invisible on the map, but the Inspector charts it as a time series on click.
+  classes (the exact land-cover context step 03 used), with a compact legend of the 25 `veg_fire`
+  classes.
+- **NBR + NBR2 series.** A cheap NBR/NBR2-only Landsat collection (`y−1 … y+1`) added at opacity
+  0 — invisible on the map, but the Inspector charts it as a time series on click.
 
-## Shared helpers added to the GEE utils
+The thresholds settled here produce the `candseed ∈ {0,1,2}` surface that the algorithm design
+(§2 onward) takes as its input.
 
-To keep the script small, the reusable pieces live in the fuego repo's `collection-01/utils/`:
+### Shared GEE utils
+
+To keep the scripts small, the reusable pieces live in the fuego repo's `collection-01/utils/`:
 
 - `functions.js`: `vegFireImage(year)` / `mbClassImage(year)` — a faithful JS port of Python
   `functions.py:veg_fire_image` (`region_id·100 + mb_class → veg_fire`, prev-year, unmapped →
@@ -102,8 +118,465 @@ To keep the script small, the reusable pieces live in the fuego repo's `collecti
   remap, `VEG_FIRE_NAMES`, `VEG_FIRE_PALETTE`, `MB_LULC_PALETTE`.
 
 > **Sync caveat.** Those `constants.js` remap arrays are a **hand copy** of this repo's
-> `config/veg_fire_remap.csv` (the single source of truth) — there is no automatic sync
-> between the two repos. If that CSV is regenerated with class changes, update the fuego
-> `constants.js` arrays to match. The coupling is flagged in both places
-> (`config/veg_fire_remap_metadata.txt` → "MANUAL DOWNSTREAM COPY" and a SYNC WARNING comment
-> in `constants.js`).
+> `config/veg_fire_remap.csv` (the single source of truth) — there is no automatic sync between
+> the two repos. If that CSV is regenerated with class changes, update the fuego `constants.js`
+> arrays to match. The coupling is flagged in both places
+> (`config/veg_fire_remap_metadata.txt` → "MANUAL DOWNSTREAM COPY" and a SYNC WARNING comment in
+> `constants.js`).
+
+---
+
+## 2. Inputs, outputs, terminology
+
+**Input** — an annual `ImageCollection`, **one image per year**, each carrying:
+
+- `candseed ∈ {0, 1, 2}` — `0` = no fire, `1` = candidate, `2` = seed. In practice `0` can be
+  masked; we keep it unmasked in the notation. **Seeds/candidates are derived upstream** from the
+  step-03 bands (`delta{2,3}_peak`, `minfore/pmax`, `n`, …) — the thresholds tuned in
+  `explore_snic_IB` (see "Getting started"); *that derivation is out of scope for the algorithm
+  sections* — step 04 takes `candseed` as given.
+- a **burn date** per pixel (from step-03 `date_post{2,3}`), and
+- the observation density `n` (step-03 quality channel), used to make `D` adaptive (§5).
+
+**Output** — an **annual burned-area mask** (one per year). The SNIC *cluster ids themselves are
+discarded*: we only need burned / not-burned. The mask is vectorized in step 05.
+
+### 2.1 Dates MUST be absolute, not DOY — [DECIDED]
+
+Step-03 `date_post` is **day-of-year (1–366) within the focal year**. Any cross-year date
+arithmetic on raw DOY is wrong: a Dec-`y−1` pixel (DOY ≈ 355) and a Jan-`y` pixel (DOY ≈ 10) are
+~20 days apart in reality but ~345 apart in DOY. Before any Δdate comparison (mosaic tiebreaks,
+firebreaks, overlap-merge), convert to an **absolute integer day count** — days since a fixed
+epoch — using each annual image's `year` property:
+
+```
+abs_date = days_since_epoch(year, date_post)     # exact whole-day counts, cross-year safe
+```
+
+This mirrors step-03's own "day-number" philosophy (§3.2 of `03-bpts.md`), where all
+persistence/width metrics are exact whole-day differences that stay correct across the year
+boundary. Keep `abs_date` as an int band alongside `candseed` throughout step 04.
+
+---
+
+## 3. Per-year algorithm (overview)
+
+For each focal year `y` — **backward-only** window (§4 explains why we look at `y−1` only):
+
+1. **Gap-fill** the focal `candseed` (+ `abs_date`) surface from the *previous* year's
+   near-boundary pixels (§4).
+2. **Firebreaks** — mask every pixel whose `abs_date` differs from a neighbour by > `D`, so
+   8-connected SNIC physically cannot grow across a temporal discontinuity (§5).
+3. **Supervised SNIC** — region-growing **from seeds** through connected candidates over the
+   masked candseed surface; seedless candidate islands are dropped, and the burned mask is the
+   union of the seed-grown regions (§6). Post-SNIC gap-closing and object metrics follow in
+   steps 05–06.
+
+---
+
+## 4. Backward-only gap-fill of the previous year — [DECIDED]
+
+**Goal, stated precisely.** Give year `y`'s segmentation the neighbour-year pixels of a
+boundary-crossing scar, so a focal-year fragment (often mostly *candidates*) is spatially joined
+to the previous year's seeds and survives the seed filter — **without** importing separate
+neighbour-year fires. The **firebreak (§5)** enforces the "same fire vs different fire" split, so
+this step just needs to *supply* the pixels.
+
+### 4.1 Look **backward only** (previous year), not both neighbours
+
+Rather than a symmetric `y−1 … y+1` mosaic (which raises "what if both neighbours have
+`candseed > 0` here?"), each focal year looks **only at `y−1`**, and only its **near-boundary
+(late-year) pixels** — Iván's "half year" back. Rationale:
+
+- **The failure case is negligible.** Backward-only mis-handles a fire only if it *starts* in the
+  first half of `y−1` and is still burning past Jan 1 of `y` — a fire duration of >6 months,
+  which does not occur.
+- **It matches Argentine fire seasonality.** Summer seasons are dominated by **Jan–March** fires;
+  burned area from October onward is smaller. Spring seasons (after a dry winter) **end in
+  January**. So the meaningful cross-year spill is *late `y−1` → early `y`*, which the later year
+  reaching back captures exactly.
+- **It removes the collision tiebreak entirely** — with a single neighbour there is never a
+  both-neighbours-burned pixel to arbitrate.
+
+### 4.2 The gap-fill rule — [DECIDED]
+
+- At every pixel where **focal `candseed > 0`**: keep the **focal** `candseed` and focal
+  `abs_date` (focal wins — that pixel belongs to year `y`).
+- Where **focal `candseed = 0`**: **fill** from `y−1` where `candseed > 0` **and** `abs_date` is
+  within ~`D` of the year boundary (late `y−1`), carrying `y−1`'s `candseed` and `abs_date`.
+
+Result: one `candseed` band + one `abs_date` band. The late-`y−1` seeds land at locations where
+focal was 0, adjacent to the focal candidates; the firebreak (§5) then keeps them together (dates
+within `D`) or separates them (a genuinely older `y−1` fire, Δ > `D`), and SNIC joins what
+survives.
+
+### 4.3 Duplication is unavoidable — deferred to the overlap-merge
+
+A scar crossing `y−1 → y` is processed in **both** annual runs: year `y` pulls in the late-`y−1`
+half via gap-fill; year `y−1`'s own run already produced (at least) that half as focal. There is
+**no way to avoid this duplication** inside an annual-segmentation approximation — only true 3D
+clustering would. It is reconciled once, in the **cross-year overlap-merge (§7)**, after each
+polygon's year is re-assigned from its `date_mode`. Do not try to prevent it earlier.
+
+---
+
+## 5. Dating firebreaks — [DECIDED: hard mask]
+
+Before SNIC, **mask every pixel whose `abs_date` differs from any of its 8 neighbours (that are
+themselves `candseed > 0`) by more than `D`.** The masked pixels are no longer candidate/seed, so
+they form a ≥1-px seam that **8-connected SNIC cannot cross** — a hard firebreak between two
+temporally distinct fires that merely touch in space. This replaces any soft "date as a SNIC
+feature band" idea: the point is a barrier, not a nudge.
+
+- **Two-sided seam.** Masking a pixel when *any* neighbour exceeds `D` erodes the boundary on
+  **both** sides of a jump, guaranteeing a gap wide enough to block 8-connectivity. It costs a
+  thin rind of real candidate pixels at genuine event boundaries — acceptable.
+- **Within one fire it never fires.** Adjacent pixels of a single spreading fire differ by a few
+  days; only a per-pixel-step date jump > `D` (an abrupt discontinuity = different event) trips
+  it. So `D` must exceed the plausible within-fire adjacent-pixel date gradient (easily true for
+  `D ~ 60 d`).
+- **Implementation — [DECIDED]:** **shift `abs_date` by one pixel in each of the 8 neighbour
+  directions**, take the absolute diff against the focal pixel → an **8-band diff image**, reduce
+  to its **per-pixel max**, and **mask where max > `D`**. This masks *both* pixels of every
+  offending adjacency (each is the other's neighbour), giving the two-sided ≥2 px seam. Compute
+  over the `candseed > 0` domain only, so no-fire/masked neighbours contribute no spurious date.
+  (In GEE the shift is `abs_date` displaced by the 8 offsets; the same seam can be recomputed
+  identically in R — see §6.1's `fb`.)
+
+**`D` is adaptive on density `n`** — [DECIDED intent, form OPEN]. Dense images (`n` high) resolve
+transitions well → `D` can be **small** (tighter separation, less downstream redundancy); sparse
+→ widen `D`. The concrete `D = f(n)` is **[OPEN]** and is reused by the overlap-merge (§7).
+
+---
+
+## 6. Supervised SNIC — seed-grown region growing — [DECIDED]
+
+SNIC here is a **supervised region-growing** step ("supervised SNIC", Iván's term) — **not** mere
+connectedness and **not** a feature clusterer. It runs on the firebreak-masked candseed surface
+with the **seed pixels supplied as SNIC seeds**, and grows clusters **from seeds through
+spatially connected candidates**:
+
+- **Isolated candidates are dropped by SNIC itself.** A candidate blob not reachable from any
+  seed gets no cluster and falls out of the mask. So SNIC *is* the seed/candidate classifier
+  (burned = candidate connected to a seed) — this is **not** deferred to a downstream `seed_mean`
+  filter (`seed_mean` in §7 is only a secondary object-quality metric, not what removes seedless
+  islands).
+- We **discard the cluster ids** and keep the **burned mask** = union of the seed-grown regions.
+- Because the firebreak seam (§5) is already masked out of the input, a seed **cannot grow across
+  a temporal discontinuity** — growth is confined within firebreak-bounded regions.
+
+**No cross-tile / cross-split label concern.** Since the cluster ids are discarded and R
+relabels the mask globally with `patches()` (§6.1, §7.3), it does not matter that SNIC ids are
+only unique within one run/tile — the export can be split and re-mosaicked freely (§7.3–§7.5).
+
+**Why not GEE connected-components (and why SNIC stays in GEE).** Native object labeling
+(`connectedComponents` / `connectedPixelCount`) caps objects at **≤1024 pixels** — useless for
+real fire scars, which are far larger — and it is **unsupervised**, so it would keep seedless
+candidate islands that supervised SNIC correctly discards. Both reasons keep SNIC in GEE; it is
+not replaceable by connected-components.
+
+**The SNIC mask is also what makes the download sparse** — only seed-grown (burned) pixels
+survive; everything else is masked and, with a compressed export (§7.2), never materializes.
+
+Workflow split: **04** = firebreak + SNIC → objects mask; **05** = vectorize + per-polygon
+metrics (`seed_mean`, `date_mode`); **06** = filtering + de-dup.
+
+### 6.1 Grouping nearby patches (gap-closing) — the terra replacement for Col-0's double vectorization
+
+Connected SNIC patches still **fragment a single fire** wherever a cloud/no-data gap, a thin
+unburned strip, or the firebreak erosion itself leaves a 1–2 px break. These must be **grouped
+into one object** — *unless a firebreak lies between them* (that gap is a deliberate temporal
+separation, not a fragmentation).
+
+**What Col-0 did** (`collection-00/workflow/06-spatial_segmentation-objects.js`): a
+raster→vector→raster→vector "closing": `focalMax(radius=1)` to a **wider** context mask →
+vectorize it for group ids → stamp the id onto the **strict** SNIC pixels via
+`reduceRegions(max)` → re-vectorize → dissolve. It worked but was awkward (no native
+connected-component labeler in GEE), and it had **no firebreak awareness** — merging was
+unconditional.
+
+**Col-1, in terra** — the clean raster-native version, done **once**, respecting firebreaks. The
+key correction to a plain "dilate → clump → mask back": use a **barrier-constrained (geodesic)
+dilation**, or a naive `focalMax` will **jump the ~2 px firebreak seam** and re-merge two
+temporally distinct fires. Block the dilation *at* firebreak pixels each step:
+
+```r
+# per tile: burn (0/1), abs_date, fb (firebreak seam, 1/0 — recomputed in R, see below)
+d <- burn
+for (i in 1:r) {                       # r = 1 or 2 px gap tolerance
+  d <- focal(d, w = 3, fun = max, na.policy = "omit")
+  d <- d * (fb == 0)                    # firebreak = impassable wall
+}
+grp <- patches(d, directions = 8, zeroAsNA = TRUE)   # connected components (raster::clump → terra::patches)
+id  <- mask(grp, burn, maskvalue = 0)                # stamp group id back onto strict burn
+# then vectorize ONCE and dissolve by id
+```
+
+Because the 8-shift firebreak masks pixels on **both** sides of a date jump, the wall is ≥2 px
+and topologically closed, so the geodesic dilation flows through genuine gaps but **cannot cross
+a firebreak** — exactly "merge patches 1–2 px apart unless a firebreak is between them."
+
+**Tooling — [DECIDED]:** terra. C++ is overkill (terra's `focal`/`patches` are already compiled;
+per-tile burned data is sparse). Python (`scipy.ndimage.label`, `skimage.morphology`) is equally
+capable but R keeps one language for the vector de-dup (§7) and matches the repo's existing R
+step.
+
+**Export requirement:** R must know the firebreak locations. Cleanest is to export `abs_date` on
+**all** candseed pixels (pre-firebreak) so R **recomputes** the 8-shift firebreak itself —
+single source of truth, and R then both applies it (mask) and reuses it as the dilation wall.
+
+### 6.2 [RESOLVED] terra does *post-SNIC grouping*, it does not replace SNIC
+
+An earlier draft floated replacing SNIC with `terra::patches()`. **Rejected** — the two do
+different jobs. Supervised SNIC (§6) *grows regions from seeds and drops seedless candidates*;
+`patches()` / `connectedComponents` are *unsupervised* connected-components that would keep those
+islands and (in GEE) cap objects at ≤1024 px. terra's role is strictly the **post-SNIC
+gap-closing** of §6.1 — merging seed-grown regions that a small gap fragmented — operating on the
+SNIC burned mask, **downstream** of the seed-growing, never in place of it.
+
+---
+
+## 7. Object-based processing (steps 05–06) — vector post-processing likely in R
+
+From the notes; tightly coupled to the SNIC design (it's where cross-year fires are finally
+reunited).
+
+1. **Vectorize** each annual objects mask to polygons.
+2. **Per-polygon metrics:** `seed_mean` (seed proportion — the real fake-fire discriminator),
+   `date_mode` (modal burn date).
+3. **Filter polygons** — remove fake fires — via an **empirical decision tree** (as in Col-0) or
+   a **polygon-level model**. **[OPEN]** which.
+4. **Re-assign year** = `year(date_mode)` (a polygon's true year is its modal burn date's year,
+   which can differ from the annual run it came from — this is what makes the backward gap-fill
+   of §4 consistent).
+5. **De-duplicate** (using updated years):
+   - **Same-year overlaps:** among intersecting polygons in the same year, if Δ`date_mode` < `D`
+     **and** IoU > **0.2** → **merge**; else keep the **larger**. **[OPEN]** confirm 0.2.
+   - **Backward (previous-year) overlaps:** same rule against `y−1`. **Optimization:** compare
+     only near-boundary polygons — late-`y` vs early-`y−1` — not all pairs.
+
+### 7.1 Duplication cost and the case for R (`sf`/`terra`) — [OPEN, leaning to R]
+
+Duplication is unavoidable (§4.3), so a de-dup pass is mandatory. But **vector–vector topology in
+GEE is its weak spot**: spatial joins and per-feature `intersection()/area()` (needed for IoU)
+are slow and routinely hit *"computation timed out" / "user memory exceeded"* at scale, and
+**fires also cross carta tiles**, so de-dup is an inherently *global* vector operation that GEE
+tiling fights against.
+
+Recommended division of labour:
+
+- **GEE (raster):** through step 04 — the annual **objects masks** (+ `abs_date`, `candseed`
+  bands), **one image per region per year** (see §7.3 for why regions, not single cartas).
+- **R (`terra`/`sf`):** vectorize (or ingest GEE polygons), compute `seed_mean`/`date_mode`,
+  filter, re-assign year, and run the cross-tile + cross-year de-dup. `terra` is very efficient
+  and `sf`'s spatial predicates are mature; this also fits the repo's existing R step (model
+  fitting). Mitigations still apply: true overlap is **sparse**, near-boundary pruning cuts most
+  pairs, and smaller `D` in dense areas reduces redundancy at the source.
+
+Validate on a real multi-tile year before committing the GEE-vs-R boundary.
+
+### 7.2 Download weight — masked pixels are cheap only after compression
+
+Downloading the whole country is **not** too heavy, but for a reason worth stating precisely:
+**masking is a flag, not a space saving.** A masked pixel costs the same as a real one in GEE
+compute and in a *dense/uncompressed* GeoTIFF (written as `noData` at full dtype width). It is
+**compression** (LZW/DEFLATE, or a COG with empty tiles dropped) that makes a mostly-masked
+raster tiny, because the near-constant background collapses to almost nothing.
+
+Order-of-magnitude for Argentina (~2.78 M km² → **~3.1 billion 30 m pixels/band/year**):
+
+| export form | size |
+|---|---|
+| dense/uncompressed, ~2–3 bands | ~10–15 GB/yr → **~300–400 GB** for 1999–2025 (the "too heavy" case) |
+| **compressed** sparse mask (burned ≈ 0.3–1 % of area) | ~tens of MB/yr → **~0.3–1.5 GB** total |
+| `reduceToVectors` polygons per tile | ~MB/yr → **~100–300 MB** total (lightest) |
+
+So the download is dominated by the small **burned** fraction, not the grid — provided we (a)
+export **per region** (§7.3), (b) **skip region-years with zero burned pixels**
+(`skipEmptyTiles`), and (c) keep **compression + tiling on** (`cloudOptimized`). Note this
+cheapness is **download-only**: it does not reduce GEE *processing* memory, which still works the
+full dense grid per tile.
+
+**Does the download exploit the maskedness? Only if you ask for it.** The EE **asset** is stored
+internally tiled + compressed, but you never pull that blob directly — "download" **re-renders**
+the image to GeoTIFF (`Export.image.toDrive` / `toCloudStorage`, or `getDownloadURL`). To exploit
+the mask you must request a **compressed** GeoTIFF: `formatOptions: {cloudOptimized: true}`
+(DEFLATE + internal tiling). Then the masked/constant background collapses to almost nothing and
+the file size tracks the seed-grown fire pixels. A **plain uncompressed** export writes every
+`noData` pixel at full dtype width → dense and large, mask notwithstanding. Practical notes:
+`getDownloadURL` has a **~32 MB request cap**, so for region-year images use **Export to
+Drive/GCS**, not the direct URL; masked pixels export as `noData` (keep a `noData` value set).
+
+### 7.3 Processing unit: regions (contiguous tile groups), not single cartas — [DECIDED intent]
+
+Unlike step 03 (which runs **per carta** — `CLAUDE.md` prediction-tiling convention), step 04
+runs SNIC over **regions = groups of contiguous cartas**, with region boundaries chosen to **not
+split high-fire-activity areas** (delineate them with `snic_regions_definition`, see "Getting
+started"). Rationale: supervised SNIC and the §6.1 grouping are spatial — a scar straddling a
+processing boundary would be **bisected**, fragmenting the object and forcing cross-boundary
+stitching. Bigger contiguous regions push most scars fully inside one unit, shrinking the
+cross-boundary de-dup (§7) to the few genuine region-edge cases. Output is **one highly-masked
+image per region per year**, exported to asset then downloaded (§7.2, §7.5).
+
+> **[OPEN / verify — the deciding test for extent]** GEE SNIC is computed on internal processing
+> tiles (~256 px + `neighborhoodSize` buffer) and can show **tile-boundary artifacts**. A
+> country-wide *export region* does **not** make SNIC compute globally — you cannot make it "see"
+> all of ARG at once; a bigger region just adds more internal seams. **Test:** SNIC one region,
+> then SNIC the same area split in two, and diff the masks along the seam. *Identical* → internal
+> tiling is transparent for the mask (full-ARG export is then safe, choose extent by export
+> limits); *seams/drops* → **raise `neighborhoodSize`** (primary lever, below), overlapping
+> regions only as fallback. Document the finding here in the spirit of the §5 gotchas in
+> `03-bpts.md`.
+
+**The primary lever: `neighborhoodSize`.** SNIC's `neighborhoodSize` (px; default `2 × size`) is
+the internal-tile buffer *designed* to avoid tile-boundary artifacts — each processing tile is
+expanded by it before segmenting, so objects within that reach are not cut at the seam. **Raise
+it** to keep fires intact across internal seams. Caveats: (i) it is **not free** — a bigger
+buffer is recomputed per internal tile → more memory (may need `tileScale`), with a practical
+ceiling that can't cover the very largest scars (thousands of px) cheaply; (ii) **you don't need
+to cover the whole fire** — because we keep only the **mask** and **relabel in R** (§6.1
+`patches()`), cross-tile *label* inconsistency is irrelevant and the only residual risk is
+**completeness** (a seed-connected candidate near a seam dropped when its seed is beyond reach).
+So `neighborhoodSize` only has to exceed the **max seed-to-candidate reach across a seam**, not
+the scar's extent — and since real scars carry seeds throughout, a generous-but-sane value
+suffices. The §7.3 diff test picks the value.
+
+**Extent recommendation.** With `neighborhoodSize` set adequately + R global relabeling, internal
+seams and region-to-region joins are both handled, so the extent choice (full-ARG vs regions) is
+driven by **export robustness/resumability**, not by "seeing the whole country" (SNIC never
+does). Prefer **per-region** exports over one monolithic country task per year (far more
+resumable — the `CLAUDE.md` idempotency rule). **Manual overlapping regions** become a *fallback*
+only if memory caps `neighborhoodSize` below what completeness needs. Compute is not the
+constraint (supervised single-band SNIC is cheap); export robustness and completeness are.
+
+**Two boundaries, different roles — [DECIDED].** SNIC runs per **region**, but the **export can
+be sharded** freely: whether you tile a region's single `toDrive` with `fileDimensions` (§7.5) or
+export per carta, R re-mosaics all tiles (up to all of ARG) and runs the §6.1 `patches()`
+gap-closing on the full mosaic, so objects span tile seams for free — no cluster-id matching, and
+export-tile boundaries are **harmless**. What still matters is the **SNIC-region** boundary: a
+scar straddling two regions is grown separately in each, so if a fragment's seeds all sit on one
+side, the other region grows nothing there (seedless → dropped) and that fragment is **never
+exported** — R cannot recover it. Hence region boundaries must still avoid splitting high-fire
+areas; export boundaries need not.
+
+### 7.4 Export mechanics for the R (raster) path — [DECIDED]
+
+The chosen handoff is **download rasters, do all object work in R** (simpler than vectorizing in
+GEE, which hits the flaky reduce-regions/vector path). Per region-year:
+
+- **Bands: `candseed` (0/1/2) + `abs_date`** — two bands, cast to a **single int16** dtype so the
+  export is one clean GeoTIFF (GeoTIFF bands share a type). `candseed` carries everything: burned
+  = `candseed > 0` (already the SNIC-grown mask, seedless islands gone), and the polygon
+  `seed_mean` = `mean(candseed == 2)` — no separate seed band needed. Encode `abs_date` as **days
+  since 1970-01-01** (≈10 600–20 500 for 1999–2025 → fits int16, matching step-03's all-int16
+  convention, `03-bpts §3.7`). *(The SNIC cluster ids are **not** exported — R relabels; §6.)*
+- **Export call:** `Export.image.toDrive` with **`formatOptions={'cloudOptimized': True}`** (see
+  §7.5 for why Drive) — that flag (a `formatOptions` key) is what turns on DEFLATE + internal
+  tiling and makes the masked background nearly free (§7.2). COG preserves the mask →
+  `terra::rast()` reads masked pixels as `NA`; if they arrive as `0`, `unmask(-9999)` before
+  export and `NAflag(r) <- -9999` in R.
+- **In R:** mosaic tiles → §6.1 barrier-constrained `patches()` for objects → per-object
+  `seed_mean`, `date_mode`, size → filter → cross-region/cross-year de-dup (§7).
+
+### 7.5 Getting the rasters to the local machine — [DECIDED: Drive + COG]
+
+> **Revised 2026-07-06, superseding an earlier `[DECIDED: GCS]` lean.** Three facts flipped the
+> destination from Cloud Storage to **Drive with a Cloud-Optimized GeoTIFF**: (1)
+> **`mapbiomas-argentina` has no Cloud-Storage budget** — GCS costs money the project can't
+> spend, and borrowing the fire-latam team's bucket adds permissions/coupling we'd rather avoid;
+> (2) **`cloudOptimized: true` works on `Export.image.toDrive`** (it is *not* Cloud-Storage-only,
+> contrary to common belief) — so Drive gets the *same* DEFLATE + internal-tiling compression
+> that makes the masked background nearly free (§7.2), and the only technical reason to prefer
+> GCS evaporates; (3) Drive needs no bucket, no billing, no auth setup.
+
+Export destinations are **three independent systems** — neither Drive nor GCS consumes the
+`mapbiomas-argentina` **EE asset** quota:
+
+| Destination | Call | Storage / cost | Downloadable? |
+|---|---|---|---|
+| EE asset | `Export.image.toAsset` | EE project asset quota | **No** — an asset is not a file; re-export needed |
+| Cloud Storage | `Export.image.toCloudStorage` | GCP billing (~$0.02/GB·mo storage, ~$0.12/GB egress) | Yes — `gcloud storage cp` |
+| **Drive** | `Export.image.toDrive` | Drive quota (15 GB free) | Yes — browser / `rclone` |
+
+**Operational recipe (per region-year):**
+
+1. *(optional but recommended)* `Export.image.toAsset`, one asset per region+year. Not
+   downloadable, so it isn't the deliverable — but it **materialises the SNIC computation once**
+   (the Drive export then runs off `ee.Image(asset)` as a fast copy, no recompute) and lets you
+   inspect the result in GEE. The `CLAUDE.md` "asset per step" convention otherwise doesn't
+   strictly apply here, since an asset can't be downloaded as a GeoTIFF.
+2. `Export.image.toDrive(image, formatOptions={'cloudOptimized': True}, …)` — the COG **is** the
+   step-04 artifact. Tile the file **inside this single call** with `fileDimensions` (multiple of
+   256, e.g. 8192) and `skipEmptyTiles=True`; do **not** loop per carta (transport tiles need not
+   honor the carta grid — R re-mosaics by geolocation regardless, §7.3). The ~10k-px-per-file cap
+   applies to Drive/CS **files**, **not** to the asset (assets are internally-tiled pyramids,
+   only bounded by `maxPixels`, raise to ~1e13). Keep a `noData` value set (§7.4).
+3. **Download & mosaic in R:** pull the tiles (browser, or `rclone` for scripted bulk), then
+   `terra::vrt(tiles)` (virtual mosaic, no copy) or `merge()`/`mosaic()` → §6.1 gap-closing.
+
+*(If a CS bucket ever becomes available, the GCS mechanics are a drop-in alternative and are
+nicer for scripted bulk pulls of hundreds of tiles: one-time `gcloud auth login` (interactive —
+`! gcloud auth login`), `gcloud config set project mapbiomas-argentina`,
+`gcloud storage buckets create gs://<bucket> --location=us`; export with
+`toCloudStorage(bucket='<bucket>', fileNamePrefix='snic/<region>/<year>', …)`; download with
+`gcloud storage cp -r gs://<bucket>/snic ./data/snic/`; spot-check without downloading via GDAL
+virtual paths — `terra::rast("/vsigs/<bucket>/snic/<region>/<year>.tif")`. Absent budget,
+Drive+COG is the decision.)*
+
+---
+
+## 8. Open questions to resolve before implementation
+
+- **[§5]** Concrete `D = f(n)` (also governs the §7 merge tolerance).
+- **[§6]** SNIC parameters: how seeds are supplied, `size`, `compactness`, `neighborhoodSize`,
+  connectivity 8.
+- **[§7]** Polygon filter: empirical decision tree vs polygon-level model; IoU merge threshold
+  (0.2?) and whether the `date_mode` merge tolerance equals `D`.
+- **[§7.3]** Region definition (which contiguous carta groups) and **verify SNIC tile-boundary
+  artifacts** on a real region-year.
+- **[§9]** Final month-of-burn raster: pixel-level (month, year-band) rule when polygon vs pixel
+  dates disagree; ensure de-dup preserves per-pixel dates and no pixel lands in two year-bands.
+
+**Resolved:** supervised SNIC (seed-grown region growing, drops seedless candidates), kept in
+GEE, ids discarded, mask retained (§6); terra does *post-SNIC* gap-closing, not a replacement
+(§6.2); hard masked firebreak via 8-direction shift-diff, max > `D` (§5); backward-only gap-fill
+from late `y−1`, no collision tiebreak (§4); cross-year duplication is inherent and deferred to
+the overlap-merge (§4.3); download is sparse only with a compressed (`cloudOptimized`) export
+(§7.2); step 04 SNIC runs per region while the export shards freely and R re-mosaics (§7.3);
+raster handoff to **Drive + COG**, not GCS (§7.5); all object work in R on downloaded
+`candseed`+`abs_date` int16 rasters (§7.4).
+
+---
+
+## 9. Final product: polygons **and** a per-pixel month-of-burn raster — [NEW, to develop]
+
+> Parked mid-discussion (2026-07-03) — flesh out next session.
+
+The deliverable is **two coupled products**:
+
+1. **Polygons with metadata** (fire objects: id, year, area, `date_mode`, `seed_mean`, …) — the
+   working product from §7.
+2. **The MapBiomas-required raster:** a **multi-band image, one band per year, pixel value =
+   month of burn** (1–12). This is *mandatory* for the MapBiomas deliverable.
+
+**The load-bearing consequence: per-pixel date must be preserved end-to-end.** We cannot collapse
+a fire to a single polygon-level `date_mode` and lose the pixel dates — the month-of-burn raster
+needs each pixel's own month. So the pipeline must carry per-pixel `abs_date` all the way to a
+final rasterization step: **polygons → rasterize back → month = month(pixel `abs_date`)**, binned
+into the correct **year band** = `year(pixel abs_date)`.
+
+Implications to work through (flagged now, resolved later):
+
+- **§4 gap-fill (reinforced, now load-bearing).** When we import `candseed > 0` from `y−1` before
+  SNIC, we must keep each imported pixel's **real previous-year date** (its `abs_date`), not just
+  the mask — already the design, but now it's what makes the month/year band correct. An imported
+  Dec-`y−1` pixel has month = December and belongs to the **`y−1` band**, even though it was
+  pulled into year `y`'s segmentation.
+- **§7 de-dup (needs care).** Merging polygons must **not** overwrite per-pixel dates with one
+  polygon date — a merged scar spans pixels of different months, and a gap-filled pixel exists in
+  both `y−1`'s own output and via `y`'s run. The de-dup has to resolve **at the pixel level for
+  the month/year raster** (which single month/year does each pixel get?), not only at the polygon
+  level. Guard against a pixel being written into two year-bands.
+- **Open:** exact rule for a pixel's final (month, year-band) when polygon-level and pixel-level
+  dates disagree; how month-of-burn interacts with the manual ash/drought masking pass; whether
+  the raster is derived from the *filtered/merged* polygons (so fake-fire pixels are excluded).
