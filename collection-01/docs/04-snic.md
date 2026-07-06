@@ -10,6 +10,16 @@ exploration tool (below); the productionised Python export will follow the step-
 See also the downstream design notes in `03-bpts.md §10` (fire-regions as unions of cartas,
 no edge buffer needed, watch SNIC's internal ~256-px tile seams).
 
+## Delineating fire-regions (visual, prerequisite)
+
+`snic_regions_definition` — fuego repo, `collection-01/visualization-misc/`. Paints every
+pixel that was **ever a seed (red) or candidate (orange) in any year** (`bpts.map(...).max()`),
+other pixels masked, with the carta grid drawn as borders-only on top. Used by eye to trace the
+fire-region footprints (unions of cartas) that SNIC then runs over. Deliberately no `reproject`
+(pan-the-country overview) — unlike `explore_snic_IB`, which pins to 30 m for exact
+segmentation on a small ROI. Thresholds here are a starting point; finalise them in
+`explore_snic_IB`.
+
 ## Output is the SNIC *mask*, not `cluster_id`
 
 Downstream we use **only the binary SNIC `burned` mask** (clusters that contain a seed) — the
