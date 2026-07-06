@@ -10,6 +10,40 @@ exploration tool (below); the productionised Python export will follow the step-
 See also the downstream design notes in `03-bpts.md §10` (fire-regions as unions of cartas,
 no edge buffer needed, watch SNIC's internal ~256-px tile seams).
 
+## Output is the SNIC *mask*, not `cluster_id`
+
+Downstream we use **only the binary SNIC `burned` mask** (clusters that contain a seed) — the
+`cluster_id` label band is never exported or consumed. Two consequences:
+
+- **No label-consistency concern across the export split.** Cluster IDs are only unique within
+  one SNIC run; if we exported them, tiling would need care. Since we drop the labels, the
+  export tiling below is a pure transport split.
+- The exported layer is a sparse binary mask → compresses to almost nothing as a COG.
+
+## Export (operationalisation)
+
+SNIC must see the whole contiguous footprint, so run it over a **region mosaic (union of
+cartas), one asset per region + year**:
+
+1. **`toAsset`, per region + year.** No per-dimension cap (only `maxPixels`, raise to ~1e13);
+   assets are internally-tiled pyramids, so a region-wide mosaic is fine. This asset also
+   materialises the heavy neighborhood computation once.
+2. **`toDrive` as tiled Cloud-Optimized GeoTIFFs**, off `ee.Image(region_year_asset)` (fast
+   copy, no recompute). **No Cloud Storage bucket needed** — `cloudOptimized: true` *is*
+   supported on `toDrive` (contrary to a common belief that COG is CS-only); a COG is
+   DEFLATE/LZW-compressed + tiled, so the sparse mask stays tiny, same as the asset. Use
+   `fileDimensions` (multiple of 256, e.g. 8192) to control the split and `skipEmptyTiles=True`
+   to drop all-masked tiles. The 10k-px file cap applies here (Drive/CS files), **not** to the
+   asset.
+   - **Tile inside the single `toDrive()` call (via `fileDimensions`), do *not* loop over the
+     cartas grid.** SNIC already ran at region level → the asset; `toDrive` is pure transport,
+     so transport tiles need not honor the cartas grid (which governs *computation* tiling
+     elsewhere). One task per region+year beats hundreds of per-carta tasks, and terra
+     reassembles by geolocation regardless of how the split aligns.
+3. **Reassemble in R with terra:** `terra::vrt(tiles)` (virtual mosaic, no copy) or
+   `merge()`/`mosaic()`. Tiles are exact non-overlapping subsets and carry only the mask, so
+   reassembly is a plain stitch — no relabeling.
+
 ## Interactive exploration tool (GEE repo)
 
 `explore_snic_IB` — in the **fuego** GEE repo (not this one), at
