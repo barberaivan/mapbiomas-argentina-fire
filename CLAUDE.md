@@ -24,6 +24,7 @@ one step, e.g. the remap and the fit are both inputs to step 02):
 | `collection-01/docs/02-model_fitting.md` | step 02 — elastic-net LR fitting |
 | `collection-01/docs/03-bpts.md` | step 03 — burn-probability time-series metrics: full design, implementation + GEE array gotchas |
 | `collection-01/docs/03-colab_multi_export.md` | step 03 — distributed multi-account export via Colab (admin notes) |
+| `collection-01/docs/04-snic.md` | step 04 — SNIC spatial segmentation: status + the `explore_snic_IB` GEE tuning tool |
 
 > **When a workflow step is in play, read the matching `collection-01/docs/NN-*.md` first.**
 > Those notes point onward to the production files (`config/`, `models/`, `workflow/`) and to
@@ -94,8 +95,10 @@ above for per-step design.
 
 All GEE JavaScript lives in a separate repo, **not** in this one:
 
-- **Local**: `/home/ivan/Insync/MapBiomas/mapbiomas-argentina-fire-gee/`
-- **Remote**: `https://earthengine.googlesource.com/users/mapbiomas-arg/fuego` (`mapbiomas-arg/fuego`)
+- **Local**: `/home/ivan/dev/MapBiomas/mapbiomas-arg-fire-gee/`
+- **Remote**: `https://earthengine.googlesource.com/users/mapbiomas-arg/fuego` (`mapbiomas-arg/fuego`); pushes to branch `master`
+
+Files in this repo have **no extension** (they are Code Editor scripts).
 
 The user does not regularly pull it, so it may be behind. **Always `git pull` before editing,
 then edit, then `git push`** — the Code Editor reflects the push on next refresh. The `fuego`
