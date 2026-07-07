@@ -107,6 +107,103 @@ Key design points:
 The thresholds settled here produce the `candseed ∈ {0,1,2}` surface that the algorithm design
 (§2 onward) takes as its input.
 
+### Ground seeds & candidates in the burned/unburned data — [DECIDED: local period-based; thresholds OPEN]
+
+`explore_snic_IB` tunes the thresholds *by eye*. To **ground them in data** — and answer whether a
+**second (annual) model** is needed (col-0 had one) — we compare the `bpts` metrics of burned vs
+unburned **training points**. col-0 decisions rested mostly on highest 5-med prob and highest 5-med
+delta (a simple empirical tree could suffice); this study tests that directly.
+
+**The deciding question.** If a **shallow tree (depth ≤3) on 3–4 `bpts` metrics** reaches
+near-ceiling burned/unburned separation, the empirical-tree route is justified and **no second
+model is needed**. A clear plateau is the evidence *for* a model. A GEE random forest stays a
+**fallback**, not the plan — it would reintroduce the extra deployed model we're avoiding (a
+resolved point table is a one-liner to upload as a training FC asset if RF ever graduates).
+
+**Chosen approach — recompute the metrics LOCALLY from the training observations (col-0 style),
+period-based** (revised 2026-07-06, superseding an earlier "sample the exported annual `bpts` at the
+points" plan). Rather than sample the GEE `bpts` images, we recompute the burn-probability
+time-series metrics directly from the already-downloaded `training_observations_<region>_v1.csv`.
+Why this is cleaner:
+
+- **Runs now, on all data.** No wait for the still-exporting `bpts`, no per-fire export-completeness
+  gate — every training fire in every downloaded region is usable immediately.
+- **Dissolves the two hard problems.** Because the metric window is the fire's **observation period**
+  (not a calendar year), **cross-year attribution disappears** (the series just spans Dec→Jan on
+  cross-year-safe day-numbers) and **the annual-vs-window contamination disappears** (an unburned
+  point's series only covers its validated window, so a different-season fire elsewhere in the year
+  simply isn't in it — no `date_post` gate needed). Both the straddle-year handling and the
+  contamination gate an earlier draft designed are **no longer required**.
+- **Reuses validated code.** `scripts/ts_predict_functions.R:predict_class()` already computes
+  per-obs burn probability from raw-scale coefficients (verified to reproduce glmnet to ~1e-14); we
+  point it at the **deployed P050** coefficients (reconstructed from the git-tracked
+  `models/P050/*.csv`, so probabilities match production).
+- **`veg_fire` stratification is free** (from `mb_class_raw` + region via `config/veg_fire_remap.csv`).
+
+Decisions taken this session (2026-07-06):
+
+- **Recover trimmed obs (don't just use `fit == TRUE`).** `data_cleaning.R`'s `fit == FALSE` mostly
+  trims post-fire obs for *label* quality, but those are valid observations and dropping them starves
+  the K=3 `minfore` window (a scar's high-prob obs sit at the series end → `pmax3`/`delta3` wrongly
+  collapse to ~0). So the metric series uses **all obs of "usable" points** — points with ≥ 1
+  `fit == TRUE` obs, which still honours whole exclusions (`drop_fire`, fully-dropped unburned points).
+  The label is the point-level `class`. *(Verified on BA fire_12: recovery lifts burned points reaching
+  ≥ 3 post-fire obs from 94 % → 100 %.)*
+- **One `veg_fire` per point = production's focal-year rule (`03-bpts §2.1, §3.4`).** Production applies
+  a *single* `veg_fire = MapBiomas(fire_year−1)` to the whole focal-year series (incl. padding obs),
+  **not** each obs's own prev-year class. So we assign the class from the point's obs in
+  `fire_year = year(post_lwr)` (its `mb_class_raw` = MB(fire_year−1)) and apply that one class model to
+  the whole series. *(This was the decisive fix: without it, points whose prev-year MB class changed
+  between the pre- and post-fire years get the wrong model on half the series and their `delta3`
+  diverges wildly — bidirectionally — from production.)*
+- **Two-part min-obs gate.** (a) The step-03 padded-array rule (`03-bpts §3.5`): ≥ 6 obs for the K=3
+  family, ≥ 4 for K=2. (b) **K=3 also needs ≥ 3 *post-fire* obs** (`date ≥ post_lwr`) to see sustained
+  burn; burned points below that are genuinely fast-recovery veg → **NA the K=3 family** (K=2 is the
+  right metric there) so they don't pollute the seed-metric distribution with false lows.
+- **Annualised density `n`.** No calendar year to count over, so annualise the point's obs rate:
+  `n = round(n_obs / days_elapsed × 365)` (`days_elapsed` = last−first obs day). Extrapolates a
+  short period up and normalises a long one down to a per-year density comparable to production `n`.
+- **What to look at.** (1) per-metric ECDF/violin, burned vs unburned, for the seed trio
+  (`pmax3`,`delta3_peak`,`minfore3_peak`) and the loose K=2 candidate metrics; (2) commission/omission
+  vs threshold, **read from two ends** — **seeds optimise precision** (few unburned above the cut;
+  seeds only need part of a scar, SNIC grows the rest), **candidates optimise recall** (few burned
+  below the cut; candidates are the footprint SNIC grows into); (3) 2D scatter + the shallow CART;
+  (4) **stratify by region / veg_fire / `n`** — separability drifts (grassland recovers fast, forest
+  slow; sparse series overlap more), so check whether one global set holds.
+- **Transfer validation — a single-fire hard-check (DONE, PASS).** The metrics are period-based;
+  production applies the cuts to **year-based** `bpts`. Hard-check ONE fire that burns **mid-year in an
+  already-exported year** (`scripts/test-bp_ts_metrics_local.R`; find candidates with
+  `bp_ts_metrics_local_train.R --midyear`): compute locally, sample the exported image at the same
+  points, compare. **Result on BA fire_12 (Sept 2016, 337 burned pts):** `date_post` agrees to a median
+  of **1 day** (100 % within 30 d → *same event detected*), `delta3`/`pmax3` median |Δ| ≈ **0.011**,
+  **r ≈ 0.88**, ~88 % within 0.15. The residual per-point scatter is **bidirectional and unbiased** —
+  the inherent effect of the truncated/sparser training window feeding `minfore3`/`maxback3` different
+  neighbour obs than production's full-year+padding series (not removable from training data alone).
+  Since thresholds are calibrated on the **distribution** (not per-point values), this is acceptable;
+  final cuts are still confirmed against production (`explore_snic_IB` / the export).
+
+**Tooling (calibration, so `scripts/` + a notebook + `config/`, NOT `workflow/`** — produces
+hand-editable *numbers*, not a consumed pipeline asset; mirrors the term-pruning scripts+notebook→
+`config/`/`models/` shape):
+
+- `scripts/bp_ts_metrics_local_train.R` — the local recompute: recover usable-point obs → focal-year
+  P050 `predict_class` → per-point period metrics + K-family gates + annualised `n` + `veg_fire` →
+  `data/annual_data_resolved.csv` (145 k points). Named to mirror `workflow/03-bp_ts_metrics.py`; has
+  a `--midyear` helper listing hard-check candidate fires.
+- `scripts/test-bp_ts_metrics_local.R` — the single mid-year-fire hard-check against the exported
+  image.
+- `scripts/annual_data_download.py` — **retained as the validation sampler** (pulls exported
+  year-based `bpts` at a fire's points for the hard-check); no longer the primary path.
+- `notebooks/snic_candidates_seeds_definition.qmd` — distributions, commission/omission curves,
+  shallow CART, region/veg/`n` stratification.
+- `config/snic_seed_candidate_thresholds.csv` — the hand-editable seed/candidate cuts the step-04
+  SNIC reads; starts as col-0-adapted PLACEHOLDERs, finalised from the notebook. **Manual override is
+  first-class**: if data-based thresholds fail out-of-sample, edit this file, no code change.
+
+> **[OPEN]** the threshold *values* (await the notebook), whether one global set holds or region/veg
+> stratification is needed, and the outcome of the single-fire hard-check (magnitude agreement
+> confirms period→year transfer).
+
 ### Shared GEE utils
 
 To keep the scripts small, the reusable pieces live in the fuego repo's `collection-01/utils/`:
@@ -133,7 +230,9 @@ To keep the scripts small, the reusable pieces live in the fuego repo's `collect
 - `candseed ∈ {0, 1, 2}` — `0` = no fire, `1` = candidate, `2` = seed. In practice `0` can be
   masked; we keep it unmasked in the notation. **Seeds/candidates are derived upstream** from the
   step-03 bands (`delta{2,3}_peak`, `minfore/pmax`, `n`, …) — the thresholds tuned in
-  `explore_snic_IB` (see "Getting started"); *that derivation is out of scope for the algorithm
+  `explore_snic_IB` and **grounded in the burned/unburned training-point distributions** (see
+  "Getting started" → *Ground seeds & candidates in the data*, and
+  `config/snic_seed_candidate_thresholds.csv`); *that derivation is out of scope for the algorithm
   sections* — step 04 takes `candseed` as given.
 - a **burn date** per pixel (from step-03 `date_post{2,3}`), and
 - the observation density `n` (step-03 quality channel), used to make `D` adaptive (§5).
@@ -530,6 +629,10 @@ Drive+COG is the decision.)*
 - **[§5]** Concrete `D = f(n)` (also governs the §7 merge tolerance).
 - **[§6]** SNIC parameters: how seeds are supplied, `size`, `compactness`, `neighborhoodSize`,
   connectivity 8.
+- **[Getting started]** Seed/candidate threshold *values* in `config/snic_seed_candidate_thresholds.csv`
+  (await the fuller `bpts` export + the `snic_candidates_seeds_definition.qmd` study), and whether one
+  global set holds or region/veg stratification is needed. Same study also decides empirical-tree vs
+  second (annual) model for `candseed`.
 - **[§7]** Polygon filter: empirical decision tree vs polygon-level model; IoU merge threshold
   (0.2?) and whether the `date_mode` merge tolerance equals `D`.
 - **[§7.3]** Region definition (which contiguous carta groups) and **verify SNIC tile-boundary

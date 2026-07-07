@@ -33,3 +33,7 @@ __pycache__/
 # step-03 export monitoring artifacts (runtime output)
 bpts_*_watch.md
 bpts_*_timing.csv
+
+# step-04 seed/candidate calibration runtime output (run logs / sidecars)
+collection-01/scripts/bp_ts_metrics_local_train/
+collection-01/scripts/annual_data_download/

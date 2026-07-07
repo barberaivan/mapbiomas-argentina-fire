@@ -1,0 +1,13 @@
+level,metric,op,threshold,note
+# Seed/candidate thresholds for the step-04 SNIC candseed surface (docs/04-snic.md).
+# HAND-EDITABLE: PLACEHOLDER values below, adapted from the col-0 method / explore_snic_IB.
+# Refine from notebooks/snic_candidates_seeds_definition.qmd (seeds = precision-side cut,
+# candidates = recall-side cut). A pixel is a SEED if it passes ALL seed rows; a CANDIDATE
+# if it passes ALL candidate rows. connected_min_px drops seed components smaller than P.
+seed,pmax3,>=,0.70,magnitude (strict) — PLACEHOLDER
+seed,delta3_peak,>=,0.50,change (strict) — PLACEHOLDER
+seed,minfore3_peak,>=,0.50,persistence (strict) — PLACEHOLDER
+seed,connected_min_px,>=,6,drop seed components of <=5 connected px (P=5) — PLACEHOLDER
+candidate,pmax2,>=,0.40,magnitude (loose) — PLACEHOLDER
+candidate,delta2_peak,>=,0.25,change (loose) — PLACEHOLDER
+candidate,minfore2_peak,>=,0.25,persistence (loose) — PLACEHOLDER

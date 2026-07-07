@@ -1,0 +1,201 @@
+---
+title: "SNIC seeds & candidates — data-based thresholds"
+subtitle: "Burned vs unburned distributions of the period-based bpts metrics; commission/omission curves and a shallow tree to decide the seed/candidate cuts"
+author: "Iván Barberá"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    number-sections: true
+    embed-resources: true
+    theme: cosmo
+    fig-align: center
+    code-fold: true
+---
+
+```{r setup, message=FALSE, warning=FALSE}
+library(data.table)
+library(tidyverse)
+library(scales)
+library(knitr)
+library(rpart)
+library(rpart.plot)
+
+theme_set(theme_minimal(base_size = 11))
+
+# One row per training point, from scripts/bp_ts_metrics_local_train.R: the
+# step-03 burn-probability time-series metrics recomputed locally over each
+# point's OBSERVATION PERIOD (not a calendar year), using the deployed P050
+# model on the fit-cleaned observations. label: 1 = burned, 0 = unburned.
+# Period-based windows dissolve the cross-year + contamination problems (see
+# docs/04-snic.md), so there is no negative-set gating here.
+d <- fread("../data/annual_data_resolved.csv")
+lab <- c(`0` = "unburned", `1` = "burned")
+
+# Seeds (strict, K=3) vs candidates (loose, K=2): magnitude (pmaxK) + change
+# (deltaK_peak) + persistence (minforeK_peak). docs/04-snic.md §"Tune seeds…".
+seed_metrics <- c("pmax3", "delta3_peak", "minfore3_peak")
+cand_metrics <- c("pmax2", "delta2_peak", "minfore2_peak")
+```
+
+# What this notebook decides
+
+Whether a simple **empirical threshold / shallow tree on the recomputed `bpts`
+metrics** separates burned from unburned points well enough to define the SNIC
+**seed** and **candidate** surfaces — or whether a **second (annual) model** is
+warranted (docs/04-snic.md §2). Rule of thumb: if a depth-2/3 tree on 3–4
+metrics reaches near-ceiling separation (§4), the second model is unnecessary; a
+GEE random forest stays a fallback, not the plan.
+
+Seeds and candidates have **opposite objectives**, so read every curve from two
+ends (§3):
+
+- **Seeds → precision** (few unburned above the cut). Seeds only need *part* of a
+  scar; supervised SNIC grows the rest.
+- **Candidates → recall** (few burned below the cut). Candidates define the
+  footprint SNIC may grow into; missed burned area is the real cost.
+
+**Validation.** The local metric computation is checked against the exported
+`bpts` image on a single mid-year fire (`scripts/test-bp_ts_metrics_local.R`);
+run that before trusting the thresholds transfer to production (§7).
+
+# Coverage & class balance
+
+```{r coverage}
+d[, .(points = .N, burned = sum(label == 1L), unburned = sum(label == 0L)),
+  by = region][order(region)] |>
+  kable(caption = "Points by region.")
+
+d[, .(points = .N, burned = sum(label == 1L)), by = .(veg_fire, veg_fire_name)][
+  order(-points)][1:15] |>
+  kable(caption = "Top veg_fire classes by point count.")
+```
+
+# Per-metric distributions, burned vs unburned {#sec-dist}
+
+```{r ecdf, fig.width=9, fig.height=6}
+long <- melt(d, id.vars = "label",
+             measure.vars = c(seed_metrics, cand_metrics),
+             variable.name = "metric", value.name = "value", na.rm = TRUE)
+
+ggplot(long, aes(value, colour = factor(label, labels = lab))) +
+  stat_ecdf(linewidth = 0.7) +
+  facet_wrap(~ metric, scales = "free_x") +
+  labs(colour = NULL, x = "metric value (probability scale)", y = "ECDF") +
+  theme(legend.position = "top")
+```
+
+```{r violin, fig.width=9, fig.height=4}
+ggplot(long[metric %in% seed_metrics],
+       aes(factor(label, labels = lab), value, fill = factor(label, labels = lab))) +
+  geom_violin(alpha = 0.6, scale = "width") +
+  facet_wrap(~ metric, scales = "free_y") +
+  labs(x = NULL, y = NULL, fill = NULL) +
+  theme(legend.position = "none")
+```
+
+# Commission / omission vs threshold {#sec-curves}
+
+For each metric, sweep the threshold: **commission** = fraction of *kept* points
+that are unburned (precision failure); **omission** = fraction of *burned* points
+*below* the cut (recall failure). Read the seed cut off commission, the candidate
+cut off omission.
+
+```{r co-curves, fig.width=9, fig.height=6}
+co_curve <- function(dt, metric, n = 200) {
+  v <- dt[[metric]]; y <- dt$label
+  ok <- !is.na(v); v <- v[ok]; y <- y[ok]
+  thr <- unique(quantile(v, probs = seq(0, 1, length.out = n), na.rm = TRUE))
+  rbindlist(lapply(thr, function(t) data.table(
+    metric = metric, threshold = t,
+    commission = if (sum(v >= t)) mean(y[v >= t] == 0L) else NA_real_,
+    omission   = mean(v[y == 1L] < t))))
+}
+curves <- rbindlist(lapply(c(seed_metrics, cand_metrics), co_curve, dt = d))
+
+ggplot(melt(curves, id.vars = c("metric", "threshold"),
+            variable.name = "error", value.name = "rate"),
+       aes(threshold, rate, colour = error)) +
+  geom_line(linewidth = 0.7) +
+  facet_wrap(~ metric, scales = "free_x") +
+  scale_y_continuous(labels = percent) +
+  labs(x = "threshold (≥ kept)", y = "error rate", colour = NULL) +
+  theme(legend.position = "top")
+# TODO: mark chosen seed (low-commission) & candidate (low-omission) cuts, then
+# transcribe to config/snic_seed_candidate_thresholds.csv.
+```
+
+# Joint separation & a shallow tree {#sec-tree}
+
+```{r scatter, fig.width=7, fig.height=5}
+ggplot(d, aes(delta3_peak, pmax3, colour = factor(label, labels = lab))) +
+  geom_point(alpha = 0.25, size = 0.6) +
+  labs(colour = NULL, x = "delta3_peak", y = "pmax3") +
+  theme(legend.position = "top")
+```
+
+```{r cart, fig.width=8, fig.height=5}
+# Shallow tree as a GUIDE (not a deployable model): which splits does the data
+# suggest, and does it plateau short of clean separation?
+dt <- d[!is.na(delta3_peak)]
+fit <- rpart(label ~ pmax3 + delta3_peak + minfore3_peak + pmax2 +
+               delta2_peak + minfore2_peak + n,
+             data = dt, method = "class",
+             control = rpart.control(maxdepth = 3, cp = 0.005))
+rpart.plot(fit, extra = 104, box.palette = "RdYlGn", nn = TRUE)
+cat(sprintf("resubstitution accuracy (depth ≤3): %.3f\n",
+            mean(predict(fit, type = "class") == dt$label)))
+# Near-ceiling => empirical tree suffices, no second model. Clear plateau => model.
+```
+
+# Stratification — does one threshold set hold? {#sec-strata}
+
+Separability drifts by vegetation and observation density (grassland recovers
+fast, forest slow; sparse series overlap more). If the cut moves a lot across
+strata, seeds/candidates may need to be veg/region-stratified.
+
+```{r strata-region, fig.width=9, fig.height=4}
+ggplot(d, aes(delta3_peak, colour = factor(label, labels = lab))) +
+  stat_ecdf(linewidth = 0.6) +
+  facet_wrap(~ region, nrow = 1) +
+  labs(colour = NULL, x = "delta3_peak", y = "ECDF") +
+  theme(legend.position = "top")
+```
+
+```{r strata-veg, fig.width=9, fig.height=6}
+top_veg <- d[, .N, by = veg_fire_name][order(-N)][1:9, veg_fire_name]
+ggplot(d[veg_fire_name %in% top_veg],
+       aes(delta3_peak, colour = factor(label, labels = lab))) +
+  stat_ecdf(linewidth = 0.6) +
+  facet_wrap(~ veg_fire_name) +
+  labs(colour = NULL, x = "delta3_peak", y = "ECDF",
+       subtitle = "by veg_fire (top 9 by point count)") +
+  theme(legend.position = "top")
+```
+
+```{r strata-n, fig.width=9, fig.height=4}
+d[, n_bin := cut(n, breaks = c(-Inf, 5, 10, 20, Inf),
+                 labels = c("≤5", "6–10", "11–20", ">20"))]
+ggplot(d[!is.na(n_bin)], aes(delta3_peak, colour = factor(label, labels = lab))) +
+  stat_ecdf(linewidth = 0.6) +
+  facet_wrap(~ n_bin, nrow = 1) +
+  labs(colour = NULL, x = "delta3_peak", y = "ECDF",
+       subtitle = "by annualised observation density n") +
+  theme(legend.position = "top")
+```
+
+# Transfer to production & proposed thresholds {#sec-thresholds}
+
+These metrics are **period-based**; production applies the cuts to the
+**year-based** `bpts`. Confirm the single-fire hard-check
+(`scripts/test-bp_ts_metrics_local.R`) passes on the magnitude metrics before
+committing thresholds. Then transcribe the seed (precision-side) and candidate
+(recall-side) cuts into `config/snic_seed_candidate_thresholds.csv`
+(hand-editable; the SNIC step reads them) and record here the values chosen, the
+reasoning, and whether a single global set held or stratification was needed.
+
+```{r thresholds}
+# TODO: fill in from the curves above, e.g.
+# fread("../config/snic_seed_candidate_thresholds.csv") |> kable()
+```
