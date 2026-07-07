@@ -204,6 +204,61 @@ hand-editable *numbers*, not a consumed pipeline asset; mirrors the term-pruning
 > stratification is needed, and the outcome of the single-fire hard-check (magnitude agreement
 > confirms period→year transfer).
 
+### [2026-07-07] Notebook results, the K decision, and how to follow up
+
+`notebooks/snic_candidates_seeds_definition.qmd` now implements the full study (rendered HTML
+alongside it); it added the **n-breakpoint sweep** (`§sec-nbreak`) and the **initial 5-value
+table** (`§sec-initial`). What we learned and decided:
+
+- **The candseed design is `deltaK_peak` thresholds with K chosen *per pixel* by `(veg_fire, n)`.**
+  Since `deltaK_peak = minforeK − maxbackK` and `minforeK = min` over **K consecutive** obs, the
+  metric *already bakes K-persistence in* — so choosing K = choosing how much persistence to
+  demand, which is exactly what recovery-speed (`veg_fire`) and sampling density (`n`) should
+  govern. `pmax`/`minfore` are **subsumed** → dropped. Only `deltaK_peak` remains.
+- **The NA artifact — read this before re-running any comparison.** On the training points K=2
+  (`delta2`) out-ranks K=3 (`delta3`) on essentially every axis (overall AUC, per-`n`-bin, 22/23
+  veg, and the precision end) — **but only when K=3's missing values are scored as misses**
+  (`NA-as-worst`: `delta3 = NA` for a burned pixel with <3 post-fire obs = a missed detection).
+  Dropping them (`na.omit`) makes K=3 look *better* — that was an evaluation artifact that fooled
+  an earlier pass. Under `na.omit` K=3 ties/beats K=2 at high `n`; the whole "K=2 wins" is the NA
+  penalty. **So K=3's cost is recall (the NA holes); its benefit is commission-at-scale**
+  (persistence rejecting the `~0.5` background noise Iván saw on the maps), which a **44 %-burned,
+  hard-negative point set structurally cannot measure.** The AUC therefore only bounds the *safe
+  K=3 envelope* (how much K=3 recall tolerates); **whether to actually use K=3 for noise rejection
+  is a maps call** (`explore_snic_IB`).
+- **n-breakpoint sweep.** Per veg, route `n ≥ break → K3`, `n < break → K2`; score with the
+  **weighted per-subgroup AUC** (`AUC(delta2)` on the low-`n` group + `AUC(delta3)` on the high-`n`
+  group, weighted by N — scale-free, `NA-as-worst`). `interior_gain ≤ 0.02` for **all** veg → no
+  recall crossover; read the curve as the **max-K3 envelope**, not proof K=3 wins. `n_break` = the
+  knee (lowest break within 0.01 AUC of all-K=2). **Low-`n` is only ~0.5 % of training data**, so
+  the breakpoint is principle-set at the low edge of the trainable range; the only adaptive move
+  with support below that is **K=2→K=1** for the sparse early years (1999–2001).
+- **Initial thresholds — base-rate-invariant so they transfer to ~1 %-burned deployment.**
+  `candidate` = highest threshold with **omission ≤ 5 %** (within-burned recall bar); `seed` =
+  lowest with **FPR ≤ 2 %** (within-unburned specificity — the transfer-safe replacement for a raw
+  commission bar, which is base-rate-dependent). Order them `cand = min`, `seed = max` so seed ⊂
+  candidate (separable veg meet both bars over a wide band and would otherwise invert). Calibrated
+  on **full per-veg data** → **`n_break`-independent**: slide the breakpoint on the maps, keep the
+  same delta cuts. Output written to **`data/snic_thresholds_initial_by_veg.csv`**.
+
+**Follow-up — resume here (all [OPEN]):**
+
+1. **5-value vs 4-value structure — decide first.** `K3_cand` is **NA for ~15/23 veg** (K=3 can't
+   meet the 95 %-recall candidate bar), while `K3_seed` exists for all. The data leans **4-value**:
+   *candidate always K=2* (broadest footprint, no persistence hole) and *seed pixel-wise K*
+   (`K3_seed` for `n ≥ break`, `K2_seed` below — the persistent precision core). The 5-value form
+   still works (K3_cand falls back to K2_cand where NA); pick one.
+2. **Merge veg into 2–3 recovery groups by the sweep, not by name** — the behaviour cuts across
+   prefixes (`forest_pampa` steep/K2-only vs `forest_pat`/`forest_ba` flat/K3-safe; `grassland_pat`
+   = arid steppe = slow). The `k3na` rate per veg is a clean recovery-speed proxy here.
+3. **`pasture_chaco`** is barely separable (AUC ≈ 0.69) even at best — special handling / manual
+   review, or accept weak cuts.
+4. **Write the chosen thresholds to config + validate on maps.** Transcribe into
+   `config/snic_seed_candidate_thresholds.csv` (schema change → per-veg) and the fuego JS, then use
+   **`explore_snic_IB`** to answer the one thing the points can't: does K=3 actually reject the
+   `~0.5` background commission, and nudge `n_break` by eye. Remember `connected_min_px ≥ 6` +
+   supervised SNIC seed-growing are the real scale noise suppressors, not the delta cut alone.
+
 ### Shared GEE utils
 
 To keep the scripts small, the reusable pieces live in the fuego repo's `collection-01/utils/`:

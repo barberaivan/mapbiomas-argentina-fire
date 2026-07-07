@@ -149,6 +149,255 @@ cat(sprintf("resubstitution accuracy (depth ≤3): %.3f\n",
 # Near-ceiling => empirical tree suffices, no second model. Clear plateau => model.
 ```
 
+# Pixel-wise K: the n-breakpoint sweep {#sec-nbreak}
+
+The candseed surface can be defined by `deltaK_peak` alone, but with **K chosen
+per pixel**: since `deltaK_peak = minforeK − maxbackK` already bakes K-consecutive
+persistence into the metric, *choosing K = choosing how much persistence to
+demand*. Fast-recovery vegetation and sparse series (`n` low) can't sustain K=3,
+so they want K=2. We locate the switch with a **sweep over the n-breakpoint** `b`:
+obs with `n ≥ b` use K=3 (`delta3`), obs with `n < b` use K=2 (`delta2`). Sweeping
+`b` from above `max(n)` (all K=2) down to `min(n)` (all K=3) traces the recall cost
+of pushing toward K=3.
+
+**Two ways to score each breakpoint** (they differ, and the difference matters):
+
+- **mixed-column AUC** — pool every pixel's assigned-`deltaK` into one score, one
+  AUC. But `delta3 ≤ delta2` *pointwise*, so this ranks delta2 pixels against
+  delta3 pixels across a scale gap, which can manufacture a monotone "K2 wins".
+- **weighted per-subgroup AUC** — `AUC(delta2)` on the `n<b` group and
+  `AUC(delta3)` on the `n≥b` group, averaged by group N. Scale-free (each AUC is
+  within one metric), matches setting a **threshold per metric**, and its interior
+  can rise *above* both ends — where a genuine crossover would appear.
+
+Missing K=3 (`delta3 = NA`: <3 post-fire obs) is scored **worst-ranked**: routing a
+burned pixel to a K it can't populate is a missed detection, not a pixel to drop.
+
+```{r nbreak-compute, message=FALSE, warning=FALSE}
+setDT(d)
+d[, n := as.integer(round(n))]
+d[, d2 := fifelse(is.na(delta2_peak), -2, delta2_peak)]   # NA-as-worst sentinel
+d[, d3 := fifelse(is.na(delta3_peak), -2, delta3_peak)]
+
+auc <- function(s, y){
+  ok <- !is.na(s); s <- s[ok]; y <- y[ok]
+  n1 <- sum(y == 1L); n0 <- sum(y == 0L)
+  if (n1 == 0L || n0 == 0L) return(NA_real_)
+  r <- rank(s)
+  (sum(r[y == 1L]) - n1 * (n1 + 1) / 2) / (as.double(n1) * n0)
+}
+
+sweep_one <- function(sub){
+  ns <- sort(unique(sub$n)); breaks <- c(ns, max(ns) + 1L)
+  y <- sub$label; d2 <- sub$d2; d3 <- sub$d3; nn <- sub$n
+  rbindlist(lapply(breaks, function(b){
+    high <- nn >= b; low <- !high
+    a_k2 <- if (any(low))  auc(d2[low],  y[low])  else NA_real_
+    a_k3 <- if (any(high)) auc(d3[high], y[high]) else NA_real_
+    Nl <- sum(low); Nh <- sum(high)
+    parts <- c(a_k2, a_k3); w <- c(Nl, Nh); keep <- !is.na(parts)
+    data.table(
+      n_break      = b,
+      auc_mixed    = auc(fifelse(high, d3, d2), y),
+      auc_weighted = if (any(keep)) sum(parts[keep] * w[keep]) / sum(w[keep]) else NA_real_,
+      auc_k2 = a_k2, auc_k3 = a_k3, N_at = sum(nn == b))
+  }))
+}
+
+veg_ord <- d[, .N, by = veg_fire_name][order(-N)]
+d[, veg_fac := factor(veg_fire_name, levels = veg_ord$veg_fire_name)]
+sw <- d[, sweep_one(.SD), by = veg_fac]
+```
+
+## mixed-column vs weighted per-subgroup {#sec-nbreak-methods}
+
+Grey = mixed-column (one pooled AUC); red = weighted per-subgroup (your method).
+Right edge = all K=2, left edge = all K=3. Fixed axes for comparison.
+
+```{r nbreak-methods, fig.width=12, fig.height=16, warning=FALSE}
+m <- melt(sw, id.vars = c("veg_fac", "n_break"),
+          measure.vars = c("auc_mixed", "auc_weighted"),
+          variable.name = "method", value.name = "auc")
+m[, method := factor(method, c("auc_mixed", "auc_weighted"),
+                     c("mixed-column", "weighted per-subgroup"))]
+ggplot(m, aes(n_break, auc, colour = method)) +
+  geom_line(linewidth = 0.6) +
+  facet_wrap(~ veg_fac, ncol = 4) +
+  coord_cartesian(ylim = c(0.3, 1)) +
+  scale_colour_manual(values = c("mixed-column" = "grey60",
+                                 "weighted per-subgroup" = "firebrick"), name = NULL) +
+  labs(x = "n_break  (right = all K=2, left = all K=3)",
+       y = "AUC (NA scored worst)",
+       title = "n-breakpoint sweep: mixed-column vs weighted per-subgroup AUC") +
+  theme_minimal(base_size = 9) + theme(legend.position = "top")
+```
+
+## Component curves: AUC(delta2) low-group vs AUC(delta3) high-group {#sec-nbreak-components}
+
+The crossover, read directly: at each `b`, how well `delta2` separates the sparse
+(`n<b`) group vs how well `delta3` separates the dense (`n≥b`) group. Where the
+K=3 line sits *above* the K=2 line, K=3 earns the switch.
+
+```{r nbreak-components, fig.width=12, fig.height=16, warning=FALSE}
+cc <- melt(sw, id.vars = c("veg_fac", "n_break"),
+           measure.vars = c("auc_k2", "auc_k3"),
+           variable.name = "metric", value.name = "auc")
+cc[, metric := factor(metric, c("auc_k2", "auc_k3"),
+                      c("K=2 (delta2, n<b group)", "K=3 (delta3, n>=b group)"))]
+ggplot(cc, aes(n_break, auc, colour = metric)) +
+  geom_line(linewidth = 0.6) +
+  facet_wrap(~ veg_fac, ncol = 4) +
+  coord_cartesian(ylim = c(0.3, 1)) +
+  scale_colour_manual(values = c("K=2 (delta2, n<b group)" = "steelblue",
+                                 "K=3 (delta3, n>=b group)" = "darkorange"), name = NULL) +
+  labs(x = "n_break", y = "within-group AUC (NA scored worst)",
+       title = "Component AUCs: delta2 on the sparse group, delta3 on the dense group") +
+  theme_minimal(base_size = 9) + theme(legend.position = "top")
+```
+
+## How much of \"K=2 wins\" is the NA penalty? {#sec-nbreak-na}
+
+Same weighted sweep, NA-as-worst vs `na.omit`, by recovery group (woody/steppe =
+slow; grassland/pasture/agriculture = fast). If the two collapse, the NA penalty
+is the whole story; if K=3 still trails under `na.omit`, its recall shortfall is
+genuine.
+
+```{r nbreak-na, fig.width=9, fig.height=4, warning=FALSE}
+d[, recov := fifelse(grepl("forest|shrubland", veg_fire_name) |
+                     veg_fire_name == "grassland_pat", "slow", "fast")]
+sweep_na <- function(sub, sentinel){
+  v2 <- if (sentinel) sub$d2 else sub$delta2_peak
+  v3 <- if (sentinel) sub$d3 else sub$delta3_peak
+  ns <- sort(unique(sub$n)); breaks <- c(ns, max(ns) + 1L); y <- sub$label; nn <- sub$n
+  rbindlist(lapply(breaks, function(b){
+    high <- nn >= b; low <- !high
+    a2 <- if (any(low)) auc(v2[low], y[low]) else NA
+    a3 <- if (any(high)) auc(v3[high], y[high]) else NA
+    p <- c(a2, a3); w <- c(sum(low), sum(high)); k <- !is.na(p)
+    data.table(n_break = b, auc = if (any(k)) sum(p[k] * w[k]) / sum(w[k]) else NA)
+  }))
+}
+na_cmp <- rbindlist(list(
+  d[, sweep_na(.SD, TRUE),  by = recov][, na := "NA = worst"],
+  d[, sweep_na(.SD, FALSE), by = recov][, na := "na.omit"]))
+ggplot(na_cmp, aes(n_break, auc, colour = na)) +
+  geom_line(linewidth = 0.7) + facet_wrap(~ recov) +
+  coord_cartesian(ylim = c(0.5, 1)) +
+  labs(x = "n_break (right = all K=2)", y = "weighted AUC", colour = NULL) +
+  theme_minimal() + theme(legend.position = "top")
+```
+
+## Summary: does the weighted curve ever beat both ends? {#sec-nbreak-summary}
+
+`interior_gain > 0` means the pixel-wise mix (weighted AUC) peaks **above** both
+all-K=2 and all-K=3 — a genuine crossover justifying a per-veg breakpoint. `≈ 0`
+means one endpoint is as good as any mix.
+
+```{r nbreak-summary}
+summ <- sw[, {
+  k2 <- auc_weighted[n_break == max(n_break)]
+  k3 <- auc_weighted[n_break == min(n_break)]
+  bi <- which.max(auc_weighted)
+  .(AUC_allK2 = round(k2, 3), AUC_allK3 = round(k3, 3),
+    AUC_wbest = round(auc_weighted[bi], 3), nbreak_best = n_break[bi],
+    interior_gain = round(auc_weighted[bi] - max(k2, k3, na.rm = TRUE), 3))
+}, by = veg_fac]
+merge(veg_ord[, .(veg_fac = factor(veg_fire_name, levels = veg_ord$veg_fire_name), N)],
+      summ, by = "veg_fac")[order(-interior_gain)] |>
+  kable(caption = "Per-veg n-breakpoint sweep (weighted AUC). interior_gain>0 = real crossover.")
+```
+
+# Initial candseed values: 5 per veg {#sec-initial}
+
+Per veg we need **five** starting numbers: `n_break` (K=2 below, K=3 at/above) and
+a **candidate** + **seed** threshold for **each** of delta2 and delta3. Rules, both
+sides using **base-rate-invariant** (within-class) error rates so they transfer from
+this ~44%-burned set to ~1%-burned deployment:
+
+- **candidate = highest threshold with omission ≤ 5 %** (recall ≥ 95 %; omission is
+  within the burned class).
+- **seed = lowest threshold with FPR ≤ 2 %** (≤ 2 % of *unburned* kept; specificity
+  ≥ 98 %). This is the transfer-safe replacement for a raw commission bar, which is
+  base-rate-dependent and thus not portable to deployment.
+
+Thresholds are calibrated on the **full per-veg data** (all `n`), so they are
+**independent of `n_break`** — the breakpoint can be re-tuned on the maps while the
+same delta cuts hold (valid here because low-`n` is only ~0.5 % of the data, so
+delta3's NA rate is recovery-driven, not sparsity-driven). `n_break` is the knee of
+the weighted sweep (§sec-nbreak): the lowest breakpoint within 0.01 AUC of all-K=2.
+
+```{r initial-compute, message=FALSE, warning=FALSE}
+OM_BAR <- 0.05; FPR_BAR <- 0.02
+grid <- seq(0, 1, by = 0.004)
+
+# n_break: knee of weighted sweep (contiguous from all-K2, tol 0.01)
+nbrk <- sw[order(veg_fac, -n_break), {
+  k2 <- auc_weighted[1]; knee <- n_break[1]
+  for (i in seq_along(n_break))
+    if (!is.na(auc_weighted[i]) && auc_weighted[i] >= k2 - 0.01) knee <- n_break[i] else break
+  .(n_break = knee)
+}, by = veg_fac]
+
+pick <- function(vals, y){                       # vals = sentinel (-2) delta
+  om <- vapply(grid, function(t) mean(vals[y == 1L] <  t), 0)   # omission (increasing in t)
+  fp <- vapply(grid, function(t) mean(vals[y == 0L] >= t), 0)   # FPR      (decreasing in t)
+  t_om  <- { ok <- which(om <= OM_BAR);  if (length(ok)) grid[max(ok)] else NA_real_ }  # recall bar
+  t_fpr <- { ok <- which(fp <= FPR_BAR); if (length(ok)) grid[min(ok)] else NA_real_ }  # precision bar
+  # order loose<strict: candidate = lower cut, seed = higher cut (seed subset of candidate).
+  # separable veg can meet both bars over a wide band, so t_om may exceed t_fpr — min/max fixes it.
+  if (!is.na(t_om) && !is.na(t_fpr))
+    list(cand = min(t_om, t_fpr), seed = max(t_om, t_fpr))
+  else list(cand = t_om, seed = t_fpr)           # only one bar met: keep its role
+}
+picks <- d[, {
+  p2 <- pick(d2, label); p3 <- pick(d3, label)
+  .(K2_cand = p2$cand, K2_seed = p2$seed,
+    K3_cand = p3$cand, K3_seed = p3$seed)
+}, by = veg_fac]
+
+vegN <- d[, .N, by = veg_fac]
+five <- Reduce(function(a, b) merge(a, b, by = "veg_fac"), list(vegN, nbrk, picks))
+setorder(five, -N)
+five[, .(veg_fac, N, n_break,
+         K2_cand = round(K2_cand, 3), K2_seed = round(K2_seed, 3),
+         K3_cand = round(K3_cand, 3), K3_seed = round(K3_seed, 3),
+         note = fifelse(is.na(K3_cand), "K3 omission floor >5% -> K2-only veg", ""))] |>
+  kable(caption = "Initial 5-value candseed table per veg (delta thresholds, sentinel scale).")
+```
+
+## Omission & FPR curves per veg — pick / override by eye {#sec-initial-curves}
+
+Two columns (delta2, delta3), one row per veg, free scales. Orange = omission
+(burned missed), purple = FPR (unburned kept). Dashed green = chosen **candidate**
+(omission side), dashed red = chosen **seed** (FPR side). Where the delta3 omission
+curve never dips under 5 % (floor above the line), K=3 can't serve that veg — it's
+K=2-only, consistent with a high `n_break`.
+
+```{r initial-curves, fig.width=8.5, fig.height=42, warning=FALSE}
+cv <- function(vals, y) data.table(t = grid,
+  omission = vapply(grid, function(t) mean(vals[y == 1L] <  t), 0),
+  FPR      = vapply(grid, function(t) mean(vals[y == 0L] >= t), 0))
+curve_dt <- d[, rbind(cbind(K = "delta2 (K=2)", cv(d2, label)),
+                      cbind(K = "delta3 (K=3)", cv(d3, label))), by = veg_fac]
+cl <- melt(curve_dt, id.vars = c("veg_fac", "K", "t"),
+           variable.name = "error", value.name = "rate")
+
+vl <- rbind(
+  picks[, .(veg_fac, K = "delta2 (K=2)", cand = K2_cand, seed = K2_seed)],
+  picks[, .(veg_fac, K = "delta3 (K=3)", cand = K3_cand, seed = K3_seed)])
+
+ggplot(cl, aes(t, rate, colour = error)) +
+  geom_hline(yintercept = c(OM_BAR, FPR_BAR), colour = "grey80", linewidth = 0.3) +
+  geom_line(linewidth = 0.5) +
+  geom_vline(data = vl, aes(xintercept = cand), colour = "darkgreen", linetype = 2, linewidth = 0.4) +
+  geom_vline(data = vl, aes(xintercept = seed), colour = "red", linetype = 2, linewidth = 0.4) +
+  facet_grid(veg_fac ~ K, scales = "free", axes = "all_x", axis.labels = "all_x") +
+  scale_colour_manual(values = c(omission = "darkorange", FPR = "purple"), name = NULL) +
+  labs(x = "delta threshold", y = "error rate",
+       title = "Omission / FPR vs delta threshold, per veg (green=cand, red=seed)") +
+  theme_minimal(base_size = 8) + theme(legend.position = "top")
+```
+
 # Stratification — does one threshold set hold? {#sec-strata}
 
 Separability drifts by vegetation and observation density (grassland recovers
