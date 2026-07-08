@@ -259,6 +259,42 @@ table** (`§sec-initial`). What we learned and decided:
    `~0.5` background commission, and nudge `n_break` by eye. Remember `connected_min_px ≥ 6` +
    supervised SNIC seed-growing are the real scale noise suppressors, not the delta cut alone.
 
+### [2026-07-07 pm → 2026-07-08 plan] Map-based pivot, tooling built, next session
+
+**The data route is shelved.** The per-veg thresholds calibrated from the training points
+(`data/snic_thresholds_initial_by_veg.csv`) **failed out of sample** — on unseen ground they gave
+tiny scars, bad behaviour, and speckle "burned" patches all over **non-vegetated** areas. So we stop
+calibrating cuts from the points and **move to map-based (by-eye) thresholds**; follow-up items 1–4
+above are parked (the CSV stays only as a starting reference, not the plan).
+
+**Tooling built & pushed** (fuego repo, `visualization-misc/explore_snic_IB-02`; `-01` keeps the old
+notebook-optima version for reference):
+
+- **Global hand-set delta cuts** (`G_K2/K3_CAND/SEED`) that move all veg at once; `n_break` stays
+  per-veg (K2-vs-K3 selector only); each `VEG_TABLE` delta cell is an **override** (`null` = global,
+  a number = just that veg). Per-pixel `K = n ≥ n_break ? 3 : 2`.
+- **Seed jumpgap filter** — reject seeds where `min(jumpgap2, jumpgap3) > S_GAP` (adaptive: 60 d if
+  `n ≥ 20`, else 90 d); plus the `connected_min_px` speck drop and supervised SNIC.
+- **Country-wide context layers** (per-pixel → unprojected, pan everywhere): delta2/delta3/n scan,
+  bpts inspector, veg_fire, MapBiomas classes. **ROI + 30 m only** for the neighborhood/segmentation
+  layers (candidate/seed/SNIC/burned) and the Landsat NBR series.
+- **Independent "did it actually burn?" references (OFF by default):** MODIS `MCD64A1` + VIIRS
+  `VNP64A1` focal-year burned masks (orange; ~500 m, corroborate not delineate), and the **min-NBR
+  false-color mosaic** (`swir2/nir/red`, `qualityMosaic('-nbr')` — the training-point composite),
+  built from the same ROI-filtered Landsat collection as the time-series; heavy → turn on when
+  zoomed in.
+
+**Tomorrow (2026-07-08) — do both [OPEN]:**
+
+1. **Review the SNIC output on the fly** in `explore_snic_IB-02`: tune the global (and per-veg
+   override) delta cuts **by eye**, cross-checking each scar against the **min-NBR false-color**
+   mosaic and the **MODIS/VIIRS** masks to separate real burns from commission. This is the call the
+   points can't make — whether K=3 actually rejects the ~0.5 background, and where a global cut holds
+   vs needs a per-veg override.
+2. **Define the SNIC processing regions** (§7.3) — trace the contiguous carta groups that don't
+   split high-fire areas, using `snic_regions_definition` (ever-seed/candidate paint) alongside the
+   new reference layers. Feeds the §7.3 [OPEN] region definition + the tile-boundary diff test.
+
 ### Shared GEE utils
 
 To keep the scripts small, the reusable pieces live in the fuego repo's `collection-01/utils/`:
@@ -496,10 +532,13 @@ From the notes; tightly coupled to the SNIC design (it's where cross-year fires 
 reunited).
 
 1. **Vectorize** each annual objects mask to polygons.
-2. **Per-polygon metrics:** `seed_mean` (seed proportion — the real fake-fire discriminator),
-   `date_mode` (modal burn date).
-3. **Filter polygons** — remove fake fires — via an **empirical decision tree** (as in Col-0) or
-   a **polygon-level model**. **[OPEN]** which.
+2. **Per-object metrics** — `seed_mean` (seed proportion — the real fake-fire discriminator),
+   `date_mode` (modal burn date), size, and shape/sparseness. **Computed raster-native with
+   `terra::zonal()` on the patch-id raster, *before* vectorizing — not with vector
+   `reduceRegions`/`extract` (§7.6).**
+3. **Filter objects** — remove fake fires — via an **empirical decision tree** (as in Col-0) or
+   an **object-level model**. **[OPEN]** which. A **permissive SNIC is deliberate** — recall is
+   protected at segmentation and precision is recovered here (§7.6).
 4. **Re-assign year** = `year(date_mode)` (a polygon's true year is its modal burn date's year,
    which can differ from the annual run it came from — this is what makes the backward gap-fill
    of §4 consistent).
@@ -677,6 +716,45 @@ nicer for scripted bulk pulls of hundreds of tiles: one-time `gcloud auth login`
 virtual paths — `terra::rast("/vsigs/<bucket>/snic/<region>/<year>.tif")`. Absent budget,
 Drive+COG is the decision.)*
 
+### 7.6 A permissive SNIC + raster-native object metrics (`zonal`) — [DECIDED]
+
+**Tune SNIC permissive on purpose.** The seed/candidate cuts are set *loose*: it is better to let
+many false-positive objects through than to lose real scars, because false positives are **cheaply
+removed downstream** — by (a) **low seed density** (`seed_mean` — a real scar is seeded throughout,
+a spurious blob is not) and (b) **shape features** (real scars are compact/contiguous; noise is
+sparse/porous). So **recall is protected at segmentation, precision is recovered at filtering
+(§7 step 3)** — the two jobs are deliberately separated. This is why the seedless-candidate drop
+(§6) and the `seed_mean`/shape filter carry the precision burden, not the delta cut alone.
+
+**Compute per-object metrics raster-native, with `terra::zonal()` on the patch-id raster — not
+with vector `reduceRegions`/`extract`.** After §6.1's `patches()` you already hold an object-id
+raster pixel-aligned with `candseed`, so the **zones are free**; `zonal` is a single compiled pass
+(`O(n_pixels)`, no geometry). Compute the metrics keyed by id **before** vectorizing, then
+vectorize **once** and left-join the metrics by id:
+
+```r
+seed_mean <- zonal(candseed == 2, patchId, fun = "mean", na.rm = TRUE)  # fake-fire discriminator
+date_mode <- zonal(abs_date,      patchId, fun = "modal", na.rm = TRUE)  # modal burn date
+size      <- freq(patchId)                                              # pixel count per object
+```
+
+- **Why not the vector route.** In GEE, `reduceRegions` at 30 m over many polygons is exactly the
+  timeout / user-memory path that pushed object work to R (§7.1) — avoid it. In R,
+  `terra::extract`/`exactextractr::exact_extract` *work* and are C++-fast, but are strictly more
+  work (they rasterize/intersect each polygon); `zonal` skips all of it because the id raster **is**
+  the zones. Only reach for `exact_extract` when a metric needs **sub-pixel polygon-coverage
+  weighting** — `seed_mean` does not.
+- **Caveats.** `zonal` needs both rasters on the **exact same grid** (they are — both come off the
+  SNIC output), and `na.rm = TRUE` so masked background never dilutes a proportion.
+
+**Shape metrics are only *partly* polygon-based.** Genuinely geometric ones (perimeter-vs-area
+compactness, elongation, bounding-box fill) do need the vector polygon. But a **sparseness /
+porosity** signal is a **pixel-level neighborhood op**, so it stays raster-native: `focal(burn,
+fun = sum)` = count of burned pixels in each pixel's window, then `zonal(focalSum, patchId,
+fun = "mean")` averages it over the object → a sparseness score with no geometry at all. So
+**exploit rasterness for sparsity too**; keep the vector polygon only for the truly geometric
+shape features. **[OPEN]** the exact shape/sparseness feature set and their filter cuts.
+
 ---
 
 ## 8. Open questions to resolve before implementation
@@ -702,7 +780,9 @@ from late `y−1`, no collision tiebreak (§4); cross-year duplication is inhere
 the overlap-merge (§4.3); download is sparse only with a compressed (`cloudOptimized`) export
 (§7.2); step 04 SNIC runs per region while the export shards freely and R re-mosaics (§7.3);
 raster handoff to **Drive + COG**, not GCS (§7.5); all object work in R on downloaded
-`candseed`+`abs_date` int16 rasters (§7.4).
+`candseed`+`abs_date` int16 rasters (§7.4); permissive SNIC by design (recall at segmentation,
+precision at filtering) with per-object metrics computed raster-native via `terra::zonal()` on the
+patch-id raster — incl. pixel-level sparseness — not vector `reduceRegions`/`extract` (§7.6).
 
 ---
 
