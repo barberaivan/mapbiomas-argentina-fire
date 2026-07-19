@@ -440,7 +440,102 @@ feature band" idea: the point is a barrier, not a nudge.
 
 **`D` is adaptive on density `n`** — [DECIDED intent, form OPEN]. Dense images (`n` high) resolve
 transitions well → `D` can be **small** (tighter separation, less downstream redundancy); sparse
-→ widen `D`. The concrete `D = f(n)` is **[OPEN]** and is reused by the overlap-merge (§7).
+→ widen `D`. The concrete `D = f(n)` is **[OPEN]** and is reused by the overlap-merge (§7). A first
+tunable form (linear ramp `D_SPARSE→D_DENSE` between `n = N_LO..N_HI`, default 90→45 d over n 6→40)
+is exposed for by-eye tuning in the fuego tool `explore_snic_firebreaks_IB-01` (below).
+
+### 5.1 [OPEN, revised 2026-07-19] Firebreak in GEE (hard pre-SNIC mask) vs in terra — **leaning terra**
+
+The §5 decision above puts the firebreak in **GEE, as a hard mask before SNIC**. Reconsidering
+(Iván, 2026-07-19): the firebreak is really a **labeling/clustering** operation — "which pixels
+belong to the same fire" — which is `terra`'s job (§6.1), not SNIC's. Three facts push it downstream:
+
+1. **The GEE hard mask erodes real pixels.** It deletes a ≥2 px rind at *every* > `D` date jump —
+   fine for separation, but the **per-pixel month-of-burn raster (§9)** wants those pixels. `terra`
+   can instead **split along** the date barrier and lose nothing.
+2. **`abs_date` is exported per pixel anyway** (§7.4), and §6.1 already recomputes the firebreak in
+   R for the gap-closing wall. So a GEE firebreak is **partly redundant** with what R already does.
+3. **Supervised SNIC stays supervised with or without it** — seedless islands are still dropped in
+   GEE, so *not* firebreaking there does **not** flood the export with seedless clusters. Its only
+   real cost is **fire-dense regions** (Chaco ag fire), where one seed can grow a connected-candidate
+   chain into a mega-blob → a larger mask that R must split and `seed_mean` prunes. Bounded by total
+   burned area (tiny, §7.2) and cheap in `terra`, but **verify the inflation on a Chaco ROI** with
+   `explore_snic_firebreaks_IB-01`'s `burned NO-firebreak` / `only-if-no-firebreak` comparison layers
+   before committing.
+
+**The firebreak SEMANTICS are "time-connected components", NOT date-value clustering** — [DECIDED
+intent, Iván 2026-07-19]. Do **not** cluster/split pixels by their `abs_date` value: a single fire
+event legitimately spans a wide date range, and its two extremes can differ by ≫ `D` as long as they
+are **bridged through the middle by pixels with gradually changing dates**. The rule is purely a
+**local adjacency cut**: two 8-adjacent burned pixels stay in the same object iff `|Δabs_date| ≤ D`;
+an object is any set reachable through such ≤`D` steps. This must **never split a date-gradient
+fire** — only sever a genuine abrupt discontinuity (two events that merely touch).
+
+- **Implementation preference (revises §6.1's seam-erosion) — edge-conditional connected components,
+  no erosion.** Build the 8-adjacency of burned cells (`terra::adjacent`), attach `|Δabs_date|` per
+  edge, **drop edges > `D`**, then label components (`igraph::components`, or an iterative
+  label-propagation). Every burned pixel is kept and assigned to exactly one object; a pixel with one
+  far neighbour and one near neighbour stays attached via the near one. This is strictly better than
+  the §6.1 "mask both pixels of an offending adjacency" seam, which both **erodes** and can **over-split**
+  a gradient fire. (Sparse burned fraction → the graph is small per tile; still validate cost at scale.)
+- **§6.1 gap-closing folds in.** The same ≤`D` edge rule, applied to a barrier-constrained dilation,
+  bridges 1–2 px gaps *unless* a > `D` step lies between — i.e. gap-close and time-separate become one
+  edge-conditional pass, not two.
+
+> **[OPEN]** confirm the terra-lean on the Chaco inflation check; then (a) drop the GEE firebreak from
+> `workflow/04-snic.py` (keep supervised SNIC + per-pixel `abs_date` export), (b) implement the
+> edge-conditional connected-components + gap-close in the R step, (c) update §5/§6.1 from "hard mask"
+> to "terra edge-cut". Keep `D = f(n)` as the single tolerance shared by the cut and the §7 merge.
+
+### 5.2 [OPEN, 2026-07-19] How to realise the time-connected components cheaply — **leaning erode-then-restore**
+
+The §5.1 "edge-conditional connected components" is the *semantics* we want; the question is the
+*implementation*, because the obvious one is too expensive. Discussion 2026-07-19 (Iván), still open —
+**recorded here so it survives a session shutdown; we have not committed, and how the firebreak itself is
+built still needs careful thought.**
+
+**Rejected — a pixel graph (igraph / union-find over pixels).** Build the 8-adjacency of all burned
+cells, cut edges where `|Δabs_date| > D`, label components. *Correct* but **stupidly expensive** and not
+raster-native: burned is ~0.3–1 % of area → ~9–31 M cells/yr nationally → ~36–124 M edges → GB of RAM,
+slow. igraph is not for rasters. **Do not do this at national scale.**
+
+**Leading candidate — erode in GEE (SNIC + firebreak), then RESTORE the rind in terra (Iván's idea).**
+Put the expensive *separation* where it is cheap and already runs (GEE SNIC with the §5 firebreak), and
+let terra touch only the **thin eroded seam** (a ~2 px border at genuine date jumps, ≪ 1 % of burned
+pixels → the restore is ~100–1000× smaller than the pixel graph). As a bonus this **also kills the §5.1
+Chaco over-merge/inflation worry** — the seams stop SNIC growing candidate mega-blobs, so the export
+stays lean *and* the rind is recovered (nothing lost for the §9 month-of-burn raster).
+
+- **GEE side:** SNIC *with* firebreak → export `candseed {1,2,3,4}` on the seed-grown burned pixels,
+  **plus a `seam` flag band** marking the eroded firebreak pixels (carry their `abs_date`). The seam band
+  is thin, so the export barely grows.
+- **terra side:** (1) `patches()` on the `{1,2,3,4}` mask → clean pre-separated object ids (seams already
+  split the events — cheap, compiled). (2) **Restore the rind, date-gated:** `adjacent()` over *only the
+  seam pixels* → (seam, neighbour) pairs; keep where `|Δabs_date| ≤ D`; assign each seam pixel to the
+  qualifying neighbour-patch with the **smallest** date-diff. Vectorised (`data.table`), O(#seam), no real
+  per-patch loop. This *is* "dilate into the break pixels by date-diff with the outer polygon pixels."
+
+**Why erode-then-restore ≈ the ideal edge-cut, and where it diverges.** A two-sided seam at a *step*
+discontinuity restores exactly: the low-date rind pixel is ≤`D` from patch A only → A; its mirror → B; the
+gap fills, labels stay distinct, no re-merge (the seam exists *only* where `|date(A)−date(B)| > D`). The
+sole divergence is a **3-way junction** — a seam pixel ≤`D` from *two* patches (eroded by a *third* >`D`
+neighbour), which the ideal cut would merge. Two ways to handle:
+  - (a) **union those patch ids** when one seam pixel qualifies for two — exact, cheap (union-find over
+    *patches*, ≪ pixels); or
+  - (b) assign to the nearest date and accept a hair of under-merge at thin junctions.
+  Start with (b); add (a) only if it shows up.
+
+Smaller calls already noted: a seam pixel with **no** ≤`D` neighbour = a genuine different-time sliver →
+drop (size/`seed_mean` would anyway); `D` per edge = the **looser** of the two pixels' `f(n)` (don't
+over-split sparse fire).
+
+> **[OPEN] — think carefully about HOW the firebreak is built** before committing erode-then-restore. The
+> §5 seam is "mask a pixel if *any* 8-neighbour differs by >`D`" (two-sided erosion). Open questions:
+> whether that construction is the right one (vs a one-sided or gradient-aware cut), how the `{3,4}`
+> gap-filled prev-year pixels interact with it, and what exactly the exported `seam` band must carry for
+> the restore to be unambiguous. **Next step (deferred):** once `trial_2022_512_pad` lands, add the `seam`
+> band and prototype the terra restore on it to measure the real rind size + terra cost — turn the
+> intuition into a number.
 
 ---
 

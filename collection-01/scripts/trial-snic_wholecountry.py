@@ -47,7 +47,12 @@ from utils import functions as F
 # SYNC: if that script's thresholds change, update these to match. There is no
 # automatic sync between the fuego JS repo and this repo.
 # ---------------------------------------------------------------------------
-NEIGHBORHOODS = [64, 128, 256]    # px; one export each. See §7.3 seam test.
+NEIGHBORHOODS = [64, 128, 256, 512]  # px; one export each. See §7.3 seam test.
+                                     # 512 added 2026-07-19: some fires have few
+                                     # seeds, so a bigger reach is more ensuring;
+                                     # launched to confirm timing is still fine.
+                                     # Thresholds intentionally UNCHANGED from the
+                                     # 064/128/256 run so nsize is the only variable.
 CAND_FORCE_K2 = True              # candidate always delta2 + K2_cand (4-value form)
 SEED_MAX_DROP = 5                 # drop seed components with <= this many px
 SNIC_COMPACTNESS = 0
