@@ -1004,3 +1004,23 @@ Implications to work through (flagged now, resolved later):
 - **Open:** exact rule for a pixel's final (month, year-band) when polygon-level and pixel-level
   dates disagree; how month-of-burn interacts with the manual ash/drought masking pass; whether
   the raster is derived from the *filtered/merged* polygons (so fake-fire pixels are excluded).
+
+---
+
+## [2026-07-20 00:45] Session wrap-up — SNIC-3D shelved, pivot to fire-year by region
+
+Short status notes (this doc has grown unwieldy — see point 4):
+
+1. **The SNIC-3D-approximation-with-firebreaks did not work well.** Noisy per-pixel dates make
+   the firebreak mask a lot of genuinely-burned area (and without it the prev-year join leaks).
+   Not abandoned — worth exploring longer with more time. All in GEE:
+   `visualization-misc/explore_snic_firebreaks_IB-01`.
+2. **Pivoted to a fire-year-by-region approach**: regionalize on the carta tiles, place each
+   region's annual boundary at its **burn-month peak/trough** (season-based, not calendar).
+   Regions defined/explored in `visualization-misc/explore_fire_seasons_bpts_ARG` (and the
+   FIRMS/MODIS sibling), and the region layout + per-region season charts in
+   `visualization-misc/explore_fire_seasons_regions` (reads the `fire_regions_col_01` asset).
+3. **Possible simplification:** maybe just use a **single whole-country non-calendar year**
+   (one season-aligned boundary) instead of per-region windows — to be weighed.
+4. **A future session should SUMMARIZE this whole doc.** It accumulated a lot of superseded
+   design (rubbish) across the SNIC-3D exploration; condense to the decisions that survived.
