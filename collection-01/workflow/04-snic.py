@@ -27,13 +27,15 @@ construction). Summary of what this script does, per fire-year `Y1`
      are recreated later at Drive-export by re-running this construction (§5),
      NOT stored here.
 
-Assets land in the COLLECTION-1 `snic` ImageCollection as `candseed_<fire_year>`
-(e.g. `candseed_2024`), on the bpts 30 m grid, over Argentina buffered ~2 km
-(`C.ARG_BUFFER_FC`), tagged `fire_year` / `system:time_start` (Y1-05-01) /
-`system:time_end` ((Y1+1)-04-30).
+Assets land in the COLLECTION-1 `snic` ImageCollection as `snic_<fire_year>`
+(e.g. `snic_2024`; a `--test` run uses `snic_test_<fire_year>` over a tiny ROI),
+on the bpts 30 m grid, over Argentina buffered ~2 km (`C.ARG_BUFFER_FC`), tagged
+`fire_year` / `system:time_start` (Y1-05-01) / `system:time_end` ((Y1+1)-04-30).
 
 Run from the repo root:
 
+    # tiny-ROI feasibility test first (submits `snic_test_1998`):
+    $PYTHON collection-01/workflow/04-snic.py --fire-year 1998 --test --launch
     # single fire-year, build + sanity-check only (no task submitted):
     $PYTHON collection-01/workflow/04-snic.py --fire-year 2015
     # actually submit it:
@@ -84,11 +86,18 @@ FIRST_FIRE_YEAR, LAST_FIRE_YEAR = 1998, 2025   # start years (§2)
 SAN_RAMON_FIRE_YEARS = [1998]
 SAN_RAMON_PMAX_BAND = "pmax3"
 SAN_RAMON_PMAX_MIN = 0.3
-SAN_RAMON_RECT = ee.Geometry.Polygon(
-    [[[-71.1795629588502, -40.836670267693194],
-      [-71.1795629588502, -41.21017094506833],
-      [-70.79641476549082, -41.21017094506833],
-      [-70.79641476549082, -40.836670267693194]]], None, False)
+# Coords only (built into ee.Geometry AFTER ee.Initialize — see san_ramon_rect()).
+SAN_RAMON_RECT_COORDS = [[[-71.1795629588502, -40.836670267693194],
+                          [-71.1795629588502, -41.21017094506833],
+                          [-70.79641476549082, -41.21017094506833],
+                          [-70.79641476549082, -40.836670267693194]]]
+
+# Tiny ROI for a `--test` export — near San Ramón, so FY1998 exercises both the
+# Patagonia dieback padding and the San Ramón exception on a fast, small extent.
+TEST_ROI_COORDS = [[[-71.04026772918293, -41.14289047797963],
+                    [-71.04026772918293, -41.18424486013236],
+                    [-70.96885659637043, -41.18424486013236],
+                    [-70.96885659637043, -41.14289047797963]]]
 
 # GLOBAL hand-set delta cuts (decoded probability scale 0..1)
 G_K2_CAND, G_K2_SEED = 0.25, 0.90
@@ -133,7 +142,6 @@ PROB_BANDS = ["delta3_peak", "minfore3_peak", "delta2_peak", "minfore2_peak",
               "pmax3", "pmax2", "pmax1"]
 
 SNIC_COL = f"{C._FIRE_ROOT}/COLLECTION-1/WORKFLOW-EXPORTS/snic"
-EPOCH = ee.Date("1970-01-01")
 
 
 # ---------------------------------------------------------------------------
@@ -180,7 +188,7 @@ def veg_threshold_images(veg_fire):
 
 def _day_num(year, month, day):
     """Whole-day count from the 1970 epoch to YYYY-MM-DD (scalar ee.Number)."""
-    return ee.Date.fromYMD(year, month, day).difference(EPOCH, "day")
+    return ee.Date.fromYMD(year, month, day).difference(ee.Date("1970-01-01"), "day")
 
 
 def classify_image(metrics, thr, cal_year, san_ramon_boost=False):
@@ -210,7 +218,8 @@ def classify_image(metrics, thr, cal_year, san_ramon_boost=False):
 
     # San Ramón exception: inside the box, also accept high-pmax pixels as candidates.
     if san_ramon_boost:
-        in_box = ee.Image.constant(1).clip(SAN_RAMON_RECT).unmask(0)
+        rect = ee.Geometry.Polygon(SAN_RAMON_RECT_COORDS, None, False)
+        in_box = ee.Image.constant(1).clip(rect).unmask(0)
         boost = metrics.select(SAN_RAMON_PMAX_BAND).gte(SAN_RAMON_PMAX_MIN).And(in_box)
         cand = cand.Or(boost)
 
@@ -331,10 +340,10 @@ def task_in_flight(description):
     return False
 
 
-def process_fire_year(fire_year, region, crs, transform, launch):
+def process_fire_year(fire_year, region, crs, transform, launch, name_prefix="snic_"):
     y1 = fire_year
-    asset_id = f"{SNIC_COL}/candseed_{y1:04d}"
-    description = f"snic_candseed_{y1:04d}"
+    asset_id = f"{SNIC_COL}/{name_prefix}{y1:04d}"
+    description = f"{name_prefix}{y1:04d}"
 
     if asset_exists(asset_id):
         print(f"[skip] {asset_id} already exists")
@@ -384,11 +393,15 @@ def main():
                      help=f"all fire-years {FIRST_FIRE_YEAR}..{LAST_FIRE_YEAR}")
     ap.add_argument("--launch", action="store_true",
                     help="actually submit export task(s) (default: build + sanity check only)")
+    ap.add_argument("--test", action="store_true",
+                    help="export over the tiny TEST_ROI as snic_test_<fy> (feasibility check)")
     args = ap.parse_args()
 
     ee.Initialize(project=C.GEE_PROJECT)
 
-    region = ee.FeatureCollection(C.ARG_BUFFER_FC).geometry()
+    region = (ee.Geometry.Polygon(TEST_ROI_COORDS, None, False) if args.test
+              else ee.FeatureCollection(C.ARG_BUFFER_FC).geometry())
+    name_prefix = "snic_test_" if args.test else "snic_"
     # Pin output to the bpts 30 m grid (use any available bpts image for the projection).
     proj = ee.Image(ee.ImageCollection(C.BP_TS_METRICS_COL).first()).projection()
     crs = proj.crs().getInfo()
@@ -397,7 +410,7 @@ def main():
     fire_years = (list(range(FIRST_FIRE_YEAR, LAST_FIRE_YEAR + 1))
                   if args.all else [args.fire_year])
     for fy in fire_years:
-        process_fire_year(fy, region, crs, transform, args.launch)
+        process_fire_year(fy, region, crs, transform, args.launch, name_prefix)
 
     if not args.launch:
         print("\nDry run only. Re-run with --launch to submit the task(s).")
