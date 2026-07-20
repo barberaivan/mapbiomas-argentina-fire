@@ -24,7 +24,7 @@ one step, e.g. the remap and the fit are both inputs to step 02):
 | `collection-01/docs/02-model_fitting.md` | step 02 — elastic-net LR fitting |
 | `collection-01/docs/03-bpts.md` | step 03 — burn-probability time-series metrics: full design, implementation + GEE array gotchas |
 | `collection-01/docs/03-colab_multi_export.md` | step 03 — distributed multi-account export via Colab (admin notes) |
-| `collection-01/docs/04-snic.md` | step 04 — SNIC 3D approximation (spatio-temporal burned-area segmentation): full design (gap-fill, firebreaks, supervised SNIC, object de-dup, month-of-burn raster) + the `snic_regions_definition` / `explore_snic_IB` GEE tuning tools |
+| `collection-01/docs/04-snic.md` | step 04 — burned-area segmentation: the whole-country **non-calendar fire-year** SNIC (fire-year `candseed` construction, Patagonia dieback padding, supervised SNIC, R downstream + month-of-burn raster); the shelved SNIC-3D attempt in brief; the `explore_snic_IB-0{2,3}` GEE tuning/inspection tools |
 
 > **When a workflow step is in play, read the matching `collection-01/docs/NN-*.md` first.**
 > Those notes point onward to the production files (`config/`, `models/`, `workflow/`) and to
