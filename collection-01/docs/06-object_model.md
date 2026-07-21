@@ -57,6 +57,12 @@ run the export in GEE).
 
 But let's think of this design.
 
+
+### Dealing with delay in polygon production
+
+El snic-vectorización-métricas y tal está tomando mucho más de lo que esperaba, no llego a tener los polígonos con métricas para mañana. PEEERO ya están exportadas a asset las imágens por año con el resultado del SNIC, en donde dice si cada pixel fue candidato o seed, sólo sobre clusters que el snic mantuvo. Entonces podemos empezar a tomar datos sobre esa capa. Más lento quizás, sin poder ver las métricas a nivel de polígono, pero igual la forma y la densidad de semillas es lo más informativo. Así que podemos largar la toma de datos aunque aún no tengamos los polígonos con metadata. Porque al poligonizar, no va a cambiar con qué polígonos intersectan esos puntos. Así que estamos atrasados pero quizás no sea tan grave.
+Ya le pedí a algunos que destinen jueves-viernes a tomar datos, por eso era un moco el atraso.
+
 ## Model fitting and classification
 
 I'm thinking of using all the variables to feed a XGB-additive-trees, to fit and classify locally, in python or R. We should tune hyperparams with CV. The year
