@@ -162,3 +162,46 @@ pass.
   too heavy, swap the labelling for a union-find (same 4-neighbour logic, no stored edges) via
   Rcpp or the C++ CA. Measure on a real full-country year before committing.
 - **Shape/sparseness feature set & cuts** for the step-06 filter are still open (04 §7).
+
+---
+
+## 8. Status & handoff (WIP — 2026-07-21)
+
+Active refactor: make step 05 scale from the ROI to the whole country. Where things stand,
+so another session can pick up:
+
+**Done & verified (on the 1998/1999 ROI):**
+- **Sparse `igraph` labelling is the DEFAULT** (§3b): connected components over burned CELL
+  INDICES, replacing `terra::patches()` over the dense grid. Verified **identical partition** to
+  the terra path (115 objects, identical sorted sizes, **0.000000 % area diff**) and **~8.4×
+  faster** overall on the 52 M-cell ROI — the labelling alone dropped **70 s → 1.7 s**. The terra
+  path stays as the `terra` fallback.
+  - On 8-connectivity: the graph is fully 8-connected; edges are emitted in only the 4 "forward"
+    directions (E, S, SE, SW) per cell so each **undirected** edge is listed **once**, not twice —
+    hence "≈4 unique edges per burned cell", not a connectivity reduction.
+- **`04-snic.py --to-drive` writes sparse NoData COGs** (`skipEmptyTiles=True`,
+  `formatOptions.noData=0`): masked background → NA, burned pixels preserved. Runs under the
+  **comahue** account / `mapbiomas-argentina` (see CLAUDE.md → GEE accounts). Older dense-0 COGs
+  still work — the burned mask uses `ifel(candseed>0,…)`.
+
+**PENDING — whole-country profile (the real test).** The ROI is only 52 M cells; the country is
+**~3 B**. A full-country `snic_2000` drive export is running (GEE task `5FR3V6…`) and **a monitor
+is watching for `collection-01/data/snic-polygons/snic_2000.tif`**; when it lands + Insync-syncs,
+the monitor runs the whole-country profile:
+
+```
+Rscript collection-01/workflow/05-objects_metrics.R 2000        # sparse (default)
+# terra path may OOM / take hours at 3 B cells — run only deliberately
+```
+
+Watch these three, in expected order of cost at country scale:
+1. **burned-cell extract** (`as.data.frame`, the one O(all-cells) step left) — the sparse NoData
+   COG should let terra skip empty tiles on read; measure the real speedup.
+2. **`igraph` edge list + graph** memory (~4 edges × burned cells). If too heavy → union-find
+   (no stored edges) via Rcpp or the C++ CA labeller.
+3. **`pid`-raster build** (`values<-NA` densifies the full grid) — remaining dense step; use
+   `trim()` to the burned bbox and/or a disk-backed block write.
+
+**Open op gotcha — duplicate Drive files.** GEE `toDrive` does NOT overwrite: a re-export lands
+as `snic_<y> (2).tif` (Insync), which `load_snic`'s glob would `vrt()` together. Clear the Drive
+folder before re-exporting a year, and/or make `load_snic` pick the newest. **[TODO]**
