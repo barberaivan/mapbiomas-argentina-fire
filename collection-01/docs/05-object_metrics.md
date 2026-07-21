@@ -212,6 +212,34 @@ So labelling can't move to GEE; it stays local (R/Python).
 3. Only if the burned-cell extract or igraph memory is the measured wall, prototype the tiled
    `cc3d` / `scipy.ndimage` route — otherwise skip it.
 
+### 7c. Tiled + parallel by carta — the scalable architecture (recommended)
+
+The whole-country pain is largely an **artifact of processing the year as one monolithic raster**.
+`load_snic` currently `vrt()`s the input into a single ~9 B-cell grid **before** labelling (§1),
+which is why the terra path needs a 34 GB `pid` grid (§8.3) and the mask build alone is a
+single-threaded, ~8.7 GB, ~19 min scan (measured on the legacy `snic_2000` Drive COG). But the
+**production input is already 248 per-carta tiles** (`snic-direct/<fy>/`, 04 §5b). Exploit that:
+
+- **Parallelize by carta.** Each carta is ~20 M cells → **per-tile RAM in MBs, not GB**, and tiles
+  run **concurrently across cores** (≈N× on the mask/label/extract). The single-thread whole-country
+  scan is the worst case, and it's the layout we're retiring.
+- **RAM is *already* solved for the vectorize step.** Streaming `gdal_polygonize` over the **sparse**
+  burned mask processes the whole country in one pass at **bounded memory** (the 18 MB sparse mask
+  never densifies) — so tiling the *polygonize* buys **speed** (parallel cartas), not memory. The
+  34 GB blow-up was only ever the *dense* terra `pid` raster, which streaming polygonize sidesteps.
+- **The one price of going tiled: object identity across carta seams.** A scar straddling a boundary
+  must not split into two objects. So: **polygonize per carta (parallel) → merge polygons that touch
+  across carta edges** (a small seam-union; only boundary-touching polygons need checking). The 1-px
+  dilation + ag-suppression (§2) are **local**, so each tile just needs a **1-px halo** of its
+  neighbours. This is what the current `vrt()`-to-one-raster labelling trades away — correctness at
+  seams for whole-country memory cost.
+
+**Recommended step-05 architecture:** keep it **tiled**; polygonize each carta in parallel + a seam
+merge; **never build a whole-country `pid` raster**. This supersedes the vrt-to-one-raster labelling
+for scale, and matches the per-carta layout `download_snic.py` already produces. (Head-to-head
+timing/memory numbers — legacy terra `as.polygons` vs streaming `gdal_polygonize` on the whole
+`snic_2000` — will be recorded in `docs/04 §5c`; benchmark in progress.)
+
 ---
 
 ## 8. Status & handoff (WIP — 2026-07-21)
