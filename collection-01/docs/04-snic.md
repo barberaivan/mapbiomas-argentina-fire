@@ -135,10 +135,10 @@ the cut are in `utils/constants.py` (Step 04 section).
 Object work is done in R (`terra`/`sf`) — GEE vector topology is its weak spot and objects cross
 tiles. Mechanics:
 
-- **Asset stores only `candseed`; the Drive COG carries three bands.** Stage 2, run with
+- **Asset stores only `candseed`; the Drive COG carries four bands.** Stage 2, run with
   `04-snic.py --to-drive` (same `--fire-year`/`--all`/`--test`/`--launch` flags), writes an R-facing
   cloud-optimized GeoTIFF (`Export.image.toDrive`, `formatOptions={'cloudOptimized': True}`) to
-  `C.SNIC_DRIVE_FOLDER` holding **`candseed` + `abs_date` + `veg_fire`**. It **reads `candseed`
+  `C.SNIC_DRIVE_FOLDER` holding **`candseed` + `abs_date` + `n` + `veg_fire`**. It **reads `candseed`
   (and its burned mask) straight from the `snic_<fire_year>` asset — SNIC is NOT recomputed** — and
   recreates only `abs_date` + `veg_fire` by re-running the §4 construction, masking both to the
   asset. `abs_date`/`veg_fire` are thus computed per pixel, **not** looked up from the `candseed`

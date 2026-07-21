@@ -153,9 +153,19 @@ def classify_image(metrics, thr, cal_year, san_ramon_boost=False):
 
     # San Ramón exception: inside the box, also accept high-pmax pixels as candidates.
     if san_ramon_boost:
-        rect = ee.Geometry.Polygon(C.SAN_RAMON_RECT_COORDS, None, False)
-        in_box = ee.Image.constant(1).clip(rect).unmask(0)
-        boost = metrics.select(C.SAN_RAMON_PMAX_BAND).gte(C.SAN_RAMON_PMAX_MIN).And(in_box)
+        # Box mask from pixelLonLat (always valid, properly projected) — NOT
+        # ee.Image.constant().clip().unmask(): that image is scaleless, and at 30 m
+        # outside the box its mask poisons `cand` via .And()/.Or(), wiping candidates
+        # country-wide. unmask(0) on the pmax test likewise keeps a masked pmax from
+        # poisoning `cand` through the .Or().
+        lon = ee.Image.pixelLonLat().select("longitude")
+        lat = ee.Image.pixelLonLat().select("latitude")
+        xs = [pt[0] for pt in C.SAN_RAMON_RECT_COORDS[0]]
+        ys = [pt[1] for pt in C.SAN_RAMON_RECT_COORDS[0]]
+        in_box = (lon.gte(min(xs)).And(lon.lte(max(xs)))
+                  .And(lat.gte(min(ys))).And(lat.lte(max(ys))))
+        boost = (metrics.select(C.SAN_RAMON_PMAX_BAND).gte(C.SAN_RAMON_PMAX_MIN)
+                 .unmask(0).And(in_box))
         cand = cand.Or(boost)
 
     # K=2 mid-date as an absolute day count: Jan-1-of-cal_year + (mid_doy - 1).
@@ -297,14 +307,18 @@ def task_in_flight(description):
 # ---------------------------------------------------------------------------
 # stage 1 — build candseed and export to asset
 # ---------------------------------------------------------------------------
-def process_fire_year(fire_year, region, crs, transform, launch, name_prefix):
+def process_fire_year(fire_year, region, crs, transform, launch, name_prefix,
+                      overwrite=False):
     y1 = fire_year
     asset_id = f"{C.SNIC_COL}/{name_prefix}{y1:04d}"
     description = f"{name_prefix}{y1:04d}"
 
-    if asset_exists(asset_id):
-        print(f"[skip] {asset_id} already exists")
+    exists = asset_exists(asset_id)
+    if exists and not overwrite:
+        print(f"[skip] {asset_id} already exists (use --overwrite to replace)")
         return
+    # Skip a fire-year whose export is still queued/running — no point racing a second
+    # task onto the same asset. Holds even with --overwrite.
     if task_in_flight(description):
         print(f"[skip] {description} has a PENDING/RUNNING task")
         return
@@ -332,20 +346,23 @@ def process_fire_year(fire_year, region, crs, transform, launch, name_prefix):
         crsTransform=transform,
         maxPixels=int(1e13),
         pyramidingPolicy={"candseed": "mode"},
+        overwrite=overwrite,   # native GEE in-place overwrite (earthengine-api ≥ 1.x)
     )
     if launch:
         task.start()
         print(f"[launched] {task.id}  ->  {asset_id}")
     else:
         bands = candseed.bandNames().getInfo()
-        print(f"[dry] would export {asset_id}  bands={bands}  "
+        action = "re-export (overwrite)" if exists and overwrite else "export"
+        print(f"[dry] would {action} {asset_id}  bands={bands}  "
               f"neighborhoodSize={C.SNIC_NEIGHBORHOOD_SIZE}")
 
 
 # ---------------------------------------------------------------------------
 # stage 2 — read the candseed asset, attach abs_date + veg_fire, export COG to Drive
 # ---------------------------------------------------------------------------
-def process_fire_year_drive(fire_year, region, crs, transform, launch, name_prefix):
+def process_fire_year_drive(fire_year, region, crs, transform, launch, name_prefix,
+                            overwrite=False):
     y1 = fire_year
     asset_id = f"{C.SNIC_COL}/{name_prefix}{y1:04d}"
     file_prefix = f"{name_prefix}{y1:04d}"
@@ -354,7 +371,9 @@ def process_fire_year_drive(fire_year, region, crs, transform, launch, name_pref
     if not asset_exists(asset_id):
         print(f"[skip] {asset_id} not exported yet — run the asset stage first")
         return
-    if task_in_flight(description):
+    # --overwrite lets a Drive export be re-queued past the in-flight guard (Drive
+    # files don't block like assets, so nothing is deleted here).
+    if task_in_flight(description) and not overwrite:
         print(f"[skip] {description} has a PENDING/RUNNING task")
         return
 
@@ -403,6 +422,10 @@ def main():
                     help="export over the tiny TEST_ROI as snic_test_<fy> (feasibility check)")
     ap.add_argument("--to-drive", action="store_true",
                     help="Drive stage: export candseed+abs_date+veg_fire COG from the existing asset")
+    ap.add_argument("--overwrite", action="store_true",
+                    help="re-export a fire-year whose asset already exists, replacing it in "
+                         "place via GEE's native Export overwrite. In-flight tasks are still "
+                         "skipped. Default: skip existing assets.")
     args = ap.parse_args()
 
     ee.Initialize(project=C.GEE_PROJECT)
@@ -419,7 +442,7 @@ def main():
                   if args.all else [args.fire_year])
     run = process_fire_year_drive if args.to_drive else process_fire_year
     for fy in fire_years:
-        run(fy, region, crs, transform, args.launch, name_prefix)
+        run(fy, region, crs, transform, args.launch, name_prefix, args.overwrite)
 
     if not args.launch:
         print("\nDry run only. Re-run with --launch to submit the task(s).")

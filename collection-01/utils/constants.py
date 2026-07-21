@@ -232,7 +232,8 @@ PREV_SUFFIX_MAP = {
 #
 # SYNC: the seed/candidate thresholds (VEG_TABLE + the G_* global cuts) are
 # hand-copied from the fuego JS tuning script `explore_snic_IB-02` (last synced
-# 2026-07-08) and also mirrored in `explore_snic_IB-03`.  There is NO automatic
+# 2026-07-21) and also mirrored in `explore_snic_IB-03` / `explore_snic_asset`.
+# There is NO automatic
 # sync between the fuego JS repo and this repo — if the JS thresholds change,
 # update these to match (docs/04-snic.md §6, Tools / SYNC).
 
@@ -261,36 +262,36 @@ CAND_FORCE_K2 = True
 
 # GLOBAL hand-set delta cuts (decoded probability 0..1), per K: [candidate, seed].
 G_K2_CAND, G_K2_SEED = 0.25, 0.90
-G_K3_CAND, G_K3_SEED = 0.30, 0.75
+G_K3_CAND, G_K3_SEED = 0.25, 0.75
 
 # Per-veg thresholds: [code, n_break, k2_cand, k2_seed, k3_cand, k3_seed].
 #   code     = veg_fire class (see config/veg_fire_remap.csv)
 #   n_break  = obs count (`n`) at/above which a pixel uses the K=3 fit, not K=2
 #   k*_cand / k*_seed = delta cut for candidate / seed at that K; None = use G_*
 VEG_TABLE = [
-    [1,  14, 0.5, 0.98, 0.5, 0.98],   # agriculture_chaco
-    [2,   2, 0.5, 0.98, 0.5, 0.98],   # agriculture_cuyo-pat
-    [3,  16, 0.5, 0.98, 0.5, 0.98],   # agriculture_pampa
-    [4,  48, None, None, None, None],  # agriculture-per_chaco-ba
-    [5,  46, None, None, None, None],  # forest_ba
-    [6,  34, None, None, None, None],  # forest_cuyo
-    [7,  49, None, None, None, None],  # forest_pampa
-    [8,   7, None, None, None, None],  # forest_pat
-    [9,  35, None, None, None, None],  # forest-cerr_chaco
-    [10, 32, None, None, None, None],  # forest-inund-chaco
-    [11, 31, None, None, None, None],  # forest-open_chaco
-    [12, 52, None, None, None, None],  # grassland_ba
-    [13, 25, 0.5, 0.98, 0.5, 0.98],   # grassland_chaco
-    [14, 32, None, None, None, None],  # grassland_cuyo
-    [15, 48, None, None, None, None],  # grassland_pampa
-    [16, 36, None, None, None, None],  # grassland_pat
-    [17, 26, 0.5, 0.98, 0.5, 0.98],   # grassland-inund_chaco
-    [18, 34, None, None, None, None],  # pasture_ba
-    [19, 39, None, None, None, None],  # pasture_chaco
-    [20, 35, None, None, None, None],  # shrubland_cuyo-pampa
-    [21,  7, None, None, None, None],  # shrubland_pat
-    [22, 21, None, None, None, None],  # shrubland-closed_chaco
-    [23, 23, None, None, None, None],  # shrubland-open_chaco
+    [1,  100, 0.5, 0.98, 0.5, 0.98],   # agriculture_chaco
+    [2,  100, 0.5, 0.98, 0.5, 0.98],   # agriculture_cuyo-pat
+    [3,  100, 0.5, 0.98, 0.5, 0.98],   # agriculture_pampa
+    [4,   48, None, None, None, None],  # agriculture-per_chaco-ba
+    [5,   46, None, None, None, None],  # forest_ba
+    [6,   34, None, None, None, None],  # forest_cuyo
+    [7,   49, None, None, None, None],  # forest_pampa
+    [8,    7, None, None, None, None],  # forest_pat
+    [9,   35, None, None, None, None],  # forest-cerr_chaco
+    [10,  32, None, None, None, None],  # forest-inund-chaco
+    [11,  31, None, None, None, None],  # forest-open_chaco
+    [12, 100, None, None, None, None],  # grassland_ba
+    [13, 100, 0.5, 0.98, 0.5, 0.98],   # grassland_chaco
+    [14,  30, None, None, None, None],  # grassland_cuyo
+    [15, 100, None, None, None, None],  # grassland_pampa
+    [16,  20, None, None, None, None],  # grassland_pat (steppe)
+    [17, 100, 0.5, 0.98, 0.5, 0.98],   # grassland-inund_chaco
+    [18, 100, None, None, None, None],  # pasture_ba
+    [19, 100, None, None, None, None],  # pasture_chaco
+    [20,  35, None, None, None, None],  # shrubland_cuyo-pampa
+    [21,  30, 0.2, None, None, None],   # shrubland_pat (K2_cand override 0.2)
+    [22,  21, None, None, None, None],  # shrubland-closed_chaco
+    [23,  23, None, None, None, None],  # shrubland-open_chaco
 ]
 # Column indices into a VEG_TABLE row.
 VEG_COL_CODE, VEG_COL_NBREAK, VEG_COL_K2C, VEG_COL_K2S, VEG_COL_K3C, VEG_COL_K3S = 0, 1, 2, 3, 4, 5
