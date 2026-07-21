@@ -2,11 +2,19 @@
 collection-01/workflow/04-snic.py
 
 Step 04 — supervised SNIC burned-area segmentation on a **non-calendar fire-year**,
-in two stages sharing one construction:
+sharing one construction across stages:
 
   * default stage  (asset) — build `candseed` and export it to a GEE asset.
   * `--to-drive`   (Drive) — read an already-exported `candseed` asset and write
-                             the R-facing COG (`candseed` + `abs_date` + `veg_fire`).
+                             the R-facing COG (`candseed` + `abs_date` + `veg_fire` + `n`).
+  * `--to-asset`   (asset) — read the `candseed` asset and materialize the R-facing
+                             metric bands (`abs_date` + `veg_fire` + `n` +
+                             `burned_around_{1,2,3}`, stored as cell counts) to a
+                             companion `snic_metrics_<fy>`
+                             asset, WITHOUT re-storing `candseed`. Feeds the tiled direct
+                             download `download_snic.py`, which re-attaches `candseed` and
+                             pulls the stack per *carta* to local disk — no Drive, no Insync
+                             (docs/04 §5, docs/05 §7b).
 
 All tunable settings live in `utils/constants.py` (Step 04 section); this file
 holds only procedure.
@@ -52,11 +60,13 @@ Run from the repo root:
     $PYTHON collection-01/workflow/04-snic.py --fire-year 2015
     # actually submit the asset:
     $PYTHON collection-01/workflow/04-snic.py --fire-year 2015 --launch
-    # once the asset exists, export the R-facing COG to Drive:
+    # once the asset exists, export the R-facing COG to Drive (legacy path):
     $PYTHON collection-01/workflow/04-snic.py --fire-year 2015 --to-drive --launch
+    # ...or materialize the metric bands to snic_metrics_2015 for the direct download:
+    $PYTHON collection-01/workflow/04-snic.py --fire-year 2015 --to-asset --launch
     # the whole archive (1998..2025) — many whole-country tasks, use tmux:
     $PYTHON collection-01/workflow/04-snic.py --all --launch
-    $PYTHON collection-01/workflow/04-snic.py --all --to-drive --launch
+    $PYTHON collection-01/workflow/04-snic.py --all --to-asset --launch
 
 Launching one fire-year is a single foreground-safe `task.start()`. A full `--all`
 run submits ~28 whole-country export tasks; per CLAUDE.md launch it inside tmux. Both
@@ -422,6 +432,98 @@ def process_fire_year_drive(fire_year, region, crs, transform, launch, name_pref
 
 
 # ---------------------------------------------------------------------------
+# stage 2b — read the candseed asset, materialize the R-facing metric bands to
+#            a companion asset (for the tiled direct download; docs/04 §5, 05 §7b)
+# ---------------------------------------------------------------------------
+def burned_around_bands(candseed_asset):
+    """Pixel-level "context_burned" (sparseness) bands, GEE-native (ported from collection-00
+    07-objects_metrics). burned_around_<r> = burned-pixel COUNT in the (2r+1)² square window =
+    sum of the 0/1 burned mask (r in C.SNIC_CONTEXT_RADII). NOTE: the stored scale is a CELL
+    COUNT (max (2r+1)² = 49 at r=3), NOT the proportion — so the download stays integer with no
+    scale factor; R divides by (2r+1)² for the [0,1] proportion. int16, masked back to the burned
+    pixels. A local focal — cheap and non-densifying in GEE — so it belongs here, not terra (docs/05 §3)."""
+    burned = candseed_asset.mask()
+    burned01 = candseed_asset.gt(0).unmask(0)      # 1 burned, 0 elsewhere: window counts NA as 0
+    out = []
+    for r in C.SNIC_CONTEXT_RADII:
+        bc = (burned01
+              .reduceNeighborhood(reducer=ee.Reducer.sum(),
+                                  kernel=ee.Kernel.square(radius=r, units="pixels"))
+              .updateMask(burned)
+              .toInt16()
+              .rename(f"burned_around_{r}"))
+        out.append(bc)
+    return out
+
+
+def process_fire_year_metrics_asset(fire_year, region, crs, transform, launch,
+                                    name_prefix, overwrite=False):
+    """Stage 2b (--to-asset): materialize the R-facing per-pixel metric bands to an asset.
+
+    Reads candseed from the SNIC_COL asset (SNIC is NOT recomputed), rebuilds
+    abs_date / veg_fire / n from the §4 construction and the burned_around_* context bands,
+    masks everything to the candseed burned footprint, and exports them — WITHOUT candseed —
+    to SNIC_METRICS_COL as snic_metrics_<fire_year>. download_snic.py re-attaches candseed
+    from SNIC_COL, so it is never stored twice. Baking these once lets the tiled download be
+    a cheap pixel read instead of recomputing the construction per tile."""
+    y1 = fire_year
+    src_id = f"{C.SNIC_COL}/{name_prefix}{y1:04d}"
+    metrics_prefix = name_prefix.replace("snic_", "snic_metrics_")
+    asset_id = f"{C.SNIC_METRICS_COL}/{metrics_prefix}{y1:04d}"
+    description = f"{metrics_prefix}{y1:04d}"
+
+    if not asset_exists(src_id):
+        print(f"[skip] {src_id} not exported yet — run the asset stage first")
+        return
+    if not asset_exists(C.SNIC_METRICS_COL):
+        print(f"[skip] {C.SNIC_METRICS_COL} does not exist — create the ImageCollection first "
+              f"(this script won't create it)")
+        return
+    if asset_exists(asset_id) and not overwrite:
+        print(f"[skip] {asset_id} already exists (use --overwrite to replace)")
+        return
+    if task_in_flight(description):
+        print(f"[skip] {description} has a PENDING/RUNNING task")
+        return
+
+    # abs_date + n from the §4 construction; candseed + its burned mask from the asset.
+    _pre, abs_date, n_img, meta = build_candseed_pre(fire_year)
+    candseed = ee.Image(src_id).select("candseed")
+    burned = candseed.mask()
+    veg_fire = F.veg_fire_image(y1).updateMask(burned).toInt16().rename("veg_fire")
+    abs_date = abs_date.updateMask(burned)
+    n_img = n_img.updateMask(burned)
+    stack = ee.Image.cat([abs_date, veg_fire, n_img,
+                          *burned_around_bands(candseed)]).set(
+        "fire_year", y1,
+        "partial", meta["partial"],
+        "system:time_start", meta["time_start"].millis(),
+        "system:time_end", meta["time_end"].millis(),
+    )
+
+    pyramiding = {"abs_date": "mean", "veg_fire": "mode", "n": "mean"}
+    for r in C.SNIC_CONTEXT_RADII:
+        pyramiding[f"burned_around_{r}"] = "mean"
+
+    task = ee.batch.Export.image.toAsset(
+        image=stack,
+        description=description,
+        assetId=asset_id,
+        region=region,
+        crs=crs,
+        crsTransform=transform,
+        maxPixels=int(1e13),
+        pyramidingPolicy=pyramiding,
+        overwrite=overwrite,
+    )
+    if launch:
+        task.start()
+        print(f"[launched] {task.id}  ->  {asset_id}")
+    else:
+        print(f"[dry] would export {asset_id}  bands={stack.bandNames().getInfo()}")
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 def main():
@@ -437,6 +539,10 @@ def main():
                     help="export over the tiny TEST_ROI as snic_test_<fy> (feasibility check)")
     ap.add_argument("--to-drive", action="store_true",
                     help="Drive stage: export candseed+abs_date+veg_fire COG from the existing asset")
+    ap.add_argument("--to-asset", action="store_true",
+                    help="Metrics-asset stage (2b): materialize abs_date+veg_fire+n+burned_around_* "
+                         "to snic_metrics_<fy> from the existing candseed asset, for the tiled "
+                         "direct download (download_snic.py). candseed is NOT re-stored.")
     ap.add_argument("--overwrite", action="store_true",
                     help="re-export a fire-year whose asset already exists, replacing it in "
                          "place via GEE's native Export overwrite. In-flight tasks are still "
@@ -447,6 +553,8 @@ def main():
                          "'mapbiomas-argentina' when running --to-drive under the comahue "
                          "account, which is not registered on the default project.")
     args = ap.parse_args()
+    if args.to_drive and args.to_asset:
+        ap.error("--to-drive and --to-asset are separate stage-2 variants; pick one")
 
     ee.Initialize(project=args.project)
 
@@ -460,7 +568,9 @@ def main():
 
     fire_years = (list(range(C.FIRST_FIRE_YEAR, C.LAST_FIRE_YEAR + 1))
                   if args.all else [args.fire_year])
-    run = process_fire_year_drive if args.to_drive else process_fire_year
+    run = (process_fire_year_metrics_asset if args.to_asset
+           else process_fire_year_drive if args.to_drive
+           else process_fire_year)
     for fy in fire_years:
         run(fy, region, crs, transform, args.launch, name_prefix, args.overwrite)
 

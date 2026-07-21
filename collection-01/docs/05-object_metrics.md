@@ -10,11 +10,23 @@ with objects global within the year (no tiling — nearby fragments of one scar 
 
 ---
 
-## 1. Input — the step-04 Drive COG
+## 1. Input — the step-04 SNIC product (two layouts)
 
-`04-snic.py --to-drive` writes one cloud-optimized GeoTIFF per fire-year to the
-`snic-polygons` Drive folder (`C.SNIC_DRIVE_FOLDER`), which Insync syncs to
-`collection-01/data/snic-polygons/` (a symlink into the store). Bands:
+`load_snic` reads **either** layout, preferring the first:
+
+**A. Direct-download per-carta tiles (preferred; 04 §5b).** `04-snic.py --to-asset` +
+`download_snic.py` land **248 per-carta GeoTIFFs** in `collection-01/data/snic-direct/<fy>/`
+(bypassing Drive + Insync). `load_snic` `vrt()`s them into one whole-country mosaic **before**
+labelling (cross-carta scars rejoin). **7 bands** — the four below **plus `burned_around_{1,2,3}`
+pre-computed in GEE** (05 §3). `burned_around_*` are **cell COUNTS** (not fractions); R divides
+by (2r+1)².
+
+**B. Legacy Drive COG.** `04-snic.py --to-drive` writes one cloud-optimized GeoTIFF per fire-year
+to the `snic-polygons` Drive folder (`C.SNIC_DRIVE_FOLDER`), Insync-synced to
+`collection-01/data/snic-polygons/` (a symlink into the store). **4 bands** (no `burned_around`);
+R computes the sparseness locally (05 §3).
+
+Bands common to both:
 
 | band | meaning |
 |---|---|
@@ -26,10 +38,10 @@ with objects global within the year (no tiling — nearby fragments of one scar 
 All bands are masked to `burned = candseed > 0`, so the file is sparse (tens of MB/yr) even
 though the grid is country-wide.
 
-> **COG usage:** nothing special is needed. terra/GDAL read a COG transparently; the
-> cloud-optimized layout (internal tiling + overviews) only helps *partial/remote* reads, and
-> these files are **local**. A plain `terra::rast()` (or `terra::vrt()` when GEE auto-splits a
-> big export into sub-tifs) is enough — no `vsicurl` / GDAL COG options.
+> **No COG needed** (either layout). terra/GDAL read the mask via the **NoData tag** and skip
+> empty tiles regardless of the cloud-optimized layout — those overviews only help *partial/remote*
+> reads, and these files are **local**. A plain `terra::rast()`/`terra::vrt()` is enough; the direct
+> tiles are plain (non-COG) GeoTIFFs by design (04 §5b).
 
 ---
 
@@ -79,7 +91,11 @@ Doing the numeric work here — not on polygons — is both faster and exact for
 - **neighbourhood sparseness** — `burned_around_{1,2,3}` = mean, over the object's pixels, of
   the burned fraction in the (2r+1)² window (r = 1,2,3 px). A solid scar → near 1; speckly
   noise → low. Ported from collection-00 (fuego `07-objects_metrics` `burned_around_*`).
-  Computed sparsely as `focal(fun="sum", na.rm=TRUE)/window` so it never densifies the grid.
+  **Two sources** (`load_snic` picks by band presence): the **direct-download tiles carry it
+  pre-computed in GEE** (`reduceNeighborhood` sum → per-pixel **cell count**; R ÷ (2r+1)² → the
+  fraction, then means per object) — a local focal that GEE does without densifying, so it belongs
+  upstream (04 §5b, §7b); the **legacy COG has no such band**, so R computes it sparsely as
+  `focal(fun="sum", na.rm=TRUE)/window` (never densifying the grid).
 
 ---
 
@@ -162,6 +178,39 @@ pass.
   too heavy, swap the labelling for a union-find (same 4-neighbour logic, no stored edges) via
   Rcpp or the C++ CA. Measure on a real full-country year before committing.
 - **Shape/sparseness feature set & cuts** for the step-06 filter are still open (04 §7).
+
+### 7b. Faster-than-terra alternatives (to benchmark on the country run)
+
+Researched while waiting for the `snic_2000` whole-country export. Conclusion up front: **the
+sparse igraph path is already O(burned) and C-fast — Python won't beat it on the numeric
+metrics unless you tile.** The one clean win is **vectorization**: the leftover dense step
+(§8.3, the `pid`-raster → `as.polygons`) is where a disk-streaming GDAL polygonizer beats terra.
+Map each candidate to the §8 bottleneck it addresses:
+
+| §8 bottleneck | Candidate | Notes |
+|---|---|---|
+| **3 — `pid`-raster → `as.polygons`** (densifies the full grid in R) | **`gdal_polygonize` on a disk-backed pid COG** | Write the sparse `pid` to a temp COG, then `gdal_polygonize -8` **streams from disk** (no full grid in RAM) — the concrete form of the "disk-backed block write" §8.3 anticipates. `rasterio.features.shapes` is the *same GDAL engine but in-memory only* (rasterio #630), so use `osgeo.gdal.Polygonize` / the CLI for the larger-than-memory read. terra's `as.polygons` is GDAL too, but needs the dense R grid built first. **Highest-value change; keeps everything else in R.** |
+| **2 — igraph edge-list memory** (~4 edges × burned cells) | **`cc3d`** (seung-lab/connected-components-3d) | C++ two-pass **union-find, no stored edge list** — exactly the fallback §8.2 names. `cc3d.statistics()` gives per-label voxel counts / bboxes / centroids for free (→ area, bbox metrics). ~2.6× faster than `scipy.ndimage.label` on binary, one-shot multilabel. **Caveat: needs a dense in-RAM array** (uint8 mask ≈3 GB at 3 B cells; int32 labels ≈12 GB) → a *tiled* option, not free. The index-based igraph is actually **more memory-frugal** (never densifies), so only reach for `cc3d` if igraph memory is the measured wall. |
+| **1 — burned-cell extract** (`as.data.frame`, O(all-cells)) | **`scipy.ndimage.sum_labels` / `mean` / `find_objects`** on the label array | Per-object area / date / `n` summaries straight from labels, no dataframe. Dense-array bound → tile it. First just measure whether the **sparse NoData COG** already lets terra skip empty tiles on read (§8.1) — that may make this moot. |
+
+**How Brazil gets "~20 min/whole-country-year":** their `mapbiomas/brazil-fire` post-processing
+(`mapbiomas_fire_collections/collection_0{4,5}`, ~74 % Python) builds the "fire scar size range"
+sub-product; the fast local route is **`gdal_polygonize`** (C, one streaming pass that labels +
+vectorizes contiguous same-value pixels — `-8` for 8-conn) reading the annual burned raster from
+disk. It can't reproduce our **1-px dilation + ag/grassland suppression** hack (§2) — that shapes
+the *partition* before labelling — so we keep the sparse label build in R and swap only the final
+vectorize to disk-streaming GDAL.
+
+**Ruled out — GEE `connectedComponents`.** Native GEE scar labelling is a dead end: `maxSize`
+caps a connected component at ~1024 px, absurdly small for real fire scars (they silently split).
+So labelling can't move to GEE; it stays local (R/Python).
+
+**Benchmark plan when `snic_2000` lands** — cheap A/B, no rewrite:
+1. Run the current sparse path; record time + peak RAM for the three §8 steps.
+2. Step 3 only: write `pid` to a temp COG, `gdal_polygonize -8` it, compare wall-time + peak RAM
+   vs `as.polygons`.
+3. Only if the burned-cell extract or igraph memory is the measured wall, prototype the tiled
+   `cc3d` / `scipy.ndimage` route — otherwise skip it.
 
 ---
 

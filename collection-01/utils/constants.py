@@ -239,6 +239,13 @@ PREV_SUFFIX_MAP = {
 
 # Output ImageCollection (asset name pattern: snic_<fire_year>; --test → snic_test_<fy>).
 SNIC_COL = f"{_FIRE_ROOT}/COLLECTION-1/WORKFLOW-EXPORTS/snic"
+# Companion ImageCollection with the R-facing per-pixel metric bands, materialized by
+# `04-snic.py --to-asset` from the exported candseed asset: abs_date, veg_fire, n and
+# the burned_around_<r> context bands. candseed is NOT duplicated here — the direct
+# downloader (download_snic.py) re-attaches it from SNIC_COL at download time. Baking
+# these to an asset lets the tiled direct download be a cheap pixel READ (no per-tile
+# recompute of the §4 construction). Asset pattern: snic_metrics_<fy> / snic_metrics_test_<fy>.
+SNIC_METRICS_COL = f"{_FIRE_ROOT}/COLLECTION-1/WORKFLOW-EXPORTS/snic_metrics"
 # Drive folder for the R-facing COG export (04-snic.py --to-drive); files are
 # named like the assets (snic_<fire_year> / snic_test_<fire_year>).
 # GEE's toDrive `folder` is a folder NAME, not a path: it writes into an existing
@@ -256,6 +263,16 @@ SNIC_NEIGHBORHOOD_SIZE = 512   # px; SNIC internal-tile buffer. 15.4 km @30 m.
 SNIC_COMPACTNESS = 0
 SNIC_CONNECTIVITY = 8
 SNIC_SEED_MAX_DROP = 5         # drop seed components with <= this many connected px
+
+# Pixel-level "context_burned" (sparseness): for r in SNIC_CONTEXT_RADII, burned_around_<r> =
+# burned-pixel COUNT in the (2r+1)² square window = sum of the 0/1 burned mask
+# (reduceNeighborhood). Computed in GEE (ported from collection-00 07-objects_metrics), baked
+# into the metrics asset — NOT in terra (a local focal, but terra densifies the grid; docs/05
+# §3, §7b). Kept the collection-00 band NAME burned_around_<r>, but its SCALE is a plain int16
+# CELL COUNT (max (2r+1)² = 49 at r=3), not the proportion — so the download stays integer with
+# no scale factor; R divides by (2r+1)² for the [0,1] proportion (real scar → near 1; speckle →
+# low). A burned pixel's own centre keeps count ≥ 1, so 0 stays a safe masked/NoData sentinel.
+SNIC_CONTEXT_RADII = (1, 2, 3)
 
 # bpts probability bands decode_bpts rescales (÷10000 → probability); rest as-is.
 SNIC_PROB_BANDS = ["delta3_peak", "minfore3_peak", "delta2_peak", "minfore2_peak",

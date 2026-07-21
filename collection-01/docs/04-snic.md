@@ -133,8 +133,19 @@ the cut are in `utils/constants.py` (Step 04 section).
 ## 5. Handoff to R (steps 05–06)
 
 Object work is done in R (`terra`/`sf`) — GEE vector topology is its weak spot and objects cross
-tiles. **The step-04 output is the Drive COG; everything done to it (vectorization, metrics,
-filtering, final products) lives in `docs/05-object_metrics.md` and `docs/06`.** The handoff:
+tiles. **Everything done to the step-04 output (vectorization, metrics, filtering, final products)
+lives in `docs/05-object_metrics.md` and `docs/06`.** Two handoff paths exist:
+
+- **Direct tiled download (`--to-asset` + `download_snic.py`) — preferred.** `toDrive` is slow for
+  a bad reason: its write target is the **Drive API** (a rate-limited consumer service), then
+  **Insync** dribbles the file down — two slow stages the asset path skips entirely (pyramids are
+  *not* the cause — `toAsset` builds those too; §5b). Instead, `04-snic.py --to-asset` materializes
+  the R-facing bands to a companion `snic_metrics_<fy>` **asset**, and `download_snic.py` pulls them
+  per *carta* straight to disk via `geedim`'s compute-pixels endpoint (no batch queue, no Drive, no
+  Insync). See **§5b** below and `docs/05 §7b`.
+- **Drive COG (`--to-drive`) — legacy.** Kept for now; details in the bullets below.
+
+The handoff (both paths):
 
 - **Asset stores only `candseed`; the Drive COG carries the R-facing bands.** Stage 2, run with
   `04-snic.py --to-drive --project mapbiomas-argentina` (same `--fire-year`/`--all`/`--test`/`--launch`
@@ -157,6 +168,47 @@ filtering, final products) lives in `docs/05-object_metrics.md` and `docs/06`.**
   sparse and unseeded).
 - **No cross-year de-dup.** Fire-years partition time, so each fire lands in exactly one — the
   SNIC-3D overlap-merge is gone. Output-file seams are healed by the R re-mosaic (ids are global).
+
+## 5b. Direct tiled download (`--to-asset` + `download_snic.py`)
+
+Replaces the Drive+Insync round-trip. Two commands:
+
+1. **`04-snic.py --to-asset [--project mapbiomas-argentina]`** — stage 2b. Reads `candseed` from
+   the `snic_<fy>` asset (SNIC not recomputed) and materializes the R-facing metric bands to a
+   companion **`snic_metrics_<fy>`** asset in `C.SNIC_METRICS_COL`:
+   **`abs_date` + `veg_fire` + `n` + `burned_around_{1,2,3}`**. `candseed` is **not re-stored** — it
+   already lives in `snic_<fy>`, and the downloader re-attaches it. Baking these once means the
+   download is a pure pixel **read**, not a per-tile recompute of the §4 construction (the prep that
+   empirically outran the SNIC itself). `burned_around_<r>` (pixel-level "context_burned") is
+   computed **GEE-native** (`reduceNeighborhood` **sum** of the 0/1 burned mask over a (2r+1)²
+   window, ported from collection-00 `07-objects_metrics`) and belongs here — a local focal, cheap
+   and non-densifying in GEE, vs terra where it densified the grid (supersedes the terra
+   `burned_around_*` in `docs/05 §3` for this path). **Kept the collection-00 name, but its scale is
+   a plain int16 CELL COUNT, not the proportion** (so the download stays integer, no scale factor);
+   **R divides by (2r+1)² for the [0,1] proportion**.
+
+2. **`download_snic.py --year <fy>` (or `--all-years`)** — builds
+   `snic_metrics_<fy>.addBands(candseed)` (7 bands) and downloads it **one carta at a time** via
+   `geedim`, which sub-tiles each carta to the compute-pixels limits (≤32 MB / ≤10000 px / ≤1024
+   bands) and fetches tiles concurrently. Output `data/snic-direct/<fy>/<carta_id>.tif` (int16,
+   masked→`NoData=0`). The carta set is the **248 cartas intersecting the ARG 2 km buffer**
+   (`C.ARG_BUFFER_FC`, the bpts/SNIC footprint), not the full ~286-carta grid.
+   - **carta = outer partition, geedim = inner tiling.** geedim tiles for the request limit either
+     way; the carta loop adds (a) a land-only footprint (Argentina's bbox is ~half ocean/neighbours),
+     (b) resumability (skip cartas whose `.tif` exists), and (c) **cross-account parallelism** via
+     `--shard i/n` — disjoint carta shards under different accounts at once (swap credentials per
+     shard). Each carta is `clip`ped to its polygon so a burned pixel lands in exactly one tile (no
+     double-count); `crs_transform` pins every tile to the bpts lattice so they `vrt()` cleanly.
+   - **No COG, and none needed** (`docs/05 §1`, §7b): the read-speed/OOM win was the **NoData tag +
+     sparse tiling**, not the cloud-optimized overviews (which only help partial/zoomed reads; step
+     05 reads full-res full-coverage). geedim writes the mask → NoData tag, which terra honours. At
+     carta granularity (~20 M cells) there is no OOM risk regardless.
+
+**R-side change still needed (step 05):** point `load_snic` at `data/snic-direct/<fy>/` and
+`terra::vrt()` the per-carta tifs into one year mosaic *before* labelling (objects stay global),
+and read the **new band set/order** (`abs_date, veg_fire, n, burned_around_{1,2,3}, candseed`);
+`burned_around_*` now arrive pre-computed as **cell counts** (divide by (2r+1)² for the
+proportion), so drop the terra sparseness step for this path.
 
 ---
 
