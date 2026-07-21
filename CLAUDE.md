@@ -25,7 +25,8 @@ one step, e.g. the remap and the fit are both inputs to step 02):
 | `collection-01/docs/03-bpts.md` | step 03 — burn-probability time-series metrics: full design, implementation + GEE array gotchas |
 | `collection-01/docs/03-colab_multi_export.md` | step 03 — distributed multi-account export via Colab (admin notes) |
 | `collection-01/docs/04-snic.md` | step 04 — burned-area segmentation: the whole-country **non-calendar fire-year** SNIC (fire-year `candseed` construction, Patagonia dieback padding, supervised SNIC, Drive-COG handoff to R); the shelved SNIC-3D attempt in brief; the `explore_snic_IB-0{2,3}` GEE tuning/inspection tools |
-| `collection-01/docs/05-object_metrics.md` | step 05 — fire-object vectorization & metrics (R/terra): the 1-px dilation connectivity hack, per-object raster metrics (veg abundance, area, `abs_date`/`n` summaries, sparseness) + geometry shape metrics ported from collection-00 |
+| `collection-01/docs/05-object_metrics.md` | step 05 — fire-object vectorization & metrics (R/terra): the 1-px dilation connectivity hack, per-object raster metrics (veg abundance, area, `abs_date`/`n` summaries, sparseness) + geometry shape metrics ported from collection-00; sparse igraph labelling vs terra fallback |
+| `collection-01/docs/06-object_model.md` | step 06 — object-based fire/non-fire classification: GEE asset ingestion + interactive point-based data collection, XGBoost fit/classify, then filtering + rasterization (design notes) |
 
 > **When a workflow step is in play, read the matching `collection-01/docs/NN-*.md` first.**
 > Those notes point onward to the production files (`config/`, `models/`, `workflow/`) and to
