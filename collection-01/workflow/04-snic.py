@@ -1,10 +1,17 @@
 """
 collection-01/workflow/04-snic.py
 
-Step 04 — supervised SNIC burned-area segmentation on a **non-calendar fire-year**.
+Step 04 — supervised SNIC burned-area segmentation on a **non-calendar fire-year**,
+in two stages sharing one construction:
 
-Design: docs/04-snic.md §2–§5 (whole-country May–April fire-year + `candseed`
-construction). Summary of what this script does, per fire-year `Y1`
+  * default stage  (asset) — build `candseed` and export it to a GEE asset.
+  * `--to-drive`   (Drive) — read an already-exported `candseed` asset and write
+                             the R-facing COG (`candseed` + `abs_date` + `veg_fire`).
+
+All tunable settings live in `utils/constants.py` (Step 04 section); this file
+holds only procedure.
+
+Design: docs/04-snic.md §2–§5. Summary, per fire-year `Y1`
 (FY = 1 May Y1 → 30 Apr Y2, Y2 = Y1+1; named by the START year Y1 — §2):
 
   1. Load the TWO calendar `bpts` images the fire-year spans (Y1 and Y2), decoded
@@ -13,24 +20,29 @@ construction). Summary of what this script does, per fire-year `Y1`
      two TRIMMED edge fire-years (jan99-apr99, may25-dec25) are still mapped, with
      `system:time_start`/`time_end` set to their actual coverage and `partial=true`.
   2. Per image, classify seed / candidate with the per-veg, per-pixel-K thresholds
-     (hand-copied from fuego `explore_snic_IB-02`), and compute the K=2 mid-date
-     (`date_post2 − jumpgap2/2`) as an ABSOLUTE day count (§4.1, cross-year safe).
+     (C.VEG_TABLE), and compute the K=2 mid-date (`date_post2 − jumpgap2/2`) as an
+     ABSOLUTE day count since epoch (§4.1, cross-year safe).
   3. Window-filter each image to the fire-year (Y1 img → keeps May–Dec Y1; Y2 img →
      keeps Jan–Apr Y2) and combine per pixel: **seed > candidate > none** (`max`).
+     Each pixel's `abs_date` follows the image that won the max.
   4. Patagonia slow-dieback forward padding (§4.3): in `forest_pat`/`shrubland_pat`
-     west of −70.3°, a pixel that is seed-or-candidate in the Y2 image with mid-date
-     in [Jun, Nov] Y2 is added as a **candidate** (code `3`) where focal is 0.
+     west of C.PAT_LON_MAX, a pixel that is seed-or-candidate in the Y2 image with
+     mid-date in [Jun, Nov] Y2 is added as a **candidate** (code `3`) where focal is 0.
   5. Supervised SNIC (seeds grown through the candidate footprint, seedless islands
-     dropped) with `neighborhoodSize = 512`.
+     dropped) with `neighborhoodSize = C.SNIC_NEIGHBORHOOD_SIZE`.
   6. Export ONLY `candseed ∈ {1,2,3}` (int16) to asset (§5): 1 = candidate,
-     2 = seed, 3 = next-year (Patagonia dieback) candidate. `abs_date`/`veg_fire`
-     are recreated later at Drive-export by re-running this construction (§5),
-     NOT stored here.
+     2 = seed, 3 = next-year (Patagonia dieback) candidate.
 
-Assets land in the COLLECTION-1 `snic` ImageCollection as `snic_<fire_year>`
-(e.g. `snic_2024`; a `--test` run uses `snic_test_<fire_year>` over a tiny ROI),
-on the bpts 30 m grid, over Argentina buffered ~2 km (`C.ARG_BUFFER_FC`), tagged
-`fire_year` / `system:time_start` (Y1-05-01) / `system:time_end` ((Y1+1)-04-30).
+`abs_date` / `veg_fire` are NOT stored in the asset. They are recreated at
+Drive-export (`--to-drive`) by re-running this construction (steps 1–4) and
+masking to the exported `candseed` asset (§5). SNIC is NOT recomputed at that
+stage — the asset already holds the segmented mask.
+
+Assets land in the COLLECTION-1 `snic` ImageCollection (`C.SNIC_COL`) as
+`snic_<fire_year>` (e.g. `snic_2024`; a `--test` run uses `snic_test_<fire_year>`
+over a tiny ROI), on the bpts 30 m grid, over Argentina buffered ~2 km
+(`C.ARG_BUFFER_FC`), tagged `fire_year` / `system:time_start` (Y1-05-01) /
+`system:time_end` ((Y1+1)-04-30). The Drive COG lands in `C.SNIC_DRIVE_FOLDER`.
 
 Run from the repo root:
 
@@ -38,15 +50,19 @@ Run from the repo root:
     $PYTHON collection-01/workflow/04-snic.py --fire-year 1998 --test --launch
     # single fire-year, build + sanity-check only (no task submitted):
     $PYTHON collection-01/workflow/04-snic.py --fire-year 2015
-    # actually submit it:
+    # actually submit the asset:
     $PYTHON collection-01/workflow/04-snic.py --fire-year 2015 --launch
+    # once the asset exists, export the R-facing COG to Drive:
+    $PYTHON collection-01/workflow/04-snic.py --fire-year 2015 --to-drive --launch
     # the whole archive (1998..2025) — many whole-country tasks, use tmux:
     $PYTHON collection-01/workflow/04-snic.py --all --launch
+    $PYTHON collection-01/workflow/04-snic.py --all --to-drive --launch
 
 Launching one fire-year is a single foreground-safe `task.start()`. A full `--all`
-run submits ~28 whole-country export tasks; per CLAUDE.md launch it inside tmux. The
-launcher is idempotent: it skips a fire-year whose asset already exists OR that has a
-PENDING/RUNNING export task.
+run submits ~28 whole-country export tasks; per CLAUDE.md launch it inside tmux. Both
+stages are idempotent: the asset stage skips a fire-year whose asset already exists OR
+that has a PENDING/RUNNING task; the Drive stage skips one whose asset is missing (run
+the asset stage first) OR that has a PENDING/RUNNING Drive task.
 """
 
 import argparse
@@ -59,89 +75,8 @@ import ee
 from utils import constants as C
 from utils import functions as F
 
-# ---------------------------------------------------------------------------
-# CONFIG — seed/candidate thresholds hand-copied from fuego `explore_snic_IB-02`
-# (2026-07-08). SYNC: if that script's thresholds change, update these to match.
-# There is no automatic sync between the fuego JS repo and this repo.
-# ---------------------------------------------------------------------------
-NEIGHBORHOOD_SIZE = 512           # px; SNIC internal-tile buffer (§6). 15.4 km @30 m.
-CAND_FORCE_K2 = True              # candidate always delta2 + K2_cand (4-value form)
-SEED_MAX_DROP = 5                 # drop seed components with <= this many connected px
-SNIC_COMPACTNESS = 0
-SNIC_CONNECTIVITY = 8
-
-# Fire-year definition (§2) and the Patagonia dieback-padding rule (§4.3).
-FY_START_MONTH = 5                # fire-year begins 1 May of Y1
-PAD_MONTH_LO, PAD_MONTH_HI = 6, 11   # dieback padding window [Jun, Nov] of Y2 (inclusive)
-PAT_LON_MAX = -70.3              # padding only west of this LONGITUDE meridian
-PAT_VEG_CODES = [8, 21]         # forest_pat (8), shrubland_pat (21) — from veg_fire_remap.csv
-FIRST_FIRE_YEAR, LAST_FIRE_YEAR = 1998, 2025   # start years (§2)
-
-# San Ramón exception (fuego explore_snic_IB-02 Observaciones). The Jan-Apr 1999
-# San Ramón fire (fire-year 1998, "jan99-apr99") is very sparse ("ralo"); loosen
-# the candidate to ALSO accept high max-probability pixels — but ONLY inside this
-# box and ONLY for fire-year 1998. A pmax-based candidate breaks other years/areas
-# (valle de rio negro), and San Ramón maps largely as agriculture so it cannot be
-# separated by veg cover. Matches the -02 note: candidate .or(pmax3 >= 0.3).
-SAN_RAMON_FIRE_YEARS = [1998]
-SAN_RAMON_PMAX_BAND = "pmax3"
-SAN_RAMON_PMAX_MIN = 0.3
-# Coords only (built into ee.Geometry AFTER ee.Initialize — see san_ramon_rect()).
-SAN_RAMON_RECT_COORDS = [[[-71.1795629588502, -40.836670267693194],
-                          [-71.1795629588502, -41.21017094506833],
-                          [-70.79641476549082, -41.21017094506833],
-                          [-70.79641476549082, -40.836670267693194]]]
-
-# Tiny ROI for a `--test` export — near San Ramón, so FY1998 exercises both the
-# Patagonia dieback padding and the San Ramón exception on a fast, small extent.
-TEST_ROI_COORDS = [[[-71.04026772918293, -41.14289047797963],
-                    [-71.04026772918293, -41.18424486013236],
-                    [-70.96885659637043, -41.18424486013236],
-                    [-70.96885659637043, -41.14289047797963]]]
-
-# GLOBAL hand-set delta cuts (decoded probability scale 0..1)
-G_K2_CAND, G_K2_SEED = 0.25, 0.90
-G_K3_CAND, G_K3_SEED = 0.30, 0.75
-
-# Per-veg: [code, n_break, k2_cand, k2_seed, k3_cand, k3_seed]; None = use global cut
-VEG_TABLE = [
-    [1,  14, 0.5, 0.98, 0.5, 0.98],   # agriculture_chaco
-    [2,   2, 0.5, 0.98, 0.5, 0.98],   # agriculture_cuyo-pat
-    [3,  16, 0.5, 0.98, 0.5, 0.98],   # agriculture_pampa
-    [4,  48, None, None, None, None],  # agriculture-per_chaco-ba
-    [5,  46, None, None, None, None],  # forest_ba
-    [6,  34, None, None, None, None],  # forest_cuyo
-    [7,  49, None, None, None, None],  # forest_pampa
-    [8,   7, None, None, None, None],  # forest_pat
-    [9,  35, None, None, None, None],  # forest-cerr_chaco
-    [10, 32, None, None, None, None],  # forest-inund-chaco
-    [11, 31, None, None, None, None],  # forest-open_chaco
-    [12, 52, None, None, None, None],  # grassland_ba
-    [13, 25, 0.5, 0.98, 0.5, 0.98],   # grassland_chaco
-    [14, 32, None, None, None, None],  # grassland_cuyo
-    [15, 48, None, None, None, None],  # grassland_pampa
-    [16, 36, None, None, None, None],  # grassland_pat
-    [17, 26, 0.5, 0.98, 0.5, 0.98],   # grassland-inund_chaco
-    [18, 34, None, None, None, None],  # pasture_ba
-    [19, 39, None, None, None, None],  # pasture_chaco
-    [20, 35, None, None, None, None],  # shrubland_cuyo-pampa
-    [21,  7, None, None, None, None],  # shrubland_pat
-    [22, 21, None, None, None, None],  # shrubland-closed_chaco
-    [23, 23, None, None, None, None],  # shrubland-open_chaco
-]
-C_CODE, C_NBREAK, C_K2C, C_K2S, C_K3C, C_K3S = 0, 1, 2, 3, 4, 5
-
-# Seed temporal-gap ceiling (days): reject seeds where min(jumpgap2, jumpgap3) > S_GAP
-S_GAP_DENSE, S_GAP_SPARSE, N_DENSE = 60, 90, 20
-
-# Defaults for veg not in the table (non-burnable 24 / non-observed 25 / unmapped):
-# NBREAK huge -> always K2; THR 9 -> no delta ever passes -> no fire on non-veg.
-NBREAK_DEF, THR_DEF = 99999, 9
-
-PROB_BANDS = ["delta3_peak", "minfore3_peak", "delta2_peak", "minfore2_peak",
-              "pmax3", "pmax2", "pmax1"]
-
-SNIC_COL = f"{C._FIRE_ROOT}/COLLECTION-1/WORKFLOW-EXPORTS/snic"
+# All tunable config (thresholds, SNIC params, fire-year calendar, ROIs, paths)
+# lives in utils/constants.py, Step 04 section. This script is procedure only.
 
 
 # ---------------------------------------------------------------------------
@@ -149,8 +84,8 @@ SNIC_COL = f"{C._FIRE_ROOT}/COLLECTION-1/WORKFLOW-EXPORTS/snic"
 # ---------------------------------------------------------------------------
 def decode_bpts(img):
     """7 probability bands ÷10000 (back to probability); day/DOY/n bands as-is."""
-    prob = img.select(PROB_BANDS).divide(10000)
-    rest = img.bandNames().removeAll(PROB_BANDS)
+    prob = img.select(C.SNIC_PROB_BANDS).divide(10000)
+    rest = img.bandNames().removeAll(C.SNIC_PROB_BANDS)
     return img.select(rest).addBands(prob)
 
 
@@ -168,21 +103,21 @@ def year_metrics(year):
 # per-veg threshold images (depend on veg_fire only; n is applied per calendar image)
 # ---------------------------------------------------------------------------
 def veg_threshold_images(veg_fire):
-    """Turn VEG_TABLE into per-pixel threshold images keyed by the focal veg_fire class."""
-    codes = [r[C_CODE] for r in VEG_TABLE]
+    """Turn C.VEG_TABLE into per-pixel threshold images keyed by the focal veg_fire class."""
+    codes = [r[C.VEG_COL_CODE] for r in C.VEG_TABLE]
 
     def col(idx, glob):
-        return [glob if r[idx] is None else r[idx] for r in VEG_TABLE]
+        return [glob if r[idx] is None else r[idx] for r in C.VEG_TABLE]
 
     def remap(vals, default):
         return veg_fire.remap(codes, vals, default)
 
     return {
-        "n_break": remap([r[C_NBREAK] for r in VEG_TABLE], NBREAK_DEF),
-        "cand_k2": remap(col(C_K2C, G_K2_CAND), THR_DEF),
-        "cand_k3": remap(col(C_K3C, G_K3_CAND), THR_DEF),
-        "seed_k2": remap(col(C_K2S, G_K2_SEED), THR_DEF),
-        "seed_k3": remap(col(C_K3S, G_K3_SEED), THR_DEF),
+        "n_break": remap([r[C.VEG_COL_NBREAK] for r in C.VEG_TABLE], C.NBREAK_DEF),
+        "cand_k2": remap(col(C.VEG_COL_K2C, C.G_K2_CAND), C.THR_DEF),
+        "cand_k3": remap(col(C.VEG_COL_K3C, C.G_K3_CAND), C.THR_DEF),
+        "seed_k2": remap(col(C.VEG_COL_K2S, C.G_K2_SEED), C.THR_DEF),
+        "seed_k3": remap(col(C.VEG_COL_K3S, C.G_K3_SEED), C.THR_DEF),
     }
 
 
@@ -209,18 +144,18 @@ def classify_image(metrics, thr, cal_year, san_ramon_boost=False):
     seed_thr = thr["seed_k2"].where(use_k3, thr["seed_k3"])
 
     min_gap = metrics.select("jumpgap2").min(metrics.select("jumpgap3"))
-    s_gap = ee.Image(S_GAP_SPARSE).where(n.gte(N_DENSE), S_GAP_DENSE)
+    s_gap = ee.Image(C.S_GAP_SPARSE).where(n.gte(C.N_DENSE), C.S_GAP_DENSE)
     gap_ok = min_gap.lte(s_gap)
 
     seed_raw = delta_k.gte(seed_thr).And(gap_ok)
-    cand = delta2.gte(thr["cand_k2"]) if CAND_FORCE_K2 \
+    cand = delta2.gte(thr["cand_k2"]) if C.CAND_FORCE_K2 \
         else delta_k.gte(thr["cand_k2"].where(use_k3, thr["cand_k3"]))
 
     # San Ramón exception: inside the box, also accept high-pmax pixels as candidates.
     if san_ramon_boost:
-        rect = ee.Geometry.Polygon(SAN_RAMON_RECT_COORDS, None, False)
+        rect = ee.Geometry.Polygon(C.SAN_RAMON_RECT_COORDS, None, False)
         in_box = ee.Image.constant(1).clip(rect).unmask(0)
-        boost = metrics.select(SAN_RAMON_PMAX_BAND).gte(SAN_RAMON_PMAX_MIN).And(in_box)
+        boost = metrics.select(C.SAN_RAMON_PMAX_BAND).gte(C.SAN_RAMON_PMAX_MIN).And(in_box)
         cand = cand.Or(boost)
 
     # K=2 mid-date as an absolute day count: Jan-1-of-cal_year + (mid_doy - 1).
@@ -243,11 +178,17 @@ def _status_in_window(seed_raw, cand, abs_mid, lo_day, hi_day):
 # ---------------------------------------------------------------------------
 def build_candseed_pre(fire_year):
     """
-    Pre-SNIC candseed {0,1,2,3} for the fire-year, plus a metadata dict with the
-    ACTUAL data-coverage window (trimmed at the archive edges) and a `partial` flag.
-    Returns (None, None) if no bpts image spans the fire-year.
+    Pre-SNIC construction for the fire-year. Returns
+      (candseed_pre {0,1,2,3} int16, abs_date int16, meta)
+    or (None, None, None) if no bpts image spans the fire-year.
 
-    Coverage (§2): a full FY covers May Y1 → Apr Y2. The two TRIMMED edge
+    `abs_date` is the per-pixel K=2 mid-date (days since epoch) of the observation
+    that SET the candseed value — the Y1 or Y2 image that won seed>cand>none. For a
+    code-3 dieback pixel it is that pixel's OWN next-year dieback date; R later
+    overrides code-3 with the parent object's date (§5). Masked where candseed == 0.
+
+    `meta` carries the ACTUAL data-coverage window (trimmed at the archive edges,
+    §2) and a `partial` flag. Full FY covers May Y1 → Apr Y2; the two TRIMMED edge
     fire-years, mapped so the products span the whole 1999–2025 calendar archive:
       - FY1998 has no 1998 image → only its Jan–Apr 1999 tail  ("jan99-apr99").
       - FY2025 has no 2026 image → only its May–Dec 2025 head   ("may25-dec25").
@@ -256,44 +197,57 @@ def build_candseed_pre(fire_year):
     m_y1 = year_metrics(y1)
     m_y2 = year_metrics(y2)
     if m_y1 is None and m_y2 is None:
-        return None, None
+        return None, None, None
 
     veg_fire = F.veg_fire_image(y1)                # MB(y1-1); governs whole FY (§2)
     thr = veg_threshold_images(veg_fire)
-    boost = fire_year in SAN_RAMON_FIRE_YEARS      # San Ramón easy-candidate exception (§4.1)
+    boost = fire_year in C.SAN_RAMON_FIRE_YEARS    # San Ramón easy-candidate exception (§4.5)
 
-    fy_lo = _day_num(y1, FY_START_MONTH, 1)        # 1 May Y1  (inclusive)
-    fy_hi = _day_num(y2, FY_START_MONTH, 1)        # 1 May Y2  (exclusive)
+    fy_lo = _day_num(y1, C.FY_START_MONTH, 1)      # 1 May Y1  (inclusive)
+    fy_hi = _day_num(y2, C.FY_START_MONTH, 1)      # 1 May Y2  (exclusive)
 
-    # ---- focal {1,2}: seed>cand>none, per-pixel max over the two calendar images ----
-    focal = ee.Image(0)
-    mid2 = c2 = s2 = None
+    # ---- per-image in-window status {0,1,2} and absolute mid-date ----
+    st1 = st2 = mid1 = mid2 = c2 = s2 = None
     if m_y1 is not None:
         s1, c1, mid1 = classify_image(m_y1, thr, y1, san_ramon_boost=boost)
-        focal = focal.max(_status_in_window(s1, c1, mid1, fy_lo, fy_hi))
+        st1 = _status_in_window(s1, c1, mid1, fy_lo, fy_hi)
     if m_y2 is not None:
         s2, c2, mid2 = classify_image(m_y2, thr, y2, san_ramon_boost=boost)
-        focal = focal.max(_status_in_window(s2, c2, mid2, fy_lo, fy_hi))
+        st2 = _status_in_window(s2, c2, mid2, fy_lo, fy_hi)
+
+    # ---- focal {1,2}: seed>cand>none, per-pixel max over the two images ----
+    # `date` follows whichever image won the max (Y2 wins only if strictly higher).
+    if st1 is not None and st2 is not None:
+        focal = st1.max(st2)
+        date = mid1.where(st2.gt(st1), mid2)
+    elif st1 is not None:
+        focal, date = st1, mid1
+    else:
+        focal, date = st2, mid2
 
     # ---- padding {3}: Patagonia forest/shrubland dieback, from the Y2 image only ----
     combined = focal
     if m_y2 is not None:
-        pad_lo = _day_num(y2, PAD_MONTH_LO, 1)             # 1 Jun Y2
-        pad_hi = _day_num(y2, PAD_MONTH_HI + 1, 1)         # 1 Dec Y2 (exclusive => thru 30 Nov)
+        pad_lo = _day_num(y2, C.PAD_MONTH_LO, 1)           # 1 Jun Y2
+        pad_hi = _day_num(y2, C.PAD_MONTH_HI + 1, 1)       # 1 Dec Y2 (exclusive => thru 30 Nov)
         in_pad = mid2.gte(pad_lo).And(mid2.lt(pad_hi))
-        pat_veg = veg_fire.eq(PAT_VEG_CODES[0])
-        for code in PAT_VEG_CODES[1:]:
+        pat_veg = veg_fire.eq(C.PAT_VEG_CODES[0])
+        for code in C.PAT_VEG_CODES[1:]:
             pat_veg = pat_veg.Or(veg_fire.eq(code))
-        west = ee.Image.pixelLonLat().select("longitude").lt(PAT_LON_MAX)
+        west = ee.Image.pixelLonLat().select("longitude").lt(C.PAT_LON_MAX)
         pad = c2.Or(s2).And(in_pad).And(pat_veg).And(west).unmask(0)
-        combined = combined.where(combined.eq(0).And(pad), 3)   # focal {1,2} always wins
+        newly3 = combined.eq(0).And(pad)                   # focal {1,2} always wins
+        combined = combined.where(newly3, 3)
+        date = date.where(newly3, mid2)                    # code-3 keeps its own dieback date
+
+    abs_date = date.updateMask(combined.gt(0)).toInt16().rename("abs_date")
 
     # Data-coverage window, trimmed to whichever calendar image(s) exist (§2).
     time_start = ee.Date.fromYMD(y1, 5, 1) if m_y1 is not None else ee.Date.fromYMD(y2, 1, 1)
     time_end = ee.Date.fromYMD(y2, 4, 30) if m_y2 is not None else ee.Date.fromYMD(y1, 12, 31)
     meta = {"time_start": time_start, "time_end": time_end,
             "partial": m_y1 is None or m_y2 is None}
-    return combined.toInt16(), meta
+    return combined.toInt16(), abs_date, meta
 
 
 def snic_candseed(candseed_pre):
@@ -302,7 +256,7 @@ def snic_candseed(candseed_pre):
     # back to candidate (1) but stay in the footprint so SNIC can still grow through them.
     seed_mask = candseed_pre.eq(2)
     seed_size = seed_mask.selfMask().connectedPixelCount(maxSize=100, eightConnected=True)
-    seed_kept = seed_size.gt(SEED_MAX_DROP).unmask(0)
+    seed_kept = seed_size.gt(C.SNIC_SEED_MAX_DROP).unmask(0)
 
     candseed_pre = candseed_pre.where(candseed_pre.eq(2).And(seed_kept.Not()), 1)
     footprint = candseed_pre.gt(0)                 # 1,2,3 are all grow-into candidates
@@ -311,16 +265,16 @@ def snic_candseed(candseed_pre):
     snic = ee.Algorithms.Image.Segmentation.SNIC(
         image=footprint.selfMask(),
         seeds=seeds.selfMask(),
-        compactness=SNIC_COMPACTNESS,
-        connectivity=SNIC_CONNECTIVITY,
-        neighborhoodSize=NEIGHBORHOOD_SIZE,
+        compactness=C.SNIC_COMPACTNESS,
+        connectivity=C.SNIC_CONNECTIVITY,
+        neighborhoodSize=C.SNIC_NEIGHBORHOOD_SIZE,
     )
     burned = snic.select("clusters").mask()        # 1 where a seed-grown cluster exists
     return candseed_pre.updateMask(burned).toInt16().rename("candseed")
 
 
 # ---------------------------------------------------------------------------
-# idempotency + launch
+# idempotency
 # ---------------------------------------------------------------------------
 def asset_exists(asset_id):
     try:
@@ -340,9 +294,12 @@ def task_in_flight(description):
     return False
 
 
-def process_fire_year(fire_year, region, crs, transform, launch, name_prefix="snic_"):
+# ---------------------------------------------------------------------------
+# stage 1 — build candseed and export to asset
+# ---------------------------------------------------------------------------
+def process_fire_year(fire_year, region, crs, transform, launch, name_prefix):
     y1 = fire_year
-    asset_id = f"{SNIC_COL}/{name_prefix}{y1:04d}"
+    asset_id = f"{C.SNIC_COL}/{name_prefix}{y1:04d}"
     description = f"{name_prefix}{y1:04d}"
 
     if asset_exists(asset_id):
@@ -352,7 +309,7 @@ def process_fire_year(fire_year, region, crs, transform, launch, name_prefix="sn
         print(f"[skip] {description} has a PENDING/RUNNING task")
         return
 
-    candseed_pre, meta = build_candseed_pre(fire_year)
+    candseed_pre, _abs_date, meta = build_candseed_pre(fire_year)
     if candseed_pre is None:
         print(f"[skip] FY{y1}: no bpts image spans May {y1}-Apr {y1 + 1}")
         return
@@ -360,7 +317,7 @@ def process_fire_year(fire_year, region, crs, transform, launch, name_prefix="sn
     candseed = snic_candseed(candseed_pre).set(
         "fire_year", y1,
         "partial", meta["partial"],
-        "neighborhoodSize", NEIGHBORHOOD_SIZE,
+        "neighborhoodSize", C.SNIC_NEIGHBORHOOD_SIZE,
         "system:time_start", meta["time_start"].millis(),
         "system:time_end", meta["time_end"].millis(),
     )
@@ -381,25 +338,76 @@ def process_fire_year(fire_year, region, crs, transform, launch, name_prefix="sn
         print(f"[launched] {task.id}  ->  {asset_id}")
     else:
         bands = candseed.bandNames().getInfo()
-        print(f"[dry] would export {asset_id}  bands={bands}  neighborhoodSize={NEIGHBORHOOD_SIZE}")
+        print(f"[dry] would export {asset_id}  bands={bands}  "
+              f"neighborhoodSize={C.SNIC_NEIGHBORHOOD_SIZE}")
 
 
+# ---------------------------------------------------------------------------
+# stage 2 — read the candseed asset, attach abs_date + veg_fire, export COG to Drive
+# ---------------------------------------------------------------------------
+def process_fire_year_drive(fire_year, region, crs, transform, launch, name_prefix):
+    y1 = fire_year
+    asset_id = f"{C.SNIC_COL}/{name_prefix}{y1:04d}"
+    file_prefix = f"{name_prefix}{y1:04d}"
+    description = f"{file_prefix}_drive"
+
+    if not asset_exists(asset_id):
+        print(f"[skip] {asset_id} not exported yet — run the asset stage first")
+        return
+    if task_in_flight(description):
+        print(f"[skip] {description} has a PENDING/RUNNING task")
+        return
+
+    # candseed comes straight from the exported asset (SNIC is NOT recomputed);
+    # abs_date + veg_fire are recreated from the §4 construction and masked to it.
+    _pre, abs_date, _meta = build_candseed_pre(fire_year)
+    candseed = ee.Image(asset_id).select("candseed")
+    burned = candseed.mask()
+    veg_fire = F.veg_fire_image(y1).updateMask(burned).toInt16().rename("veg_fire")
+    abs_date = abs_date.updateMask(burned)
+    stack = candseed.addBands(abs_date).addBands(veg_fire)
+
+    task = ee.batch.Export.image.toDrive(
+        image=stack,
+        description=description,
+        folder=C.SNIC_DRIVE_FOLDER,
+        fileNamePrefix=file_prefix,
+        region=region,
+        crs=crs,
+        crsTransform=transform,
+        maxPixels=int(1e13),
+        fileFormat="GeoTIFF",
+        formatOptions={"cloudOptimized": True},
+    )
+    if launch:
+        task.start()
+        print(f"[launched] {task.id}  ->  Drive:{C.SNIC_DRIVE_FOLDER}/{file_prefix}")
+    else:
+        bands = stack.bandNames().getInfo()
+        print(f"[dry] would export Drive:{C.SNIC_DRIVE_FOLDER}/{file_prefix}  bands={bands}")
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     grp = ap.add_mutually_exclusive_group(required=True)
     grp.add_argument("--fire-year", type=int, help="single fire-year (START year, e.g. 2024)")
     grp.add_argument("--all", action="store_true",
-                     help=f"all fire-years {FIRST_FIRE_YEAR}..{LAST_FIRE_YEAR}")
+                     help=f"all fire-years {C.FIRST_FIRE_YEAR}..{C.LAST_FIRE_YEAR}")
     ap.add_argument("--launch", action="store_true",
                     help="actually submit export task(s) (default: build + sanity check only)")
     ap.add_argument("--test", action="store_true",
                     help="export over the tiny TEST_ROI as snic_test_<fy> (feasibility check)")
+    ap.add_argument("--to-drive", action="store_true",
+                    help="Drive stage: export candseed+abs_date+veg_fire COG from the existing asset")
     args = ap.parse_args()
 
     ee.Initialize(project=C.GEE_PROJECT)
 
-    region = (ee.Geometry.Polygon(TEST_ROI_COORDS, None, False) if args.test
+    region = (ee.Geometry.Polygon(C.TEST_ROI_COORDS, None, False) if args.test
               else ee.FeatureCollection(C.ARG_BUFFER_FC).geometry())
     name_prefix = "snic_test_" if args.test else "snic_"
     # Pin output to the bpts 30 m grid (use any available bpts image for the projection).
@@ -407,10 +415,11 @@ def main():
     crs = proj.crs().getInfo()
     transform = proj.getInfo()["transform"]
 
-    fire_years = (list(range(FIRST_FIRE_YEAR, LAST_FIRE_YEAR + 1))
+    fire_years = (list(range(C.FIRST_FIRE_YEAR, C.LAST_FIRE_YEAR + 1))
                   if args.all else [args.fire_year])
+    run = process_fire_year_drive if args.to_drive else process_fire_year
     for fy in fire_years:
-        process_fire_year(fy, region, crs, transform, args.launch, name_prefix)
+        run(fy, region, crs, transform, args.launch, name_prefix)
 
     if not args.launch:
         print("\nDry run only. Re-run with --launch to submit the task(s).")

@@ -224,3 +224,106 @@ PREV_SUFFIX_MAP = {
     "dry": "median_dry",
     "sd":  "stdDev",
 }
+
+# ─── Step 04 — SNIC burned-area segmentation (fire-year) ─────────────────────
+# Config for workflow/04-snic.py.  Kept here (not in the script) so a new
+# collection re-tunes settings in ONE place; the script holds only procedure.
+# See docs/04-snic.md for the design behind every value below.
+#
+# SYNC: the seed/candidate thresholds (VEG_TABLE + the G_* global cuts) are
+# hand-copied from the fuego JS tuning script `explore_snic_IB-02` (last synced
+# 2026-07-08) and also mirrored in `explore_snic_IB-03`.  There is NO automatic
+# sync between the fuego JS repo and this repo — if the JS thresholds change,
+# update these to match (docs/04-snic.md §6, Tools / SYNC).
+
+# Output ImageCollection (asset name pattern: snic_<fire_year>; --test → snic_test_<fy>).
+SNIC_COL = f"{_FIRE_ROOT}/COLLECTION-1/WORKFLOW-EXPORTS/snic"
+# Drive folder for the R-facing COG export (04-snic.py --to-drive); files are
+# named like the assets (snic_<fire_year> / snic_test_<fire_year>).
+SNIC_DRIVE_FOLDER = "snic_exports"
+
+# Fire-year calendar (§2): FY Y1 = 1 May Y1 → 30 Apr (Y1+1), named by START year Y1.
+FY_START_MONTH = 5
+FIRST_FIRE_YEAR, LAST_FIRE_YEAR = 1998, 2025   # start years
+
+# SNIC segmentation params (§4.4 / §6).
+SNIC_NEIGHBORHOOD_SIZE = 512   # px; SNIC internal-tile buffer. 15.4 km @30 m.
+SNIC_COMPACTNESS = 0
+SNIC_CONNECTIVITY = 8
+SNIC_SEED_MAX_DROP = 5         # drop seed components with <= this many connected px
+
+# bpts probability bands decode_bpts rescales (÷10000 → probability); rest as-is.
+SNIC_PROB_BANDS = ["delta3_peak", "minfore3_peak", "delta2_peak", "minfore2_peak",
+                   "pmax3", "pmax2", "pmax1"]
+
+# Candidate is always the K=2 delta form (4-value candidate); see classify_image.
+CAND_FORCE_K2 = True
+
+# GLOBAL hand-set delta cuts (decoded probability 0..1), per K: [candidate, seed].
+G_K2_CAND, G_K2_SEED = 0.25, 0.90
+G_K3_CAND, G_K3_SEED = 0.30, 0.75
+
+# Per-veg thresholds: [code, n_break, k2_cand, k2_seed, k3_cand, k3_seed].
+#   code     = veg_fire class (see config/veg_fire_remap.csv)
+#   n_break  = obs count (`n`) at/above which a pixel uses the K=3 fit, not K=2
+#   k*_cand / k*_seed = delta cut for candidate / seed at that K; None = use G_*
+VEG_TABLE = [
+    [1,  14, 0.5, 0.98, 0.5, 0.98],   # agriculture_chaco
+    [2,   2, 0.5, 0.98, 0.5, 0.98],   # agriculture_cuyo-pat
+    [3,  16, 0.5, 0.98, 0.5, 0.98],   # agriculture_pampa
+    [4,  48, None, None, None, None],  # agriculture-per_chaco-ba
+    [5,  46, None, None, None, None],  # forest_ba
+    [6,  34, None, None, None, None],  # forest_cuyo
+    [7,  49, None, None, None, None],  # forest_pampa
+    [8,   7, None, None, None, None],  # forest_pat
+    [9,  35, None, None, None, None],  # forest-cerr_chaco
+    [10, 32, None, None, None, None],  # forest-inund-chaco
+    [11, 31, None, None, None, None],  # forest-open_chaco
+    [12, 52, None, None, None, None],  # grassland_ba
+    [13, 25, 0.5, 0.98, 0.5, 0.98],   # grassland_chaco
+    [14, 32, None, None, None, None],  # grassland_cuyo
+    [15, 48, None, None, None, None],  # grassland_pampa
+    [16, 36, None, None, None, None],  # grassland_pat
+    [17, 26, 0.5, 0.98, 0.5, 0.98],   # grassland-inund_chaco
+    [18, 34, None, None, None, None],  # pasture_ba
+    [19, 39, None, None, None, None],  # pasture_chaco
+    [20, 35, None, None, None, None],  # shrubland_cuyo-pampa
+    [21,  7, None, None, None, None],  # shrubland_pat
+    [22, 21, None, None, None, None],  # shrubland-closed_chaco
+    [23, 23, None, None, None, None],  # shrubland-open_chaco
+]
+# Column indices into a VEG_TABLE row.
+VEG_COL_CODE, VEG_COL_NBREAK, VEG_COL_K2C, VEG_COL_K2S, VEG_COL_K3C, VEG_COL_K3S = 0, 1, 2, 3, 4, 5
+
+# Defaults for veg not in VEG_TABLE (non-burnable 24 / non-observed 25 / unmapped):
+# NBREAK huge -> always K2; THR 9 -> no delta ever passes -> no fire on non-veg.
+NBREAK_DEF, THR_DEF = 99999, 9
+
+# Seed temporal-gap ceiling (days): reject seeds where min(jumpgap2, jumpgap3) > gap.
+# Denser pixels (n >= N_DENSE) get the tighter ceiling.
+S_GAP_DENSE, S_GAP_SPARSE, N_DENSE = 60, 90, 20
+
+# Patagonia slow-dieback forward padding (§4.3): a candidate/seed in the NEXT-year
+# (Y2) image with mid-date in [PAD_MONTH_LO, PAD_MONTH_HI] of Y2, west of
+# PAT_LON_MAX, in a Patagonia forest/shrubland class, becomes candseed=3 where
+# the fire-year focal value is 0.
+PAD_MONTH_LO, PAD_MONTH_HI = 6, 11
+PAT_LON_MAX = -70.3
+PAT_VEG_CODES = [8, 21]        # forest_pat (8), shrubland_pat (21)
+
+# San Ramón exception (fire-year 1998 only; §4.5): inside SAN_RAMON_RECT, also
+# accept high max-probability pixels as candidates (the sparse Jan-Apr 1999 fire).
+SAN_RAMON_FIRE_YEARS = [1998]
+SAN_RAMON_PMAX_BAND = "pmax3"
+SAN_RAMON_PMAX_MIN = 0.3
+SAN_RAMON_RECT_COORDS = [[[-71.1795629588502, -40.836670267693194],
+                          [-71.1795629588502, -41.21017094506833],
+                          [-70.79641476549082, -41.21017094506833],
+                          [-70.79641476549082, -40.836670267693194]]]
+
+# Tiny ROI for a --test export (near San Ramón: exercises the Patagonia padding
+# and the San Ramón exception on a fast, small extent).
+TEST_ROI_COORDS = [[[-71.04026772918293, -41.14289047797963],
+                    [-71.04026772918293, -41.18424486013236],
+                    [-70.96885659637043, -41.18424486013236],
+                    [-70.96885659637043, -41.14289047797963]]]

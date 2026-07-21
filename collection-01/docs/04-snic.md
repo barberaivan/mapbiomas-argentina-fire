@@ -93,9 +93,10 @@ For each calendar image (thresholds hand-copied from fuego `explore_snic_IB-02` 
 Keep only pixels whose mid-date falls in the fire-year `[1 May Y1, 1 May Y2)` — this turns the two
 calendar images into one non-calendar year (Y1 image contributes May–Dec Y1; Y2 image contributes
 Jan–Apr Y2; a Y1 detection dated before May Y1 belongs to the *previous* fire-year and is dropped).
-Combine the two per pixel by **rank: seed (2) > candidate (1) > none (0)** (`max`). *(The `delta2`
-tie-break only decides which image's **date** a pixel carries; that is recomputed downstream at
-export — §5 — not stored here.)*
+Combine the two per pixel by **rank: seed (2) > candidate (1) > none (0)** (`max`). Each pixel's
+**`abs_date`** follows the image that won the `max` (the Y2 image wins only if it is strictly higher
+rank; ties keep the Y1 date). `abs_date` is built here alongside `candseed` but is **not stored in
+the asset** — it is recreated at the Drive stage (§5).
 
 ### 4.3 Patagonia slow-dieback forward padding (`candseed = 3`)
 Andean Patagonian forest dies **slowly** after fire, so part of a real scar only crosses the change
@@ -107,11 +108,16 @@ window lives in the Y2 image already loaded. Padding pixels survive SNIC only if
 focal seed, so it **extends** detected scars, never manufactures one. **[OPEN]** whether the
 **steppe** (`grassland_pat`) needs the same padding — check in fuego `explore_snic_IB-03`.
 
-### 4.4 Supervised SNIC → export
+### 4.4 Supervised SNIC → asset (stage 1, default)
 `ee.Algorithms.Image.Segmentation.SNIC` grows the **seed** pixels (after a connected-speck drop of
 ≤5-px seed clumps) through the candidate footprint; **seedless candidate islands get no cluster and
 fall out** (SNIC *is* the seed/candidate classifier). Keep the **burned mask** (cluster ids
-discarded — R relabels globally), export `candseed` masked to it. `neighborhoodSize = 512`.
+discarded — R relabels globally), export `candseed` masked to it. `neighborhoodSize = 512`. All the
+cuts/params above are in `utils/constants.py` (Step 04 section), not the script.
+
+This is the script's **default stage**: it writes `snic_<fire_year>` (a single-band `candseed`
+asset) to `C.SNIC_COL`. The idempotent launcher skips a fire-year whose asset exists or that has a
+PENDING/RUNNING task.
 
 ### 4.5 San Ramón exception (fire-year 1998 only)
 The Jan–Apr 1999 San Ramón fire (fire-year 1998, "jan99-apr99") is very sparse ("ralo") — its
@@ -120,7 +126,7 @@ The Jan–Apr 1999 San Ramón fire (fire-year 1998, "jan99-apr99") is very spars
 high-max-probability pixels (`pmax3 ≥ 0.3`). It is scoped this tightly on purpose: a pmax-based
 candidate breaks other years/areas (valle de río negro), and San Ramón maps largely as agriculture
 so it can't be separated by veg cover. From the `explore_snic_IB-02` Observaciones; both the box and
-the cut are constants at the top of `04-snic.py`.
+the cut are in `utils/constants.py` (Step 04 section).
 
 ---
 
@@ -129,12 +135,16 @@ the cut are constants at the top of `04-snic.py`.
 Object work is done in R (`terra`/`sf`) — GEE vector topology is its weak spot and objects cross
 tiles. Mechanics:
 
-- **Asset stores only `candseed`.** The R-facing **Drive COG** (`Export.image.toDrive` with
-  `formatOptions={'cloudOptimized': True}`) additionally carries **`abs_date`** and **`veg_fire`**,
-  recreated at export. *Recreation re-runs the §4 mid-date + seed>cand construction per pixel* to
-  attach each pixel's date/veg — it is **not** a look-up by `candseed` code. `candseed == 3` flags a
-  dieback pixel so R gives it the **parent object's** date for the month-of-burn raster, never its
-  own (next-year) dieback date.
+- **Asset stores only `candseed`; the Drive COG carries three bands.** Stage 2, run with
+  `04-snic.py --to-drive` (same `--fire-year`/`--all`/`--test`/`--launch` flags), writes an R-facing
+  cloud-optimized GeoTIFF (`Export.image.toDrive`, `formatOptions={'cloudOptimized': True}`) to
+  `C.SNIC_DRIVE_FOLDER` holding **`candseed` + `abs_date` + `veg_fire`**. It **reads `candseed`
+  (and its burned mask) straight from the `snic_<fire_year>` asset — SNIC is NOT recomputed** — and
+  recreates only `abs_date` + `veg_fire` by re-running the §4 construction, masking both to the
+  asset. `abs_date`/`veg_fire` are thus computed per pixel, **not** looked up from the `candseed`
+  code. `candseed == 3` flags a dieback pixel so R gives it the **parent object's** date for the
+  month-of-burn raster, never its own (next-year) dieback date. The stage is idempotent: it skips a
+  fire-year whose asset is missing (run stage 1 first) or that has a PENDING/RUNNING Drive task.
 - **Compression is what makes the download cheap** (`cloudOptimized` → DEFLATE + tiling); burned is
   ~0.3–1 % of area, so a masked image collapses to tens of MB/yr. A plain uncompressed export is
   dense and large regardless of the mask. Drive (not GCS: the project has no CS budget).
@@ -164,7 +174,7 @@ A manual ash/drought masking pass removes remaining false positives before the d
 | Tool (fuego `visualization-misc/`, unless noted) | Purpose |
 |---|---|
 | `explore_fire_seasons_regions` (+ `_bpts_ARG`, `_firms_ARG`) | fire-year boundary — monthly burn-season charts, region layout |
-| `explore_snic_IB-02` | tune seed/candidate thresholds by eye (single calendar year); **source of the `04-snic.py` CONFIG** |
+| `explore_snic_IB-02` | tune seed/candidate thresholds by eye (single calendar year); **source of the Step 04 thresholds in `utils/constants.py`** |
 | `explore_snic_IB-03` | visualize the **production fire-year `candseed`** on the fly; the steppe-padding check (§4.3) |
 | `explore_snic_firebreaks_IB-01` | the **shelved** SNIC-3D firebreak experiment (§1) |
 | `snic_regions_definition` | trace SNIC regions — only needed if the whole-country memory fallback is triggered |
@@ -178,8 +188,8 @@ per-tile memory as a region. `neighborhoodSize = 512` (the trial value) heals th
 fallback** only if a larger `neighborhoodSize` ever OOMs.
 
 **SYNC:** the seed/candidate thresholds exist in three places — `explore_snic_IB-02` (JS, the
-tuning source), `04-snic.py` CONFIG, and `explore_snic_IB-03` — with **no automatic sync**. Update
-all three together. `config/snic_seed_candidate_thresholds.csv` holds the earlier data-calibrated
+tuning source), `utils/constants.py` (Step 04 section, consumed by `04-snic.py`), and
+`explore_snic_IB-03` — with **no automatic sync**. Update all three together. `config/snic_seed_candidate_thresholds.csv` holds the earlier data-calibrated
 per-veg cuts, kept only as a **reference** (they failed out of sample; the live cuts are the by-eye
 globals in `explore_snic_IB-02`).
 
