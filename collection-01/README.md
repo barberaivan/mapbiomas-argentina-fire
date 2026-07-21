@@ -39,7 +39,7 @@ collection-01/
 ├── docs/                   # Per-workflow-step development notes (NN-*.md) — start here for design
 ├── utils/
 │   ├── constants.py        # All paths, feature lists, MB reclass table, LR terms
-│   └── functions.py        # GEE helpers: Landsat preprocessing, indices, MB sampling
+│   └── functions.py        # Shared cross-step GEE helpers ONLY (Landsat, indices, MB sampling, veg_fire); step-specific code lives with its step
 ├── config/                 # veg_fire_remap.csv — canonical MB→fire-class remap (source of truth)
 ├── models/                 # Tracked: *_coefficients.csv (the GEE deliverable) + README; see models/README.md
 ├── models-store/           # symlink → Insync store (gitignored): heavy fits, CV metrics, tuning, OOF preds

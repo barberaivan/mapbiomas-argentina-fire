@@ -4,8 +4,12 @@ Full design + implementation record for step 03. This is the single reference: w
 step does, **why each decision was taken**, and — importantly — the **GEE array-handling
 problems we hit and how they were solved**, so a future change doesn't re-discover them.
 
-Code: `utils/functions.py` (building blocks + `bpts` driver), `workflow/03-bp_ts_metrics.py`
-(CLI), `scripts/test-03-bp_ts.py` (interactive/headless checks). Distributed multi-account
+Code: `workflow/03-bp_ts_metrics.py` holds ALL step-03 machinery — the building blocks, the
+`bpts` driver, AND the CLI (self-contained, like steps 01/02/04). Only the cross-step imagery
+helpers it calls (`get_landsat`, `add_indices`, `get_mb_mosaic_bands`, `veg_fire_image`) live in
+`utils/functions.py`. `scripts/test-03-bp_ts.py` (interactive/headless checks) loads the step-03
+functions by PATH via `importlib` — the file's leading digit + hyphen make its name an invalid
+Python identifier, so it can't be `import`ed by name. Distributed multi-account
 export is documented separately in `03-colab_multi_export.md`. Related exploration notebook:
 `notebooks/burn_prob_ts_metrics.qmd` (candidate metrics on synthetic signals; the ideas here
 are the matured version).
@@ -242,7 +246,7 @@ integer days), and `date_post` is `d[t*]+1`.
 
 All bands are **int16-encoded for export** (≈half the float32 asset size). The encoding is
 applied in `bpts_image`; the `decode` column below is how to recover each band. The band groups
-and `PROB_SCALE` live in `utils/functions.py` (`PROB_BANDS`/`DAY_BANDS`/`DOY_BANDS`). Everything
+and `PROB_SCALE` live in `workflow/03-bp_ts_metrics.py` (`PROB_BANDS`/`DAY_BANDS`/`DOY_BANDS`). Everything
 is a single signed dtype (int16, −32768…32767) on purpose — see the note below the table.
 
 | band | definition | decode | masked when |

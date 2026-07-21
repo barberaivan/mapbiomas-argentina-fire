@@ -24,6 +24,7 @@ Headless use:
 """
 
 import argparse
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -31,7 +32,26 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import ee
 from utils import constants as C
-from utils import functions as F
+from utils import functions as F        # cross-step helpers (veg_fire_image, …)
+
+
+def _load_step03():
+    """Load workflow/03-bp_ts_metrics.py by PATH.
+
+    Step 03's functions (burn_prob_collection, bpts_image, _tile_geometry, …) live in
+    that file, but its name starts with a digit and has a hyphen — an invalid Python
+    module identifier — so it cannot be `import`ed by name. importlib-by-path is the
+    GEE require() analog: it runs the file's top-level defs but NOT its main() (guarded
+    by `if __name__ == "__main__"`).
+    """
+    path = Path(__file__).resolve().parents[1] / "workflow" / "03-bp_ts_metrics.py"
+    spec = importlib.util.spec_from_file_location("step03_bpts", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+S = _load_step03()                       # step-03 machinery
 
 YEAR = 2015
 TILE = "SK-19-Y-A"
@@ -56,7 +76,7 @@ VEGFIRE_VIS = {"min": 1, "max": 25, "palette": [
 
 def bp_inspector_collection(year=YEAR, tile_id=TILE):
     """Per-date collection carrying spectral indices + prob (for the inspector)."""
-    col, _ = F.burn_prob_collection(year, tile_id, keep_indices=True)
+    col, _ = S.burn_prob_collection(year, tile_id, keep_indices=True)
     return col
 
 
@@ -71,7 +91,7 @@ def show(year=YEAR, tile_id=TILE):
     """
     import geemap
 
-    tile_geom = F._tile_geometry(tile_id)
+    tile_geom = S._tile_geometry(tile_id)
     veg_fire = F.veg_fire_image(year)
 
     bp_col = bp_inspector_collection(year, tile_id)
@@ -81,7 +101,7 @@ def show(year=YEAR, tile_id=TILE):
         .sort("system:time_start").first()
     )
 
-    metrics = F.bpts_image(year, tile_id)
+    metrics = S.bpts_image(year, tile_id)
 
     m = geemap.Map()
     m.centerObject(tile_geom, 9)
@@ -101,7 +121,7 @@ def validate(year=YEAR, tile_id=TILE):
     Cholila fire to confirm the whole graph computes without error and produces
     sensible values (high delta3_peak / pmax1, n > 0).
     """
-    metrics = F.bpts_image(year, tile_id)
+    metrics = S.bpts_image(year, tile_id)
     print("bpts bands:", metrics.bandNames().getInfo())
 
     # ~5 km box near the centre of the 2015 Cholila burn scar (Patagonia forest).

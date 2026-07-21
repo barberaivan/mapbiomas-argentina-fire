@@ -19,19 +19,37 @@ Run from the repo root:
     $PYTHON collection-01/scripts/profile_bpts.py
 """
 
+import importlib.util
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import ee
-from utils import functions as F
+
+
+def _load_step03():
+    """Load workflow/03-bp_ts_metrics.py by PATH.
+
+    bpts_image lives in that file, but its name starts with a digit and has a hyphen —
+    an invalid Python module identifier — so it cannot be `import`ed by name.
+    importlib-by-path is the GEE require() analog: it runs the file's top-level defs but
+    NOT its main() (guarded by `if __name__ == "__main__"`).
+    """
+    path = Path(__file__).resolve().parents[1] / "workflow" / "03-bp_ts_metrics.py"
+    spec = importlib.util.spec_from_file_location("step03_bpts", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+S = _load_step03()
 
 ee.Initialize(project="mapbiomas-fire-485203")
 
 YEAR, TILE = 2015, "SK-19-Y-A"                     # Cholila (dense forest burn)
 box = ee.Geometry.Point([-71.50, -42.55]).buffer(3000).bounds()   # ~6 km box
 
-img = F.bpts_image(YEAR, TILE).select("delta3_peak")
+img = S.bpts_image(YEAR, TILE).select("delta3_peak")
 
 print(f"=== TRUE EE PROFILER — full bpts graph over 6 km box @30 m "
       f"({TILE}, {YEAR}) ===")
