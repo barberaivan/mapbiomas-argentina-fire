@@ -241,7 +241,11 @@ PREV_SUFFIX_MAP = {
 SNIC_COL = f"{_FIRE_ROOT}/COLLECTION-1/WORKFLOW-EXPORTS/snic"
 # Drive folder for the R-facing COG export (04-snic.py --to-drive); files are
 # named like the assets (snic_<fire_year> / snic_test_<fire_year>).
-SNIC_DRIVE_FOLDER = "snic_exports"
+# GEE's toDrive `folder` is a folder NAME, not a path: it writes into an existing
+# Drive folder of that name wherever it lives. This one already exists on the
+# comahue account's Drive at MapBiomas/mapbiomas-arg-fire-store/collection-01/data/
+# snic-polygons, which Insync syncs to STORE_ROOT/collection-01/data/snic-polygons.
+SNIC_DRIVE_FOLDER = "snic-polygons"
 
 # Fire-year calendar (§2): FY Y1 = 1 May Y1 → 30 Apr (Y1+1), named by START year Y1.
 FY_START_MONTH = 5

@@ -47,6 +47,16 @@ Other documentation:
   (your shell) and `.claude/settings.local.json` (Claude Code's Bash). Use the project's GEE
   venv; never create a new venv for this repo.
 - **GEE project**: `mapbiomas-fire-485203` (hardcoded in `collection-01/utils/constants.py`).
+- **GEE accounts — two of them.** Most work runs under the primary personal account
+  (`ivanbarbera93@gmail.com`). A few steps run under a **second account,
+  `ivanbarbera@comahue-conicet.gob.ar`** — specifically anything that writes to Drive for the
+  `-store` side (e.g. step 04 `--to-drive`), because that account **owns the Google Drive that
+  Insync syncs into `STORE_ROOT`** (`.local-paths`). GEE credentials live in a single file
+  (`~/.config/earthengine/credentials`), so switching accounts means swapping that file — keep
+  per-account backups (`credentials.gmail`, `credentials.comahue`) and `cp` the one you need
+  into place before running. Note the comahue account is registered under the shared
+  `mapbiomas-argentina` compute project, **not** `mapbiomas-fire-485203`, so a script that
+  hardcodes `C.GEE_PROJECT` may need a project override when run under it.
 - **Run scripts from the repo root**, not from inside `collection-01/` — scripts add
   `collection-01/` to `sys.path` at startup.
 - `collection-01/utils/constants.py` is the single source of truth for paths, year range,

@@ -426,9 +426,14 @@ def main():
                     help="re-export a fire-year whose asset already exists, replacing it in "
                          "place via GEE's native Export overwrite. In-flight tasks are still "
                          "skipped. Default: skip existing assets.")
+    ap.add_argument("--project", default=C.GEE_PROJECT,
+                    help="GEE compute project to initialize under (default: %(default)s). "
+                         "Override to a project the authenticated account can use — e.g. "
+                         "'mapbiomas-argentina' when running --to-drive under the comahue "
+                         "account, which is not registered on the default project.")
     args = ap.parse_args()
 
-    ee.Initialize(project=C.GEE_PROJECT)
+    ee.Initialize(project=args.project)
 
     region = (ee.Geometry.Polygon(C.TEST_ROI_COORDS, None, False) if args.test
               else ee.FeatureCollection(C.ARG_BUFFER_FC).geometry())
