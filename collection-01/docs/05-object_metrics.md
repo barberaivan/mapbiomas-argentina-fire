@@ -89,6 +89,10 @@ Doing the numeric work here — not on polygons — is both faster and exact for
 dissolve *is* the per-id merge (no manual per-id loop needed). The §3 metrics table is then
 joined on `pid` as polygon attributes.
 
+`patches()` restarts numbering at 1 every year, so the within-year `pid` **collides across
+fire-years**. Each polygon therefore also carries a globally-unique **`oid = "<fire_year>_<pid>"`**
+(e.g. `2015_4213`); `pid` and `fire_year` are kept too.
+
 ---
 
 ## 5. Geometry shape / sparsity metrics (`[6]`)
@@ -126,7 +130,14 @@ Run from the repo root:
 ```
 Rscript collection-01/workflow/05-objects_metrics.R [fire_year ...]   # default: all present
 Rscript collection-01/workflow/05-objects_metrics.R test 1998 1999    # small-ROI snic_test_* → objects_test_*
+Rscript collection-01/workflow/05-objects_metrics.R terra 2000        # dense fallback (see §7)
 ```
+
+**Two labelling methods** (same result; `pid` numbers may differ, the *partition* is identical):
+- **`sparse` (default, needs `igraph`)** — the object ids come from a connected-components
+  labelling that runs over the **burned cell indices only** (`§2`/§7). O(burned), not O(all
+  cells).
+- **`terra`** — the original `terra::patches()` over the dense grid, kept as a fallback.
 
 Downstream: **step 06** filters these objects (`docs/06` when written) — real scars are
 compact and seeded throughout (`seed`/`candseed` share + high `burned_around_*` + high
@@ -139,10 +150,15 @@ pass.
 
 ## 7. Performance & open questions
 
-- **terra out-of-core.** The 30 m country grid is far too large to hold densely, so every step
-  stays **sparse** (1/NA rasters, `focal` with `na.rm`, cells-only extraction) and terra chunks
-  the rest to disk. `patches()` and `as.polygons()` over the full extent are the heaviest ops;
-  if a real fire-year is too slow, the fallback is tiling with a halo + a global relabel (same
-  seam-heal idea as SNIC's `neighborhoodSize`) — measure on a real year first (the download/
-  processing-time worry that motivated the Drive handoff).
+- **Why the `sparse` default exists.** Profiling the `terra` path on the ROI (52 M cells, ~528 k
+  burned) showed the cost is dominated by full-grid ops — `patches()` (~51 s) and the dense
+  `focal`/`as.data.frame` extraction (~55 s) — while `as.polygons()` was cheap (~3 s). All of it
+  scales with **total cells**, so the country (~3 B cells) would be ~2 h/year. The `sparse` path
+  replaces `patches()` + dense extraction with an index-based connected-components + aggregation
+  over **burned cells only** (O(burned)); the one remaining dense step is building the `pid`
+  raster for `as.polygons()`.
+- **`sparse` scaling risk to watch.** `igraph` labelling is C-fast, but the R-side edge list
+  (~4 edges × burned cells) and the graph object are the memory cost at country scale; if it's
+  too heavy, swap the labelling for a union-find (same 4-neighbour logic, no stored edges) via
+  Rcpp or the C++ CA. Measure on a real full-country year before committing.
 - **Shape/sparseness feature set & cuts** for the step-06 filter are still open (04 §7).

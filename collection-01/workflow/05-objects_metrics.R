@@ -11,14 +11,17 @@
 # Run from the repo ROOT (paths below are repo-relative; collection-01/data is a
 # symlink into the Insync store):
 #
-#   Rscript collection-01/workflow/05-objects_metrics.R [test] [fire_year ...]
+#   Rscript collection-01/workflow/05-objects_metrics.R [test] [terra] [fire_year ...]
 #     fire_year…  one or more START years (e.g. 2000 2015). Default: every
 #                 snic_<year>*.tif present in collection-01/data/snic-polygons.
 #     test        read the small-ROI snic_test_<year> COGs instead, writing
 #                 objects_test_<year>.{gpkg,csv} (mirrors 04-snic.py --test).
+#     terra       use the terra patches() labelling (dense, O(all cells)); default
+#                 is the SPARSE igraph path (O(burned cells), the fast route).
 #   e.g.  Rscript collection-01/workflow/05-objects_metrics.R 2000
 #         Rscript collection-01/workflow/05-objects_metrics.R              # all present
 #         Rscript collection-01/workflow/05-objects_metrics.R test 1998 1999
+#         Rscript collection-01/workflow/05-objects_metrics.R terra 2000  # dense fallback
 #
 # Design + rationale: see docs/05-object_metrics.md. Summary of the procedure,
 # per fire-year:
@@ -53,6 +56,7 @@ suppressPackageStartupMessages({
   library(terra)
   library(sf)
   library(data.table)
+  library(igraph)     # sparse connected-components labelling (default method)
 })
 
 # ── config ───────────────────────────────────────────────────────────────────
@@ -102,7 +106,10 @@ load_snic <- function(fy, test = FALSE) {
 
 # ── [2] object ids via the dilation connectivity hack ─────────────────────────
 object_ids <- function(candseed, veg_fire) {
-  burned <- candseed > 0                       # 1 / NA  (candseed is masked to burned)
+  # 1 / NA mask. NB the COG fills unburned pixels with 0 (not NoData), so we must
+  # collapse BOTH 0 and NA to NA — a bare `candseed > 0` would leave a dense 0/1
+  # grid and patches() would swallow the whole background as one object.
+  burned <- terra::ifel(candseed > 0, 1, NA)
 
   # Dilate the burned mask by one 8-neighbour ring, then MASK any halo pixel whose
   # ONLY burned neighbours are the avoided ag/grassland classes {1,2,3,13,17} —
@@ -127,68 +134,139 @@ object_ids <- function(candseed, veg_fire) {
 # ── [3] per-object raster summaries ───────────────────────────────────────────
 # {median, mean, p2.5, p97.5, min, max} helper for a numeric column.
 qstats <- function(x) {
+  x <- as.numeric(x)   # force double: else 1-pixel groups return integer min/max/median
+                       # and data.table rejects the per-group type mismatch.
   q <- stats::quantile(x, c(0.025, 0.975), names = FALSE, type = 7, na.rm = TRUE)
   list(median = stats::median(x, na.rm = TRUE), mean = mean(x, na.rm = TRUE),
        p2.5 = q[1], p97.5 = q[2], min = min(x, na.rm = TRUE), max = max(x, na.rm = TRUE))
 }
 
-raster_metrics <- function(r, pid) {
-  burned <- !is.na(pid)
-  has_n  <- "n" %in% names(r)
-  if (!has_n)
-    warning("no 'n' band in the COG — n-summaries skipped. Add n to 04-snic.py ",
-            "--to-drive (see docs/05 §7).", call. = FALSE)
-
-  # burned_around_k = fraction of the (2k+1)² window that is burned, at each
-  # burned pixel. Computed sparsely: focal SUM of the 1/NA burned mask (na.rm
-  # treats NA as 0) ÷ window size — no country-wide densification.
-  ba <- lapply(BA_RADII, function(k) {
-    w <- 2L * k + 1L
-    s <- terra::focal(burned * 1, w = matrix(1, w, w), fun = "sum", na.rm = TRUE)
-    terra::mask(s, pid) / (w * w)
-  })
-  ba <- terra::rast(ba); names(ba) <- sprintf("burned_around_%d", BA_RADII)
-
-  cell_area <- terra::mask(terra::cellSize(pid, unit = "m"), pid)  # per-cell m² (CRS-correct)
-
-  bands <- c("veg_fire", "abs_date", if (has_n) "n")
-  stk   <- c(pid, r[[bands]], cell_area, ba)
-  names(stk)[names(stk) == "area"] <- "cell_area"  # cellSize() names its layer "area"
-
-  # Pull ONLY burned cells into a data.table (na.rm drops the empty grid).
-  dt <- as.data.table(terra::as.data.frame(stk, na.rm = TRUE))
-  setnames(dt, "pid", "pid")
-
-  # veg abundance: per-class fractions + top-5 (by pixel count) ------------------
+# Shared aggregator: from a burned-cell data.table with columns
+# pid, veg_fire, abs_date, [n], cell_area, burned_around_1..3 → list(num,fracs,tops).
+# Used by BOTH the terra (dense) and the sparse paths.
+aggregate_metrics <- function(dt, has_n) {
+  # veg abundance: per-class fractions + top-5 (by pixel count)
   vt <- dt[, .N, by = .(pid, veg_fire)]
   vt[, frac := N / sum(N), by = pid]
-  # full per-class fraction matrix (23 cols; classes absent in a patch → 0)
-  fracs <- dcast(vt[veg_fire %in% VEG_CODES], pid ~ veg_fire,
-                 value.var = "frac", fill = 0)
+  fracs <- dcast(vt[veg_fire %in% VEG_CODES], pid ~ veg_fire, value.var = "frac", fill = 0)
   present <- setdiff(names(fracs), "pid")
   setnames(fracs, present, sprintf("frac_c%s", present))
-  for (c in sprintf("frac_c%d", VEG_CODES))                # add any never-seen class as 0
-    if (!c %in% names(fracs)) fracs[, (c) := 0]
+  for (c in sprintf("frac_c%d", VEG_CODES)) if (!c %in% names(fracs)) fracs[, (c) := 0]
   setcolorder(fracs, c("pid", sprintf("frac_c%d", VEG_CODES)))
-  # ranked top-5 (code + fraction); patches with <5 classes pad with NA
   top <- vt[order(pid, -N),
-            .(top = veg_fire[seq_len(5)], topf = frac[seq_len(5)], rk = seq_len(5)),
-            by = pid]
+            .(top = veg_fire[seq_len(5)], topf = frac[seq_len(5)], rk = seq_len(5)), by = pid]
   tops <- dcast(top, pid ~ rk, value.var = c("top", "topf"))
   setnames(tops, paste0("top_",  1:5), paste0("veg_top", 1:5),        skip_absent = TRUE)
   setnames(tops, paste0("topf_", 1:5), paste0("veg_top", 1:5, "_frac"), skip_absent = TRUE)
-
-  # numeric summaries: area + abs_date (+ n) + neighbourhood sparseness ---------
   num <- dt[, {
     d   <- qstats(abs_date)
-    out <- c(list(n_pixels = .N, area_m2 = sum(cell_area)),
-             setNames(d, paste0("date_", names(d))))
+    out <- c(list(n_pixels = .N, area_m2 = sum(cell_area)), setNames(d, paste0("date_", names(d))))
     if (has_n) { nn <- qstats(n); out <- c(out, setNames(nn, paste0("n_", names(nn)))) }
     for (nm in sprintf("burned_around_%d", BA_RADII)) out[[nm]] <- mean(get(nm))
     out
   }, by = pid]
-
   list(num = num, fracs = fracs, tops = tops)
+}
+
+# ── [3a] TERRA (dense) path: patches()-labelled `pid` → metrics ────────────────
+raster_metrics <- function(r, pid) {
+  burned <- terra::ifel(is.na(pid), NA, 1)
+  has_n  <- "n" %in% names(r)
+  if (!has_n) warning("no 'n' band in the COG — n-summaries skipped (04 §5).", call. = FALSE)
+  ba <- lapply(BA_RADII, function(k) {
+    w <- 2L * k + 1L
+    terra::mask(terra::focal(burned * 1, matrix(1, w, w), "sum", na.rm = TRUE), pid) / (w * w)
+  })
+  ba <- terra::rast(ba); names(ba) <- sprintf("burned_around_%d", BA_RADII)
+  cell_area <- terra::mask(terra::cellSize(pid, unit = "m"), pid)
+  bands <- c("veg_fire", "abs_date", if (has_n) "n")
+  stk   <- c(pid, r[[bands]], cell_area, ba)
+  names(stk)[names(stk) == "area"] <- "cell_area"
+  dt <- as.data.table(terra::as.data.frame(stk, na.rm = TRUE))
+  aggregate_metrics(dt, has_n)
+}
+
+# ── [3b] SPARSE path: igraph connected-components over burned CELLS only ───────
+# Everything below is O(burned), never scanning the dense background grid.
+.in_set <- function(x, bs)                      # membership by binary search (bs sorted once)
+  { p <- findInterval(x, bs); p >= 1L & bs[pmax(p, 1L)] == x }
+
+# Label burned cells with globally-unique component ids (adds `pid`), applying the
+# SAME dilation rule: bridge via a 1-px halo grown only from non-ag/grass burned.
+label_sparse <- function(dt, nc) {
+  off8  <- CJ(dr = -1:1, dc = -1:1)[!(dr == 0 & dc == 0)]
+  nonag <- dt[!(veg_fire %in% AG_GRASS_NO_DILATE), .(row, col)]
+  halo <- rbindlist(lapply(seq_len(nrow(off8)), function(i) {
+    ncl <- nonag$col + off8$dc[i]; nrw <- nonag$row + off8$dr[i]
+    ok  <- ncl >= 1 & ncl <= nc & nrw >= 1
+    data.table(cell = (nrw[ok] - 1L) * nc + ncl[ok])
+  }))
+  halo  <- unique(halo)[!dt, on = "cell"]                 # drop cells that are burned
+  nodes <- unique(rbindlist(list(dt[, .(cell)], halo)))
+  nodes[, `:=`(row = ((cell - 1L) %/% nc) + 1L, col = ((cell - 1L) %% nc) + 1L, idx = .I)]
+
+  fwd <- list(c(0L, 1L), c(1L, 0L), c(1L, 1L), c(1L, -1L))  # 4 offsets cover all 8-adjacency once
+  edges <- rbindlist(lapply(fwd, function(o) {
+    ncl <- nodes$col + o[2]; ok <- ncl >= 1 & ncl <= nc
+    nb  <- (nodes$row + o[1] - 1L) * nc + ncl
+    j   <- nodes[data.table(cell = nb), on = "cell", idx]
+    keep <- ok & !is.na(j)
+    data.table(a = nodes$idx[keep], b = j[keep])
+  }))
+  g <- igraph::make_graph(edges = if (nrow(edges)) as.vector(rbind(edges$a, edges$b)) else integer(0),
+                          n = nrow(nodes), directed = FALSE)
+  nodes[, comp := igraph::components(g)$membership]
+  dt[nodes, pid := i.comp, on = "cell"]                   # burned cells get their component id
+  dt
+}
+
+# burned_around_k = fraction of the (2k+1)² window that is burned, per burned cell.
+add_burned_around <- function(dt, nc) {
+  bs   <- sort(dt$cell)
+  K    <- max(BA_RADII)
+  offs <- CJ(dr = -K:K, dc = -K:K)[, cheb := pmax(abs(dr), abs(dc))]
+  cnt  <- matrix(0L, nrow(dt), length(BA_RADII))
+  for (i in seq_len(nrow(offs))) {
+    ncl <- dt$col + offs$dc[i]; ok <- ncl >= 1 & ncl <= nc
+    nb  <- (dt$row + offs$dr[i] - 1L) * nc + ncl
+    hit <- ok & .in_set(nb, bs)
+    for (ri in seq_along(BA_RADII)) if (offs$cheb[i] <= BA_RADII[ri]) cnt[hit, ri] <- cnt[hit, ri] + 1L
+  }
+  for (ri in seq_along(BA_RADII))
+    dt[, (sprintf("burned_around_%d", BA_RADII[ri])) := cnt[, ri] / (2L * BA_RADII[ri] + 1L)^2]
+  invisible(dt)
+}
+
+# Returns list(pid = <SpatRaster of component ids>, mets = aggregate_metrics(...)).
+objects_sparse <- function(r) {
+  has_n <- "n" %in% names(r)
+  nc <- ncol(r)
+  # burned cells + bands in one pass (candseed>0 works for NA- or 0-background)
+  dt <- as.data.table(terra::as.data.frame(r, cells = TRUE, na.rm = TRUE))[candseed > 0]
+  if (!nrow(dt)) stop("no burned pixels in raster")
+  dt[, `:=`(row = ((cell - 1L) %/% nc) + 1L, col = ((cell - 1L) %% nc) + 1L)]
+
+  label_sparse(dt, nc)                                    # → pid
+
+  # per-cell area. For a regular lon/lat grid the area depends only on the ROW
+  # (latitude), so compute terra::cellSize on a 1-column strip (O(nrow), cheap) and
+  # map by row — identical to the dense path's cellSize(), no full-grid scan.
+  if (terra::is.lonlat(r)) {
+    e <- terra::ext(r)
+    strip <- terra::rast(nrows = nrow(r), ncols = 1L, crs = terra::crs(r),
+                         xmin = e$xmin, xmax = e$xmin + terra::xres(r),
+                         ymin = e$ymin, ymax = e$ymax)
+    carow <- terra::values(terra::cellSize(strip, unit = "m"))[, 1]   # length nrow
+    dt[, cell_area := carow[row]]
+  } else {
+    dt[, cell_area := terra::xres(r) * terra::yres(r)]
+  }
+  add_burned_around(dt, nc)
+
+  mets <- aggregate_metrics(dt, has_n)
+  pr <- terra::rast(r, nlyrs = 1); terra::values(pr) <- NA_integer_
+  pr[dt$cell] <- dt$pid; names(pr) <- "pid"
+  list(pid = pr, mets = mets)
 }
 
 # ── [4]+[5] vectorize + join ──────────────────────────────────────────────────
@@ -213,28 +291,45 @@ add_shape_metrics <- function(polys_sf) {
   ha <- as.numeric(sf::st_area(sf::st_convex_hull(polys_sf)))      # convex-hull area (m²)
 
   # per-feature axis-aligned bounding box (matches EE geom.bounds()), vectorized
-  # via the vertex table.
+  # via the vertex table. The SNIC grid is WGS84 lon/lat, so bbox spans come out
+  # in DEGREES — convert the sides to ground METRES (else mbr_fill mixes m²/deg²
+  # and mbr_elongation is distorted by cos(lat)). Guard keeps a projected CRS as-is.
   g  <- as.data.table(terra::geom(v))
-  bb <- g[, .(sx = max(x) - min(x), sy = max(y) - min(y)), by = geom][order(geom)]
+  bb <- g[, .(dx = max(x) - min(x), dy = max(y) - min(y),
+              latc = (max(y) + min(y)) / 2), by = geom][order(geom)]
+  if (terra::is.lonlat(v)) {
+    sx <- bb$dx * 111320 * cos(bb$latc * pi / 180)   # E-W ground span (m)
+    sy <- bb$dy * 110574                             # N-S ground span (m)
+  } else {
+    sx <- bb$dx; sy <- bb$dy                         # already metres
+  }
 
   polys_sf$perimeter_m   <- p
   polys_sf$convexity     <- a / ha                                 # area / convex hull
-  polys_sf$mbr_fill      <- a / (bb$sx * bb$sy)                    # area / bbox area
-  polys_sf$mbr_elongation <- pmax(bb$sx, bb$sy) / pmin(bb$sx, bb$sy)
+  polys_sf$mbr_fill      <- a / (sx * sy)                          # area / bbox area
+  polys_sf$mbr_elongation <- pmax(sx, sy) / pmin(sx, sy)
   polys_sf$circularity   <- 4 * pi * a / (p^2)                     # 4πA / P²
   polys_sf$shape_index   <- p / (2 * sqrt(pi * a))                 # P / (2√πA)
   polys_sf
 }
 
 # ── driver ────────────────────────────────────────────────────────────────────
-process_year <- function(fy, test = FALSE) {
-  message(sprintf("── fire-year %d%s ──", fy, if (test) " [test ROI]" else ""))
-  r   <- load_snic(fy, test)
-  pid <- object_ids(r[["candseed"]], r[["veg_fire"]])
-  mets <- raster_metrics(r, pid)
+process_year <- function(fy, test = FALSE, method = "sparse") {
+  message(sprintf("── fire-year %d%s [%s] ──", fy, if (test) " test-ROI" else "", method))
+  r <- load_snic(fy, test)
+  if (method == "sparse") {                       # igraph over burned cells (default)
+    os <- objects_sparse(r); pid <- os$pid; mets <- os$mets
+  } else {                                        # terra patches() fallback
+    pid <- object_ids(r[["candseed"]], r[["veg_fire"]]); mets <- raster_metrics(r, pid)
+  }
   polys <- vectorize_join(pid, mets)
   polys <- add_shape_metrics(polys)
   polys$fire_year <- fy
+
+  # `pid` is only unique WITHIN a year (patches() restarts at 1 each year), so
+  # build a globally-unique object id by prefixing the fire-year: "<fy>_<pid>".
+  polys$oid <- sprintf("%d_%d", fy, polys$pid)
+  polys <- polys[, c("oid", setdiff(names(polys), "oid"))]  # oid first
 
   # human-readable median burn date alongside the numeric (days-since-epoch) one
   polys$date_median_date <- as.Date(polys$date_median, origin = EPOCH)
@@ -250,15 +345,16 @@ process_year <- function(fy, test = FALSE) {
 
 main <- function() {
   args <- commandArgs(trailingOnly = TRUE)
-  test <- length(args) && args[1] == "test"       # `... 05-objects_metrics.R test [year ...]`
-  if (test) args <- args[-1]
+  test   <- "test"  %in% args                      # tokens (any order): test, terra, then years
+  method <- if ("terra" %in% args) "terra" else "sparse"
+  args   <- setdiff(args, c("test", "terra"))
   prefix <- if (test) "snic_test_" else "snic_"
   years <- if (length(args)) as.integer(args) else {
     f <- list.files(SNIC_DIR, pattern = sprintf("^%s\\d{4}.*\\.tif$", prefix))
     sort(unique(as.integer(sub(sprintf("^%s(\\d{4}).*$", prefix), "\\1", f))))
   }
   if (!length(years)) stop("no fire-years to process (none given, none found in ", SNIC_DIR, ")")
-  for (fy in years) process_year(fy, test)
+  for (fy in years) process_year(fy, test, method)
 }
 
 if (sys.nframe() == 0L) main()

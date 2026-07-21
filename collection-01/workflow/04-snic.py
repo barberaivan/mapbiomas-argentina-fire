@@ -406,8 +406,12 @@ def process_fire_year_drive(fire_year, region, crs, transform, launch, name_pref
         crs=crs,
         crsTransform=transform,
         maxPixels=int(1e13),
+        skipEmptyTiles=True,   # drop fully-masked tiles → sparse COG (big win country-wide)
         fileFormat="GeoTIFF",
-        formatOptions={"cloudOptimized": True},
+        # noData=0 tags the masked background so R reads it as NA (0 is never a valid
+        # value: candseed 1-3, abs_date >10000, veg 1-25, n >=1). cloudOptimized keeps
+        # the internal tiling + overviews.
+        formatOptions={"cloudOptimized": True, "noData": 0},
     )
     if launch:
         task.start()
