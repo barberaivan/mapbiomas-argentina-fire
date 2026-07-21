@@ -125,6 +125,7 @@ Run from the repo root:
 
 ```
 Rscript collection-01/workflow/05-objects_metrics.R [fire_year ...]   # default: all present
+Rscript collection-01/workflow/05-objects_metrics.R test 1998 1999    # small-ROI snic_test_* → objects_test_*
 ```
 
 Downstream: **step 06** filters these objects (`docs/06` when written) — real scars are

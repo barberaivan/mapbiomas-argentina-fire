@@ -11,11 +11,14 @@
 # Run from the repo ROOT (paths below are repo-relative; collection-01/data is a
 # symlink into the Insync store):
 #
-#   Rscript collection-01/workflow/05-objects_metrics.R [fire_year ...]
+#   Rscript collection-01/workflow/05-objects_metrics.R [test] [fire_year ...]
 #     fire_year…  one or more START years (e.g. 2000 2015). Default: every
 #                 snic_<year>*.tif present in collection-01/data/snic-polygons.
+#     test        read the small-ROI snic_test_<year> COGs instead, writing
+#                 objects_test_<year>.{gpkg,csv} (mirrors 04-snic.py --test).
 #   e.g.  Rscript collection-01/workflow/05-objects_metrics.R 2000
-#         Rscript collection-01/workflow/05-objects_metrics.R          # all present
+#         Rscript collection-01/workflow/05-objects_metrics.R              # all present
+#         Rscript collection-01/workflow/05-objects_metrics.R test 1998 1999
 #
 # Design + rationale: see docs/05-object_metrics.md. Summary of the procedure,
 # per fire-year:
@@ -74,14 +77,16 @@ EXPECT_BANDS <- c("candseed", "abs_date", "veg_fire", "n")  # n optional; see he
 terraOptions(progress = 0)
 
 # ── [1] load one fire-year COG ────────────────────────────────────────────────
-load_snic <- function(fy) {
+load_snic <- function(fy, test = FALSE) {
   # 4-digit years are never prefixes of one another, so a simple snic_<fy>* glob
-  # is unambiguous (and excludes snic_test_*). GEE may split a big export into
-  # several sub-tifs → mosaic them virtually with vrt().
-  tifs <- list.files(SNIC_DIR, pattern = sprintf("^snic_%d.*\\.tif$", fy),
+  # is unambiguous. `test` reads the small-ROI snic_test_<fy> COGs instead (the
+  # non-test glob's snic_%d never matches snic_test_*). GEE may split a big export
+  # into several sub-tifs → mosaic them virtually with vrt().
+  prefix <- if (test) "snic_test_" else "snic_"
+  tifs <- list.files(SNIC_DIR, pattern = sprintf("^%s%d.*\\.tif$", prefix, fy),
                      full.names = TRUE)
   if (length(tifs) == 0L)
-    stop(sprintf("no snic_%d*.tif in %s (run 04-snic.py --to-drive first)", fy, SNIC_DIR))
+    stop(sprintf("no %s%d*.tif in %s (run 04-snic.py --to-drive first)", prefix, fy, SNIC_DIR))
   r <- if (length(tifs) > 1L) terra::vrt(tifs, overwrite = TRUE) else terra::rast(tifs)
 
   # Band names: trust the file if it already labels them; else assign by the
@@ -222,9 +227,9 @@ add_shape_metrics <- function(polys_sf) {
 }
 
 # ── driver ────────────────────────────────────────────────────────────────────
-process_year <- function(fy) {
-  message(sprintf("── fire-year %d ──", fy))
-  r   <- load_snic(fy)
+process_year <- function(fy, test = FALSE) {
+  message(sprintf("── fire-year %d%s ──", fy, if (test) " [test ROI]" else ""))
+  r   <- load_snic(fy, test)
   pid <- object_ids(r[["candseed"]], r[["veg_fire"]])
   mets <- raster_metrics(r, pid)
   polys <- vectorize_join(pid, mets)
@@ -234,8 +239,9 @@ process_year <- function(fy) {
   # human-readable median burn date alongside the numeric (days-since-epoch) one
   polys$date_median_date <- as.Date(polys$date_median, origin = EPOCH)
 
-  gpkg <- file.path(SNIC_DIR, sprintf("objects_%d.gpkg", fy))
-  csv  <- file.path(SNIC_DIR, sprintf("objects_%d_metrics.csv", fy))
+  stem <- if (test) sprintf("objects_test_%d", fy) else sprintf("objects_%d", fy)
+  gpkg <- file.path(SNIC_DIR, paste0(stem, ".gpkg"))
+  csv  <- file.path(SNIC_DIR, paste0(stem, "_metrics.csv"))
   sf::st_write(polys, gpkg, delete_dsn = TRUE, quiet = TRUE)
   fwrite(as.data.table(sf::st_drop_geometry(polys)), csv)
   message(sprintf("   %d objects → %s", nrow(polys), gpkg))
@@ -244,12 +250,15 @@ process_year <- function(fy) {
 
 main <- function() {
   args <- commandArgs(trailingOnly = TRUE)
+  test <- length(args) && args[1] == "test"       # `... 05-objects_metrics.R test [year ...]`
+  if (test) args <- args[-1]
+  prefix <- if (test) "snic_test_" else "snic_"
   years <- if (length(args)) as.integer(args) else {
-    f <- list.files(SNIC_DIR, pattern = "^snic_\\d{4}.*\\.tif$")
-    sort(unique(as.integer(sub("^snic_(\\d{4}).*$", "\\1", f))))
+    f <- list.files(SNIC_DIR, pattern = sprintf("^%s\\d{4}.*\\.tif$", prefix))
+    sort(unique(as.integer(sub(sprintf("^%s(\\d{4}).*$", prefix), "\\1", f))))
   }
   if (!length(years)) stop("no fire-years to process (none given, none found in ", SNIC_DIR, ")")
-  for (fy in years) process_year(fy)
+  for (fy in years) process_year(fy, test)
 }
 
 if (sys.nframe() == 0L) main()
