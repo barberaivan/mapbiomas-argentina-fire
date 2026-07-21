@@ -189,13 +189,16 @@ def _status_in_window(seed_raw, cand, abs_mid, lo_day, hi_day):
 def build_candseed_pre(fire_year):
     """
     Pre-SNIC construction for the fire-year. Returns
-      (candseed_pre {0,1,2,3} int16, abs_date int16, meta)
-    or (None, None, None) if no bpts image spans the fire-year.
+      (candseed_pre {0,1,2,3} int16, abs_date int16, n int16, meta)
+    or (None, None, None, None) if no bpts image spans the fire-year.
 
     `abs_date` is the per-pixel K=2 mid-date (days since epoch) of the observation
     that SET the candseed value — the Y1 or Y2 image that won seed>cand>none. For a
     code-3 dieback pixel it is that pixel's OWN next-year dieback date; R later
     overrides code-3 with the parent object's date (§5). Masked where candseed == 0.
+
+    `n` is the Landsat observation count of that SAME winning image (Y1 or Y2), so
+    it tracks `abs_date` pixel-for-pixel. Masked where candseed == 0.
 
     `meta` carries the ACTUAL data-coverage window (trimmed at the archive edges,
     §2) and a `partial` flag. Full FY covers May Y1 → Apr Y2; the two TRIMMED edge
@@ -207,7 +210,7 @@ def build_candseed_pre(fire_year):
     m_y1 = year_metrics(y1)
     m_y2 = year_metrics(y2)
     if m_y1 is None and m_y2 is None:
-        return None, None, None
+        return None, None, None, None
 
     veg_fire = F.veg_fire_image(y1)                # MB(y1-1); governs whole FY (§2)
     thr = veg_threshold_images(veg_fire)
@@ -226,14 +229,19 @@ def build_candseed_pre(fire_year):
         st2 = _status_in_window(s2, c2, mid2, fy_lo, fy_hi)
 
     # ---- focal {1,2}: seed>cand>none, per-pixel max over the two images ----
-    # `date` follows whichever image won the max (Y2 wins only if strictly higher).
+    # `date` and `n` follow whichever image won the max (Y2 wins only if strictly
+    # higher). `n` is the winning image's Landsat observation count.
+    n1 = m_y1.select("n") if m_y1 is not None else None
+    n2 = m_y2.select("n") if m_y2 is not None else None
     if st1 is not None and st2 is not None:
         focal = st1.max(st2)
-        date = mid1.where(st2.gt(st1), mid2)
+        win2 = st2.gt(st1)
+        date = mid1.where(win2, mid2)
+        n = n1.where(win2, n2)
     elif st1 is not None:
-        focal, date = st1, mid1
+        focal, date, n = st1, mid1, n1
     else:
-        focal, date = st2, mid2
+        focal, date, n = st2, mid2, n2
 
     # ---- padding {3}: Patagonia forest/shrubland dieback, from the Y2 image only ----
     combined = focal
@@ -249,15 +257,17 @@ def build_candseed_pre(fire_year):
         newly3 = combined.eq(0).And(pad)                   # focal {1,2} always wins
         combined = combined.where(newly3, 3)
         date = date.where(newly3, mid2)                    # code-3 keeps its own dieback date
+        n = n.where(newly3, n2)                            # ...and its own Y2 observation count
 
     abs_date = date.updateMask(combined.gt(0)).toInt16().rename("abs_date")
+    n_out = n.updateMask(combined.gt(0)).toInt16().rename("n")
 
     # Data-coverage window, trimmed to whichever calendar image(s) exist (§2).
     time_start = ee.Date.fromYMD(y1, 5, 1) if m_y1 is not None else ee.Date.fromYMD(y2, 1, 1)
     time_end = ee.Date.fromYMD(y2, 4, 30) if m_y2 is not None else ee.Date.fromYMD(y1, 12, 31)
     meta = {"time_start": time_start, "time_end": time_end,
             "partial": m_y1 is None or m_y2 is None}
-    return combined.toInt16(), abs_date, meta
+    return combined.toInt16(), abs_date, n_out, meta
 
 
 def snic_candseed(candseed_pre):
@@ -323,7 +333,7 @@ def process_fire_year(fire_year, region, crs, transform, launch, name_prefix,
         print(f"[skip] {description} has a PENDING/RUNNING task")
         return
 
-    candseed_pre, _abs_date, meta = build_candseed_pre(fire_year)
+    candseed_pre, _abs_date, _n, meta = build_candseed_pre(fire_year)
     if candseed_pre is None:
         print(f"[skip] FY{y1}: no bpts image spans May {y1}-Apr {y1 + 1}")
         return
@@ -378,13 +388,14 @@ def process_fire_year_drive(fire_year, region, crs, transform, launch, name_pref
         return
 
     # candseed comes straight from the exported asset (SNIC is NOT recomputed);
-    # abs_date + veg_fire are recreated from the §4 construction and masked to it.
-    _pre, abs_date, _meta = build_candseed_pre(fire_year)
+    # abs_date + veg_fire + n are recreated from the §4 construction and masked to it.
+    _pre, abs_date, n_img, _meta = build_candseed_pre(fire_year)
     candseed = ee.Image(asset_id).select("candseed")
     burned = candseed.mask()
     veg_fire = F.veg_fire_image(y1).updateMask(burned).toInt16().rename("veg_fire")
     abs_date = abs_date.updateMask(burned)
-    stack = candseed.addBands(abs_date).addBands(veg_fire)
+    n_img = n_img.updateMask(burned)
+    stack = candseed.addBands(abs_date).addBands(veg_fire).addBands(n_img)
 
     task = ee.batch.Export.image.toDrive(
         image=stack,

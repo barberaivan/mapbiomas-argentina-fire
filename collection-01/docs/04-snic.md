@@ -133,39 +133,30 @@ the cut are in `utils/constants.py` (Step 04 section).
 ## 5. Handoff to R (steps 05–06)
 
 Object work is done in R (`terra`/`sf`) — GEE vector topology is its weak spot and objects cross
-tiles. Mechanics:
+tiles. **The step-04 output is the Drive COG; everything done to it (vectorization, metrics,
+filtering, final products) lives in `docs/05-object_metrics.md` and `docs/06`.** The handoff:
 
-- **Asset stores only `candseed`; the Drive COG carries four bands.** Stage 2, run with
-  `04-snic.py --to-drive` (same `--fire-year`/`--all`/`--test`/`--launch` flags), writes an R-facing
-  cloud-optimized GeoTIFF (`Export.image.toDrive`, `formatOptions={'cloudOptimized': True}`) to
-  `C.SNIC_DRIVE_FOLDER` holding **`candseed` + `abs_date` + `n` + `veg_fire`**. It **reads `candseed`
-  (and its burned mask) straight from the `snic_<fire_year>` asset — SNIC is NOT recomputed** — and
-  recreates only `abs_date` + `veg_fire` by re-running the §4 construction, masking both to the
-  asset. `abs_date`/`veg_fire` are thus computed per pixel, **not** looked up from the `candseed`
-  code. `candseed == 3` flags a dieback pixel so R gives it the **parent object's** date for the
-  month-of-burn raster, never its own (next-year) dieback date. The stage is idempotent: it skips a
-  fire-year whose asset is missing (run stage 1 first) or that has a PENDING/RUNNING Drive task.
+- **Asset stores only `candseed`; the Drive COG carries the R-facing bands.** Stage 2, run with
+  `04-snic.py --to-drive --project mapbiomas-argentina` (same `--fire-year`/`--all`/`--test`/`--launch`
+  flags), writes a cloud-optimized GeoTIFF (`Export.image.toDrive`,
+  `formatOptions={'cloudOptimized': True}`) to `C.SNIC_DRIVE_FOLDER` holding **`candseed` +
+  `abs_date` + `veg_fire` + `n`**. It **reads `candseed` (and its burned mask) straight from the
+  `snic_<fire_year>` asset — SNIC is NOT recomputed** — and recreates `abs_date` + `veg_fire` + `n`
+  by re-running the §4 construction, masking all to the asset. They are thus computed per pixel,
+  **not** looked up from the `candseed` code. `abs_date` and `n` both follow the Y1/Y2 image that
+  won the seed>cand>none max, so they track each other.
+  `candseed == 3` flags a dieback pixel so R gives it the **parent object's** date for the
+  month-of-burn raster, never its own (next-year) dieback date. Idempotent: skips a fire-year whose
+  asset is missing (run stage 1 first) or that has a PENDING/RUNNING Drive task.
 - **Compression is what makes the download cheap** (`cloudOptimized` → DEFLATE + tiling); burned is
   ~0.3–1 % of area, so a masked image collapses to tens of MB/yr. A plain uncompressed export is
-  dense and large regardless of the mask. Drive (not GCS: the project has no CS budget).
-- **In R:** `terra::vrt()` re-mosaics the auto-split GeoTIFF tiles → `patches()` for global object
-  ids → per-object metrics **raster-native via `terra::zonal()`** on the id raster (no vectorizing
-  first): `seed_mean` (the real fake-fire discriminator), `date_mode`, size, and a pixel-neighborhood
-  **sparseness** score → vectorize once, join metrics → filter → build products.
+  dense and large regardless of the mask. Drive (not GCS: the project has no CS budget). GEE may
+  auto-split a big export into sub-tifs — R re-mosaics with `terra::vrt()`.
 - **Permissive SNIC by design:** loose cuts protect **recall** at segmentation; **precision** is
-  recovered at the object filter (`seed_mean` + shape: real scars are compact and seeded throughout,
-  noise is sparse and unseeded).
+  recovered at the step-06 object filter (real scars are compact and seeded throughout, noise is
+  sparse and unseeded).
 - **No cross-year de-dup.** Fire-years partition time, so each fire lands in exactly one — the
   SNIC-3D overlap-merge is gone. Output-file seams are healed by the R re-mosaic (ids are global).
-
-### Final products
-1. **Filtered fire-object polygons** (id, fire_year, area, `date_mode`, `seed_mean`, …).
-2. **Per-pixel month-of-burn raster** (one band per fire-year, value = month 1–12) — **mandatory**
-   for MapBiomas. Per-pixel `abs_date` is preserved end-to-end; each pixel's month/year-band comes
-   from its own date, except code-3 dieback pixels which inherit the parent object's `date_mode`.
-
-A manual ash/drought masking pass removes remaining false positives before the deliverable
-(domain-expert review).
 
 ---
 
