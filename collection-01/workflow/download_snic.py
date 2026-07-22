@@ -104,7 +104,10 @@ def download_carta(stack, carta_geom, out_path, crs, transform, overwrite, max_r
     gd.download.BaseImage(img).download(
         str(out_path),
         overwrite=overwrite,
-        nodata=0,
+        # nodata=True: tag the GeoTIFF NoData with the SAME value geedim fills masked int16
+        # pixels with (its dtype nodata, -32768), so terra reads background as NA and stays
+        # sparse. (A literal nodata=0 mismatched: tag 0 but fill -32768 → background read as data.)
+        nodata=True,
         crs=crs,
         crs_transform=list(transform),
         region=carta_geom,
