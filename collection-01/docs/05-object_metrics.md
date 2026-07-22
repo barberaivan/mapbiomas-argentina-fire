@@ -45,7 +45,9 @@ though the grid is country-wide.
 
 ---
 
-## 2. Object ids — the 1-px dilation connectivity hack (`[2]`)
+## 2. Object ids = pid — the 1-px dilation connectivity hack (`[2]`)
+
+pid = polygon id.
 
 A real scar often breaks into pixel fragments a pixel or two apart (unburned gaps, threshold
 noise). Plain `terra::patches()` on `burned` would call each fragment its own object. To knit
@@ -169,48 +171,67 @@ pass.
 - **Why the `sparse` default exists.** Profiling the `terra` path on the ROI (52 M cells, ~528 k
   burned) showed the cost is dominated by full-grid ops — `patches()` (~51 s) and the dense
   `focal`/`as.data.frame` extraction (~55 s) — while `as.polygons()` was cheap (~3 s). All of it
-  scales with **total cells**, so the country (~3 B cells) would be ~2 h/year. The `sparse` path
-  replaces `patches()` + dense extraction with an index-based connected-components + aggregation
-  over **burned cells only** (O(burned)); the one remaining dense step is building the `pid`
-  raster for `as.polygons()`.
-- **`sparse` scaling risk to watch.** `igraph` labelling is C-fast, but the R-side edge list
-  (~4 edges × burned cells) and the graph object are the memory cost at country scale; if it's
-  too heavy, swap the labelling for a union-find (same 4-neighbour logic, no stored edges) via
-  Rcpp or the C++ CA. Measure on a real full-country year before committing.
+  scales with **total cells**, so the country (**9.16 B cells**, measured) would be hours/year. The
+  `sparse` path replaces `patches()` + dense extraction with an index-based connected-components +
+  aggregation over **burned cells only** (O(burned)); the remaining non-sparse steps (the whole-grid
+  extract and the `pid` densification) are exactly what break at country scale — see §7/§8.
+- **[CONFIRMED on FY2000] the whole-country wall is LABELLING memory, not vectorization.** A full
+  FY2000 profile (116.1 M burned cells, 9.16 B-cell grid, 82,025 objects) settled the open risks:
+  - **`terra::as.data.frame(vrt, cells = TRUE)` crashes at country scale** — it builds `1:ncell`
+    (9.16 B) and R's `cbind` throws *"long vectors not supported"*. So the burned-cell extract must
+    run **per-carta tile** (each < 2³¹ cells) and map local→global row/col. `objects_sparse` (which
+    calls `as.data.frame(r, cells=TRUE)` on the whole mosaic) needs this fix before it can run 2000.
+  - **`igraph` labelling OOM-killed at > 31 GB** — the R-side edge list + graph object (plus the
+    dilation halo's 8× materialization) don't fit. **A small Rcpp UNION-FIND — parent array only,
+    no stored edges, no graph, unions streamed one offset at a time — replaces it: 8.6 GB, 82 s**
+    for the whole country (`n_pids = 82,025`, matching gdal's independent CC count). This is the
+    key change; igraph does not scale here. (The union-find still needs extending to absorb the
+    dilation halo without materializing it — the remaining production to-do, §8.)
 - **Shape/sparseness feature set & cuts** for the step-06 filter are still open (04 §7).
 
-### 7b. Faster-than-terra alternatives (to benchmark on the country run)
+### 7b. Vectorization — the three options, benchmarked on FY2000
 
-Researched while waiting for the `snic_2000` whole-country export. Conclusion up front: **the
-sparse igraph path is already O(burned) and C-fast — Python won't beat it on the numeric
-metrics unless you tile.** The one clean win is **vectorization**: the leftover dense step
-(§8.3, the `pid`-raster → `as.polygons`) is where a disk-streaming GDAL polygonizer beats terra.
-Map each candidate to the §8 bottleneck it addresses:
+Label build and vectorize both start from the same `cell→pid` table. Once labelling is fixed
+(§7, union-find), vectorizing the whole FY2000 country grid (82,025 objects) was measured
+head-to-head — **A and B produced identical objects** (82,025 each; total-area rel-diff 3.7e-14;
+per-pid area max rel-diff 7.8e-11):
 
-| §8 bottleneck | Candidate | Notes |
-|---|---|---|
-| **3 — `pid`-raster → `as.polygons`** (densifies the full grid in R) | **`gdal_polygonize` on a disk-backed pid COG** | Write the sparse `pid` to a temp COG, then `gdal_polygonize -8` **streams from disk** (no full grid in RAM) — the concrete form of the "disk-backed block write" §8.3 anticipates. `rasterio.features.shapes` is the *same GDAL engine but in-memory only* (rasterio #630), so use `osgeo.gdal.Polygonize` / the CLI for the larger-than-memory read. terra's `as.polygons` is GDAL too, but needs the dense R grid built first. **Highest-value change; keeps everything else in R.** |
-| **2 — igraph edge-list memory** (~4 edges × burned cells) | **`cc3d`** (seung-lab/connected-components-3d) | C++ two-pass **union-find, no stored edge list** — exactly the fallback §8.2 names. `cc3d.statistics()` gives per-label voxel counts / bboxes / centroids for free (→ area, bbox metrics). ~2.6× faster than `scipy.ndimage.label` on binary, one-shot multilabel. **Caveat: needs a dense in-RAM array** (uint8 mask ≈3 GB at 3 B cells; int32 labels ≈12 GB) → a *tiled* option, not free. The index-based igraph is actually **more memory-frugal** (never densifies), so only reach for `cc3d` if igraph memory is the measured wall. |
-| **1 — burned-cell extract** (`as.data.frame`, O(all-cells)) | **`scipy.ndimage.sum_labels` / `mean` / `find_objects`** on the label array | Per-object area / date / `n` summaries straight from labels, no dataframe. Dense-array bound → tile it. First just measure whether the **sparse NoData COG** already lets terra skip empty tiles on read (§8.1) — that may make this moot. |
+| Path | how | wall time | peak RAM | notes |
+|---|---|---|---|---|
+| **A — disk `pid` raster + `gdal_polygonize`** | write `pid` to a tiled/nodata GeoTIFF **block-aware** (touch only populated 512² blocks), `osgeo.gdal.Polygonize -8`, then **dissolve-by-pid** | **337 s** (write 48 + polygonize 270 + dissolve 20) | ~8.5 GB | simplest code — one polygonize call. |
+| **B — per-object loop, parallel** | per pid: tiny local-bbox raster → `as.polygons(dissolve)`; N workers write GPKG shards; merge | **163 s** (13 cores) | ~4 GB | ~2× faster; **native-correct** for the dilation case (below). |
+| **C — raster-free edge tracing** (future) | numpy boundary-edge cancellation: 4 unit edges/cell, cancel shared, stitch rings per pid — **no array anywhere**, O(burned) | not built | tiny | fastest in principle (no per-call overhead, no grid); **bespoke code** (ring/hole/multipolygon assembly), no turnkey library does "sparse labelled cells → dissolved polygons". |
+
+**"COG" is a misnomer here.** The disk route's win is **not** the cloud-optimized overviews (those
+help only partial/zoomed reads; step 05 reads full-res, full-coverage). It is: (a) the `pid` grid
+lives **on disk, written out-of-core**, never the 34 GB in-RAM `values(pr)<-` fill; and (b)
+`gdal_polygonize` **streams** it scanline-by-scanline, flushing polygons straight to the GPKG →
+bounded RAM. A plain tiled + nodata GeoTIFF suffices. The **block-aware** writer (populated blocks
+only) makes the write cheap — **48 s vs terra's naïve full-grid 522 s**; polygonize (270 s) then
+dominates A.
+
+**gdal splits disconnected same-pid cells → Path A needs a dissolve.** `gdal.Polygonize` emits one
+polygon per *connected* run of equal value; `-8` merges diagonal touches, but cells that share a
+pid yet are **physically disconnected** — the dilation-hack case (§2: fragments bridged by a 1-px
+halo that is then dropped) — come out as **separate features with the same pid value**. So Path A
+must **group-by-pid + union** afterwards (`terra::aggregate(by="pid")`, or `ST_Union … GROUP BY
+pid`) to match `terra::as.polygons(dissolve=TRUE)`. **Path B has no such issue**: it burns all of a
+pid's cells into one local raster and dissolves there → one multipolygon per pid natively. (The
+FY2000 benchmark ran plain 8-conn labelling, so `raw = dissolved = 82,025` and the split didn't
+fire; it **will** fire under the production dilation partition.)
 
 **How Brazil gets "~20 min/whole-country-year":** their `mapbiomas/brazil-fire` post-processing
-(`mapbiomas_fire_collections/collection_0{4,5}`, ~74 % Python) builds the "fire scar size range"
-sub-product; the fast local route is **`gdal_polygonize`** (C, one streaming pass that labels +
-vectorizes contiguous same-value pixels — `-8` for 8-conn) reading the annual burned raster from
-disk. It can't reproduce our **1-px dilation + ag/grassland suppression** hack (§2) — that shapes
-the *partition* before labelling — so we keep the sparse label build in R and swap only the final
-vectorize to disk-streaming GDAL.
+(~74 % Python) builds the "fire scar size range" sub-product via **`gdal_polygonize`** (C, one
+streaming pass). It can't reproduce our **1-px dilation + ag/grassland suppression** hack (§2) —
+that shapes the *partition* before labelling — so labelling stays local (now union-find) and only
+the vectorize is the A/B choice above.
 
-**Ruled out — GEE `connectedComponents`.** Native GEE scar labelling is a dead end: `maxSize`
-caps a connected component at ~1024 px, absurdly small for real fire scars (they silently split).
-So labelling can't move to GEE; it stays local (R/Python).
-
-**Benchmark plan when `snic_2000` lands** — cheap A/B, no rewrite:
-1. Run the current sparse path; record time + peak RAM for the three §8 steps.
-2. Step 3 only: write `pid` to a temp COG, `gdal_polygonize -8` it, compare wall-time + peak RAM
-   vs `as.polygons`.
-3. Only if the burned-cell extract or igraph memory is the measured wall, prototype the tiled
-   `cc3d` / `scipy.ndimage` route — otherwise skip it.
+**Ruled out.** *GEE `connectedComponents`* — `maxSize` caps a component at ~1024 px (real scars
+silently split); labelling can't move to GEE. *`cc3d` / `scipy.ndimage`* — both need a **dense
+in-RAM label array** (int32 labels ≈ 34 GB at 9 B cells) → viable only *tiled*, and we run untiled
+(§7c); the sparse union-find never densifies, so neither is needed. *`rasterio.features.shapes`* is
+the same GDAL engine as `gdal.Polygonize` but **in-memory only** (rasterio #630) — no advantage
+over the streaming `osgeo.gdal.Polygonize` used in Path A.
 
 ### 7c. Whole-country, untiled — [DECIDED]
 
@@ -224,28 +245,33 @@ re-aggregation is fiddly and error-prone, and the payoff isn't needed: the **who
 run is feasible within ~1 h/year**, which is acceptable. So step 05 stays **one raster per
 fire-year**, objects global, no seams (§1).
 
-To keep the untiled run feasible **without** the 34 GB `pid` densification (§8.3, the real
-whole-country blocker at 9 B cells):
+The untiled run is feasible on 31 GB — **[CONFIRMED on FY2000]** — with these three changes to the
+current sparse path (each replaces a step that breaks or OOMs at 9 B cells):
 
-- **Label** with the sparse igraph over burned cells — O(burned), never the dense grid (§3b).
-- **Build the `pid` raster on DISK, out-of-core** (block write / rasterize the sparse burned cells) —
-  *not* the in-RAM `values(pr) <- NA` fill, which needs 34 GB at 9 B cells.
-- **Vectorize** by streaming `gdal_polygonize` over that disk `pid`: **bounded RAM** (the benchmark
-  polygonized the whole `snic_2000` at ~2.8 GB in ~3.5 min), no tiling, no seam-merge.
+1. **Extract per-carta tile**, not `as.data.frame` on the whole mosaic (which crashes on the
+   `1:ncell` long vector) → global row/col. ~8 min (cache it), ~8 GB.
+2. **Label with union-find** (Rcpp parent array, unions streamed one forward-offset at a time), not
+   igraph (which OOMs > 31 GB) → **82 s, 8.6 GB**, `n_pids = 82,025`.
+3. **Vectorize** via Path A (out-of-core `pid` write + streaming `gdal_polygonize` + dissolve-by-pid)
+   **or** Path B (per-object parallel loop), §7b — **337 s / 163 s**, both ~4–8 GB, both producing
+   identical objects.
 
-So the memory ceiling is set by the sparse label + the out-of-core `pid` write, not by any dense
-grid — and the whole thing runs untiled. (Head-to-head timing/memory — legacy terra `as.polygons`
-vs streaming `gdal_polygonize` on the whole `snic_2000` — in `docs/04 §5c`.)
+End-to-end FY2000 (extract → label → vectorize) is ~12–16 min, well inside the ~1 h/year budget,
+untiled, no seam-merge. The memory ceiling is the tiled extract + the union-find parent array —
+never a dense 9 B-cell grid. **Still to do for production faithfulness:** extend the union-find to
+absorb the 1-px dilation halo (§2) without materializing it (the halo's 8× blow-up is what OOM'd
+the original `label_sparse` — §8).
 
 ---
 
-## 8. Status & handoff (WIP — 2026-07-21)
+## 8. Status & handoff (WIP — 2026-07-22)
 
 Active refactor: make step 05 scale from the ROI to the whole country. Where things stand,
 so another session can pick up:
 
 **Done & verified (on the 1998/1999 ROI):**
-- **Sparse `igraph` labelling is the DEFAULT** (§3b): connected components over burned CELL
+- **Sparse `igraph` labelling is the current DEFAULT** (§3b) — but **ROI-scale only: it OOMs at
+  country scale** (§7, §8 below); union-find replaces it. Connected components over burned CELL
   INDICES, replacing `terra::patches()` over the dense grid. Verified **identical partition** to
   the terra path (115 objects, identical sorted sizes, **0.000000 % area diff**) and **~8.4×
   faster** overall on the 52 M-cell ROI — the labelling alone dropped **70 s → 1.7 s**. The terra
@@ -258,23 +284,24 @@ so another session can pick up:
   **comahue** account / `mapbiomas-argentina` (see CLAUDE.md → GEE accounts). Older dense-0 COGs
   still work — the burned mask uses `ifel(candseed>0,…)`.
 
-**PENDING — whole-country profile (the real test).** The ROI is only 52 M cells; the country is
-**~3 B**. A full-country `snic_2000` drive export is running (GEE task `5FR3V6…`) and **a monitor
-is watching for `collection-01/data/snic-polygons/snic_2000.tif`**; when it lands + Insync-syncs,
-the monitor runs the whole-country profile:
+**[DONE 2026-07-22] whole-country FY2000 profile (the real test).** Ran the full pipeline on the
+FY2000 `snic-direct` tiles (116.1 M burned cells, 9.16 B-cell grid, 82,025 objects). Three findings,
+each with a production TODO (detail in §7 / §7b):
 
-```
-Rscript collection-01/workflow/05-objects_metrics.R 2000        # sparse (default)
-# terra path may OOM / take hours at 3 B cells — run only deliberately
-```
+1. **`terra::as.data.frame(vrt, cells=TRUE)` crashes** at 9 B cells (`1:ncell` long vector).
+   **[TODO: extract per-carta tile → global row/col in `objects_sparse`.]**
+2. **`igraph` labelling OOM-killed > 31 GB** (edge list + graph + the dilation halo's 8×). Replaced
+   with an **Rcpp union-find** (parent array only, no edges/graph, unions streamed one offset at a
+   time): **82 s, 8.6 GB**, `n_pids = 82,025` (matches gdal's independent CC count).
+   **[TODO: make union-find the default `label_sparse`, and extend it to carry the 1-px dilation
+   halo without materializing it.]**
+3. **Vectorization was never the wall.** Path A (disk `pid` + `gdal_polygonize` + dissolve) = 337 s;
+   Path B (per-object, 13 cores) = 163 s; **identical objects**. Choose B for speed / native dilation
+   correctness, or A for simpler code (§7b). **[TODO: wire the chosen path into `vectorize_join`,
+   replacing the in-RAM `values(pr)<-` fill + `as.polygons`.]**
 
-Watch these three, in expected order of cost at country scale:
-1. **burned-cell extract** (`as.data.frame`, the one O(all-cells) step left) — the sparse NoData
-   COG should let terra skip empty tiles on read; measure the real speedup.
-2. **`igraph` edge list + graph** memory (~4 edges × burned cells). If too heavy → union-find
-   (no stored edges) via Rcpp or the C++ CA labeller.
-3. **`pid`-raster build** (`values<-NA` densifies the full grid) — remaining dense step; use
-   `trim()` to the burned bbox and/or a disk-backed block write.
+Bench scripts (extract, `stage0_label_uf.R`, `stageA.py`, `stageB.R`, `compare.R`) are in the
+session scratchpad `full2000/`; move into `collection-01/scripts/` if kept for reproducibility.
 
 **Open op gotcha — duplicate Drive files.** GEE `toDrive` does NOT overwrite: a re-export lands
 as `snic_<y> (2).tif` (Insync), which `load_snic`'s glob would `vrt()` together. Clear the Drive
