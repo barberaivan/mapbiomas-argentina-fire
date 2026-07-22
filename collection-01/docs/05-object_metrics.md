@@ -175,6 +175,16 @@ but the direct-tile extract must carry all 7 bands, so `dt` is ~10–15 GB; meas
 compute the metrics from the on-disk tiles in a second streaming pass. Step-06 filter cuts are
 still open (04 §7).
 
+> **Fire-active years may not fit whole-country.** Everything here scales with burned cells,
+> and FY2000's 116 M is not the worst case — a high-fire year can carry several times more, so
+> the extract `dt` (all 7 bands × burned rows), the metrics group-by, or even the vectorize
+> could push a big year past 31 GB and OOM. Fallback: **process by REGION** — a few large groups
+> of cartas, run independently, then concatenated. Deliberately *coarse* (not per-carta) so very
+> few scars cross a region seam; cut the boundaries along low-fire gaps to minimise splits.
+> Caveat: this reintroduces the **seam-merge** for objects straddling a region boundary — the
+> exact thing tiling was rejected for (§8) — so keep regions few and large, and only reach for it
+> when a year actually OOMs whole-country.
+
 ---
 
 ## 7. Whole-country FY2000 profile — what forced the redesign
