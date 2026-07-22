@@ -446,9 +446,14 @@ def burned_around_bands(candseed_asset):
     burned01 = candseed_asset.gt(0).unmask(0)      # 1 burned, 0 elsewhere: window counts NA as 0
     out = []
     for r in C.SNIC_CONTEXT_RADII:
+        # normalize=False is REQUIRED: ee.Kernel.square defaults to normalize=True, whose
+        # weights sum to 1, so reduceNeighborhood(sum) would return the MEAN (0-1 proportion,
+        # then truncated to 0/1 by toInt16) instead of the burned-cell COUNT. With weights=1
+        # the sum is the count (1..(2r+1)²).
         bc = (burned01
               .reduceNeighborhood(reducer=ee.Reducer.sum(),
-                                  kernel=ee.Kernel.square(radius=r, units="pixels"))
+                                  kernel=ee.Kernel.square(radius=r, units="pixels",
+                                                          normalize=False))
               .updateMask(burned)
               .toInt16()
               .rename(f"burned_around_{r}"))
