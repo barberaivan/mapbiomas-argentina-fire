@@ -33,16 +33,17 @@
 # Design + rationale: docs/05-object_metrics.md. Procedure per fire-year:
 #   [1] Extract burned cells (per-carta tile) into a data.table with all bands.
 #   [2] Assign object ids via the 1-px DILATION connectivity (union-find, §2).
-#   [3] Per-object RASTER metrics (data.table over burned cells): veg_fire abundance
-#       (fractions + top-5), area, {median,mean,p2.5,p97.5,min,max} of abs_date and n,
-#       burned_around_{1,2,3}.
+#   [3] Per-object RASTER metrics (data.table over burned cells): seed share, veg_fire abundance
+#       (frac_c1..23), area_ha, {median,min,max} of abs_date + year_calendar (mode), n_mean,
+#       burned_around_{1,2,3}. Date/seed/year stats EXCLUDE candseed==3 dieback pixels.
 #   [4] Vectorize the objects (one (multi)polygon per id), parallel per-object.
-#   [5] Join the [3] metrics onto the polygons.
-#   [6] Geometry SHAPE/SPARSITY metrics (ported from collection-00 addShapeMetrics).
+#   [5] Geometry SHAPE metrics (ported from collection-00 addShapeMetrics).
+#   [6] Write GPKG (oid + geometry ONLY) + two metric CSVs (raster, shape), keyed by oid — no join.
 #
 # Outputs (collection-01/data/snic-polygons/):
-#   objects_<fire_year>.gpkg          — polygons (one per object) + all metrics
-#   objects_<fire_year>_metrics.csv   — the metrics table alone (no geometry)
+#   objects_<fire_year>.gpkg                — polygons (one per object) + `oid` only (no metrics)
+#   objects_<fire_year>_raster_metrics.csv  — raster metrics (aggregate_metrics), keyed by oid
+#   objects_<fire_year>_shape_metrics.csv   — geometry/shape metrics, keyed by oid
 # =============================================================================
 
 suppressPackageStartupMessages({
@@ -68,10 +69,15 @@ UF_CPP <- file.path(HERE, "..", "utils", "label_uf.cpp")
 SNIC_DIR        <- "collection-01/data/snic-polygons"   # legacy Drive COG (symlink into store)
 SNIC_DIRECT_DIR <- "collection-01/data/snic-direct"     # direct-download per-carta tiles
 
-# veg_fire codes where the connectivity DILATION is SUPPRESSED: agriculture (1,2,3) +
-# grassland_chaco (13) + grassland-inund_chaco (17). Burned fields sit close together there
-# and bridging them inflates commission error (docs/05 §2). Keep in sync with constants.py.
-AG_GRASS_NO_DILATE <- c(1L, 2L, 3L, 13L, 17L)
+# veg_fire codes that get NO enlarged connectivity context (8-connectivity only): agriculture
+# (1,2,3) + grasslands ba/chaco/pampa/inund (12,13,15,17) + pastures ba/chaco (18,19). Burned
+# fields/paddocks sit close together and bridging them inflates commission error (docs/05 §2.2).
+# candseed==3 dieback pixels ALSO get no enlarged context (added in label_uf). Keep in sync w/ docs.
+NO_DILATE_VEG <- c(1L, 2L, 3L, 12L, 13L, 15L, 17L, 18L, 19L)
+
+# Patagonia steppe dieback cut (docs/05 §2.1): drop candseed==3 pixels EAST of this longitude.
+# SNIC pads dieback only west of -70.3 (04 §4.3); this tightens the western limit to -70.6.
+DIEBACK_LON_CUT <- -70.6
 
 VEG_CODES   <- 1:23                 # burnable veg_fire classes (24/25 are sentinels)
 BA_RADII    <- c(1L, 2L, 3L)        # burned_around neighbourhood radii (px)
@@ -144,6 +150,9 @@ extract_burned <- function(tifs, r) {
   dt <- rbindlist(parts, use.names = TRUE)
   if (!nrow(dt)) return(dt)
   dt <- unique(dt, by = c("row", "col"))                # guard carta seams (clipped disjoint anyway)
+  # Patagonia steppe dieback cut (docs/05 §2.1): drop candseed==3 east of DIEBACK_LON_CUT.
+  dt <- dt[!(candseed == 3L & (g$x0 + (col - 0.5) * g$dx) > DIEBACK_LON_CUT)]
+  if (!nrow(dt)) return(dt)
   dt[, cell := (as.numeric(row) - 1) * g$nc + col]      # global linear cell (double; > 2^31 ok)
   dt[]
 }
@@ -165,7 +174,8 @@ label_uf <- function(dt, nc, dilate = TRUE) {
   if (!exists("uf_new", mode = "function")) Rcpp::sourceCpp(UF_CPP)
   N <- nrow(dt)
   dt[, idx := seq_len(N)]                               # node id, assigned in EXTRACT order
-  ag_by_node <- dt$veg_fire %in% AG_GRASS_NO_DILATE     # node-indexed ag/grass flag
+  # per-node "no enlarged context" flag: ag/grass/pasture veg OR a candseed==3 dieback pixel (§2.2)
+  ag_by_node <- (dt$veg_fire %in% NO_DILATE_VEG) | (dt$candseed == 3L)
   if (is.null(dt[["cell"]])) dt[, cell := (as.numeric(row) - 1) * nc + col]
   setkey(dt, cell)
   a_ag <- ag_by_node[dt$idx]                            # ag flag aligned to keyed row order
@@ -194,7 +204,7 @@ label_uf <- function(dt, nc, dilate = TRUE) {
 object_ids <- function(candseed, veg_fire) {
   burned   <- terra::ifel(candseed > 0, 1, NA)
   ring     <- terra::focal(burned, w = matrix(1, 3, 3), fun = "max", na.rm = TRUE)
-  keep_veg <- terra::ifel(burned & !(veg_fire %in% AG_GRASS_NO_DILATE), 1, NA)
+  keep_veg <- terra::ifel(burned & !(veg_fire %in% NO_DILATE_VEG) & candseed != 3, 1, NA)
   has_keep <- terra::focal(keep_veg, w = matrix(1, 3, 3), fun = "max", na.rm = TRUE)
   conn     <- terra::cover(burned, terra::mask(ring, has_keep))
   pid_grown <- terra::patches(conn, directions = 8, zeroAsNA = FALSE,
@@ -204,16 +214,34 @@ object_ids <- function(candseed, veg_fire) {
 }
 
 # ── [3] per-object raster summaries ───────────────────────────────────────────
-qstats <- function(x) {
-  x <- as.numeric(x)   # force double: 1-pixel groups else return integer min/max/median → type clash
-  q <- stats::quantile(x, c(0.025, 0.975), names = FALSE, type = 7, na.rm = TRUE)
-  list(median = stats::median(x, na.rm = TRUE), mean = mean(x, na.rm = TRUE),
-       p2.5 = q[1], p97.5 = q[2], min = min(x, na.rm = TRUE), max = max(x, na.rm = TRUE))
-}
+# Mode of an integer vector (ties → smallest). Cheap per-object; not data.table-GForce.
+mode_int <- function(x) { u <- unique(x); u[which.max(tabulate(match(x, u)))] }
 
-# From a burned-cell data.table (pid, veg_fire, abs_date, [n], cell_area, burned_around_1..3)
-# → list(num, fracs, tops). Used by BOTH the union-find and the terra paths.
+# From a burned-cell data.table (pid, candseed, veg_fire, abs_date, [n], cell_area,
+# burned_around_1..3) → ONE metrics data.table keyed by pid (docs/05 §2.4). Reducers are
+# data.table-GForce-optimizable (mean/median/min/max/sum/.N) except the calendar-year mode, kept in
+# its own tiny group-by. Date/seed/year stats EXCLUDE candseed==3 dieback pixels (§2.4). Used by
+# BOTH the union-find and the terra paths.
 aggregate_metrics <- function(dt, has_n) {
+  dt[, is_seed := as.integer(candseed == 2L)]
+  dt[, cyear   := data.table::year(as.IDate(abs_date, origin = EPOCH))]  # per-pixel calendar year
+  ba_cols <- sprintf("burned_around_%d", BA_RADII)
+
+  # (a) whole-object aggregates over ALL burned pixels (GForce)
+  num <- dt[, .(n_pixels = .N, area_ha = sum(cell_area) / 1e4), by = pid]
+  ba  <- dt[, lapply(.SD, mean), by = pid, .SDcols = ba_cols]
+  # (b) focal-only aggregates (drop candseed==3 dieback): seed share + date summary (GForce), then
+  #     the calendar-year mode in its own group-by (non-GForce, but cheap).
+  dtf <- dt[candseed != 3L]
+  foc <- dtf[, .(seed_mean = mean(is_seed), date_median = as.numeric(median(abs_date)),
+                 date_min = min(abs_date), date_max = max(abs_date)), by = pid]
+  yr  <- dtf[, .(year_calendar = mode_int(cyear)), by = pid]
+  parts <- list(num, ba, foc, yr)
+  if (has_n) parts <- c(parts, list(dt[, .(n_mean = mean(n)), by = pid]))
+  num <- Reduce(function(a, b) merge(a, b, by = "pid", all = TRUE), parts)
+  num[, date_median_date := as.IDate(round(date_median), origin = EPOCH)]
+
+  # veg abundance — per-class fractions frac_c1..c23 (NO ranked top-5), over ALL pixels
   vt <- dt[, .N, by = .(pid, veg_fire)]
   vt[, frac := N / sum(N), by = pid]
   fracs <- dcast(vt[veg_fire %in% VEG_CODES], pid ~ veg_fire, value.var = "frac", fill = 0)
@@ -221,19 +249,8 @@ aggregate_metrics <- function(dt, has_n) {
   setnames(fracs, present, sprintf("frac_c%s", present))
   for (c in sprintf("frac_c%d", VEG_CODES)) if (!c %in% names(fracs)) fracs[, (c) := 0]
   setcolorder(fracs, c("pid", sprintf("frac_c%d", VEG_CODES)))
-  top <- vt[order(pid, -N),
-            .(top = veg_fire[seq_len(5)], topf = frac[seq_len(5)], rk = seq_len(5)), by = pid]
-  tops <- dcast(top, pid ~ rk, value.var = c("top", "topf"))
-  setnames(tops, paste0("top_",  1:5), paste0("veg_top", 1:5),          skip_absent = TRUE)
-  setnames(tops, paste0("topf_", 1:5), paste0("veg_top", 1:5, "_frac"), skip_absent = TRUE)
-  num <- dt[, {
-    d   <- qstats(abs_date)
-    out <- c(list(n_pixels = .N, area_m2 = sum(cell_area)), setNames(d, paste0("date_", names(d))))
-    if (has_n) { nn <- qstats(n); out <- c(out, setNames(nn, paste0("n_", names(nn)))) }
-    for (nm in sprintf("burned_around_%d", BA_RADII)) out[[nm]] <- mean(get(nm))
-    out
-  }, by = pid]
-  list(num = num, fracs = fracs, tops = tops)
+
+  merge(num, fracs, by = "pid", all.x = TRUE)[]
 }
 
 # burned_around_k = fraction of the (2k+1)² window burned, per burned cell (legacy COG: no
@@ -257,9 +274,11 @@ add_burned_around <- function(dt, nc) {
 
 # SCALABLE (union-find) path: returns list(geom = dt[row,col,pid], mets). Never builds a dense
 # pid raster — vectorize_sparse() polygonizes per object from `geom`.
-objects_sparse <- function(tifs, r) {
+objects_sparse <- function(tifs, r, tag = "") {
+  message(sprintf("[%s] extract: reading %d carta tile(s)…", tag, length(tifs)))
   dt <- extract_burned(tifs, r)
   if (!nrow(dt)) stop("no burned pixels in raster")
+  message(sprintf("[%s] extract: %s burned cells", tag, format(nrow(dt), big.mark = ",")))
   nc     <- ncol(r)
   has_n  <- "n" %in% names(dt)
   has_ba <- all(sprintf("burned_around_%d", BA_RADII) %in% names(dt))
@@ -280,8 +299,11 @@ objects_sparse <- function(tifs, r) {
                             get(sprintf("burned_around_%d", k)) / (2L * k + 1L)^2]
   } else add_burned_around(dt, nc)                       # legacy: compute the fraction here
 
+  message(sprintf("[%s] labelling (union-find + dilation)…", tag))
   label_uf(dt, nc, dilate = TRUE)                        # → pid (dilation-window union-find)
-  list(geom = dt[, .(row, col, pid)], mets = aggregate_metrics(dt, has_n))
+  message(sprintf("[%s] raster metrics…", tag))
+  mets <- aggregate_metrics(dt, has_n)                   # mutates dt (is_seed/cyear) — before geom copy
+  list(geom = dt[, .(row, col, pid)], mets = mets)
 }
 
 # ── [4] vectorize ─────────────────────────────────────────────────────────────
@@ -306,23 +328,21 @@ vectorize_sparse <- function(geom, g, ncores = OBJ_CORES) {
   pids <- sort(unique(geom$pid))
   chunks <- if (ncores <= 1L) list(pids)
             else split(pids, cut(seq_along(pids), ncores, labels = FALSE))
-  worker <- function(ch) terra::wrap(do.call(rbind, lapply(ch, function(pd) .one_object(geom[.(pd)], g))))
+  # terra::vect(<list of SpatVectors>) row-binds them — NOT do.call(rbind, .): a fork-unwrapped
+  # SpatVector misdispatches rbind's S4 method to `merge` ("argument 'x' is missing"), killing the
+  # whole run at the final merge. terra::vect(list) (and Reduce(rbind,.)) are immune; vect is the idiom.
+  worker <- function(ch) terra::wrap(terra::vect(lapply(ch, function(pd) .one_object(geom[.(pd)], g))))
   res <- if (ncores > 1L) parallel::mclapply(chunks, worker, mc.cores = ncores, mc.preschedule = FALSE)
          else lapply(chunks, worker)
   bad <- vapply(res, function(x) inherits(x, "try-error") || is.null(x), logical(1))
   if (any(bad)) stop("vectorize worker(s) failed: ", paste(which(bad), collapse = ","))
-  v <- do.call(rbind, lapply(res, terra::unwrap))
+  v <- terra::vect(lapply(res, terra::unwrap))
   sf::st_as_sf(v)
 }
 
-# ── [5] join metrics ──────────────────────────────────────────────────────────
-join_metrics <- function(polys_sf, mets) {
-  m <- Reduce(function(a, b) merge(a, b, by = "pid", all.x = TRUE),
-              list(mets$num, mets$fracs, mets$tops))
-  merge(polys_sf, m, by = "pid", all.x = TRUE)
-}
-
-# terra (dense) fallback: metrics from a patches()-labelled `pid` raster, then as.polygons.
+# ── [5] terra (dense) fallback metrics ────────────────────────────────────────
+# metrics from a patches()-labelled `pid` raster (ROI fallback; the sparse path uses the
+# data.table directly). Returns the same single metrics data.table as aggregate_metrics.
 raster_metrics <- function(r, pid) {
   burned <- terra::ifel(is.na(pid), NA, 1)
   has_n  <- "n" %in% names(r)
@@ -339,15 +359,11 @@ raster_metrics <- function(r, pid) {
   }
   names(ba) <- sprintf("burned_around_%d", BA_RADII)
   cell_area <- terra::mask(terra::cellSize(pid, unit = "m"), pid)
-  bands <- c("veg_fire", "abs_date", if (has_n) "n")
+  bands <- c("candseed", "veg_fire", "abs_date", if (has_n) "n")   # candseed → seed_mean
   stk   <- c(pid, r[[bands]], cell_area, ba)
   names(stk)[names(stk) == "area"] <- "cell_area"
   dt <- as.data.table(terra::as.data.frame(stk, na.rm = TRUE))
   aggregate_metrics(dt, has_n)
-}
-vectorize_join <- function(pid, mets) {                  # terra path: dense as.polygons + join
-  v <- terra::as.polygons(pid, dissolve = TRUE); names(v) <- "pid"
-  join_metrics(sf::st_as_sf(v), mets)
 }
 
 # ── [6] geometry shape / sparsity metrics ─────────────────────────────────────
@@ -375,29 +391,48 @@ add_shape_metrics <- function(polys_sf) {
 
 # ── driver ────────────────────────────────────────────────────────────────────
 process_year <- function(fy, test = FALSE, method = "sparse") {
-  message(sprintf("── fire-year %d%s [%s, %d core(s)] ──", fy, if (test) " test-ROI" else "",
-                  method, if (method == "sparse") OBJ_CORES else 1L))
+  t0  <- Sys.time()
+  tag <- sprintf("FY%d%s", fy, if (test) "-test" else "")
+  message(sprintf("\n══ %s ── start [%s, %d core(s)] ══", tag, method,
+                  if (method == "sparse") OBJ_CORES else 1L))
   s <- snic_tifs(fy, test); r <- load_snic(fy, test)
+
   if (method == "sparse") {                       # union-find + per-object vectorize (default)
-    os    <- objects_sparse(s$tifs, r)
-    polys <- join_metrics(vectorize_sparse(os$geom, grid_of(r)), os$mets)
+    os          <- objects_sparse(s$tifs, r, tag)
+    raster_mets <- os$mets
+    message(sprintf("[%s] vectorize: %d objects across %d core(s)…",
+                    tag, length(unique(os$geom$pid)), OBJ_CORES))
+    polys       <- vectorize_sparse(os$geom, grid_of(r))
   } else {                                        # terra patches() dense fallback (ROI only)
-    pid   <- object_ids(r[["candseed"]], r[["veg_fire"]])
-    polys <- vectorize_join(pid, raster_metrics(r, pid))
+    message(sprintf("[%s] terra dense labelling + metrics…", tag))
+    pid         <- object_ids(r[["candseed"]], r[["veg_fire"]])
+    raster_mets <- raster_metrics(r, pid)
+    polys       <- sf::st_as_sf(stats::setNames(terra::as.polygons(pid, dissolve = TRUE), "pid"))
   }
+
+  message(sprintf("[%s] shape metrics…", tag))
   polys <- add_shape_metrics(polys)
-  polys$fire_year <- fy
-  # `pid` is unique only WITHIN a year → globally-unique oid = "<fy>_<pid>".
+  # `pid` is unique only WITHIN a year → globally-unique oid = "<fy>_<pid>" (the join key).
   polys$oid <- sprintf("%d_%d", fy, polys$pid)
-  polys <- polys[, c("oid", setdiff(names(polys), "oid"))]
-  polys$date_median_date <- as.Date(polys$date_median, origin = EPOCH)
+  raster_mets[, oid := sprintf("%d_%d", fy, pid)]
+
+  # split outputs (docs/05 §4): GPKG (oid + geometry ONLY) + two metric CSVs, all keyed by oid.
+  shape_cols <- c("oid", "perimeter_m", "convexity", "mbr_fill", "mbr_elongation",
+                  "circularity", "shape_index")
+  shape_mets <- as.data.table(sf::st_drop_geometry(polys))[, ..shape_cols]
+  raster_out <- raster_mets[, c("oid", setdiff(names(raster_mets), c("oid", "pid"))), with = FALSE]
 
   stem <- if (test) sprintf("objects_test_%d", fy) else sprintf("objects_%d", fy)
   gpkg <- file.path(SNIC_DIR, paste0(stem, ".gpkg"))
-  csv  <- file.path(SNIC_DIR, paste0(stem, "_metrics.csv"))
-  sf::st_write(polys, gpkg, delete_dsn = TRUE, quiet = TRUE)
-  fwrite(as.data.table(sf::st_drop_geometry(polys)), csv)
-  message(sprintf("   %d objects → %s", nrow(polys), gpkg))
+  rcsv <- file.path(SNIC_DIR, paste0(stem, "_raster_metrics.csv"))
+  scsv <- file.path(SNIC_DIR, paste0(stem, "_shape_metrics.csv"))
+  message(sprintf("[%s] writing GPKG + raster/shape CSVs…", tag))
+  sf::st_write(polys[, "oid"], gpkg, delete_dsn = TRUE, quiet = TRUE)
+  fwrite(raster_out, rcsv)
+  fwrite(shape_mets, scsv)
+  message(sprintf("[%s] done: %d objects → %s (+ raster/shape CSVs) in %.1f min",
+                  tag, nrow(polys), basename(gpkg),
+                  as.numeric(difftime(Sys.time(), t0, units = "mins"))))
   invisible(polys)
 }
 

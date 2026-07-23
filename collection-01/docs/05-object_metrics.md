@@ -53,6 +53,13 @@ Read **one carta tile at a time** (each < 2³¹ cells), keep the burned cells, m
 *"long vectors not supported"* (§7). The result is one `data.table` of burned cells carrying all
 bands + global `row`/`col`/`cell`.
 
+**Patagonia steppe dieback cut.** SNIC adds `candseed==3` dieback padding only **west of −70.3°**
+(04 §4.3), but the −70.6…−70.3 steppe-edge strip is mostly false positives in the steppe. The
+extract therefore **drops `candseed==3` cells with longitude > −70.6** — effectively tightening the
+padding's western limit from −70.3 to −70.6. Clumsy-but-cheap vs. re-running SNIC. Applied here
+(before labelling), so dropped cells neither form nor join objects. (The GEE-precomputed
+`burned_around` counts still include them in neighbours' windows — negligible.)
+
 ### 2.2 Label — union-find, with dilation as a wider window (`label_uf` + `utils/label_uf.cpp`)
 
 Objects = connected components of burned cells. **Union-find** (disjoint-set, Tarjan; path
@@ -65,27 +72,38 @@ and is **labelling-agnostic**; the R caller decides which pairs to union.
 The original glued them by *dilating* the mask (a 1-px halo), labelling the grown mask, then
 dropping the halo — but materializing that halo (8× the non-ag burned cells) is what OOM'd the
 country run (§7). It is **exactly equivalent** — and halo-free — to instead union two burned
-cells directly when they fall within a **wider window**, with a veg-class distance threshold.
-Working out the geometry (a non-ag/grass burned pixel "occupies" its 3×3 dilation; an ag/grass
-one, whose dilation is suppressed, occupies just 1×1; two occupied regions 8-touch at exactly
-these distances):
+cells directly when they fall within a **wider window**, with a distance threshold that depends on
+whether each endpoint gets **enlarged context**. Working out the geometry (a burned pixel with
+enlarged context "occupies" its 3×3 dilation; one without — see below — occupies just 1×1; two
+occupied regions 8-touch at exactly these distances):
 
 | the two burned cells | union if Chebyshev distance ≤ |
 |---|---|
-| both **non**-ag/grass | **3** |
-| exactly one non-ag/grass | **2** |
-| both ag/grass | **1** (plain 8-connectivity) |
+| both **with** enlarged context | **3** |
+| exactly one with enlarged context | **2** |
+| both **without** enlarged context | **1** (plain 8-connectivity) |
 
 So the labeller sweeps a **7×7 forward-offset window** (24 offsets, each undirected pair once)
-and, per candidate pair, unions only within that veg-dependent threshold. Ag/grass = veg_fire ∈
-**{1, 2, 3, 13, 17}** (`agriculture_*`, `grassland_chaco`, `grassland-inund_chaco`), where
-bridging distinct burned fields would inflate commission error. This reproduces the terra
-dilate→label→drop-halo result **pixel-for-pixel** (verified: ROI 1998 → 115 objects, sorted
-per-object pixel counts identical to the terra path, area rel-diff 0).
+and, per candidate pair, unions only within that distance threshold. A burned cell gets **no
+enlarged context** (8-connectivity only) when it is either:
+
+- **ag/grass/pasture** — veg_fire ∈ **{1, 2, 3, 12, 13, 15, 17, 18, 19}** (`agriculture_*`,
+  `grassland_ba/chaco/pampa`, `grassland-inund_chaco`, `pasture_ba/chaco`), where bridging distinct
+  burned fields/paddocks would inflate commission error; **or**
+- a **`candseed==3` dieback pixel** — Patagonia slow-dieback padding may only *extend* a real scar,
+  never bridge across gaps, so it is connected to its 8-neighbours only.
+
+Everything else (forests, shrublands, `grassland_cuyo` (14), `grassland_pat`/steppe (16), and
+perennial ag `agriculture-per_chaco-ba` (4)) **keeps** enlarged context — in sparse/fragmented
+fuels bridging recovers one real scar. (Keep the no-enlarged-context set in sync with the R
+`NO_DILATE_VEG` constant.) The original ROI validation (ag/grass = {1,2,3,13,17}, no dieback rule)
+reproduced the terra dilate→label→drop-halo result **pixel-for-pixel** (ROI 1998 → 115 objects,
+sorted per-object pixel counts identical, area rel-diff 0); the expanded set follows the same
+geometry.
 
 ### 2.3 Vectorize — parallel per-object (`vectorize_sparse`, Path B)
 
-Per pid: build a **tiny local-bbox raster** holding all of that pid's cells and
+Per polygon-id (pid): build a **tiny local-bbox raster** holding all of that pid's cells and
 `as.polygons(dissolve=TRUE)` → one (multi)polygon. Disconnected fragments of one pid (the
 dilation-bridge case) dissolve into a single multipolygon, so the bridge is preserved
 **natively**. Objects are independent → `mclapply` across `OBJ_CORES`; workers return
@@ -97,17 +115,33 @@ see §7/§8.)
 ### 2.4 Metrics — raster + geometry (`aggregate_metrics`, `add_shape_metrics`)
 
 Computed **raster-native** over the burned-cell `data.table`, grouped by pid — faster and exact
-for area:
+for area. The set was **trimmed** (2026-07-23) to the metrics the step-06 model actually uses; the
+cut replaces the six-stat `qstats` (per-group `quantile()` at R-callback speed — §9's wall-clock
+sink) with GForce-optimizable `{median, min, max, mean}`, buying back both time and the transient
+memory that drove the peak (§9.3):
 
-- **veg abundance** — per-class fractions `frac_c1…c23` (absent = 0) + ranked top-5
-  (`veg_top1…5` + `_frac`).
-- **area** — `area_m2` = Σ per-cell `cellSize` (for a lon/lat grid computed on a 1-column strip
-  by latitude, O(nrow)) and `n_pixels`.
-- **`abs_date` / `n` summaries** — `{median, mean, p2.5, p97.5, min, max}` (`n_*` skipped if no
-  `n` band; a human `date_median_date` is added at write).
+- **seed share** — `seed_mean` = fraction of the object's focal pixels that are SNIC **seeds**
+  (`candseed == 2`). **The single most discriminating metric** for fire vs. noise (real scars are
+  densely seeded, noise is unseeded) — 05 §4 / the step-06 filter lean on it. Computed over focal
+  pixels (`candseed != 3`), consistent with the date exclusion below.
+- **veg abundance** — per-class fractions `frac_c1…c23` (absent = 0). **No ranked top-5** (dropped;
+  fully derivable from the fractions, incl. the "agriculture proportion" = Σ ag fractions).
+- **area** — `area_ha` = Σ per-cell `cellSize` ÷ 10⁴ (for a lon/lat grid the `cellSize` is computed
+  on a 1-column strip by latitude, O(nrow)) and `n_pixels`.
+- **`abs_date` summary** — `{median, min, max}` only (a human `date_median_date` is added at write).
+- **`year_calendar`** — per pixel's `abs_date` → calendar year, then the **mode** across the
+  object's pixels (assigns the object to the calendar year most of it burned in — the join key into
+  the official calendar-year month-of-burn raster, step 07). *(No `year_fire`: it is redundant with
+  the fire-year already encoded in `oid`.)*
+- **`n_mean`** — mean Landsat observation count over the object's pixels (skipped if no `n` band).
 - **neighbourhood sparseness** `burned_around_{1,2,3}` — mean over the object's pixels of the
   burned fraction in the (2r+1)² window. Direct tiles carry it pre-computed in GEE (cell counts
   → ÷(2r+1)²); the legacy COG computes it here.
+
+**Dieback pixels excluded from all date computations.** `candseed==3` cells carry *next*-fire-year
+dates (04 §4.3) and downstream inherit the parent object's date, never their own — so they are
+**dropped before computing** `abs_date` `{median,min,max}` and the `year_calendar` mode, otherwise
+they would drag the object toward the following year.
 
 **Geometry shape/sparsity** (ported from collection-00 `addShapeMetrics`): `perimeter_m`,
 `convexity` (area/hull), `mbr_fill` (area/bbox), `mbr_elongation`, `circularity` (4πA/P²),
@@ -118,20 +152,31 @@ converted degrees→metres.
 
 ## 3. Object ids — pid / oid
 
-`pid` = object id, unique **within a year only** (labelling restarts each year). Each polygon
-also carries the globally-unique **`oid = "<fire_year>_<pid>"`** (e.g. `2015_4213`), plus
-`fire_year`.
+`pid` = object id, unique **within a year only** (labelling restarts each year). The
+globally-unique key is **`oid = "<fire_year>_<pid>"`** (e.g. `2015_4213`) — it is the join key
+everything downstream uses, and since it embeds the fire-year, no separate `fire_year` column is
+written.
 
 ---
 
 ## 4. Outputs & run
 
-Written to `collection-01/data/snic-polygons/`:
+Written to `collection-01/data/snic-polygons/`. **Geometry and metrics are split with no
+redundancy**, and the metrics themselves are split by their compute phase — each of the two metric
+phases (§2.4) writes its own CSV directly, keyed by `oid`, so there is **no join-onto-geometry
+step** (minimal code):
 
 | file | contents |
 |---|---|
-| `objects_<fy>.gpkg` | one polygon per object + all §2.4 metrics + `fire_year` + `oid` |
-| `objects_<fy>_metrics.csv` | the metrics table alone (no geometry) |
+| `objects_<fy>.gpkg` | one polygon per object + **`oid` only** (no metrics) — lightweight local intermediate |
+| `objects_<fy>_raster_metrics.csv` | the §2.4 **raster** metrics (`aggregate_metrics`), keyed by `oid` |
+| `objects_<fy>_shape_metrics.csv` | the §2.4 **geometry/shape** metrics (`add_shape_metrics`), keyed by `oid` |
+
+Why GPKG and not GeoJSON: the per-year file is a **local intermediate** (used to turn collected
+points into per-object labels, and to subset the fire objects) — GPKG is lighter, faster, and
+coordinate-lossless. **GeoJSON is produced only later, for the classified fire subset** that gets
+uploaded to GEE (step 06), never for the full year. The step-06 model reads the two CSVs (join on
+`oid`) — no geometry needed — so all three files stay independent through classification.
 
 ```
 OBJ_CORES=13 Rscript collection-01/workflow/05-objects_metrics.R 2000   # union-find (default)
@@ -168,22 +213,22 @@ unseeded), then builds the filtered polygons + the per-pixel month-of-burn raste
 8.4 GB; union-find label 82 s / 8.6 GB (82,025 objects, matches GDAL's CC count); vectorize
 Path B 163 s (13 cores) — identical objects to Path A.
 
-**Remaining:** run the **full production script whole-country** (e.g. FY2000) end-to-end to
-confirm the one untested-at-scale piece — the **metrics aggregation memory** over 116 M rows
-(the benchmark labelled+vectorized but computed no metrics). It is O(burned), so it should fit,
-but the direct-tile extract must carry all 7 bands, so `dt` is ~10–15 GB; measure it. If tight,
-compute the metrics from the on-disk tiles in a second streaming pass. Step-06 filter cuts are
-still open (04 §7).
+**Full production script run whole-country (FY2000) — the metrics-aggregation memory is now
+measured (§9).** It fits 31 GB but with only ~2 GB headroom; the run also surfaced a fix
+(fork-unwrapped-SpatVector merge) that had been killing the whole run at the final step. Step-06
+filter cuts are still open (04 §7).
 
-> **Fire-active years may not fit whole-country.** Everything here scales with burned cells,
-> and FY2000's 116 M is not the worst case — a high-fire year can carry several times more, so
-> the extract `dt` (all 7 bands × burned rows), the metrics group-by, or even the vectorize
-> could push a big year past 31 GB and OOM. Fallback: **process by REGION** — a few large groups
-> of cartas, run independently, then concatenated. Deliberately *coarse* (not per-carta) so very
-> few scars cross a region seam; cut the boundaries along low-fire gaps to minimise splits.
-> Caveat: this reintroduces the **seam-merge** for objects straddling a region boundary — the
-> exact thing tiling was rejected for (§8) — so keep regions few and large, and only reach for it
-> when a year actually OOMs whole-country.
+> **Fire-active years may not fit whole-country.** Everything here scales with burned cells.
+> **FY2000 turns out to be a near-worst-case year** — the arid-diagonal megafires make it one of
+> the most-burned years in the record (116 M burned cells), so §9's whole-country run is the
+> stress test, not a mild baseline. It fits, but with only ~2 GB free (§9), so a year with
+> materially more burned cells could still push the metrics group-by or the vectorize past 31 GB
+> and OOM. Fallback: **process by REGION** — a few large groups of cartas, run independently, then
+> concatenated. Deliberately *coarse* (not per-carta) so very few scars cross a region seam; cut
+> the boundaries along low-fire gaps to minimise splits. Caveat: this reintroduces the
+> **seam-merge** for objects straddling a region boundary — the exact thing tiling was rejected
+> for (§8) — so keep regions few and large, and only reach for it when a year actually OOMs
+> whole-country.
 
 ---
 
@@ -238,3 +283,103 @@ Chronological, so a future reader sees why the current design is what it is:
 - **Raster-free numpy edge-tracing** (union cell edges, cancel shared, stitch rings) — fastest in
   principle (no per-call overhead, no array), but bespoke ring/hole/multipolygon code with no
   turnkey library. Noted as a future option; not built.
+
+---
+
+## 9. Full-pipeline whole-country run (FY2000) — memory profile, the merge bug, and where to trim
+
+The first end-to-end production run on the whole country (FY2000, 116.1 M burned cells, 31 GB
+RAM box, `OBJ_CORES=13`) closed the §6 "Remaining" item — it **measured the metrics-aggregation
+memory** the benchmark had skipped — and turned up one hard bug. **FY2000 is a near-worst-case
+year** (the arid-diagonal megafires; one of the most-burned years on record), so these numbers
+are the stress test, not a mild baseline.
+
+### 9.1 It fits — but only just (~2.5 GB headroom)
+
+**Result:** 71,024 objects → `objects_2000.gpkg` (390 MB) + `_metrics.csv` (28 MB), **wall-clock
+1 h 39 m**, `OBJ_CORES=13`. (71,024 vs the §6 benchmark's 82,025 is expected — the benchmark
+labelled plain 8-connected, production's **dilation-as-window** merges fragments into fewer, larger
+objects.) The long wall-clock is the serial metrics phase, not the parallel parts: avg CPU was only
+~125 % (mostly one core), because per-pid `qstats` and `add_shape_metrics` dominate (§9.3).
+
+Peak **system memory used 28.7 GB / min available 2.6 GB** (of 31 GB), max single-process
+RSS 26.2 GB, swap barely touched (~0.6 GB), no OOM-kill. Track **available RAM
+(`MemTotal−MemAvailable`)**, never summed process
+RSS — during the parallel vectorize the forked workers share the master's pages copy-on-write, so
+summed RSS balloons to ~90–120 GB while the true committed footprint stays ~28 GB. Two phases sit
+at the ~2–3 GB-available floor:
+
+- **Serial metrics aggregation — the real peak (parent RSS ≈ 25 GB).** This is the piece §6
+  flagged as untested. It peaks not because any one structure is huge but because the **full
+  7-band `dt` (~10 GB) is still alive while `aggregate_metrics` builds its `dcast` wide tables +
+  `qstats` intermediates** — the two coexist. It's a single R process, **CPU-bound on one core**
+  (`vmstat`: 1 core pinned, si/so≈0, wa=0), and it **dominates wall-clock** — far longer than the
+  §6 "12–16 min/yr" note (which timed label+vectorize only, no metrics). The per-pid `qstats`
+  (median/mean/p2.5/p97.5/min/max, computed for **both** `abs_date` and `n` → 12 quantile-family
+  calls per pid over ~82 k pids) is not data.table-GForce-optimized, so it runs at R-callback speed.
+- **Vectorize fan-out (13 workers).** Once metrics returns, the heavy `dt` goes out of scope and
+  is GC'd — **only `geom = dt[,.(row,col,pid)]` survives** — so parent RSS drops to ~15 GB before
+  the fork. Available RAM still dips to ~2.6 GB here, but that is COW-shared master pages, not
+  runaway worker growth.
+
+The design's "drop the heavy object, carry only pid+coords into vectorize" (`objects_sparse`
+returning `geom` + finished `mets`) **already works** — RSS visibly falls at the metrics→vectorize
+boundary. The remaining pressure is entirely *inside* the serial metrics phase.
+
+### 9.2 The bug that killed the run at the finish line (fixed)
+
+After ~42 min of correct compute (extract → label → metrics → per-object vectorize all fine), the
+run died at the **final master merge** in `vectorize_sparse`:
+
+```
+error … selecting a method for function 'merge': argument "x" is missing
+Calls: … vectorize_sparse -> do.call -> rbind -> …
+```
+
+`do.call(rbind, lapply(res, terra::unwrap))` mis-dispatches terra's S4 `rbind` to `merge` **only
+for fork-unwrapped SpatVectors** — freshly-built SpatVectors `rbind` fine via `do.call`, so the
+per-worker combine (fresh objects) never tripped it; only the master's combine of `unwrap()`ed
+worker results did. **Fix:** use `terra::vect(<list of SpatVectors>)` (the idiom for concatenating
+a list; `Reduce(rbind, .)` also works) for **both** the worker and master combines. Verified: the
+per-object `pid` attribute survives and counts match. *This is why a whole-country run needs an
+end-to-end test — the benchmark's `stageB.R` used its own combine and never exercised this path.*
+(Minor, not yet fixed: a constant-1 `lyr.1` column from `as.polygons` leaks into the metrics CSV —
+harmless, droppable.)
+
+### 9.3 Where to cut the metrics peak & time (some resolved 2026-07-23)
+
+The serial metrics phase is both the memory peak and the wall-clock sink, so it's the target:
+
+- **Fewer summaries — ADOPTED (§2.4).** `qstats` emitted 6 stats × 2 vars per object via per-group
+  `quantile()` at R-callback speed. The trimmed set — `abs_date` `{median,min,max}`, `n_mean`, and
+  dropping the veg top-5 — is GForce-optimizable, cutting R-callback CPU *and* the intermediate
+  footprint that drove the peak. (User: "computing lots of summaries for the same variable, I can
+  easily decrease that.")
+- **Ordering — keep raster-metrics BEFORE vectorize (reorder rejected).** A proposed
+  polygonize-first order (vectorize → shape metrics → free → raster metrics) does **not** help:
+  vectorize needs only the slim `geom`, raster metrics need the full 7-band `dt`, so whatever runs
+  last should be the cheap one. The current order already consumes the heavy bands first, frees
+  `dt`, and carries only `geom` into the fork — reordering would instead keep the 10 GB `dt` alive
+  through the fork. Raster metrics and polygon (shape) metrics are already computed in separate
+  phases (`aggregate_metrics` pre-vectorize, `add_shape_metrics` post-vectorize on small `polys`).
+- **Free/slim `dt` before the wide `dcast`s.** Drop columns no longer needed once their summary is
+  computed, so the 7-band `dt` and the `dcast` outputs don't both sit at full width — this is what
+  pushes the parent to ~25 GB.
+- **Decouple the two peaks via disk (user's idea).** Aggregate metrics → write the per-pid metrics
+  CSV → drop the heavy object → keep only `pid`+coords for vectorize. Then RAM is never occupied by
+  "everything at once"; metrics and vectorize peak separately, not together.
+- **Do NOT parallelize the metrics group-by (as-is).** Splitting `dt` by pid across workers
+  duplicates the heavy columns, and several arid-diagonal **megafires landing in one worker**
+  would OOM — the exact failure the user cautioned about. Serial group-by is the memory-cheapest
+  form and already fits; only revisit if the whole year is first split by REGION (§6).
+- **Latent vectorize risk — megafire bbox.** `.one_object` allocates a **dense** `rep(NA, h·w)`
+  array over each object's bounding box. A long diagonal megafire has a huge, mostly-empty bbox, so
+  one worker can transiently allocate GBs for a single scar. It did **not** OOM at FY2000, but the
+  risk grows with more/larger fires (and would compound if metrics were also parallelized). A
+  sparse local raster or per-fragment polygonize would remove it.
+
+**Bottom line for the two open questions.** [1] Loading all 7 bands per burned cell and computing
+every metric whole-country **does not OOM** at FY2000 — peak 28.7 GB used, 2.6 GB free. [2] Because
+FY2000 is already a near-worst-case fire year, most years should fit too — but the ~2 GB headroom
+is thin, so a materially heavier year remains a REGION-split candidate (§6), and the §9.3 trims buy
+back headroom cheaply before that's needed.
