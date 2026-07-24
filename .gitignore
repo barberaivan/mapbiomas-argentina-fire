@@ -40,3 +40,6 @@ collection-01/scripts/annual_data_download/
 
 # step-04 direct-download tiles (download_snic.py) — large, regenerable
 collection-01/data/snic-direct/
+
+# step-05 batch run logs (run_05_years.sh / mem_monitor.sh) — runtime output
+collection-01/logs/

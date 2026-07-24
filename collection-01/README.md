@@ -46,10 +46,13 @@ collection-01/
 ├── workflow/               # Numbered pipeline steps (mixed Python + R)
 │   ├── 01-training_data_export.py   # Export training data (one GEE task per fire)
 │   ├── 02-model_fitting.R           # Fit LR per veg_fire class (R, glmnet)
-│   └── 03–08-*.py          # Stubs — in development (Python/GEE)
+│   ├── 03–06-*.{py,R}      # Prediction pipeline (bp ts → SNIC → objects → filter) — in development
+│   ├── run_05_years.sh              # Overnight all-years step-05 launcher — one Rscript/year, resumable, OOM-flagging (docs/05 §4.1)
+│   └── mem_monitor.sh               # Lightweight RAM peak / near-OOM-warn monitor (used by run_05_years.sh; standalone too)
 ├── scripts/                # Ad-hoc utilities — not mandatory pipeline steps
 │   ├── status.py                          # Check GEE export status across all regions
 │   ├── download_observations.py           # Download training observations to local CSV
+│   ├── download_snic.py                   # Direct tiled download of step-04 SNIC products (per-carta GeoTIFFs) — feeds step 05 (docs/04 §5b)
 │   ├── data_cleaning.R                     # Add the `fit` gate column (base window filter + per-fire edits) — REQUIRED before step 02; see docs/02-data_cleaning.md
 │   ├── export_region_raster.py            # Export region-ID raster to GEE asset
 │   ├── veg-fire_remap_clean-google-sheet.R # Regenerate config/veg_fire_remap.csv from the Google Sheet
@@ -144,9 +147,21 @@ Regenerate the canonical remap from the Google Sheet whenever it changes (do not
 Rscript collection-01/scripts/veg-fire_remap_clean-google-sheet.R
 ```
 
-### Steps 03–08
+### Steps 03–06
 
-In development (Python/GEE). See script stubs in `collection-01/workflow/`.
+In development. See the per-step notes in `collection-01/docs/` (03 bp-ts metrics, 04 SNIC,
+05 object metrics, 06 object model) and the scripts in `collection-01/workflow/`.
+
+Step 05 (object vectorization & metrics, R) runs **one fire-year at a time**. For the full
+2001–2025 run, use the overnight launcher — one `Rscript` per year (resumable; OOM-killed years
+are flagged and don't stop the batch) with a lightweight RAM monitor alongside (**docs/05 §4.1**):
+
+```bash
+# launch detached; use an ABSOLUTE path (see docs/05 §4.1)
+tmux new-session -d -s obj05 '/abs/path/to/collection-01/workflow/run_05_years.sh 2001 2025'
+tmux attach -t obj05            # watch; Ctrl-B D to detach
+grep -E 'OOM|WARN|FAILED|done rc=0' collection-01/logs/05_{run,mem}_*.log   # morning triage
+```
 
 ### Scripts (R utilities)
 

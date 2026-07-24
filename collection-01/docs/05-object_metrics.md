@@ -186,6 +186,42 @@ Rscript collection-01/workflow/05-objects_metrics.R terra 2000          # dense 
 
 `OBJ_CORES` (default ~half the cores; 1 = serial) sets the per-object vectorize fan-out.
 
+### 4.1 Overnight all-years batch — `run_05_years.sh` + `mem_monitor.sh`
+
+Because a fire-active year can push the metrics/vectorize peak past 31 GB and OOM (§6, §9), the
+full 2001–2025 run is driven by a wrapper that **runs one `Rscript` per year** rather than passing
+every year to a single R process. That isolation is the point: if one year is OOM-killed, only that
+year dies — the loop continues and the remaining years still finish overnight (a single process
+would lose everything after the failing year). Both scripts are plain bash, no deps, in
+`collection-01/workflow/`:
+
+- **`run_05_years.sh [start_year] [end_year]`** (default `2001 2025`) — loops the years, one
+  `Rscript 05-objects_metrics.R <fy>` each. **Resumable/idempotent:** skips any year whose
+  `objects_<fy>_shape_metrics.csv` (written *last*, so a true completion marker) already exists —
+  relaunch after a crash and done years are skipped. Records per-year exit code + wall time and
+  flags **`rc=137` (SIGKILL — the kernel OOM-killer's signature) as a likely OOM**. `tee`s the R
+  step messages to the tmux window *and* the run log (`PIPESTATUS[0]` preserves R's real exit code
+  so the OOM flag survives the pipe). Auto-starts the monitor and kills it on exit.
+- **`mem_monitor.sh [logfile] [interval_s] [warn_avail_mb]`** (defaults `mem_monitor.log 15 2048`) —
+  lightweight whole-system RAM sampler: tracks peak used/swap, logs a `PEAK` line only on a new high
+  (file stays tiny), and appends a **`WARN … NEAR OOM`** line the moment `MemAvailable` drops below
+  the threshold (re-arms after recovery). Writes a final `STOP` line with the peaks. Standalone-usable
+  around any heavy run.
+
+```
+tmux new-session -d -s obj05 '/abs/path/to/collection-01/workflow/run_05_years.sh 2001 2025'
+tmux attach -t obj05                 # watch live; Ctrl-B D to detach
+tail -f collection-01/logs/05_run_*.log
+# morning triage:
+grep -E 'OOM|WARN|FAILED|done rc=0' collection-01/logs/05_{run,mem}_*.log
+```
+
+Two logs land in `collection-01/logs/`: `05_run_<range>_<stamp>.log` (steps + per-year
+done/OOM/failed) and `05_mem_<range>_<stamp>.log` (peak RAM + any WARN). Launch from tmux with an
+**absolute path** (the wrapper `cd`s to the repo root itself, but a detached tmux shell may not
+start there). If a year OOMs, buy headroom via the §9.3 trims or fall back to the per-REGION split
+(§6), then relaunch the same command.
+
 Downstream **step 06** filters these objects (real scars are compact & seeded — high
 `seed`/`candseed` share, `burned_around_*`, `convexity`/`circularity`; noise is sparse &
 unseeded), then builds the filtered polygons + the per-pixel month-of-burn raster (dieback

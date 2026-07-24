@@ -1,5 +1,5 @@
 """
-collection-01/workflow/download_snic.py
+collection-01/scripts/download_snic.py
 
 Direct, tiled download of the step-04 SNIC products from GEE to local disk,
 bypassing Drive + Insync (docs/04 §5, docs/05 §7b). For each fire-year it builds
@@ -29,6 +29,7 @@ Why carta-by-carta rather than one whole-country geedim call (geedim tiles eithe
   * parallel  — disjoint carta shards run under different GEE accounts at once:
                     ...download_snic.py --all-years --shard 0/2   # account A
                     ...download_snic.py --all-years --shard 1/2   # account B (swap credentials)
+                    (path: collection-01/scripts/download_snic.py)
     So `geedim` = inner tiling (request limit), `carta` = outer partition (footprint /
     resume / cross-account) — different scales, both needed.
 
@@ -41,9 +42,9 @@ which terra honours automatically. Overviews would be dead weight.
 Requires geedim (installed in the project venv):  $PYTHON -m pip install geedim
 
 Run from the repo root:
-    $PYTHON collection-01/workflow/download_snic.py --year 2000
-    $PYTHON collection-01/workflow/download_snic.py --year 2000 --dry-run     # list, no geedim/download
-    $PYTHON collection-01/workflow/download_snic.py --all-years
+    $PYTHON collection-01/scripts/download_snic.py --year 2000
+    $PYTHON collection-01/scripts/download_snic.py --year 2000 --dry-run     # list, no geedim/download
+    $PYTHON collection-01/scripts/download_snic.py --all-years
 Under the comahue account (not on the default compute project), add e.g.
     --project mapbiomas-argentina
 """

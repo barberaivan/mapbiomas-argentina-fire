@@ -25,7 +25,7 @@ one step, e.g. the remap and the fit are both inputs to step 02):
 | `collection-01/docs/03-bpts.md` | step 03 — burn-probability time-series metrics: full design, implementation + GEE array gotchas |
 | `collection-01/docs/03-colab_multi_export.md` | step 03 — distributed multi-account export via Colab (admin notes) |
 | `collection-01/docs/04-snic.md` | step 04 — burned-area segmentation: the whole-country **non-calendar fire-year** SNIC (fire-year `candseed` construction, Patagonia dieback padding, supervised SNIC, Drive-COG handoff to R); the shelved SNIC-3D attempt in brief; the `explore_snic_IB-0{2,3}` GEE tuning/inspection tools |
-| `collection-01/docs/05-object_metrics.md` | step 05 — fire-object vectorization & metrics (R/terra): the 1-px dilation connectivity hack, per-object raster metrics (veg abundance, area, `abs_date`/`n` summaries, sparseness) + geometry shape metrics ported from collection-00; sparse igraph labelling vs terra fallback |
+| `collection-01/docs/05-object_metrics.md` | step 05 — fire-object vectorization & metrics (R/terra): the 1-px dilation connectivity hack, per-object raster metrics (veg abundance, area, `abs_date`/`n` summaries, sparseness) + geometry shape metrics ported from collection-00; sparse igraph labelling vs terra fallback; **§4.1** the overnight all-years batch launcher (`workflow/run_05_years.sh` + `workflow/mem_monitor.sh`) |
 | `collection-01/docs/06-object_model.md` | step 06 — object-based fire/non-fire classification: GEE asset ingestion + interactive point-based data collection, XGBoost fit/classify, then filtering + rasterization (design notes) |
 
 > **When a workflow step is in play, read the matching `collection-01/docs/NN-*.md` first.**
@@ -135,3 +135,9 @@ heavy enough, default to `tmux`.
 
 > Make bulk launchers **idempotent / resumable**: skip tiles that already have a completed asset
 > *or* an in-flight (PENDING/RUNNING) task, so a killed-and-rerun launch never duplicates work.
+
+Long local runs that iterate over years follow the same rule via `workflow/run_05_years.sh` (step
+05): **one `Rscript` per year** so an OOM kills only that year (flagged `rc=137`), not the whole
+batch; skips years whose completion CSV exists; `workflow/mem_monitor.sh` samples RAM alongside and
+logs a `WARN` when free memory nears the OOM limit. See `docs/05-object_metrics.md` §4.1. Launch
+from tmux with an **absolute path** — a detached tmux shell may not start in the repo root.

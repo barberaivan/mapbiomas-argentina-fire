@@ -187,7 +187,7 @@ Replaces the Drive+Insync round-trip. Two commands:
    a plain int16 CELL COUNT, not the proportion** (so the download stays integer, no scale factor);
    **R divides by (2r+1)² for the [0,1] proportion**.
 
-2. **`download_snic.py --year <fy>` (or `--all-years`)** — builds
+2. **`download_snic.py --year <fy>` (or `--all-years`)** (`collection-01/scripts/download_snic.py`) — builds
    `snic_metrics_<fy>.addBands(candseed)` (7 bands) and downloads it **one carta at a time** via
    `geedim`, which sub-tiles each carta to the compute-pixels limits (≤32 MB / ≤10000 px / ≤1024
    bands) and fetches tiles concurrently. Output `data/snic-direct/<fy>/<carta_id>.tif` (int16,
