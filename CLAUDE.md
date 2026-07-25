@@ -27,6 +27,9 @@ one step, e.g. the remap and the fit are both inputs to step 02):
 | `collection-01/docs/04-snic.md` | step 04 — burned-area segmentation: the whole-country **non-calendar fire-year** SNIC (fire-year `candseed` construction, Patagonia dieback padding, supervised SNIC, Drive-COG handoff to R); the shelved SNIC-3D attempt in brief; the `explore_snic_IB-0{2,3}` GEE tuning/inspection tools |
 | `collection-01/docs/05-object_metrics.md` | step 05 — fire-object vectorization & metrics (R/terra): the 1-px dilation connectivity hack, per-object raster metrics (veg abundance, area, `abs_date`/`n` summaries, sparseness) + geometry shape metrics ported from collection-00; sparse igraph labelling vs terra fallback; **§4.1** the overnight all-years batch launcher (`workflow/run_05_years.sh` + `workflow/mem_monitor.sh`) |
 | `collection-01/docs/06-object_model.md` | step 06 — object-based fire/non-fire classification: GEE asset ingestion + interactive point-based data collection, XGBoost fit/classify, then filtering + rasterization (design notes) |
+| `collection-01/docs/07-vector_to_raster.md` | step 07 — final processing decisions: geometry/metrics split, collect on the SNIC layer (not polygons), upload only the classified fire subset, build the month-of-burn raster |
+| `collection-01/docs/08-postprocessing.md` | step 08 — the **MapBiomas Fuego network-wide post-processing** (stages 1–4: the GEE assets), identical in every country and summarised from the network's [*Guía del Proceso de Lanzamiento*](https://docs.google.com/presentation/d/1Y5SUeS_405k5zZkBX4z6BDaC_umI8Saiguk7coITB1Q/edit) (§1 gives the `curl …/export/pdf` recipe to read the slides as a PDF): LULC masking + month coding, the `FINAL_PRODUCTS` subproducts (annual/monthly burned, burned coverage, frequency, accumulated, year-last-fire, scar id/area/size-range). Also: their mapping method (Alencar et al. 2022) vs ours, and **§6 Argentina's route — vectors-only upload, calendar-year products from fire-year objects** |
+| `collection-01/docs/09-statistics.md` | **stages 5–6 + launch** (1 Aug → 24 Sep 2026): the six area-statistics CSVs, the **territorial layer we must build**, Looker Studio (~1 % tolerance), public assets vs Cloud-Storage COGs (the platform reads **GEE assets**), the **Workspace** subtheme/legend/territory catastro, and the launch track (ATBD, methodology page, downloads, materials, event) |
 
 > **When a workflow step is in play, read the matching `collection-01/docs/NN-*.md` first.**
 > Those notes point onward to the production files (`config/`, `models/`, `workflow/`) and to
@@ -82,6 +85,10 @@ stages can be inspected and limits avoided:
 1. `01-training_data_export.py` — sample Landsat + prev-year MB mosaic at training points → one asset per fire.
 2. `02-model_fitting.R` — fit one elastic-net LR per `veg_fire` class (locally, R), export coefficients for GEE.
 3. **Prediction pipeline (stubs, in development):** obs-level burn probability → time-series / annual summary → SNIC segmentation → object metrics & filtering, plus a manual ash/drought masking pass. Step numbering above 02 is still in flux — check `collection-01/workflow/` for the current files.
+4. **Step 08 — post-processing to the network's common products.** After step 07 the work stops being
+   ours: every MapBiomas Fuego country runs the *same* post-processing to publish the *same* subproducts,
+   even though their mapping method differs from ours. **Do not innovate there** — reproduce the
+   reference code (see `docs/08-postprocessing.md` and the reference repo below).
 
 See `collection-01/README.md` for the full structure and run commands, and the `docs/` notes
 above for per-step design.
@@ -103,18 +110,32 @@ above for per-step design.
 - **GEE asset deletions**: the user runs deletions themselves — prepare the script and a
   dry-run, then hand off. Don't delete assets directly.
 
-## GEE Code Editor scripts (separate repo)
+## GEE Code Editor scripts (separate repos)
 
-All GEE JavaScript lives in a separate repo, **not** in this one:
+All GEE JavaScript lives outside this repo. Two Code Editor repos matter — **ours** (writable) and
+the **network's reference** (read-only). Files in both have **no extension**.
+
+### Ours — `fuego` (write here)
 
 - **Local**: `/home/ivan/dev/MapBiomas/mapbiomas-arg-fire-gee/`
 - **Remote**: `https://earthengine.googlesource.com/users/mapbiomas-arg/fuego` (`mapbiomas-arg/fuego`); pushes to branch `master`
 
-Files in this repo have **no extension** (they are Code Editor scripts).
-
 The user does not regularly pull it, so it may be behind. **Always `git pull` before editing,
 then edit, then `git push`** — the Code Editor reflects the push on next refresh. The `fuego`
 repo is the sole source of truth for GEE JS code; do not keep `.js` copies here.
+
+### The network's reference — `mapbiomas-fire` (READ ONLY, never push)
+
+The MapBiomas Fuego network's own Code Editor repo: the canonical implementation of the **step-08
+post-processing and published subproducts** that every country shares, plus their mapping-side
+scripts (annual quality mosaics) which we do *not* use.
+
+- **Local**: `/home/ivan/dev/MapBiomas/mapbiomas-latam-fire-gee/`
+- **Remote**: `https://earthengine.googlesource.com/users/mapbiomasworkspace1/mapbiomas-fire` (branch `master`)
+- **Start at** `4-Collection_anual_final_products/Reference/` — the country folders are adaptations of it.
+
+It is **not ours**: pull to stay current, never commit or push. See
+`collection-01/docs/08-postprocessing.md` for a map of the repo and what each script does.
 
 ## Running long scripts
 

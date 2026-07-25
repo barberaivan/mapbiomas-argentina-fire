@@ -46,7 +46,8 @@ collection-01/
 ├── workflow/               # Numbered pipeline steps (mixed Python + R)
 │   ├── 01-training_data_export.py   # Export training data (one GEE task per fire)
 │   ├── 02-model_fitting.R           # Fit LR per veg_fire class (R, glmnet)
-│   ├── 03–06-*.{py,R}      # Prediction pipeline (bp ts → SNIC → objects → filter) — in development
+│   ├── 03–07-*.{py,R}      # Prediction pipeline (bp ts → SNIC → objects → filter → raster) — in development
+│   │                       # step 08 (network post-processing) has no script yet — docs/08-postprocessing.md
 │   ├── run_05_years.sh              # Overnight all-years step-05 launcher — one Rscript/year, resumable, OOM-flagging (docs/05 §4.1)
 │   └── mem_monitor.sh               # Lightweight RAM peak / near-OOM-warn monitor (used by run_05_years.sh; standalone too)
 ├── scripts/                # Ad-hoc utilities — not mandatory pipeline steps
@@ -147,10 +148,29 @@ Regenerate the canonical remap from the Google Sheet whenever it changes (do not
 Rscript collection-01/scripts/veg-fire_remap_clean-google-sheet.R
 ```
 
-### Steps 03–06
+### Steps 03–09
 
 In development. See the per-step notes in `collection-01/docs/` (03 bp-ts metrics, 04 SNIC,
-05 object metrics, 06 object model) and the scripts in `collection-01/workflow/`.
+05 object metrics, 06 object model, 07 vector→raster, 08 post-processing, 09 statistics/launch) and the
+scripts in `collection-01/workflow/`.
+
+**Steps 01–07 are our own mapping method; step 08 is not.** Once step 07 delivers the month-of-burn
+raster, the remaining work is the **MapBiomas Fuego network-wide post-processing, publication and
+launch process** — the same six stages every country runs (consolidated collection → LULC-masked
+final version → subproducts → statistics → public assets + Workspace catastro → launch), each with a
+country-team validation gate, so that all countries' products are identical in name, band format,
+encoding and legend despite mapping with a different method (Alencar et al. 2022). Reproduce it from
+the network's reference code, don't redesign it:
+
+- `docs/08-postprocessing.md` — stages 1–4: the GEE assets (what each reference script does, **§6
+  Argentina's route**, what we owe, open decisions).
+- `docs/09-statistics.md` — stages 5–6 + launch: statistics, territorial layer, Workspace, materials.
+- [*Guía del Proceso de Lanzamiento — MapBiomas Fuego*](https://docs.google.com/presentation/d/1Y5SUeS_405k5zZkBX4z6BDaC_umI8Saiguk7coITB1Q/edit) — the network's own guide (public; `docs/08` §1 shows how to read it as a PDF).
+- Read-only reference repo at `/home/ivan/dev/MapBiomas/mapbiomas-latam-fire-gee/` (see CLAUDE.md → *GEE Code Editor scripts*).
+
+**Argentina is expected to deliver all six subproducts** (annual, monthly, accumulated, frequency,
+year of last fire, scar size). Dates: assets to MapBiomas Argentina **31 Jul 2026**, public launch
+**24 Sep 2026**.
 
 Step 05 (object vectorization & metrics, R) runs **one fire-year at a time**. For the full
 2001–2025 run, use the overnight launcher — one `Rscript` per year (resumable; OOM-killed years
@@ -232,4 +252,6 @@ Export status across regions: `python collection-01/scripts/status.py`.
 |------|--------|
 | 01 — training data export | Complete for all 5 regions (BA, CHACO, PAMPA, CUYO, PAT), v1. |
 | 02 — model fitting (R, glmnet) | All 23 `veg_fire` classes fitted (v1); see `models/cv_metrics_v1.csv`. |
-| 03–08 — prediction pipeline | Stubs |
+| 03–07 — prediction pipeline | Stubs |
+| 08 — network post-processing & published subproducts | Not started; design notes only (`docs/08-postprocessing.md`). Assets due **31 Jul 2026** |
+| 09 — statistics, publication, launch | Not started; design notes only (`docs/09-statistics.md`). Launch **24 Sep 2026** |
