@@ -222,6 +222,18 @@ done/OOM/failed) and `05_mem_<range>_<stamp>.log` (peak RAM + any WARN). Launch 
 start there). If a year OOMs, buy headroom via the §9.3 trims or fall back to the per-REGION split
 (§6), then relaunch the same command.
 
+**Measured whole-country 2001–2025 run (2026-07-24, 31 GB / 16-core box, `OBJ_CORES`=13, all
+years post-§9.3-trim).** All 25 years finished `rc=0`, no OOM, no memory `WARN`.
+
+- **RAM:** peak **24.9 GB** resident + ~1 GB swap — comfortably under 31 GB (~6 GB headroom), and
+  below the FY2000 pre-trim profile (§9, 28.7 GB) thanks to the §9.3 metric trims and these years
+  being lighter than the FY2000 near-worst case. **Plan for ≥ ~26 GB RAM for this step; 32 GB is a
+  safe target.** A materially heavier future year is still the per-REGION-split trigger (§6).
+- **Time per fire-year:** **24 of 25 years took ~34–48 min** (median ~37 min). The lone outlier is
+  **FY2023 at 138 min** — the heaviest fire year in the 2001–2025 record; it still fit in RAM, but
+  is the current worst case to watch.
+- **Total:** the 25 years ran back-to-back in **~17.3 h** wall-clock (one `Rscript`/year, serial).
+
 Downstream **step 06** filters these objects (real scars are compact & seeded — high
 `seed`/`candseed` share, `burned_around_*`, `convexity`/`circularity`; noise is sparse &
 unseeded), then builds the filtered polygons + the per-pixel month-of-burn raster (dieback
