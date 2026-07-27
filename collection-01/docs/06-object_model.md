@@ -133,9 +133,58 @@ With 42 predictors, most of them probably irrelevant, consider the **DART sparsi
 variable selection. Exposed as a `sparse=TRUE`-style argument in the `BART` package; verify the
 exact interface for the probit routine before relying on it.
 
-R packages: `dbarts`, `BART`, `bartMachine` (we already fit step 02 in R). **Caveat:** a monotone
-variant (mBART) exists in the literature but a maintained R implementation is uncertain — check
-before assuming you can have the sign constraint *and* the posterior.
+#### Which implementation (as of 2026-07)
+
+**Use [`stochtree`](https://cran.r-project.org/package=stochtree)** — the successor package from
+the BART/XBART authors ([arXiv:2512.12051](https://arxiv.org/abs/2512.12051)), C++ core with both
+R and Python bindings, CRAN 0.3.1 since Feb 2026.
+
+The deciding factor is *what kind* of parallelism each package offers, given our 8 physical cores:
+
+| package | how it uses cores | verdict |
+|---|---|---|
+| `BART` | `mc.pbart(mc.cores=8)` forks concurrent **chains**; OpenMP only in `predict` | 8× draws, not 8× speed; 8× memory |
+| `dbarts` | `bart2`'s `n.threads` defaults to `min(guessNumCores(), n.chains)` — threading is essentially *across* chains | same limitation |
+| `bartMachine` | Java/rJava backend | rJava setup friction; skip |
+| **`stochtree`** | **`num_threads` covers the GFR sampler, the MCMC *and* prediction** | genuine within-chain scaling — real wall-clock reduction |
+
+Relevant `stochtree::bart()` arguments (the last four live inside `general_params`):
+
+- `num_gfr = 5` — grow-from-root warm start; converges to high-probability regions far faster
+  than cold MCMC, so fewer MCMC iterations are needed. Also warm-starts each chain when
+  `num_chains > 1`.
+- `num_mcmc = 100` — **raise this to 1000–2000.** A 5th percentile from 100 draws is the 5th
+  order statistic, far too noisy for the `p_q05` we intend to map. GFR is what makes it affordable.
+- `num_threads` — set to **8 (physical), not 16.** Tree sampling is memory-bandwidth-bound, so
+  hyperthreaded logical cores mostly add contention. Defaults to 1 if OpenMP was not compiled
+  in — if you see 1 on Linux/gcc, something is wrong with the build.
+- `outcome_model` — the probit/binary switch. Note `probit_outcome_model` is **deprecated** in
+  favour of it, so check `?bart` for the accepted value rather than copying older examples.
+- **JSON serialization** — fit once, serialize, predict per year in a separate process. Drops
+  straight into the one-`Rscript`-per-year pattern of `workflow/run_05_years.sh` (docs/05 §4.1).
+
+**The tradeoff to be aware of:** stochtree's `variable_weights` is a *fixed* vector of relative
+split probabilities, **not** a learned Dirichlet — so it does not give you DART's automatic
+variable selection. `BART::pbart(..., sparse=TRUE)` remains the only one of these with the learned
+sparsity prior. Fit stochtree first (fast enough to iterate) and fall back only if variable
+selection turns out to be the binding problem; a middle route is to derive `variable_weights` from
+a first pass.
+
+**Prediction is the memory risk, not the fit.** We fit on the labelled objects only (a few
+thousand) but predict on **all 1.69 M**. At 1000 draws that is ~1.7e9 doubles ≈ 13.5 GB if the
+draw matrix is materialized. So: never pass the full object set as `X_test` to the fit; `predict()`
+in chunks (one fire-year ≈ 75 k objects × 1000 draws ≈ 600 MB) and reduce to the summaries inside
+the loop, discarding the draws.
+
+Upload four DBF-safe properties per object: **`p_mean`, `p_q05`, `p_q95`**, plus
+**`p_width = p_q95 − p_q05`** precomputed so uncertainty can be thresholded in GEE without
+arithmetic across two properties. Note the semantics: these bound the **probability** (epistemic
+uncertainty about the fitted function), *not* the class label — a predictive interval for a
+Bernoulli draw would be 0/1 and useless. Wide `p_width` = the model does not know = where round-2
+point collection should go.
+
+**Caveat:** a monotone variant (mBART) exists in the literature but a maintained R implementation
+is uncertain — check before assuming you can have the sign constraint *and* the posterior.
 
 Optional **hard size constraints**: drop objects `< 1 ha`, and possibly apply the model only to
 `1 ha ≤ area < 2000 ha` (very large objects are rarely non-fire) — the upper cut is riskier. If the
