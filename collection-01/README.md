@@ -191,6 +191,34 @@ grep -E 'OOM|WARN|FAILED|done rc=0' collection-01/logs/05_{run,mem}_*.log   # mo
 Rscript collection-01/scripts/make_fires_table_stats.R
 ```
 
+### Step 06 — object model (R, stochtree BART)
+
+Fits one probit-BART on the clean labelled objects and scores a fire-year's objects with a
+posterior probability of being fire (`p_mean/p_sd/p_q05/p_q95/p_width`). Needs
+`stochtree` (CRAN). Measured timings + the CV result: `docs/06-object_model.md`.
+
+```bash
+Rscript collection-01/workflow/06-object_model.R              # fit, then time one year (FY2020)
+Rscript collection-01/workflow/06-object_model.R fit
+Rscript collection-01/workflow/06-object_model.R predict 2020 2014
+Rscript collection-01/workflow/06-object_model.R cv           # 5-fold out-of-fold AUC (~7 min)
+# every year: ~37 min — use tmux
+tmux new-session -d -s obj06 'Rscript collection-01/workflow/06-object_model.R predict all 2>&1 | tee collection-01/logs/06_predict.log'
+```
+
+`OBJ_THREADS` (8) `MCMC_ITER` (2000) `POST_DRAWS` (500) `NUM_GFR` (10) `PRED_CHUNK` (20000).
+
+Data exploration behind the size cuts and the collection-00 filter comparison — reads the
+full 1.69 M-object table and the clean labelled table, writes CSVs + PNGs to
+`data/objects-explore/`:
+
+```bash
+Rscript collection-01/scripts/objects_data_explore.R          # ~1 min, ~1 GB
+```
+
+Both share `scripts/objects_data_functions.R` (loaders, `clean_tagged()`, the c-00 filter),
+so "the clean labelled table" means the same rows in both.
+
 ### Scripts (R utilities) — step-06 label prep
 
 Downloads the per-collaborator fire/non-fire collections exported by the GEE

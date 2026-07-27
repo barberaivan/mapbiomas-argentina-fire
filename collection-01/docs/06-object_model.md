@@ -120,6 +120,86 @@ labels on one object; jime's 340 labels land on 21 objects). Expect to dedupe/we
 before fitting. One matched object (`2011_57456`, 1 px) has NA `seed_mean`/`date_median` in step
 05 itself — all-dieback objects have no seed/date stats by design (docs/05 §3), not a join failure.
 
+## Measured: the first stochtree run (`workflow/06-object_model.R`, 2026-07-27)
+
+`Rscript collection-01/workflow/06-object_model.R` = fit + a one-year prediction probe.
+stochtree **0.4.5**, 8 threads, `OutcomeModel(outcome = "binary", link = "probit")`,
+`num_gfr = 10`, `num_mcmc = 500` with `keep_every = 4` — i.e. **2000 MCMC iterations thinned to
+500 retained draws** (`num_mcmc` is the *retained* count; stochtree runs `num_mcmc * keep_every`).
+
+**The fitting set** — `clean_tagged()` in `scripts/objects_data_functions.R`, from the 6831 pairs:
+−234 rows whose label hit no object, −10 objects labelled both classes, −1315 duplicate labels on
+an already-labelled object, −1 object with an NA predictor → **5255 objects, 2788 fire / 2467
+non-fire**, 40 predictors. Uneven label density per object is *not* corrected — reweighting by it
+would invent information.
+
+| step | measured |
+|---|---|
+| fit (5255 × 40, 2000 iter → 500 draws, 8 threads) | **95 s** |
+| serialized fit (JSON) | 89 MB, reloads in 5.6 s |
+| predict FY 2020 — 78 211 objects × 500 draws | **103 s** = 762 obj/s = 2.6 µs/obj/draw |
+| ↳ of which the per-object quantile reduction | ~6 s (1.6 s per 20 k-row chunk) |
+| **extrapolated to all 1 689 419 objects** | **≈ 37 min**, peak RAM one chunk (20 k × 500 ≈ 80 MB) |
+| 5-fold out-of-fold AUC (`cv` mode) | **0.976** (in-sample 0.987); accuracy 0.922, sens 0.934, spec 0.909 |
+
+**So no — scoring every polygon across posterior draws is not a problem.** 37 min once, at flat
+memory. What *would* be a problem is the naive route the docs warn about above: passing the full
+object set as `X_test` to `bart()` materializes 1.69 M × 500 doubles ≈ **6.8 GB**. Fit → serialize →
+`predict()` per year in chunks → reduce to `p_mean/p_sd/p_q05/p_q95/p_width` → discard the draws.
+Thinning is the other half of the answer: cost is linear in draws, so 2000 retained draws would
+have been 4× the prediction time and 4× the memory for no gain in a 5th percentile.
+
+**Two honest caveats on those numbers.**
+1. The CV folds are random over *objects*, and objects labelled by one drawn polygon are spatially
+   adjacent, so neighbours straddle folds — 0.976 is therefore optimistic. A by-label-polygon or
+   spatially blocked CV would be the strict version.
+2. **The labelled sample is not a random sample of objects**, and per-year prevalence swings from
+   0.00 (2009, 2016) to 1.00 (1998) — 2020 alone contributes 1647 labels at 88 % fire. Treat the
+   *ranking* and the *uncertainty* as the product; do not read `p_mean` as a calibrated absolute
+   probability. On FY 2020 the model calls 67.7 % of objects fire (4401 of 4841 kha) where the
+   collection-00 filter keeps 22.9 % (4045 kha) — the two agree on almost all of the *area* and
+   disagree almost entirely on small objects (38 246 objects the filter rejects and the model keeps
+   are 558 kha in total).
+
+## What the data says about size limits and the collection-00 filter
+
+From `scripts/objects_data_explore.R` (both tables, 2026-07-27). **FULL = 1 689 419 objects over 28
+fire-years, 84.99 Mha**; median object 9 ha, p99 494 ha, largest 1.71 Mha (`2000_57529`).
+
+**A small-object cut is nearly free.** Objects below a cut, as a share of count vs of area:
+
+| cut | objects dropped | area dropped |
+|---|---|---|
+| < 1 ha | 3.4 % (57 619) | **0.044 %** |
+| < 2 ha | 12.6 % | 0.32 % |
+| < 5 ha | 34.0 % | 1.75 % |
+| < 10 ha | 52.8 % | 4.45 % |
+
+So the `< 1 ha` cut of docs/06 costs essentially nothing and removes 58 k objects from the ingest;
+even 5 ha stays under 2 % of area. Size alone, though, does **not** separate the classes: in the
+labelled data P(fire) is 0.44–0.50 flat across 1–100 ha, rising only to 0.75/0.80 above 300/1000 ha,
+and `area_ha >= 1` on its own has specificity 0.03 (it keeps everything).
+
+**The collection-00 filter transfers badly to collection 1.** Reproduced verbatim in
+`objects_data_functions.R::c00_pass`; against the 5255 labels: **accuracy 0.62, sensitivity 0.50,
+specificity 0.77, precision 0.70** (vs 0.92 / 0.93 / 0.91 for BART out-of-fold). Where it breaks:
+
+- **Case 1 (1–50 ha) has sensitivity 0.19** — it discards 81 % of the real fires in the band that
+  holds 61 % of all objects. One threshold does nearly all of that damage: `burned_around_3 > 0.7`
+  cuts **81 % of the FIRE objects** there (and 90 % of the non-fire) — in collection 1 that band's
+  fire objects sit at a median `burned_around_3` of 0.58, well below the cut.
+- **Case 3 (≥ 300 ha auto-accept) has precision 0.77** — 166 of 732 labelled objects above 300 ha
+  are non-fire, so "very large is rarely non-fire" does not hold here. Those 30 175 objects supply
+  **69.6 % of all the area the filter keeps**, so the assumption is load-bearing.
+- `circularity > 0.01` is **inert** (cuts 0.0 % of fire, 0.4 % of non-fire); `shape_index < 7` is the
+  one term working as intended (cuts 20 % of fire vs 48 % of non-fire in case 2).
+- On the full table it keeps **23.8 % of objects / 80.6 % of the area**, stable across years
+  (18–27 % of objects).
+
+Conclusion: keep the filter only as a **baseline to compare against**, and as the source of the two
+ideas worth keeping — the hard small-object cut, and size-stratified reasoning. The model replaces
+the thresholds.
+
 ## Model fitting and classification
 
 Feed all the metric variables to **XGB additive trees**, fit and classify **locally** (python
