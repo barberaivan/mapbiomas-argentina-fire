@@ -68,6 +68,7 @@ collection-01/
 │   ├── objects_threshold.R                # step 06: per-size-band fire-call threshold from out-of-fold preds -> config/object_model_thresholds.csv
 │   ├── objects_inspect_export.R           # step 06: GPKG (QGIS, 33 curated fields) + sampled GeoJSON of predictions, to inspect without a GEE upload
 │   ├── run_06_predict.sh                  # step 06: parallel scoring — one Rscript per fire-year, 8 at a time, resumable (prediction is single-threaded)
+│   ├── run_06_inspect.sh                  # step 06: parallel QGIS-layer build — one Rscript per fire-year, 6 at a time (I/O + memory bound), resumable
 │   ├── run_05_years.sh                    # Overnight all-years step-05 launcher — one Rscript/year, resumable, OOM-flagging (docs/05 §4.1)
 │   └── mem_monitor.sh                     # Lightweight RAM peak / near-OOM-warn monitor (used by run_05_years.sh; standalone too)
 ├── notebooks/              # Quarto-R (.qmd) exploratory analyses and decisions
@@ -231,7 +232,18 @@ to drop into geemap/leafmap as a client-side layer next to GEE imagery tiles
 ```bash
 Rscript collection-01/scripts/objects_inspect_export.R 2020            # both products
 Rscript collection-01/scripts/objects_inspect_export.R 2020 --sample 40 --no-full
+Rscript collection-01/scripts/objects_inspect_export.R 2020 --fields all  # keep the 23 raw frac_c*
+
+# ALL years: the parallel launcher (28 layers, 6.3 GB, ~1 min on 6 workers). Resumable.
+tmux new-session -d -s obj06i '/abs/path/to/collection-01/scripts/run_06_inspect.sh -j 6'
 ```
+
+The GPKG carries **33 curated fields** (not all 50): identity/size, both verdicts (`fire`,
+`c00_pass`, and `verdict` = their agreement), why the model called it (`p_mean`, `p_width`,
+`p_thresh`, `p_margin`, `th_band`), burn evidence + timing, the 5 aggregated veg fractions and the
+6 shape metrics. Useful QGIS filters: `"verdict" != 'both'` (disagreement), `abs("p_margin") <
+0.05` (borderline calls), `"p_width" > 0.5` (model has no idea). Note the layer name starts with a
+digit, so SQL contexts need it double-quoted.
 
 Data exploration behind the size cuts and the collection-00 filter comparison — reads the
 full 1.69 M-object table and the clean labelled table, writes CSVs + PNGs to

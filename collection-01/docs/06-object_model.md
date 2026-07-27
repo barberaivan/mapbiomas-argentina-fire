@@ -320,6 +320,16 @@ predictions + all 40 predictors + the c-00 verdict onto the step-05 geometry alr
   uploaded to Earth Engine. The binding constraint is the **browser**, not GEE: keep client-side
   features in the low thousands, which is exactly what a decile-stratified sample gives you.
 
+**All 28 years are built** by `scripts/run_06_inspect.sh` (parallel, one `Rscript` per year,
+resumable, biggest-first, RAM monitor alongside): **1m4s on 6 workers, 6.3 GB, peak 16.2 GB RSS**,
+28 GPKGs + 28 GeoJSON samples, feature counts summing to exactly 1 689 419. Unlike prediction this
+is I/O- and memory-bound (a worker holds a whole year's geometry — up to 386 MB / 93 k
+multipolygons), hence `-j 6` rather than 8.
+
+> **QGIS gotcha:** the layer name starts with a digit (`2020_objects_pred_grouped`), so any SQL
+> context — DB Manager, virtual layers, `ogrinfo -sql` — needs it **double-quoted**. Symbology and
+> attribute-table filters are unaffected.
+
 #### The inspection field set (33 fields, not all 50)
 
 The 23 raw `frac_c*` columns are **not** in the deployed model and 28 years of them is dead weight in
