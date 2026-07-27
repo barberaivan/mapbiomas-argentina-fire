@@ -149,6 +149,54 @@ object set as `X_test` to `bart()` materializes 1.69 M × 500 doubles ≈ **6.8 
 Thinning is the other half of the answer: cost is linear in draws, so 2000 retained draws would
 have been 4× the prediction time and 4× the memory for no gain in a 5th percentile.
 
+### Predictor variant: grouped vegetation fractions beat the 23 raw ones — USE `grouped`
+
+`--grouped` (default) replaces the 23 raw `frac_c1..frac_c23` with **five summed fractions**, taking
+the design matrix from 40 to 22 columns. Membership is derived from `config/veg_fire_remap.csv`
+**by name** (`objects_data_functions.R::veg_groups`), not from typed-in codes, and any code landing
+in two groups is an error rather than a silent reshuffle:
+
+| column | veg_fire classes |
+|---|---|
+| `frac_agri` | 1 agriculture_chaco, 2 agriculture_cuyo-pat, 3 agriculture_pampa — **not** 4 agriculture-per |
+| `frac_grass_inund` | 17 grassland-inund_chaco |
+| `frac_pasture` | 18 pasture_ba, 19 pasture_chaco |
+| `frac_grass_temp` | 12 grassland_ba, 13 grassland_chaco, 15 grassland_pampa — **not** cuyo/patagonia |
+| `frac_woody` | 5,6,7,8,9,11 forests + 20,21,22,23 shrublands — **not** 10 forest-inund |
+| *(no group)* | 4 agriculture-per, 10 forest-inund, 14 grassland_cuyo, 16 grassland_pat |
+
+Not region-separated and **not a partition** — the five sum to 0.70 on average, never more than 1.
+
+Same 5255 objects, same folds, same MCMC budget. Grid-blocked (the deployment number):
+
+| | full (40 cols) | **grouped (22 cols)** |
+|---|---|---|
+| AUC | 0.9017 | **0.9211** |
+| accuracy | 0.786 | **0.812** |
+| sensitivity | 0.687 | **0.729** |
+| specificity | 0.899 | **0.906** |
+| precision | 0.885 | **0.897** |
+
+Grouped wins on every pooled metric, and **the gain lands where the error was**: the 1–50 ha band
+(61 % of all objects) goes 0.872 → **0.903** AUC, and the one hard fold — the high-prevalence
+fold 5 — goes 0.816 → **0.864**. Above 300 ha the two are equal (0.956 / 0.953).
+
+Leave-one-region-out is a **wash**: AUC 0.750 → 0.741, accuracy 0.671 → 0.684. Worth noting because
+the stated hope was that region-agnostic groups would transfer better across ecoregions — they do
+not. The gain is not about region-agnosticism, it is about **split budget**: 23 sparse columns were
+58 % of the design matrix and BART draws split variables uniformly over what is available, so
+merging them concentrates the same signal into 5 dense columns. Per region the changes cancel
+(Pampas 0.700 → 0.789, Bosque Atlántico 0.839 → 0.764, Patagonia 0.773 → 0.721, Chaco ≈, Puna ≈).
+
+Fitted grouped model: 94 s, JSON 92.7 MB; FY 2020 prediction 100.5 s (778 obj/s), 68.6 % of objects
+above 0.5 covering 4326 of 4841 kha, mean `p_width` 0.333 (vs 0.370 for the full variant — the
+posterior is also a little tighter). All artifacts are variant-suffixed
+(`bart_object_model_<variant>.json`, `objects_<fy>_pred_<variant>.csv`, `oof_<variant>_<spec>.csv`),
+so refitting one never overwrites the other.
+
+Still open (BACKLOG): the 0.5 cut is not the right threshold — sensitivity 0.73 against specificity
+0.91 under grid blocking. Pick it on `data/objects-predictions/oof_grouped_grid_5.csv`.
+
 ### Cross-validation: the fold design decides the answer
 
 Three designs, same model, same 5255 objects. `Rscript …/06-object_model.R cv [region|grid K|random K]`;

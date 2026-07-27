@@ -197,6 +197,10 @@ Fits one probit-BART on the clean labelled objects and scores a fire-year's obje
 posterior probability of being fire (`p_mean/p_sd/p_q05/p_q95/p_width`). Needs
 `stochtree` (CRAN). Measured timings + the CV result: `docs/06-object_model.md`.
 
+Two predictor variants: `--grouped` (default, 22 columns — 5 aggregated veg fractions) and
+`--full` (40 columns — the 23 raw class fractions). Artifacts are variant-suffixed, so both
+can coexist. Grouped wins the grid-blocked CV; see `docs/06-object_model.md`.
+
 ```bash
 Rscript collection-01/workflow/06-object_model.R              # fit, then time one year (FY2020)
 Rscript collection-01/workflow/06-object_model.R fit
@@ -204,6 +208,7 @@ Rscript collection-01/workflow/06-object_model.R predict 2020 2014
 Rscript collection-01/workflow/06-object_model.R cv           # spatially blocked: leave-one-region-out
 Rscript collection-01/workflow/06-object_model.R cv grid 5     # 0.5 deg blocks -> 5 folds (the deployment number)
 Rscript collection-01/workflow/06-object_model.R cv random 5    # random folds, leak-inflated, for contrast
+Rscript collection-01/workflow/06-object_model.R cv grid 5 --full   # same folds, 40-predictor variant
 # every year: ~37 min — use tmux
 tmux new-session -d -s obj06 'Rscript collection-01/workflow/06-object_model.R predict all 2>&1 | tee collection-01/logs/06_predict.log'
 ```

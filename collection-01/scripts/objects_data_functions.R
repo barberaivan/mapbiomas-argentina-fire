@@ -50,19 +50,81 @@ read_all_objects <- function(years = object_years()) {
 # every training split, where trees are constant anyway. Keep the two parts that carry
 # information a year identifier does not: WHEN in the season it burned, and for HOW LONG.
 # The year itself stays available through fire_year / year_calendar (docs/06).
+# The five aggregated veg fractions are built here too, so BOTH predictor variants are always
+# present on any table the loaders return and the variant choice is purely a column selection.
 add_derived <- function(m) {
   m[, doy_median := as.integer(format(as.Date(date_median, origin = EPOCH), "%j"))]
   m[, date_span  := as.numeric(date_max - date_min)]
-  m[]
+  add_veg_groups(m)
 }
 
 # ── the model columns ────────────────────────────────────────────────────────
 VEG_FRAC   <- sprintf("frac_c%d", 1:23)      # veg_fire abundance per class (docs/05 §3)
-PREDICTORS <- c("n_pixels", "area_ha", "burned_around_1", "burned_around_2", "burned_around_3",
+NON_VEG    <- c("n_pixels", "area_ha", "burned_around_1", "burned_around_2", "burned_around_3",
                 "seed_mean", "n_mean", "doy_median", "date_span", "year_calendar", "fire_year",
-                VEG_FRAC,
                 "perimeter_m", "convexity", "mbr_fill", "mbr_elongation", "circularity",
                 "shape_index")
+PREDICTORS <- c(NON_VEG, VEG_FRAC)                       # "full" variant: 40 columns
+
+# ── aggregated vegetation groups — the "grouped" predictor variant ───────────
+# Five summed fractions in place of the 23 raw class fractions (22 predictors instead of 40).
+# Why: 23 sparse columns were most of the design matrix, many classes are near-empty in the
+# labels, and BART draws split variables uniformly over what is available, so the sparse
+# fractions dilute the split budget.
+#
+# Membership is derived from config/veg_fire_remap.csv BY NAME, not from a hand-typed list of
+# codes, so a remap change follows through — and a code landing in two groups is an error, not
+# a silent reshuffle.
+#   [1] frac_agri        annual agriculture, EXCLUDING agriculture-per (perennial plants)
+#   [2] frac_grass_inund inundable grassland (only grassland-inund_chaco carries that name;
+#                        CUYO's "Herbaceas inundables" was folded into grassland_cuyo upstream)
+#   [3] frac_pasture     pastures
+#   [4] frac_grass_temp  grassland_{ba,chaco,pampa} — NOT cuyo, NOT patagonia
+#   [5] frac_woody       every forest + shrubland class, EXCLUDING forest-inund
+# Deliberately NOT region-separated, and deliberately NOT a partition: agriculture-per,
+# forest-inund, grassland_cuyo and grassland_pat belong to no group, so the five fractions do
+# NOT sum to 1 (the remainder is those four classes plus the 24/25 sentinels).
+VEG_REMAP_CSV  <- "collection-01/config/veg_fire_remap.csv"
+VEG_GROUP_COLS <- c("frac_agri", "frac_grass_inund", "frac_pasture", "frac_grass_temp",
+                    "frac_woody")
+PREDICTORS_GROUPED <- c(NON_VEG, VEG_GROUP_COLS)         # "grouped" variant: 22 columns
+
+veg_groups <- function(verbose = FALSE) {
+  d  <- unique(fread(VEG_REMAP_CSV)[, .(veg_fire, veg_fire_name)])[veg_fire <= 23L][order(veg_fire)]
+  nm <- setNames(d$veg_fire_name, d$veg_fire)
+  pick <- function(keep, drop = NULL) {
+    k <- names(nm)[grepl(keep, nm)]
+    if (!is.null(drop)) k <- setdiff(k, names(nm)[grepl(drop, nm)])
+    sort(as.integer(k))
+  }
+  g <- list(
+    frac_agri        = pick("^agriculture", "^agriculture-per"),
+    frac_grass_inund = pick("^grassland-inund"),
+    frac_pasture     = pick("^pasture"),
+    frac_grass_temp  = pick("^grassland_(ba|chaco|pampa)$"),
+    frac_woody       = pick("^(forest|shrubland)", "^forest-inund"))
+  stopifnot(all(lengths(g) > 0L))
+  dup <- unlist(g)[duplicated(unlist(g))]
+  if (length(dup)) stop("veg group overlap on veg_fire code(s): ", paste(unique(dup), collapse = ", "))
+  if (verbose) {
+    for (k in names(g))
+      write(sprintf("  %-16s %s", k, paste(sprintf("%d %s", g[[k]], nm[as.character(g[[k]])]),
+                                           collapse = ", ")), stderr())
+    write(sprintf("  %-16s %s", "(unused)",
+                  paste(sprintf("%d %s", setdiff(d$veg_fire, unlist(g)),
+                                nm[as.character(setdiff(d$veg_fire, unlist(g)))]),
+                        collapse = ", ")), stderr())
+  }
+  g
+}
+
+.veg_groups_cache <- NULL
+add_veg_groups <- function(m) {
+  if (is.null(.veg_groups_cache)) .veg_groups_cache <<- veg_groups()
+  for (k in names(.veg_groups_cache))
+    m[, (k) := rowSums(.SD), .SDcols = sprintf("frac_c%d", .veg_groups_cache[[k]])]
+  m[]
+}
 
 # ── clean tagged table: the fitting set ─────────────────────────────────────
 # polygons_data_merged.csv is one row per (label, object) PAIR and keeps every problem case

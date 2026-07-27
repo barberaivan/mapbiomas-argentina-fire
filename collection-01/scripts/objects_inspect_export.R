@@ -8,12 +8,12 @@
 # writes layers you can open locally, today.
 #
 # Two products per fire-year:
-#   [1] <fy>_objects_pred.gpkg   EVERY object of the year: geometry + all 40 predictors +
+#   [1] <fy>_objects_pred_<variant>.gpkg   EVERY object of the year: geometry + all metrics +
 #       p_mean/p_sd/p_q05/p_q95/p_width + the collection-00 filter verdict (c00_pass).
 #       -> QGIS: open it, graduate the fill on p_mean, add an XYZ imagery basemap, and use
 #          the attribute table / filter expressions to walk through cases. QGIS reads the
 #          GPKG spatial index directly, so 78 k polygons pan smoothly.
-#   [2] <fy>_objects_sample.geojson  a SMALL stratified sample (default 20 objects per
+#   [2] <fy>_objects_sample_<variant>.geojson  a SMALL stratified sample (default 20 per
 #       p_mean decile, geometry simplified) — small enough to drop into a browser map as a
 #       CLIENT-SIDE layer: geemap/leafmap `Map.add_geojson(path)` puts it straight on the
 #       map next to GEE tiles (candseed, Landsat min-NBR) with NO asset upload, because only
@@ -25,6 +25,7 @@
 #     year…      fire-years (default: every year that has a prediction CSV)
 #     --sample N objects per p_mean decile in the GeoJSON (default 20; 0 = skip it)
 #     --no-full  skip the big GPKG, write only the sample
+#     --full     attach the full-predictor model's predictions (default: the grouped model)
 #
 # Writes to collection-01/data/objects-inspect/.
 # =============================================================================
@@ -44,15 +45,19 @@ msg <- function(...) write(sprintf(...), stderr())
 argv    <- commandArgs(trailingOnly = TRUE)
 no_full <- "--no-full" %in% argv
 n_samp  <- { i <- match("--sample", argv); if (is.na(i)) 20L else as.integer(argv[i + 1L]) }
+# which model's predictions to attach — matches the 06-object_model.R variant switch, and goes
+# into the output names so the two models' layers never overwrite each other
+VARIANT <- if ("--full" %in% argv) "full" else "grouped"
 years   <- suppressWarnings(as.integer(grep("^[0-9]{4}$", argv, value = TRUE)))
 if (!length(years)) {
-  f <- list.files(PRED_DIR, pattern = "^objects_[0-9]{4}_pred\\.csv$")
+  f <- list.files(PRED_DIR, pattern = sprintf("^objects_[0-9]{4}_pred_%s\\.csv$", VARIANT))
   years <- sort(as.integer(sub("^objects_([0-9]{4}).*$", "\\1", f)))
 }
-if (!length(years)) stop("no predictions in ", PRED_DIR, " — run 06-object_model.R predict first")
+if (!length(years)) stop("no ", VARIANT, " predictions in ", PRED_DIR,
+                         " — run 06-object_model.R predict first")
 
 for (fy in years) {
-  pf <- file.path(PRED_DIR, sprintf("objects_%d_pred.csv", fy))
+  pf <- file.path(PRED_DIR, sprintf("objects_%d_pred_%s.csv", fy, VARIANT))
   if (!file.exists(pf)) { msg("FY %d: no %s — skipped", fy, basename(pf)); next }
   msg("")
   msg("== FY %d ==", fy)
@@ -72,7 +77,7 @@ for (fy in years) {
   msg("  geometry read + joined in %.0f s", as.numeric(difftime(Sys.time(), t0, units = "secs")))
 
   if (!no_full) {
-    f <- file.path(OUT_DIR, sprintf("%d_objects_pred.gpkg", fy))
+    f <- file.path(OUT_DIR, sprintf("%d_objects_pred_%s.gpkg", fy, VARIANT))
     writeVector(v, f, overwrite = TRUE)
     msg("  QGIS layer -> %s (%.0f MB)", f, file.size(f) / 1024^2)
   }
@@ -87,7 +92,7 @@ for (fy in years) {
     sv   <- v[match(pick, v$oid), ]
     # simplify to keep the browser payload small; inspection does not need pixel-exact edges
     sv   <- simplifyGeom(sv, tolerance = 0.0003)   # ~30 m
-    f    <- file.path(OUT_DIR, sprintf("%d_objects_sample.geojson", fy))
+    f    <- file.path(OUT_DIR, sprintf("%d_objects_sample_%s.geojson", fy, VARIANT))
     writeVector(sv, f, filetype = "GeoJSON", overwrite = TRUE)
     msg("  browser/geemap sample -> %s (%d objects, %.1f MB)", f, nrow(sv),
         file.size(f) / 1024^2)
