@@ -201,12 +201,24 @@ posterior probability of being fire (`p_mean/p_sd/p_q05/p_q95/p_width`). Needs
 Rscript collection-01/workflow/06-object_model.R              # fit, then time one year (FY2020)
 Rscript collection-01/workflow/06-object_model.R fit
 Rscript collection-01/workflow/06-object_model.R predict 2020 2014
-Rscript collection-01/workflow/06-object_model.R cv           # 5-fold out-of-fold AUC (~7 min)
+Rscript collection-01/workflow/06-object_model.R cv           # spatially blocked: leave-one-region-out
+Rscript collection-01/workflow/06-object_model.R cv grid 5     # 0.5 deg blocks -> 5 folds (the deployment number)
+Rscript collection-01/workflow/06-object_model.R cv random 5    # random folds, leak-inflated, for contrast
 # every year: ~37 min — use tmux
 tmux new-session -d -s obj06 'Rscript collection-01/workflow/06-object_model.R predict all 2>&1 | tee collection-01/logs/06_predict.log'
 ```
 
 `OBJ_THREADS` (8) `MCMC_ITER` (2000) `POST_DRAWS` (500) `NUM_GFR` (10) `PRED_CHUNK` (20000).
+
+Map inspection with **no GEE upload** — joins the predictions onto the step-05 geometry
+already on disk: a full GPKG for QGIS, plus a small decile-stratified GeoJSON light enough
+to drop into geemap/leafmap as a client-side layer next to GEE imagery tiles
+(`docs/06-object_model.md` "Looking at it on a map without uploading to GEE"):
+
+```bash
+Rscript collection-01/scripts/objects_inspect_export.R 2020            # both products
+Rscript collection-01/scripts/objects_inspect_export.R 2020 --sample 40 --no-full
+```
 
 Data exploration behind the size cuts and the collection-00 filter comparison — reads the
 full 1.69 M-object table and the clean labelled table, writes CSVs + PNGs to

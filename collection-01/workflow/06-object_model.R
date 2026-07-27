@@ -12,7 +12,9 @@
 #   Rscript collection-01/workflow/06-object_model.R fit
 #   Rscript collection-01/workflow/06-object_model.R predict 2020 2014
 #   Rscript collection-01/workflow/06-object_model.R predict all      # every fire-year
-#   Rscript collection-01/workflow/06-object_model.R cv               # 5-fold out-of-fold AUC
+#   Rscript collection-01/workflow/06-object_model.R cv               # spatially-blocked (regions)
+#   Rscript collection-01/workflow/06-object_model.R cv grid 5         # 0.5 deg blocks -> 5 folds
+#   Rscript collection-01/workflow/06-object_model.R cv random 5      # random 5-fold, for contrast
 # Env: OBJ_THREADS (8) MCMC_ITER (2000) POST_DRAWS (500) NUM_GFR (10) PRED_CHUNK (20000)
 # Long runs (predict all) belong in tmux — see CLAUDE.md.
 #
@@ -60,6 +62,7 @@ MCMC_ITER  <- envi("MCMC_ITER",  2000L)
 POST_DRAWS <- envi("POST_DRAWS",  500L)
 NUM_GFR    <- envi("NUM_GFR",      10L)   # grow-from-root warm start; iterations are cheap
 PRED_CHUNK <- envi("PRED_CHUNK", 20000L)
+GRID_DEG   <- 0.5          # ~50 km spatial blocks for `cv grid` (see do_cv)
 
 msg <- function(...) write(sprintf(...), stderr())
 hdr <- function(s) { msg(""); msg("== %s ==", s) }
@@ -196,33 +199,91 @@ do_predict <- function(years) {
   }
 }
 
-# ── [3] optional: honest out-of-fold AUC (not tuning — BART needs none) ─────
-do_cv <- function(K = 5L) {
-  hdr(sprintf("%d-fold out-of-fold AUC", K))
+# ── [3] cross-validation — not tuning (BART needs none), just honest error ──
+# `cv` (default) = SPATIALLY BLOCKED, leave-one-region-out over the 5 MapBiomas Argentina
+# regions (2 km buffered asset, scripts/objects_data_functions.R::assign_region). Blocking is
+# the point: objects labelled by one drawn polygon are adjacent, and random folds put those
+# neighbours on both sides of the split, which flatters the model. Held-out region prevalence
+# ranges 0.10 (Patagonia) to 0.83 (Pampas), so read the AUC (prevalence-invariant) as the
+# headline and treat sensitivity/specificity at the fixed 0.5 cut as confounded by that shift.
+# `cv random [K]` keeps the optimistic version for comparison.
+group_metrics <- function(p, y, g, label = "group") {
+  out <- rbindlist(lapply(sort(unique(g)), function(k) {
+    i <- which(g == k)
+    cbind(data.table(grp = as.character(k), prevalence = round(mean(y[i] == 1L), 3),
+                     auc = round(auc_fast(p[i], y[i]), 4)),
+          pass_report(p[i] > .5, y[i]))
+  }))
+  setnames(out, "grp", label)
+  out[]
+}
+
+do_cv <- function(spec = "region") {
   tag <- clean_tagged()
   X <- design(tag); y <- as.numeric(tag$class)
-  set.seed(1L)
-  fold <- sample(rep_len(seq_len(K), nrow(X)))
-  p <- rep(NA_real_, nrow(X))
-  for (k in seq_len(K)) {
-    t0 <- Sys.time()
-    m <- fit_bart(X[fold != k, , drop = FALSE], y[fold != k])
-    p[fold == k] <- rowMeans(predict_prob(m, X[fold == k, , drop = FALSE]))
-    msg("  fold %d/%d: AUC %.4f (%.0f s)", k, K,
-        auc_fast(p[fold == k], tag$class[fold == k]), elapsed(t0))
+  if (identical(spec, "region")) {
+    tag  <- assign_region(tag)
+    fold <- tag$region
+    hdr("spatially-blocked CV — leave-one-region-out")
+  } else if (grepl("^grid", spec)) {
+    # The middle design, and the one closest to deployment: block by GRID_DEG cells, then deal
+    # whole cells into K folds. Every region is present in every fold (so the model is never
+    # asked to extrapolate to an unseen ecoregion, which it never has to do in production),
+    # but no label shares a neighbourhood with its own fold-mates.
+    K <- as.integer(sub("^grid:?", "", spec)); if (is.na(K)) K <- 5L
+    cell <- paste(floor(tag$lon / GRID_DEG), floor(tag$lat / GRID_DEG))
+    set.seed(1L)
+    u    <- sample(unique(cell))
+    fold <- as.character(setNames(rep_len(seq_len(K), length(u)), u)[cell])
+    hdr(sprintf("spatially-blocked CV — %g deg blocks dealt into %d folds (%d blocks)",
+                GRID_DEG, K, length(u)))
+  } else {
+    K <- as.integer(spec); set.seed(1L)
+    fold <- as.character(sample(rep_len(seq_len(K), nrow(X))))
+    hdr(sprintf("random %d-fold CV (optimistic — adjacent objects straddle folds)", K))
   }
-  msg("out-of-fold AUC %.4f | accuracy@0.5 %.4f", auc_fast(p, tag$class),
-      mean((p > .5) == (tag$class == 1L)))
-  print(pass_report(p > .5, tag$class))
+  p <- rep(NA_real_, nrow(X))
+  for (k in sort(unique(fold))) {
+    t0 <- Sys.time(); tr <- fold != k
+    m <- fit_bart(X[tr, , drop = FALSE], y[tr])
+    p[!tr] <- rowMeans(predict_prob(m, X[!tr, , drop = FALSE]))
+    msg("  held out %-26s n=%4d (prev %.2f) | train n=%4d | AUC %.4f | %.0f s",
+        k, sum(!tr), mean(tag$class[!tr] == 1L), sum(tr),
+        auc_fast(p[!tr], tag$class[!tr]), elapsed(t0))
+  }
+
+  hdr("out-of-fold — whole labelled set")
+  print(group_metrics(p, tag$class, rep("all", length(p)), "set"))
+  hdr("out-of-fold — by size, i.e. where the error lives")
+  print(group_metrics(p, tag$class, ifelse(tag$area_ha < 1, "1 <1 ha", "2 >=1 ha"), "size"))
+  print(group_metrics(p, tag$class, as.character(c00_case(tag)), "size_case"))
+  hdr(sprintf("out-of-fold — per %s", if (identical(spec, "region")) "region" else "fold"))
+  print(group_metrics(p, tag$class, fold, "fold"))
+
+  dir.create(PRED_DIR, showWarnings = FALSE, recursive = TRUE)
+  f <- file.path(PRED_DIR, sprintf("oof_%s.csv", gsub("[^A-Za-z0-9]+", "_", spec)))
+  fwrite(data.table(oid = tag$oid, class = tag$class, fire_year = tag$fire_year,
+                    area_ha = round(tag$area_ha, 3),
+                    region = if ("region" %in% names(tag)) tag$region else NA_character_,
+                    fold = fold, p_oof = round(p, 4)), f)
+  msg("out-of-fold predictions -> %s", f)
 }
 
 # ── main ─────────────────────────────────────────────────────────────────────
+# cv arg forms: (none)->region | region | grid [K] | random [K]
+cv_spec <- function(a) {
+  if (!length(a)) return("region")
+  if (identical(a[1], "grid"))   return(paste0("grid:", if (length(a) > 1L) a[2] else "5"))
+  if (identical(a[1], "random")) return(if (length(a) > 1L) a[2] else "5")
+  a[1]
+}
+
 years_arg <- function(a) if (!length(a)) PROBE_YEAR else
   if (identical(a[1], "all")) object_years() else as.integer(a)
 
 switch(mode,
   fit     = do_fit(),
   predict = do_predict(years_arg(rest)),
-  cv      = do_cv(if (length(rest)) as.integer(rest[1]) else 5L),
+  cv      = do_cv(cv_spec(rest)),
   probe   = { do_fit(); do_predict(PROBE_YEAR) },
   stop("unknown mode '", mode, "' — use fit | predict | cv"))

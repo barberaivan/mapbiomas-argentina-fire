@@ -140,7 +140,7 @@ would invent information.
 | predict FY 2020 — 78 211 objects × 500 draws | **103 s** = 762 obj/s = 2.6 µs/obj/draw |
 | ↳ of which the per-object quantile reduction | ~6 s (1.6 s per 20 k-row chunk) |
 | **extrapolated to all 1 689 419 objects** | **≈ 37 min**, peak RAM one chunk (20 k × 500 ≈ 80 MB) |
-| 5-fold out-of-fold AUC (`cv` mode) | **0.976** (in-sample 0.987); accuracy 0.922, sens 0.934, spec 0.909 |
+| out-of-fold AUC — see the CV section below | **0.90** grid-blocked (0.976 random, 0.75 leave-one-region-out) |
 
 **So no — scoring every polygon across posterior draws is not a problem.** 37 min once, at flat
 memory. What *would* be a problem is the naive route the docs warn about above: passing the full
@@ -149,17 +149,75 @@ object set as `X_test` to `bart()` materializes 1.69 M × 500 doubles ≈ **6.8 
 Thinning is the other half of the answer: cost is linear in draws, so 2000 retained draws would
 have been 4× the prediction time and 4× the memory for no gain in a 5th percentile.
 
-**Two honest caveats on those numbers.**
-1. The CV folds are random over *objects*, and objects labelled by one drawn polygon are spatially
-   adjacent, so neighbours straddle folds — 0.976 is therefore optimistic. A by-label-polygon or
-   spatially blocked CV would be the strict version.
-2. **The labelled sample is not a random sample of objects**, and per-year prevalence swings from
+### Cross-validation: the fold design decides the answer
+
+Three designs, same model, same 5255 objects. `Rscript …/06-object_model.R cv [region|grid K|random K]`;
+out-of-fold predictions land in `data/objects-predictions/oof_<spec>.csv`.
+
+| fold design | AUC | accuracy | sens | spec | what it measures |
+|---|---|---|---|---|---|
+| random 5-fold | 0.976 | 0.922 | 0.934 | 0.909 | **leak-inflated** — adjacent objects from one drawn polygon straddle folds |
+| **0.5° blocks → 5 folds** (349 blocks) | **0.902** | 0.786 | 0.687 | 0.899 | **the deployment number** — no adjacency leak, every region still in every fold |
+| leave-one-region-out (5 MapBiomas regions, 2 km buffered) | 0.750 | 0.671 | 0.716 | 0.621 | transfer to an **unseen ecoregion** — a condition production never faces |
+
+Read the middle row. Leave-one-region-out is the harshest possible test and not the deployment
+condition: every region *does* have labels in production, and held-out prevalence swings 0.10
+(Patagonia) to 0.83 (Pampas), so a fold's model is trained on a different class mix than it is
+scored on. Per region: Puna 0.970 (n = 79), Bosque Atlántico 0.839, Chaco 0.773, Patagonia 0.773,
+Pampas 0.700.
+
+**Where the error lives** — out-of-fold, by size (grid-blocked / leave-one-region-out AUC):
+
+| stratum | share of all objects | AUC grid | AUC region | sens@0.5 grid |
+|---|---|---|---|---|
+| < 1 ha (n = 114 labels) | 3.4 % | 0.974 | 0.568 | 0.62 |
+| 1–50 ha (n = 3217) | 61 % | **0.872** | **0.695** | **0.53** |
+| 50–300 ha (n = 1192) | 11 % | 0.921 | 0.807 | 0.82 |
+| ≥ 300 ha (n = 732) | 1.8 % | 0.956 | 0.831 | 0.94 |
+
+So the weak band is **1–50 ha**, which is also where 61 % of the objects are: grid-blocked AUC 0.87
+and only **0.53 sensitivity at the 0.5 cut** — it misses about half the real fires there. Above
+300 ha the model is nearly clean. The `< 1 ha` row differs wildly between designs for a data reason,
+not a model reason: 86 of its 114 labels are in Patagonia, so leave-one-region-out leaves that
+stratum with no comparable training data at all.
+
+Two consequences, both in the BACKLOG: the 0.5 threshold is in the wrong place for a burned-area
+product (specificity 0.90 vs sensitivity 0.69 — pick the cut on the OOF file), and round-2 label
+collection should target 1–50 ha objects with wide `p_width`.
+
+**And one caveat that no fold design fixes.**
+**The labelled sample is not a random sample of objects**, and per-year prevalence swings from
    0.00 (2009, 2016) to 1.00 (1998) — 2020 alone contributes 1647 labels at 88 % fire. Treat the
    *ranking* and the *uncertainty* as the product; do not read `p_mean` as a calibrated absolute
    probability. On FY 2020 the model calls 67.7 % of objects fire (4401 of 4841 kha) where the
    collection-00 filter keeps 22.9 % (4045 kha) — the two agree on almost all of the *area* and
    disagree almost entirely on small objects (38 246 objects the filter rejects and the model keeps
    are 558 kha in total).
+
+### Looking at it on a map without uploading to GEE
+
+A full-year GEE ingest is ~8 h by hand (no GCS bucket — see "Uploading the classified fire subset"),
+which is not a price worth paying to *inspect* a model. `scripts/objects_inspect_export.R` joins the
+predictions + all 40 predictors + the c-00 verdict onto the step-05 geometry already on disk:
+
+- **`<fy>_objects_pred.gpkg`** — every object of the year, 50 fields. Open in QGIS, graduate the
+  fill on `p_mean` (or `p_width`), add an XYZ imagery basemap, and use the attribute table and
+  filter expressions to walk cases. FY 2020: **354 MB written in 6 s**, and QGIS pans it smoothly
+  off the GPKG spatial index. This is the fastest route to eyes-on and needs nothing new built.
+- **`<fy>_objects_sample.geojson`** — a stratified sample (default 20 objects per `p_mean` decile,
+  geometry simplified to ~30 m; FY 2020 → 200 objects, 1.6 MB). This is the answer to "is there a
+  geemap midpoint": **yes.** geemap/leafmap is an ipyleaflet map — `Map.add_geojson(path)` /
+  `add_gdf()` puts local vectors on it as **client-side** layers while GEE imagery (candseed,
+  Landsat min-NBR, the bpts composite) renders as server-side tiles beside them. Nothing is
+  uploaded to Earth Engine. The binding constraint is the **browser**, not GEE: keep client-side
+  features in the low thousands, which is exactly what a decile-stratified sample gives you.
+
+That covers Lican's suggestion without a Shiny app: the sampling-by-predictor-range panel is a QGIS
+filter expression or a geemap cell. Build the Shiny app only if a *shared* review tool is wanted —
+for one analyst it adds a UI to maintain and no capability QGIS lacks. A whole-country raster
+overview is the other option not taken: rasterizing `p_mean` at 30 m country-wide is 9.16 B cells
+(docs/05 §7), so it would have to be coarsened to ~300 m, which erases the small objects that are
+precisely the ones in doubt.
 
 ## What the data says about size limits and the collection-00 filter
 

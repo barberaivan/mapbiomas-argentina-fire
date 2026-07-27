@@ -19,6 +19,12 @@ POLY_DIR   <- "collection-01/data/snic-polygons"                              # 
 MERGED_CSV <- "collection-01/data/polygons_data/polygons_data_merged.csv"     # step-06 labels
 EPOCH      <- "1970-01-01"                                                    # abs_date origin
 
+# MapBiomas Argentina regions, 2 km buffered — the blocks for the spatially-blocked CV
+GEE_PROJECT   <- "mapbiomas-fire-485203"          # == utils/constants.py C.GEE_PROJECT
+REGIONS_ASSET <- paste0("projects/mapbiomas-argentina/assets/ANCILLARY_DATA/VECTOR/ARG/",
+                        "ARG-Regiones-MapBiomas-buffer2km")
+REGIONS_GPKG  <- "collection-01/data/ancillary/ARG-Regiones-MapBiomas-buffer2km.gpkg"
+
 # ── step-05 objects: one fire-year, raster + shape metrics joined on oid ──────
 object_years <- function() {
   f <- list.files(POLY_DIR, pattern = "^objects_[0-9]{4}_raster_metrics\\.csv$")
@@ -106,6 +112,55 @@ print_clean_report <- function(rep) {
   m("  -%5d object(s)  NA in a predictor%s", rep$dropped_na_objects,
     if (length(rep$dropped_na_oids)) paste0(" (", paste(rep$dropped_na_oids, collapse = ", "), ")") else "")
   m("  =%5d object(s)  %d fire / %d non-fire", rep$objects, rep$fire, rep$nonfire)
+}
+
+# ── regions, for the spatially-blocked CV ───────────────────────────────────
+# Same rgee bootstrap as scripts/polygons_data_prep.R::init_ee — if the venv discovery
+# changes, change it in both.
+init_ee <- function() {
+  if (file.exists(".local-paths")) {
+    kv <- read.dcf(textConnection(sub("=", ": ", readLines(".local-paths"), fixed = TRUE)))
+    if ("PYTHON" %in% colnames(kv)) Sys.setenv(RETICULATE_PYTHON = kv[1, "PYTHON"])
+  }
+  suppressPackageStartupMessages(library(rgee))
+  rgee::ee_Initialize(project = GEE_PROJECT, quiet = TRUE)
+  invisible(TRUE)
+}
+
+# Downloads the regions asset once (5 features) into data/ancillary/.
+ensure_regions <- function(force = FALSE) {
+  if (file.exists(REGIONS_GPKG) && !force) return(REGIONS_GPKG)
+  dir.create(dirname(REGIONS_GPKG), showWarnings = FALSE, recursive = TRUE)
+  init_ee()
+  url <- ee$FeatureCollection(REGIONS_ASSET)$getDownloadURL("GeoJSON")
+  tmp <- tempfile(fileext = ".geojson")
+  on.exit(unlink(tmp), add = TRUE)
+  download.file(url, tmp, quiet = TRUE, mode = "wb")
+  v <- terra::vect(tmp)
+  terra::writeVector(v, REGIONS_GPKG, overwrite = TRUE)
+  write(sprintf("downloaded %d region(s) -> %s", nrow(v), REGIONS_GPKG), stderr())
+  REGIONS_GPKG
+}
+
+# Adds `region` / `zona` from the LABEL's lon/lat. Using the label location rather than the
+# object's own is deliberate: it keeps every object a single drawn polygon labelled inside one
+# block, which is the point of blocking. terra, not sf, for the same reason as everywhere else
+# in step 06 (the region polygons are big multi-part geometries).
+assign_region <- function(d) {
+  reg <- terra::vect(ensure_regions())
+  reg <- reg[order(reg$Zona), ]
+  pts <- terra::vect(as.matrix(d[, .(lon, lat)]), type = "points", crs = "EPSG:4326")
+  m   <- matrix(as.logical(terra::relate(pts, reg, "intersects")), nrow = nrow(d))
+  # the 2 km buffer makes neighbouring regions overlap, so a point can be inside two ->
+  # lowest Zona wins, deterministically
+  idx <- apply(m, 1L, function(r) if (any(r)) which(r)[1] else NA_integer_)
+  if (anyNA(idx)) {                    # just outside the buffered outline -> nearest region
+    out <- which(is.na(idx))
+    idx[out] <- terra::nearest(pts[out, ], reg)$to_id
+    write(sprintf("assign_region(): %d label(s) outside every region -> nearest", length(out)),
+          stderr())
+  }
+  d[, `:=`(region = reg$Region[idx], zona = reg$Zona[idx])]
 }
 
 # ── the collection-00 empirical filter ──────────────────────────────────────

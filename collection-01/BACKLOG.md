@@ -68,4 +68,25 @@ This is probably for collection 2.
 
 ---
 
+## Object model (step 06)
+
+- [ ] **Try a grouped-vegetation variant of the object model** (asked for 2026-07-27; the
+  full-predictor model is *not* the definitive one). Replace the 23 raw `frac_c1..frac_c23`
+  columns with a handful of **summed fractions by vegetation group** — agriculture classes
+  summed, the relevant grassland types summed, and so on — built from
+  `config/veg_fire_remap.csv` / `utils/constants.py::VEG_FIRE_NAMES` rather than hand-listed
+  codes. Rationale: 23 sparse columns out of 40 predictors is most of the design matrix, many
+  classes are near-empty in the labels, and BART splits uniformly over available variables, so
+  the sparse fractions dilute the split budget. Compare against the current model on the
+  **grid-blocked CV** (`06-object_model.R cv grid 5`), not in-sample — see docs/06 "Measured".
+- [ ] **Pick the classification threshold on out-of-fold predictions**, not at 0.5. Under
+  grid-blocked CV sensitivity at 0.5 is only 0.69 overall and 0.53 in the 1–50 ha band, while
+  specificity is 0.90 — the cut is in the wrong place for a burned-area product that would
+  rather over- than under-detect. `data/objects-predictions/oof_grid_5.csv` has what is needed.
+- [ ] **More labels in the 1–50 ha band**, which holds 61 % of all objects and is where the
+  model is weakest (grid-blocked AUC 0.87 vs 0.96 for ≥300 ha). Aim round-2 collection with
+  `p_width` from a `predict all` run.
+
+---
+
 *Format: `- [ ]` open, `- [x]` done.*
