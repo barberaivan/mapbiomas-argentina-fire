@@ -471,7 +471,7 @@ Relevant `stochtree::bart()` arguments (the last four live inside `general_param
 - `outcome_model` — the probit/binary switch. Note `probit_outcome_model` is **deprecated** in
   favour of it, so check `?bart` for the accepted value rather than copying older examples.
 - **JSON serialization** — fit once, serialize, predict per year in a separate process. Drops
-  straight into the one-`Rscript`-per-year pattern of `workflow/run_05_years.sh` (docs/05 §4.1).
+  straight into the one-`Rscript`-per-year pattern of `scripts/run_05_years.sh` (docs/05 §4.1).
 
 **The tradeoff to be aware of:** stochtree's `variable_weights` is a *fixed* vector of relative
 split probabilities, **not** a learned Dirichlet — so it does not give you DART's automatic

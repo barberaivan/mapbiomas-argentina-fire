@@ -25,8 +25,8 @@ one step, e.g. the remap and the fit are both inputs to step 02):
 | `collection-01/docs/03-bpts.md` | step 03 — burn-probability time-series metrics: full design, implementation + GEE array gotchas |
 | `collection-01/docs/03-colab_multi_export.md` | step 03 — distributed multi-account export via Colab (admin notes) |
 | `collection-01/docs/04-snic.md` | step 04 — burned-area segmentation: the whole-country **non-calendar fire-year** SNIC (fire-year `candseed` construction, Patagonia dieback padding, supervised SNIC, Drive-COG handoff to R); the shelved SNIC-3D attempt in brief; the `explore_snic_IB-0{2,3}` GEE tuning/inspection tools |
-| `collection-01/docs/05-object_metrics.md` | step 05 — fire-object vectorization & metrics (R/terra): the 1-px dilation connectivity hack, per-object raster metrics (veg abundance, area, `abs_date`/`n` summaries, sparseness) + geometry shape metrics ported from collection-00; sparse igraph labelling vs terra fallback; **§4.1** the overnight all-years batch launcher (`workflow/run_05_years.sh` + `workflow/mem_monitor.sh`) |
-| `collection-01/docs/06-object_model.md` | step 06 — object-based fire/non-fire classification: GEE asset ingestion + interactive point-based data collection, XGBoost fit/classify, then filtering + rasterization (design notes) |
+| `collection-01/docs/05-object_metrics.md` | step 05 — fire-object vectorization & metrics (R/terra): the 1-px dilation connectivity hack, per-object raster metrics (veg abundance, area, `abs_date`/`n` summaries, sparseness) + geometry shape metrics ported from collection-00; sparse igraph labelling vs terra fallback; **§4.1** the overnight all-years batch launcher (`scripts/run_05_years.sh` + `scripts/mem_monitor.sh`) |
+| `collection-01/docs/06-object_model.md` | step 06 — object-based fire/non-fire classification: label collection in GEE (drawing layers → one asset per collaborator) and their join to objects; the **probit BART** fit (`stochtree`) with posterior probability bounds; the **grouped-vegetation** predictor variant (5 summed fractions, the default); **spatially blocked CV** (0.5° grid + leave-one-region-out) and why the fold design decides the answer; the per-size-band **classification threshold** (Youden's J on out-of-fold predictions); map inspection without a full GEE upload |
 | `collection-01/docs/07-vector_to_raster.md` | step 07 — final processing decisions: geometry/metrics split, collect on the SNIC layer (not polygons), upload only the classified fire subset, build the month-of-burn raster |
 | `collection-01/docs/08-postprocessing.md` | step 08 — the **MapBiomas Fuego network-wide post-processing** (stages 1–4: the GEE assets), identical in every country and summarised from the network's [*Guía del Proceso de Lanzamiento*](https://docs.google.com/presentation/d/1Y5SUeS_405k5zZkBX4z6BDaC_umI8Saiguk7coITB1Q/edit) (§1 gives the `curl …/export/pdf` recipe to read the slides as a PDF): LULC masking + month coding, the `FINAL_PRODUCTS` subproducts (annual/monthly burned, burned coverage, frequency, accumulated, year-last-fire, scar id/area/size-range). Also: their mapping method (Alencar et al. 2022) vs ours, and **§6 Argentina's route — vectors-only upload, calendar-year products from fire-year objects** |
 | `collection-01/docs/09-statistics.md` | **stages 5–6 + launch** (1 Aug → 24 Sep 2026): the six area-statistics CSVs, the **territorial layer we must build**, Looker Studio (~1 % tolerance), public assets vs Cloud-Storage COGs (the platform reads **GEE assets**), the **Workspace** subtheme/legend/territory catastro, and the launch track (ATBD, methodology page, downloads, materials, event) |
@@ -84,8 +84,15 @@ stages can be inspected and limits avoided:
 
 1. `01-training_data_export.py` — sample Landsat + prev-year MB mosaic at training points → one asset per fire.
 2. `02-model_fitting.R` — fit one elastic-net LR per `veg_fire` class (locally, R), export coefficients for GEE.
-3. **Prediction pipeline (stubs, in development):** obs-level burn probability → time-series / annual summary → SNIC segmentation → object metrics & filtering, plus a manual ash/drought masking pass. Step numbering above 02 is still in flux — check `collection-01/workflow/` for the current files.
-4. **Step 08 — post-processing to the network's common products.** After step 07 the work stops being
+3. **Prediction pipeline (in development):** obs-level burn probability → time-series / annual summary (03) → SNIC segmentation (04) → object vectorization & metrics (05), plus a manual ash/drought masking pass. Step numbering above 02 is still in flux — check `collection-01/workflow/` for the current files.
+4. `06-object_model.R` — **object-level fire/non-fire classification, replacing collection-00's
+   empirical filter** (which scores accuracy 0.62 / sensitivity 0.50 on our labels). A probit BART
+   (`stochtree`) on 22 object metrics, fitted locally in R and applied per fire-year; the fire call
+   uses a **per-size-band threshold** from `config/object_model_thresholds.csv`. Modes: `fit`,
+   `predict [years|all]`, `cv [region|grid K|random K]`. All of it runs **locally on CSVs from step
+   05** — no GEE round-trip — and only the classified fire subset goes back up (step 07). Labels are
+   prepared by `scripts/polygons_data_prep.R`; the threshold by `scripts/objects_threshold.R`.
+5. **Step 08 — post-processing to the network's common products.** After step 07 the work stops being
    ours: every MapBiomas Fuego country runs the *same* post-processing to publish the *same* subproducts,
    even though their mapping method differs from ours. **Do not innovate there** — reproduce the
    reference code (see `docs/08-postprocessing.md` and the reference repo below).
@@ -157,8 +164,8 @@ heavy enough, default to `tmux`.
 > Make bulk launchers **idempotent / resumable**: skip tiles that already have a completed asset
 > *or* an in-flight (PENDING/RUNNING) task, so a killed-and-rerun launch never duplicates work.
 
-Long local runs that iterate over years follow the same rule via `workflow/run_05_years.sh` (step
+Long local runs that iterate over years follow the same rule via `scripts/run_05_years.sh` (step
 05): **one `Rscript` per year** so an OOM kills only that year (flagged `rc=137`), not the whole
-batch; skips years whose completion CSV exists; `workflow/mem_monitor.sh` samples RAM alongside and
+batch; skips years whose completion CSV exists; `scripts/mem_monitor.sh` samples RAM alongside and
 logs a `WARN` when free memory nears the OOM limit. See `docs/05-object_metrics.md` §4.1. Launch
 from tmux with an **absolute path** — a detached tmux shell may not start in the repo root.

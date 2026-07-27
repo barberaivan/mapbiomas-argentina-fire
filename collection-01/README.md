@@ -41,15 +41,14 @@ collection-01/
 │   ├── constants.py        # All paths, feature lists, MB reclass table, LR terms
 │   └── functions.py        # Shared cross-step GEE helpers ONLY (Landsat, indices, MB sampling, veg_fire); step-specific code lives with its step
 ├── config/                 # veg_fire_remap.csv — canonical MB→fire-class remap (source of truth)
+│                           # object_model_thresholds.csv — step-06 fire-call cut per size band (docs/06 "Threshold")
 ├── models/                 # Tracked: *_coefficients.csv (the GEE deliverable) + README; see models/README.md
 ├── models-store/           # symlink → Insync store (gitignored): heavy fits, CV metrics, tuning, OOF preds
 ├── workflow/               # Numbered pipeline steps (mixed Python + R)
 │   ├── 01-training_data_export.py   # Export training data (one GEE task per fire)
 │   ├── 02-model_fitting.R           # Fit LR per veg_fire class (R, glmnet)
-│   ├── 03–07-*.{py,R}      # Prediction pipeline (bp ts → SNIC → objects → filter → raster) — in development
-│   │                       # step 08 (network post-processing) has no script yet — docs/08-postprocessing.md
-│   ├── run_05_years.sh              # Overnight all-years step-05 launcher — one Rscript/year, resumable, OOM-flagging (docs/05 §4.1)
-│   └── mem_monitor.sh               # Lightweight RAM peak / near-OOM-warn monitor (used by run_05_years.sh; standalone too)
+│   └── 03–07-*.{py,R}      # Prediction pipeline (bp ts → SNIC → objects → filter → raster) — in development
+│                           # step 08 (network post-processing) has no script yet — docs/08-postprocessing.md
 ├── scripts/                # Ad-hoc utilities — not mandatory pipeline steps
 │   ├── status.py                          # Check GEE export status across all regions
 │   ├── download_observations.py           # Download training observations to local CSV
@@ -62,7 +61,14 @@ collection-01/
 │   ├── ts_predict_functions.R             # design_raw() + predict_class(): RAW-scale prediction from a class_NN_fit.rds
 │   ├── ts_plot_cache.R                    # Build models-store/ts_plot_cache_v1.rds (in-sample p_pred + n5-smoothed prob, every fitted class)
 │   ├── ts_plot_functions.R                # Shared plot_fire_panel() (NBR/NBR2/raw p/smoothed p, Burned-over-Unburned); sourced below and by the notebook
-│   └── ts_plot_by_fire.R                  # Driver: one panel per fire (pooled across classes) -> models-store/prediction_plots/{region}/region_fireNN.png
+│   ├── ts_plot_by_fire.R                  # Driver: one panel per fire (pooled across classes) -> models-store/prediction_plots/{region}/region_fireNN.png
+│   ├── polygons_data_prep.R               # step 06: download the per-collaborator label assets, join them to objects -> polygons_data_merged.csv
+│   ├── objects_data_functions.R           # step 06: shared helpers (readers, derived predictors, veg groups, label cleaning, regions, c-00 filter)
+│   ├── objects_data_explore.R             # step 06: size distribution of the full table + how the c-00 empirical filter splits it
+│   ├── objects_threshold.R                # step 06: per-size-band fire-call threshold from out-of-fold preds -> config/object_model_thresholds.csv
+│   ├── objects_inspect_export.R           # step 06: GPKG (QGIS) + sampled GeoJSON of predictions, to inspect without a GEE upload
+│   ├── run_05_years.sh                    # Overnight all-years step-05 launcher — one Rscript/year, resumable, OOM-flagging (docs/05 §4.1)
+│   └── mem_monitor.sh                     # Lightweight RAM peak / near-OOM-warn monitor (used by run_05_years.sh; standalone too)
 ├── notebooks/              # Quarto-R (.qmd) exploratory analyses and decisions
 ├── samples/                # ARCHIVE — JS templates from interactive point collection
 └── data/                   # symlink → Insync store (gitignored): local downloads and training inputs
@@ -178,7 +184,7 @@ are flagged and don't stop the batch) with a lightweight RAM monitor alongside (
 
 ```bash
 # launch detached; use an ABSOLUTE path (see docs/05 §4.1)
-tmux new-session -d -s obj05 '/abs/path/to/collection-01/workflow/run_05_years.sh 2001 2025'
+tmux new-session -d -s obj05 '/abs/path/to/collection-01/scripts/run_05_years.sh 2001 2025'
 tmux attach -t obj05            # watch; Ctrl-B D to detach
 grep -E 'OOM|WARN|FAILED|done rc=0' collection-01/logs/05_{run,mem}_*.log   # morning triage
 ```
@@ -312,6 +318,10 @@ Export status across regions: `python collection-01/scripts/status.py`.
 |------|--------|
 | 01 — training data export | Complete for all 5 regions (BA, CHACO, PAMPA, CUYO, PAT), v1. |
 | 02 — model fitting (R, glmnet) | All 23 `veg_fire` classes fitted (v1); see `models/cv_metrics_v1.csv`. |
-| 03–07 — prediction pipeline | Stubs |
+| 03 — burn-probability time series | Running (per-carta export; `docs/03-bpts.md`). |
+| 04 — SNIC segmentation | Whole-country fire-year SNIC settled; Drive-COG handoff to R (`docs/04-snic.md`). |
+| 05 — object metrics (R/terra) | 2001–2025 measured and run; 1.69 M objects (`docs/05-object_metrics.md`). |
+| 06 — object model (R, BART) | Fitted + thresholded on 5255 labels; grid-blocked AUC 0.921. `predict all` and visual inspection pending (`docs/06-object_model.md`). |
+| 07 — vector→raster | Decisions recorded, no script yet (`docs/07-vector_to_raster.md`). |
 | 08 — network post-processing & published subproducts | Not started; design notes only (`docs/08-postprocessing.md`). Assets due **31 Jul 2026** |
 | 09 — statistics, publication, launch | Not started; design notes only (`docs/09-statistics.md`). Launch **24 Sep 2026** |

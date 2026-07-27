@@ -6,7 +6,7 @@
 # alongside. Resumable: skips a year whose shape-metrics CSV already exists.
 #
 # Usage (launch inside tmux — see CLAUDE.md "Running long scripts"):
-#   collection-01/workflow/run_05_years.sh [start_year] [end_year]
+#   collection-01/scripts/run_05_years.sh [start_year] [end_year]
 #   defaults: 2001 2025
 set -u
 
@@ -19,7 +19,7 @@ STAMP=$(date '+%Y%m%d_%H%M%S')
 LOGDIR=collection-01/logs
 OUTDIR=collection-01/data/snic-polygons
 RSCRIPT=collection-01/workflow/05-objects_metrics.R
-MONITOR=collection-01/workflow/mem_monitor.sh
+MONITOR=collection-01/scripts/mem_monitor.sh
 mkdir -p "$LOGDIR"
 
 RUNLOG="$LOGDIR/05_run_${START}-${END}_${STAMP}.log"

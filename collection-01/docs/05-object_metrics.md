@@ -193,7 +193,7 @@ full 2001–2025 run is driven by a wrapper that **runs one `Rscript` per year**
 every year to a single R process. That isolation is the point: if one year is OOM-killed, only that
 year dies — the loop continues and the remaining years still finish overnight (a single process
 would lose everything after the failing year). Both scripts are plain bash, no deps, in
-`collection-01/workflow/`:
+`collection-01/scripts/`:
 
 - **`run_05_years.sh [start_year] [end_year]`** (default `2001 2025`) — loops the years, one
   `Rscript 05-objects_metrics.R <fy>` each. **Resumable/idempotent:** skips any year whose
@@ -209,7 +209,7 @@ would lose everything after the failing year). Both scripts are plain bash, no d
   around any heavy run.
 
 ```
-tmux new-session -d -s obj05 '/abs/path/to/collection-01/workflow/run_05_years.sh 2001 2025'
+tmux new-session -d -s obj05 '/abs/path/to/collection-01/scripts/run_05_years.sh 2001 2025'
 tmux attach -t obj05                 # watch live; Ctrl-B D to detach
 tail -f collection-01/logs/05_run_*.log
 # morning triage:
