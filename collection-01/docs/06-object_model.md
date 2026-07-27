@@ -42,11 +42,34 @@ clusters directly (their shape and seed density are what discriminates fire from
   (there are no polygons yet) — the panel idea is dropped; per-object metrics are joined **locally,
   afterwards**, by intersecting the collected points with the step-05 GPKG to attach each point's
   `oid`, then joining the metrics CSV on `oid`.
-- **Exports (open).** As with the training-locations collection, each user keeps several
-  point-feature collections split by **class × year/year-range** — so metadata lives at the FC
-  level, not per point, letting them place many points fast over same-class/-year clusters. With few
-  users, Claude can later edit all the scripts, tag points, merge the FCs, and hand off one export
-  (the user runs it in GEE).
+- **Exports (settled 2026-07-27): one asset per collaborator, all their years and both classes.**
+  Each user keeps several drawing layers split by **class × year/year-range** — metadata lives at the
+  layer level, not per point, so they place many points fast over same-class/-year clusters. The
+  **name of the drawing layer IS the metadata**, and section 8 of each `training_polygons_*` script
+  parses it:
+
+  | layer name | class | fire-year(s) |
+  |---|---|---|
+  | `fire_YYYY` | 1 | `YYYY` |
+  | `nonfire_YYYY` | 0 | `YYYY` |
+  | `fire_YYYY_poly` / `nonfire_YYYY_poly` | as above | as above — `_poly` just records that polygons were drawn instead of points |
+  | `fire_YYYY_YYYY` (range) | 1 | **both ends inclusive** — the feature is written **once per year** in the range, so every row carries one concrete `fire_year` |
+
+  Anything **not** named `fire_*` / `nonfire_*` is ignored on purpose: the ROIs, bare `geometry*`,
+  the doubtful layers (`dudas2014`, `dudoso_2015`, `dudoso_2017`), `ejemplo_*`, and imported vis
+  params. To promote a doubtful layer to training data, **rename** it to the convention.
+
+  One `Export.table.toAsset` per script writes
+  `…/TRAINING-DATA/POLYGONS-DATA/polygons_data_<author>` (author lowercase), which is then
+  **downloaded straight from the asset page** — no per-year merge step. Schema: `class` (1/0),
+  `fire_year`, `y_lwr`/`y_upr` (the declared range), `geom_type` (`Point`/`Polygon`, read off the
+  geometry, not the name), `author`, `src` (the drawing layer it came from, so a suspect feature
+  traces back). **Points and polygons share one table**; both are intersected against the
+  fire-year's objects downstream. Geometry-flavour drawing layers (all items fused into one
+  `MultiPoint`/`MultiPolygon`) are exploded with `geometries()` into one feature per drawn item, so
+  both Code-Editor import flavours behave identically. An unparseable name **throws** rather than
+  being silently dropped. Registry upkeep: adding a drawing layer = adding one
+  `[fire_2021, 'fire_2021']` line.
 
 ### Why the SNIC layer, not the polygons (record)
 
