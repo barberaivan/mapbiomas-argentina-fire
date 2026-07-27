@@ -70,14 +70,14 @@ This is probably for collection 2.
 
 ## Object model (step 06)
 
-- [x] **Grouped-vegetation variant of the object model** (2026-07-27). Five summed fractions
+- [x] **Aggregated vegetation fractions in the object model** (2026-07-27). Five summed fractions
   (`frac_agri`, `frac_grass_inund`, `frac_pasture`, `frac_grass_temp`, `frac_woody`, derived from
-  `config/veg_fire_remap.csv` by name) replace the 23 raw class fractions: 22 predictors instead of
-  40. It wins on every grid-blocked metric (AUC 0.902 → 0.921, accuracy 0.786 → 0.812) with the gain
-  concentrated in the weak 1–50 ha band (0.872 → 0.903), and is now the DEFAULT variant. See
-  docs/06 "Predictor variant".
+  `config/veg_fire_remap.csv` by name) replaced the 23 raw class fractions: 22 predictors instead of
+  40. Better on every grid-blocked metric (AUC 0.902 → 0.921, accuracy 0.786 → 0.812), gain
+  concentrated in the weak 1–50 ha band (0.872 → 0.903). The 40-column alternative has been removed
+  from the code. See docs/06 "The 22 predictors".
 - [x] **Classification threshold chosen on out-of-fold predictions** (2026-07-27,
-  `scripts/objects_threshold.R`). Youden's J per size band, on `oof_grouped_grid_5.csv`: the cut
+  `scripts/objects_threshold.R`). Youden's J per size band, on `oof_grid_5.csv`: the cut
   RISES with size — 1–50 ha **0.180**, 50–300 ha **0.405**, ≥300 ha **0.598** — with barely
   overlapping bootstrap intervals, so the per-band difference is real. Written to
   `config/object_model_thresholds.csv` and applied by `06-object_model.R predict` (adds a `fire`

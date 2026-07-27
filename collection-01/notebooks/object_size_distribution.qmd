@@ -33,8 +33,6 @@ theme_set(theme_bw(base_size = 11) +
 ```{r paths}
 source("collection-01/scripts/objects_data_functions.R")
 PRED_DIR <- "collection-01/data/objects-predictions"
-VARIANT  <- "grouped"          # the deployed model (docs/06 "Predictor variant")
-PX_HA    <- 0.09               # 30 m Landsat pixel
 ```
 
 ## Why this notebook
@@ -247,8 +245,7 @@ kable(cmp, digits = 2, col.names = c("size class", "% of all objects", "% of lab
 ## 6 · Model probability and uncertainty
 
 ```{r load-preds}
-pf <- list.files(PRED_DIR, pattern = sprintf("^objects_[0-9]{4}_pred_%s\\.csv$", VARIANT),
-                 full.names = TRUE)
+pf <- list.files(PRED_DIR, pattern = "^objects_[0-9]{4}_pred\\.csv$", full.names = TRUE)
 pred_years <- sort(as.integer(sub("^objects_([0-9]{4}).*$", "\\1", basename(pf))))
 HAS_PREDS  <- length(pred_years) > 0L
 COMPLETE   <- setequal(pred_years, years)
@@ -375,7 +372,6 @@ i.e. we are discarding precisely the objects the model cannot classify.
 
 ## 7 · Notes
 
-- Everything here is the **grouped** (22-predictor) model, the deployed one.
 - `% called fire` figures inherit the threshold-level caveat from docs/06: the labels are not a
   random sample of objects, so the *level* of the small-object cuts is uncalibrated and these
   percentages are an upper bound on plausible fire rates, not an estimate of them.

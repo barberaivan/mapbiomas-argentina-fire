@@ -16,7 +16,10 @@
 #   Rscript collection-01/workflow/06-object_model.R cv grid 5         # 0.5 deg blocks -> 5 folds
 #   Rscript collection-01/workflow/06-object_model.R cv random 5      # random 5-fold, for contrast
 # Env: OBJ_THREADS (8) MCMC_ITER (2000) POST_DRAWS (500) NUM_GFR (10) PRED_CHUNK (20000)
-# Long runs (predict all) belong in tmux — see CLAUDE.md.
+# For all years use scripts/run_06_predict.sh (parallel, resumable) — see below.
+#
+# THE 22 PREDICTORS are objects_data_functions.R::PREDICTORS — 17 non-vegetation metrics plus 5
+# aggregated vegetation fractions (the 23 raw frac_c* columns summed by group). docs/06.
 #
 # THE FITTING SET is the clean labelled table built by
 # scripts/objects_data_functions.R::clean_tagged() — one row per OBJECT, with the
@@ -24,11 +27,10 @@
 # removed and each cut reported. Uneven label density across objects is deliberately NOT
 # corrected: a label is a label, and reweighting by it would invent information.
 #
-# WHY BART, AND WHY stochtree (docs/06 "BART" + "Which implementation"): no CV tuning to
-# do honestly on ~5 k labels, and the posterior gives a per-object SD — the targeting
-# signal for round 2. stochtree's num_threads parallelises the GFR sampler and the MCMC,
-# which is genuine within-chain scaling; BART/dbarts only parallelise across chains (8x
-# draws, not 8x speed).
+# WHY probit BART VIA stochtree (docs/06 "The model"): no CV tuning to do honestly on ~5 k
+# labels, and the posterior gives a per-object interval — the targeting signal for a round-2
+# collection. stochtree's num_threads parallelises the GFR sampler and the MCMC, which is
+# genuine within-chain scaling of the fit.
 #
 # PREDICTION IS SINGLE-THREADED (measured, stochtree 0.4.5): num_threads is a *sampler*
 # setting, and predict.bartmodel takes no thread argument — nor do the C++ predict entry
@@ -53,9 +55,9 @@ suppressPackageStartupMessages({
 })
 source("collection-01/scripts/objects_data_functions.R")
 
-# ── args (parsed first: the variant switch decides the artifact paths) ───────
+# ── args ─────────────────────────────────────────────────────────────────────
 argv <- commandArgs(trailingOnly = TRUE)
-pos  <- argv[!grepl("^--", argv)]                  # flags are variant switches, not modes
+pos  <- argv[!grepl("^--", argv)]
 mode <- if (length(pos)) pos[1] else "probe"
 rest <- if (length(pos)) pos[-1] else character()
 
@@ -64,16 +66,8 @@ MODEL_DIR  <- "collection-01/models-store/object_model"
 PRED_DIR   <- "collection-01/data/objects-predictions"
 PROBE_YEAR <- 2020L        # the default single-year timing probe (78 k objects, the big one)
 
-# PREDICTOR VARIANT — `--grouped` (22 columns: the 5 aggregated veg fractions) or `--full`
-# (40 columns: the 23 raw class fractions). Both are built on the SAME 5255 clean objects and
-# the same folds, so their CV numbers are directly comparable. Every artifact is suffixed with
-# the variant, so fitting one never overwrites the other.
-VARIANT <- if ("--grouped" %in% argv) "grouped" else
-           if ("--full" %in% argv) "full" else Sys.getenv("OBJ_VARIANT", "grouped")
-if (!VARIANT %in% c("full", "grouped")) stop("OBJ_VARIANT must be full or grouped")
-PRED_COLS <- if (VARIANT == "grouped") PREDICTORS_GROUPED else PREDICTORS
-FIT_JSON  <- file.path(MODEL_DIR, sprintf("bart_object_model_%s.json", VARIANT))
-FIT_META  <- file.path(MODEL_DIR, sprintf("bart_object_model_%s_meta.rds", VARIANT))
+FIT_JSON   <- file.path(MODEL_DIR, "bart_object_model.json")
+FIT_META   <- file.path(MODEL_DIR, "bart_object_model_meta.rds")
 
 envi <- function(k, d) { v <- suppressWarnings(as.integer(Sys.getenv(k, ""))); if (is.na(v)) d else v }
 # 8 = PHYSICAL cores. Tree sampling is memory-bandwidth-bound, so the 8 extra hyperthreads
@@ -96,15 +90,15 @@ elapsed <- function(t0) as.numeric(difftime(Sys.time(), t0, units = "secs"))
 # ── design matrix — one definition, used by fit and by predict ───────────────
 # Column ORDER is part of the model: it is stored in the meta file and re-imposed here, so
 # a predict run in a fresh process cannot silently permute the predictors.
-design <- function(d, cols = PRED_COLS) {
+design <- function(d, cols = PREDICTORS) {
   miss <- setdiff(cols, names(d))
   if (length(miss)) stop("missing predictor(s): ", paste(miss, collapse = ", "))
   as.matrix(d[, ..cols])
 }
 
 fit_bart <- function(X, y) {
-  msg("fitting: %d objects x %d predictors (%s) | %d GFR + %d MCMC iterations thinned by %d",
-      nrow(X), ncol(X), VARIANT, NUM_GFR, MCMC_ITER, MCMC_ITER %/% POST_DRAWS)
+  msg("fitting: %d objects x %d predictors | %d GFR + %d MCMC iterations thinned by %d",
+      nrow(X), ncol(X), NUM_GFR, MCMC_ITER, MCMC_ITER %/% POST_DRAWS)
   msg("         -> %d retained posterior draws | num_threads = %d", POST_DRAWS, THREADS)
   t0 <- Sys.time()
   m <- bart(
@@ -169,7 +163,7 @@ do_fit <- function() {
 
   dir.create(MODEL_DIR, showWarnings = FALSE, recursive = TRUE)
   saveBARTModelToJsonFile(m, FIT_JSON)
-  saveRDS(list(variant = VARIANT, predictors = PRED_COLS, n_train = nrow(X), draws = POST_DRAWS,
+  saveRDS(list(predictors = PREDICTORS, n_train = nrow(X), draws = POST_DRAWS,
                mcmc_iter = MCMC_ITER, num_gfr = NUM_GFR, threads = THREADS,
                clean_report = attr(tag, "clean_report"), fitted_at = Sys.time(),
                train_auc = auc_fast(p, tag$class)), FIT_META)
@@ -195,7 +189,7 @@ do_predict <- function(years) {
 
     # NA predictors cannot be scored (all-dieback objects, docs/05 §3): carry them through
     # with NA probabilities rather than dropping the oid from the year's output.
-    ok <- complete.cases(obj[, ..PRED_COLS])
+    ok <- complete.cases(obj[, ..PREDICTORS])
     X  <- design(obj[ok], meta$predictors)
 
     t_pred <- Sys.time()
@@ -213,7 +207,7 @@ do_predict <- function(years) {
     res[ok, names(out[[1]]) := rbindlist(out)]
     fc <- fire_call(obj$area_ha, res$p_mean)
     res[, fire := fc$fire]
-    f <- file.path(PRED_DIR, sprintf("objects_%d_pred_%s.csv", fy, VARIANT))
+    f <- file.path(PRED_DIR, sprintf("objects_%d_pred.csv", fy))
     fwrite(res, f, na = "NA")
 
     msg("  predicted %d objects x %d draws in %.1f s (%.0f obj/s, %.1f us/obj/draw)",
@@ -299,7 +293,7 @@ do_cv <- function(spec = "region") {
   print(group_metrics(p, tag$class, fold, "fold"))
 
   dir.create(PRED_DIR, showWarnings = FALSE, recursive = TRUE)
-  f <- file.path(PRED_DIR, sprintf("oof_%s_%s.csv", VARIANT, gsub("[^A-Za-z0-9]+", "_", spec)))
+  f <- file.path(PRED_DIR, sprintf("oof_%s.csv", gsub("[^A-Za-z0-9]+", "_", spec)))
   fwrite(data.table(oid = tag$oid, class = tag$class, fire_year = tag$fire_year,
                     area_ha = round(tag$area_ha, 3),
                     region = if ("region" %in% names(tag)) tag$region else NA_character_,

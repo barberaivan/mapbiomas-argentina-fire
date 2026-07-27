@@ -2,7 +2,7 @@
 # =============================================================================
 # objects_threshold.R — choose the fire/non-fire cut on OUT-OF-FOLD probabilities
 # =============================================================================
-# The 0.5 default is not the right cut: under grid-blocked CV the grouped model runs
+# The 0.5 default is not the right cut: under grid-blocked CV the model runs
 # sensitivity 0.73 against specificity 0.91, i.e. it under-detects, which is the wrong way
 # round for a burned-area product. This sweeps every threshold on the OUT-OF-FOLD predictions
 # (never in-sample — an in-sample cut is chosen against probabilities the model has already
@@ -10,8 +10,8 @@
 #
 # Run from the repo ROOT:
 #   Rscript collection-01/scripts/objects_threshold.R [oof-file] [--boot N]
-#     oof-file  default data/objects-predictions/oof_grouped_grid_5.csv (the grouped model,
-#               grid-blocked folds — the deployment-relevant design, docs/06)
+#     oof-file  default data/objects-predictions/oof_grid_5.csv (grid-blocked folds — the
+#               deployment-relevant design, docs/06)
 #     --boot N  bootstrap resamples for the threshold's stability interval (default 1000)
 #
 # FOUR CRITERIA, because "optimal" is a choice, not a fact:
@@ -52,7 +52,7 @@ dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
 argv <- commandArgs(trailingOnly = TRUE)
 nboot <- { i <- match("--boot", argv); if (is.na(i)) 1000L else as.integer(argv[i + 1L]) }
 oof_f <- { f <- grep("^--", argv, value = TRUE, invert = TRUE)
-           if (length(f)) f[1] else "collection-01/data/objects-predictions/oof_grouped_grid_5.csv" }
+           if (length(f)) f[1] else "collection-01/data/objects-predictions/oof_grid_5.csv" }
 tag   <- sub("^oof_", "", tools::file_path_sans_ext(basename(oof_f)))
 
 msg <- function(...) write(sprintf(...), stderr())
@@ -167,7 +167,7 @@ show(rbindlist(lapply(levels(droplevels(sw$stratum)), function(s) {
 pick <- best[criterion == "J" & stratum %in% DEPLOY_BANDS,
              .(stratum, n, threshold = t, sens, spec, J, t_boot_q05, t_boot_q95)]
 pick <- pick[order(band_lower(stratum))]
-pick[, `:=`(model = "grouped", oof_source = basename(oof_f), criterion = "youden_J")]
+pick[, `:=`(oof_source = basename(oof_f), criterion = "youden_J")]
 hdr("deployable: Youden threshold per size band")
 show(pick)
 fwrite(pick, CONFIG_OUT)

@@ -205,9 +205,9 @@ Fits one probit-BART on the clean labelled objects and scores a fire-year's obje
 posterior probability of being fire (`p_mean/p_sd/p_q05/p_q95/p_width`). Needs
 `stochtree` (CRAN). Measured timings + the CV result: `docs/06-object_model.md`.
 
-Two predictor variants: `--grouped` (default, 22 columns — 5 aggregated veg fractions) and
-`--full` (40 columns — the 23 raw class fractions). Artifacts are variant-suffixed, so both
-can coexist. Grouped wins the grid-blocked CV; see `docs/06-object_model.md`.
+22 predictors: 17 non-vegetation metrics + 5 aggregated vegetation fractions (the 23 raw class
+fractions summed by group, which measured better than using them raw). See
+`docs/06-object_model.md`.
 
 ```bash
 Rscript collection-01/workflow/06-object_model.R              # fit, then time one year (FY2020)
@@ -216,7 +216,6 @@ Rscript collection-01/workflow/06-object_model.R predict 2020 2014
 Rscript collection-01/workflow/06-object_model.R cv           # spatially blocked: leave-one-region-out
 Rscript collection-01/workflow/06-object_model.R cv grid 5     # 0.5 deg blocks -> 5 folds (the deployment number)
 Rscript collection-01/workflow/06-object_model.R cv random 5    # random folds, leak-inflated, for contrast
-Rscript collection-01/workflow/06-object_model.R cv grid 5 --full   # same folds, 40-predictor variant
 # every year: use the PARALLEL launcher — stochtree prediction is single-threaded, so one
 # process per fire-year (8 at a time) is 4.5 min instead of ~37. Resumable.
 tmux new-session -d -s obj06 '/abs/path/to/collection-01/scripts/run_06_predict.sh -j 8'
@@ -238,12 +237,14 @@ Rscript collection-01/scripts/objects_inspect_export.R 2020 --fields all  # keep
 tmux new-session -d -s obj06i '/abs/path/to/collection-01/scripts/run_06_inspect.sh -j 6'
 ```
 
-The GPKG carries **33 curated fields** (not all 50): identity/size, both verdicts (`fire`,
+The GPKG carries **33 curated fields**: identity/size, both verdicts (`fire`,
 `c00_pass`, and `verdict` = their agreement), why the model called it (`p_mean`, `p_width`,
 `p_thresh`, `p_margin`, `th_band`), burn evidence + timing, the 5 aggregated veg fractions and the
 6 shape metrics. Useful QGIS filters: `"verdict" != 'both'` (disagreement), `abs("p_margin") <
 0.05` (borderline calls), `"p_width" > 0.5` (model has no idea). Note the layer name starts with a
-digit, so SQL contexts need it double-quoted.
+digit, so SQL contexts need it double-quoted. **Where to start:** `"verdict" = 'c00 only' AND
+"area_ha" >= 300` — 6477 objects / 6785 kha (8 % of all object area) that the old filter keeps and the
+model rejects without confidence. Full guidance: docs/06 "How to actually inspect it".
 
 Data exploration behind the size cuts and the collection-00 filter comparison — reads the
 full 1.69 M-object table and the clean labelled table, writes CSVs + PNGs to

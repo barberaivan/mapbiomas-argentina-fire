@@ -120,41 +120,67 @@ labels on one object; jime's 340 labels land on 21 objects). Expect to dedupe/we
 before fitting. One matched object (`2011_57456`, 1 px) has NA `seed_mean`/`date_median` in step
 05 itself — all-dieback objects have no seed/date stats by design (docs/05 §3), not a join failure.
 
-## Measured: the first stochtree run (`workflow/06-object_model.R`, 2026-07-27)
+## The fitting set
 
-`Rscript collection-01/workflow/06-object_model.R` = fit + a one-year prediction probe.
-stochtree **0.4.5**, 8 threads, `OutcomeModel(outcome = "binary", link = "probit")`,
-`num_gfr = 10`, `num_mcmc = 500` with `keep_every = 4` — i.e. **2000 MCMC iterations thinned to
-500 retained draws** (`num_mcmc` is the *retained* count; stochtree runs `num_mcmc * keep_every`).
+`clean_tagged()` in `scripts/objects_data_functions.R` turns the 6831 label↔object pairs into one
+row per OBJECT, reporting every cut: −234 rows whose label hit no object, −10 objects labelled both
+classes, −1315 duplicate labels on an already-labelled object, −1 object with an NA predictor
+(`2011_57456`) → **5255 objects, 2788 fire / 2467 non-fire**, 22 predictors.
 
-**The fitting set** — `clean_tagged()` in `scripts/objects_data_functions.R`, from the 6831 pairs:
-−234 rows whose label hit no object, −10 objects labelled both classes, −1315 duplicate labels on
-an already-labelled object, −1 object with an NA predictor → **5255 objects, 2788 fire / 2467
-non-fire**, 40 predictors. Uneven label density per object is *not* corrected — reweighting by it
-would invent information.
+Uneven label density per object is deliberately **not** corrected — a label is a label, and
+reweighting by it would invent information.
+## The model
+
+**Probit BART, fitted with [`stochtree`](https://cran.r-project.org/package=stochtree) 0.4.5 in R**,
+on the 22 predictors, locally — no geometry is needed to classify (the two per-year CSVs joined on
+`oid` are enough), and no GEE round-trip. `workflow/06-object_model.R`, modes `fit`,
+`predict [years|all]`, `cv [region|grid K|random K]`.
+
+Why BART rather than a boosted ensemble, in one line each: with ~5 k labels there is **no honest way
+to tune hyperparameters**, and BART's defaults are calibrated regularization priors rather than
+placeholders; and the posterior yields a **per-object interval**, which is both an uncertainty
+statement we can publish and the targeting signal for a round-2 collection. `stochtree` specifically
+because its `num_threads` parallelises the GFR sampler and the MCMC *within* a chain, which is real
+wall-clock scaling of the fit.
+
+### As fitted (2026-07-27)
+
+`OutcomeModel(outcome = "binary", link = "probit")`, `num_gfr = 10`, `num_mcmc = 500` with
+`keep_every = 4` — i.e. **2000 MCMC iterations thinned to 500 retained draws** (`num_mcmc` is the
+*retained* count; stochtree runs `num_mcmc * keep_every`). `num_threads = 8` = **physical** cores:
+tree sampling is memory-bandwidth-bound, so the 8 extra hyperthreads mostly add contention. If you
+ever see `num_threads` fall back to 1 on Linux/gcc, the build has no OpenMP.
+
+Thinning is what makes prediction affordable — cost is linear in draws, and 500 draws still put ~25
+order statistics below `p_q05`, so 2000 retained draws would have cost 4× the prediction time and 4×
+the memory for no gain in a 5th percentile.
 
 | step | measured |
 |---|---|
-| fit (5255 × 40, 2000 iter → 500 draws, 8 threads) | **95 s** |
-| serialized fit (JSON) | 89 MB, reloads in 5.6 s |
-| predict FY 2020 — 78 211 objects × 500 draws | **103 s** = 762 obj/s = 2.6 µs/obj/draw |
-| ↳ of which the per-object quantile reduction | ~6 s (1.6 s per 20 k-row chunk) |
-| **extrapolated to all 1 689 419 objects** | **≈ 37 min**, peak RAM one chunk (20 k × 500 ≈ 80 MB) |
-| out-of-fold AUC — see the CV section below | **0.90** grid-blocked (0.976 random, 0.75 leave-one-region-out) |
+| fit (5255 × 22, 2000 iter → 500 draws, 8 threads) | **94 s** |
+| serialized fit (JSON) | 92.7 MB, reloads in ~4 s |
+| predict FY 2020 — 78 211 objects × 500 draws | **102 s** = 769 obj/s = 2.6 µs/obj/draw |
+| **all 28 fire-years / 1 689 383 objects** | **4m33s** on 8 parallel workers (~37 min in one process) |
+| out-of-fold AUC | **0.92** grid-blocked (0.98 random, 0.74 leave-one-region-out) |
 
-**So no — scoring every polygon across posterior draws is not a problem.** 37 min once, at flat
-memory. What *would* be a problem is the naive route the docs warn about above: passing the full
-object set as `X_test` to `bart()` materializes 1.69 M × 500 doubles ≈ **6.8 GB**. Fit → serialize →
-`predict()` per year in chunks → reduce to `p_mean/p_sd/p_q05/p_q95/p_width` → discard the draws.
-Thinning is the other half of the answer: cost is linear in draws, so 2000 retained draws would
-have been 4× the prediction time and 4× the memory for no gain in a 5th percentile.
+**Scoring every object across posterior draws is not a problem** — but only in the right shape.
+Never pass the full object set as `X_test` to `bart()`: 1.69 M × 500 doubles ≈ **6.8 GB**. Instead
+**fit → serialize to JSON → `predict()` per fire-year in `PRED_CHUNK` blocks → reduce each block to
+its summaries and discard the draws**, so peak memory is one block (20 k × 500 ≈ 80 MB) regardless
+of how many objects exist.
 
-### Predictor variant: grouped vegetation fractions beat the 23 raw ones — USE `grouped`
+**Prediction is single-threaded** (measured): `num_threads` is a *sampler* setting, and
+`predict.bartmodel` takes no thread argument — nor do the C++ predict entry points
+(`predict_forest_cpp` and friends). One process pegs one core with its OpenMP threads idle. The
+years are independent, so the parallelism goes at the **process** level: `scripts/run_06_predict.sh`
+runs one `Rscript` per fire-year, 8 at a time, biggest years first, resumable. Each worker
+deserializes the 92.7 MB JSON itself (~1.4 GB RSS), so budget ~1.4 GB × workers.
 
-`--grouped` (default) replaces the 23 raw `frac_c1..frac_c23` with **five summed fractions**, taking
-the design matrix from 40 to 22 columns. Membership is derived from `config/veg_fire_remap.csv`
-**by name** (`objects_data_functions.R::veg_groups`), not from typed-in codes, and any code landing
-in two groups is an error rather than a silent reshuffle:
+### The 22 predictors
+
+17 non-vegetation metrics — `n_pixels`, `area_ha`, `burned_around_{1,2,3}`, `seed_mean`, `n_mean`,
+`doy_median`, `date_span`, `year_calendar`, `fire_year`, `perimeter_m`, `convexity`, `mbr_fill`,
+`mbr_elongation`, `circularity`, `shape_index` — plus **five aggregated vegetation fractions**:
 
 | column | veg_fire classes |
 |---|---|
@@ -165,42 +191,35 @@ in two groups is an error rather than a silent reshuffle:
 | `frac_woody` | 5,6,7,8,9,11 forests + 20,21,22,23 shrublands — **not** 10 forest-inund |
 | *(no group)* | 4 agriculture-per, 10 forest-inund, 14 grassland_cuyo, 16 grassland_pat |
 
-Not region-separated and **not a partition** — the five sum to 0.70 on average, never more than 1.
+Membership is derived from `config/veg_fire_remap.csv` **by name**
+(`objects_data_functions.R::veg_groups`), not from typed-in codes, so a remap change follows through
+— and a code landing in two groups is an error, not a silent reshuffle. The groups are deliberately
+**not** region-separated and **not a partition**: the five sum to 0.70 on average, never above 1.
 
-Same 5255 objects, same folds, same MCMC budget. Grid-blocked (the deployment number):
+These five replaced the 23 raw `frac_c1..frac_c23` fractions after a direct comparison on the same
+5255 objects and the same folds: **the aggregated version won on every grid-blocked metric** (AUC
+0.902 → 0.921, accuracy 0.786 → 0.812), with the gain landing where the error was — the 1–50 ha band
+(61 % of all objects) went 0.872 → 0.903 AUC. The reason is **split budget**: 23 sparse columns were
+58 % of the design matrix and BART draws split variables uniformly over what is available, so merging
+them concentrates the same signal into 5 dense columns. (Leave-one-region-out was a wash, 0.750 →
+0.741 — the gain is not about region-agnosticism.) The raw fractions are kept in the step-05 metrics
+and summed at load time; only the 5 sums enter the model.
 
-| | full (40 cols) | **grouped (22 cols)** |
-|---|---|---|
-| AUC | 0.9017 | **0.9211** |
-| accuracy | 0.786 | **0.812** |
-| sensitivity | 0.687 | **0.729** |
-| specificity | 0.899 | **0.906** |
-| precision | 0.885 | **0.897** |
+### What comes out per object
 
-Grouped wins on every pooled metric, and **the gain lands where the error was**: the 1–50 ha band
-(61 % of all objects) goes 0.872 → **0.903** AUC, and the one hard fold — the high-prevalence
-fold 5 — goes 0.816 → **0.864**. Above 300 ha the two are equal (0.956 / 0.953).
+`p_mean`, `p_sd`, `p_q05`, `p_q95` and **`p_width = p_q95 − p_q05`** precomputed, plus the `fire`
+call from the size-band threshold. The semantics matter: these bound the **probability** — epistemic
+uncertainty about the fitted function — *not* the class label. A predictive interval for a Bernoulli
+draw would be 0/1 and useless. Wide `p_width` = the model does not know = where a round-2 collection
+should go.
 
-Leave-one-region-out is a **wash**: AUC 0.750 → 0.741, accuracy 0.671 → 0.684. Worth noting because
-the stated hope was that region-agnostic groups would transfer better across ecoregions — they do
-not. The gain is not about region-agnosticism, it is about **split budget**: 23 sparse columns were
-58 % of the design matrix and BART draws split variables uniformly over what is available, so
-merging them concentrates the same signal into 5 dense columns. Per region the changes cancel
-(Pampas 0.700 → 0.789, Bosque Atlántico 0.839 → 0.764, Patagonia 0.773 → 0.721, Chaco ≈, Puna ≈).
-
-Fitted grouped model: 94 s, JSON 92.7 MB; FY 2020 prediction 100.5 s (778 obj/s), 68.6 % of objects
-above 0.5 covering 4326 of 4841 kha, mean `p_width` 0.333 (vs 0.370 for the full variant — the
-posterior is also a little tighter). All artifacts are variant-suffixed
-(`bart_object_model_<variant>.json`, `objects_<fy>_pred_<variant>.csv`, `oof_<variant>_<spec>.csv`),
-so refitting one never overwrites the other.
-
-Still open (BACKLOG): the 0.5 cut is not the right threshold — sensitivity 0.73 against specificity
-0.91 under grid blocking. Pick it on `data/objects-predictions/oof_grouped_grid_5.csv`.
+The classified objects yield the set of fire `oid`s, and **only that subset is uploaded** — we do
+not upload a full-year asset and filter it in GEE.
 
 ### Threshold: 0.5 is wrong, and the right cut RISES with object size
 
 `scripts/objects_threshold.R` sweeps every cut on the **out-of-fold** probabilities
-(`oof_grouped_grid_5.csv` — never in-sample, or the cut would be chosen against answers the model
+(`oof_grid_5.csv` — never in-sample, or the cut would be chosen against answers the model
 already saw) and reports four criteria. **Youden's J (sens + spec − 1) is the headline** because it
 is the only one here that does not move with prevalence, and our labelled set is not a random sample
 of objects. F1 and accuracy are reported but drift with that same sampling bias; `J_area` weights
@@ -305,7 +324,7 @@ collection should target 1–50 ha objects with wide `p_width`.
 
 A full-year GEE ingest is ~8 h by hand (no GCS bucket — see "Uploading the classified fire subset"),
 which is not a price worth paying to *inspect* a model. `scripts/objects_inspect_export.R` joins the
-predictions + all 40 predictors + the c-00 verdict onto the step-05 geometry already on disk:
+predictions + the object metrics + the c-00 verdict onto the step-05 geometry already on disk:
 
 - **`<fy>_objects_pred.gpkg`** — every object of the year, **33 curated fields** (see below). Open
   in QGIS, graduate the fill on `p_mean` (or `p_width`), add an XYZ imagery basemap, and use the
@@ -326,15 +345,16 @@ resumable, biggest-first, RAM monitor alongside): **1m4s on 6 workers, 6.3 GB, p
 is I/O- and memory-bound (a worker holds a whole year's geometry — up to 386 MB / 93 k
 multipolygons), hence `-j 6` rather than 8.
 
-> **QGIS gotcha:** the layer name starts with a digit (`2020_objects_pred_grouped`), so any SQL
+> **QGIS gotcha:** the layer name starts with a digit (`2020_objects_pred`), so any SQL
 > context — DB Manager, virtual layers, `ogrinfo -sql` — needs it **double-quoted**. Symbology and
 > attribute-table filters are unaffected.
 
-#### The inspection field set (33 fields, not all 50)
+#### The inspection field set (33 fields)
 
-The 23 raw `frac_c*` columns are **not** in the deployed model and 28 years of them is dead weight in
-a table read by eye, so the GPKG carries a curated set ordered the way a row is read — what it is,
-what we decided, why, then the evidence. `--fields all` restores everything for one year.
+The 23 raw `frac_c*` columns are **not** model predictors (they are summed into the 5 groups) and 28
+years of them is dead weight in a table read by eye, so the GPKG carries a curated set ordered the way
+a row is read — what it is, what we decided, why, then the evidence. `--fields all` restores
+everything for one year.
 
 | group | fields |
 |---|---|
@@ -359,6 +379,47 @@ Four fields do not come from step 05 and are the reason this is worth a script r
 Note `size_class` (6 display classes) is deliberately finer than `th_band` (4 threshold bands): a row
 can be display class `>=1000 ha` while its call came from band `>=300 ha`. The display breaks split
 1 ha into `<0.5` / `0.5-1` because that is where the minimum-size decision lives.
+
+#### How to actually inspect it — where to look first
+
+Across all 28 fire-years the model and the collection-00 filter **disagree on 27 % of the object
+area**, and the disagreement is cleanly structured — `c00 only` is *large* objects, `model only` is
+*small* ones:
+
+| verdict | objects | area (kha) | mean ha | mean `p_width` | % of area |
+|---|---|---|---|---|---|
+| both | 292 869 | 55 892 | 191 | 0.427 | 65.8 |
+| **c00 only** (filter keeps, model rejects) | 108 818 | 12 621 | 116 | 0.320 | 14.8 |
+| **model only** (model keeps, filter rejects) | 860 018 | 10 304 | 12 | 0.511 | 12.1 |
+| neither | 427 678 | 6 174 | 14 | 0.237 | 7.3 |
+
+**Start with `"verdict" = 'c00 only' AND "area_ha" >= 300`.** That is **6477 objects holding 6785 kha
+— 8 % of all object area** — where the old filter auto-accepts under its `>= 300 ha` rule and the
+model rejects *without confidence* (mean `p_mean` 0.30, mean `p_width` 0.56). It is the
+highest-area-stakes set in the collection and small enough to walk object by object, and at `>= 300 ha`
+each one is unmistakable against imagery. Whatever is decided there moves the headline number more
+than anything else in step 06.
+
+By contrast `model only` below 1 ha is **29 421 objects for 21 kha** — 0.02 % of area. Worth a glance
+to see *what* they are, but not worth arguing about.
+
+The filters this field set exists for:
+
+| expression | what it shows |
+|---|---|
+| `"verdict" != 'both'` | every disagreement with the collection-00 filter |
+| `"verdict" = 'c00 only' AND "area_ha" >= 300` | **the set to review first** (see above) |
+| `abs("p_margin") < 0.05` | borderline calls — objects that would flip under a small threshold change |
+| `"p_width" > 0.5` | where the model has no idea; also the round-2 collection targets |
+| `"size_class" IN ('<0.5 ha','0.5-1 ha')` | the minimum-size decision |
+| `"th_band" = '1-50 ha' AND "fire" = 1` | the weakest band's positives (61 % of all objects) |
+| `"seed_mean" < 0.1 AND "fire" = 1` | fire calls with little seed support — the most suspicious positives |
+
+Suggested setup: categorise the fill on `verdict` (4 colours), add an XYZ satellite basemap, and keep
+`p_mean`, `p_width`, `p_margin`, `area_ha` and `seed_mean` visible in the attribute form. Then sort the
+attribute table by `p_margin` to walk from the most borderline call outwards. The companion
+`<fy>_objects_sample.geojson` (200 objects, decile-stratified) is the same thing for a geemap/leafmap
+notebook when you want GEE imagery — `candseed`, min-NBR — under the polygons instead of a basemap.
 
 That covers Lican's suggestion without a Shiny app: the sampling-by-predictor-range panel is a QGIS
 filter expression or a geemap cell. Build the Shiny app only if a *shared* review tool is wanted —
@@ -461,156 +522,6 @@ specificity 0.77, precision 0.70** (vs 0.92 / 0.93 / 0.91 for BART out-of-fold).
 Conclusion: keep the filter only as a **baseline to compare against**, and as the source of the two
 ideas worth keeping — the hard small-object cut, and size-stratified reasoning. The model replaces
 the thresholds.
-
-## Model fitting and classification
-
-Feed all the metric variables to **XGB additive trees**, fit and classify **locally** (python
-or R), tuning hyperparams with CV. **No geometry is needed for the model** — it reads the two
-per-year CSVs (`_raster_metrics` + `_shape_metrics`) joined on `oid`. The most important predictor
-is **`seed_mean`** (seed share). Include the **fire-year** (recoverable from `oid`) and
-**`year_calendar`**; year mostly operates through `n_mean` (e.g. in 1999 many real fires had few
-seeds). No independent validation — the CV is only for hyperparam tuning.
-
-### Sign-constrained XGB (option, given thin labels)
-
-The label set is small relative to 42 predictors, so the ensemble is free to invent a
-**reversal** in sparse interior regions of predictor space — a gap between observed clusters
-where nothing pins the fit down. XGBoost's `monotone_constraints` (per-feature `{-1,0,1}`,
-`hist`/`approx`/`exact`) removes that freedom by rejecting any split whose child weights run
-against the declared sign and propagating the resulting bounds down the subtree.
-
-Two things to be clear about before using it:
-
-- What it enforces is **conditional (ceteris-paribus) monotonicity** — monotone in `x_j` with
-  every other feature held fixed. That is *stronger* than marginal monotonicity, not weaker;
-  a monotone PDP does not imply it (a PDP averages monotone slices, so it is monotone
-  automatically and cannot be used to check the property).
-- It therefore **forbids sign-flipping interactions** on the constrained feature. Magnitude
-  can still vary freely across regions; direction cannot. That is a real modelling assumption
-  and it costs fit, since the bound propagation also blocks some splits that never violated
-  anything.
-
-So constrain only signs defensible under cross-examination — realistically **`seed_mean`**
-(more seed share → more fire), possibly `n_mean`. **Not** `area_ha` (very large objects are
-either real fire complexes or dilation-bridging artifacts — see the 1.71 Mha `2000_57529`),
-not the shape metrics, and not `burned_around_*` (a region-wide ash/drought false-positive
-patch pushes it up for the wrong reason).
-
-It does **not** help outside the training range: trees are constant there, constrained or not.
-The gain is strictly in sparse interior regions.
-
-Related: `interaction_constraints` (whitelist which features may appear together in a tree) is
-the companion knob if the fitted surface turns out to be implausibly interactive.
-
-### BART (option, and arguably the better fit here)
-
-**Same function class as XGB** — a sum of trees, piecewise constant on axis-aligned partitions —
-but fitted by MCMC (Bayesian backfitting) rather than greedy stagewise descent, so every tree
-keeps being revisited conditional on the others instead of being frozen once added. For
-fire/non-fire use **probit BART** (Albert–Chib latent-variable augmentation).
-
-Why it suits *this* step specifically:
-
-- **No CV tuning.** With a small label set we cannot tune honestly anyway; BART's defaults are
-  calibrated regularization priors, not placeholders (below).
-- **The posterior gives a per-object SD**, which is a direct map of *where the model is unsure* —
-  exactly the targeting signal for a second round of point collection. Upload posterior **mean
-  and SD** as FC properties and the collection round-2 targets can be picked on the map.
-- We have no independent validation set, so a point estimate with no uncertainty is a weak
-  deliverable; a posterior is not.
-
-Cost: far slower than XGB (MCMC), though trivial at a few thousand labelled objects.
-
-**Default priors** (Chipman, George & McCulloch 2010) — studied, not arbitrary, and already
-partly data-calibrated:
-
-| component | prior | default |
-|---|---|---|
-| tree depth | `P(node at depth d splits) = α(1+d)^(−β)` | `α=0.95, β=2` → ~55 % of trees have 2 terminal nodes, ~3 % have ≥5 |
-| leaf values | `N(0, σ_μ²)`, `σ_μ = 3/(k√m)` on the probit scale | `k=2` (main shrinkage knob; sensible range 1–3) |
-| split variable / cut point | uniform over available | see DART below |
-| number of trees | — | `m=200`; results robust to it |
-
-Tuning is legitimate and was proposed in the original paper (CV over `k`, `m`, and the σ prior;
-`bartMachineCV` grid-searches it). With few labels, prefer **defaults + a sensitivity check on
-`k`** over a noisy CV.
-
-With 42 predictors, most of them probably irrelevant, consider the **DART sparsity prior**
-(Linero 2018) — a Dirichlet prior on splitting proportions in place of the uniform, which does
-variable selection. Exposed as a `sparse=TRUE`-style argument in the `BART` package; verify the
-exact interface for the probit routine before relying on it.
-
-#### Which implementation (as of 2026-07)
-
-**Use [`stochtree`](https://cran.r-project.org/package=stochtree)** — the successor package from
-the BART/XBART authors ([arXiv:2512.12051](https://arxiv.org/abs/2512.12051)), C++ core with both
-R and Python bindings, CRAN 0.3.1 since Feb 2026.
-
-The deciding factor is *what kind* of parallelism each package offers, given our 8 physical cores:
-
-| package | how it uses cores | verdict |
-|---|---|---|
-| `BART` | `mc.pbart(mc.cores=8)` forks concurrent **chains**; OpenMP only in `predict` | 8× draws, not 8× speed; 8× memory |
-| `dbarts` | `bart2`'s `n.threads` defaults to `min(guessNumCores(), n.chains)` — threading is essentially *across* chains | same limitation |
-| `bartMachine` | Java/rJava backend | rJava setup friction; skip |
-| **`stochtree`** | **`num_threads` parallelises the GFR sampler and the MCMC** (not prediction — see below) | genuine within-chain scaling of the FIT — real wall-clock reduction |
-
-> **Correction (measured, stochtree 0.4.5): `num_threads` does NOT cover prediction.** This table
-> claimed it did, on the strength of the docs; the run says otherwise. `predict.bartmodel` has no
-> thread argument, and neither do the C++ predict entry points (`predict_forest_cpp` and friends) —
-> `num_threads` is a *sampler* setting stored for the fit. A `predict all` process therefore pegs
-> exactly one core at 100 % with its 8 OpenMP threads idle, and takes ~37 min for 1.69 M objects.
-> The fix is process-level, not thread-level: the fire-years are independent, so
-> **`scripts/run_06_predict.sh`** runs one `Rscript` per year, 8 at a time (biggest years first,
-> resumable, skipping years already scored) and finishes in ~5 min. Each worker deserializes the
-> 97 MB fit JSON itself (~4 s, ~1.4 GB RSS), so plan ~1.4 GB × workers of RAM.
-
-Relevant `stochtree::bart()` arguments (the last four live inside `general_params`):
-
-- `num_gfr = 5` — grow-from-root warm start; converges to high-probability regions far faster
-  than cold MCMC, so fewer MCMC iterations are needed. Also warm-starts each chain when
-  `num_chains > 1`.
-- `num_mcmc = 100` — **raise this to 1000–2000.** A 5th percentile from 100 draws is the 5th
-  order statistic, far too noisy for the `p_q05` we intend to map. GFR is what makes it affordable.
-- `num_threads` — set to **8 (physical), not 16.** Tree sampling is memory-bandwidth-bound, so
-  hyperthreaded logical cores mostly add contention. Defaults to 1 if OpenMP was not compiled
-  in — if you see 1 on Linux/gcc, something is wrong with the build.
-- `outcome_model` — the probit/binary switch. Note `probit_outcome_model` is **deprecated** in
-  favour of it, so check `?bart` for the accepted value rather than copying older examples.
-- **JSON serialization** — fit once, serialize, predict per year in a separate process. Drops
-  straight into the one-`Rscript`-per-year pattern of `scripts/run_05_years.sh` (docs/05 §4.1).
-
-**The tradeoff to be aware of:** stochtree's `variable_weights` is a *fixed* vector of relative
-split probabilities, **not** a learned Dirichlet — so it does not give you DART's automatic
-variable selection. `BART::pbart(..., sparse=TRUE)` remains the only one of these with the learned
-sparsity prior. Fit stochtree first (fast enough to iterate) and fall back only if variable
-selection turns out to be the binding problem; a middle route is to derive `variable_weights` from
-a first pass.
-
-**Prediction is the memory risk, not the fit.** We fit on the labelled objects only (a few
-thousand) but predict on **all 1.69 M**. At 1000 draws that is ~1.7e9 doubles ≈ 13.5 GB if the
-draw matrix is materialized. So: never pass the full object set as `X_test` to the fit; `predict()`
-in chunks (one fire-year ≈ 75 k objects × 1000 draws ≈ 600 MB) and reduce to the summaries inside
-the loop, discarding the draws.
-
-Upload four DBF-safe properties per object: **`p_mean`, `p_q05`, `p_q95`**, plus
-**`p_width = p_q95 − p_q05`** precomputed so uncertainty can be thresholded in GEE without
-arithmetic across two properties. Note the semantics: these bound the **probability** (epistemic
-uncertainty about the fitted function), *not* the class label — a predictive interval for a
-Bernoulli draw would be 0/1 and useless. Wide `p_width` = the model does not know = where round-2
-point collection should go.
-
-**Caveat:** a monotone variant (mBART) exists in the literature but a maintained R implementation
-is uncertain — check before assuming you can have the sign constraint *and* the posterior.
-
-Optional **hard size constraints**: drop objects `< 1 ha`, and possibly apply the model only to
-`1 ha ≤ area < 2000 ha` (very large objects are rarely non-fire) — the upper cut is riskier. If the
-`< 1 ha` cut is adopted, apply it **before** the fire-subset upload (it removes the long tail of
-tiny noise objects, shrinking the FC that gets ingested); it could also be applied at data
-collection so users don't spend time on objects that won't be used.
-
-The classified objects yield the set of fire `oid`s. **Then upload only the fire subset** (below) —
-we do not upload, then filter, a full-year asset.
 
 ## Uploading the classified fire subset
 

@@ -13,27 +13,23 @@
 # sharing an in-process model, and it is cheap next to the scoring.
 #
 # Usage (from the repo ROOT, inside tmux — see CLAUDE.md "Running long scripts"):
-#   collection-01/scripts/run_06_predict.sh [-j WORKERS] [--full] [--force] [year ...]
+#   collection-01/scripts/run_06_predict.sh [-j WORKERS] [--force] [year ...]
 #     -j WORKERS  parallel years (default 8 = physical cores)
-#     --full      the 40-predictor variant (default: grouped, the deployed one)
 #     --force     re-score years that already have a prediction CSV
 #     year …      only these fire-years (default: every year with step-05 metrics)
 #
-# RESUMABLE: a year whose objects_<fy>_pred_<variant>.csv already exists is skipped unless
-# --force, so a killed-and-relaunched run never redoes finished years.
+# RESUMABLE: a year whose objects_<fy>_pred.csv already exists is skipped unless --force, so a
+# killed-and-relaunched run never redoes finished years.
 set -u
 
 cd "$(dirname "$0")/../.." || exit 1   # repo root (the R scripts expect to run from here)
 
 JOBS=8
-VARIANT=grouped
-VFLAG=""
 FORCE=0
 YEARS=()
 while (( $# )); do
   case "$1" in
     -j)      JOBS=$2; shift 2 ;;
-    --full)  VARIANT=full; VFLAG="--full"; shift ;;
     --force) FORCE=1; shift ;;
     [0-9][0-9][0-9][0-9]) YEARS+=("$1"); shift ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
@@ -44,7 +40,7 @@ POLY_DIR=collection-01/data/snic-polygons
 PRED_DIR=collection-01/data/objects-predictions
 LOGDIR=collection-01/logs
 STAMP=$(date '+%Y%m%d_%H%M%S')
-RUNLOG="$LOGDIR/06_predict_${VARIANT}_${STAMP}.log"
+RUNLOG="$LOGDIR/06_predict_${STAMP}.log"
 mkdir -p "$LOGDIR" "$PRED_DIR"
 
 say() { printf '%s %s\n' "$(date '+%F %T')" "$1" | tee -a "$RUNLOG"; }
@@ -62,7 +58,7 @@ fi
 # and running alone while 7 workers idle.
 TODO=()
 while IFS= read -r fy; do
-  out="$PRED_DIR/objects_${fy}_pred_${VARIANT}.csv"
+  out="$PRED_DIR/objects_${fy}_pred.csv"
   if (( FORCE == 0 )) && [[ -s "$out" ]]; then
     say "SKIP  FY$fy (already scored: $(basename "$out"))"
   else
@@ -74,20 +70,20 @@ done < <(for fy in "${YEARS[@]}"; do
 
 (( ${#TODO[@]} )) || { say "nothing to do — every year already scored"; exit 0; }
 
-say "PREDICT ${#TODO[@]} year(s) on $JOBS worker(s), variant=$VARIANT  log=$RUNLOG"
+say "PREDICT ${#TODO[@]} year(s) on $JOBS worker(s)  log=$RUNLOG"
 say "  order (biggest first): ${TODO[*]}"
 
 t0=$SECONDS
 # One Rscript per year. Per-year logs so a failure is attributable; the pool is plain xargs -P.
 printf '%s\n' "${TODO[@]}" | xargs -P "$JOBS" -I{} bash -c '
-  fy={}; log="'"$LOGDIR"'/06_predict_'"$VARIANT"'_${fy}.log"
+  fy={}; log="'"$LOGDIR"'/06_predict_${fy}.log"
   s=$SECONDS
-  if Rscript collection-01/workflow/06-object_model.R predict "$fy" '"$VFLAG"' > "$log" 2>&1; then
+  if Rscript collection-01/workflow/06-object_model.R predict "$fy" > "$log" 2>&1; then
     printf "%s YEAR  FY%s done in %ss\n" "$(date "+%F %T")" "$fy" "$((SECONDS-s))"
   else
     printf "%s YEAR  FY%s FAILED rc=%s — see %s\n" "$(date "+%F %T")" "$fy" "$?" "$log"
   fi' | tee -a "$RUNLOG"
 
 dt=$(( SECONDS - t0 ))
-n=$(ls "$PRED_DIR"/objects_[0-9][0-9][0-9][0-9]_pred_${VARIANT}.csv 2>/dev/null | wc -l)
+n=$(ls "$PRED_DIR"/objects_[0-9][0-9][0-9][0-9]_pred.csv 2>/dev/null | wc -l)
 say "BATCH done in $((dt/60))m$((dt%60))s — $n year(s) now scored in $PRED_DIR"

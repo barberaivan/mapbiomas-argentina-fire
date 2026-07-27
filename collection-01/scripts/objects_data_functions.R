@@ -8,7 +8,7 @@
 # Contents
 #   read_year_objects(fy) / read_all_objects()  step-05 raster+shape metrics, joined on oid
 #   add_derived(m)                              doy_median + date_span (see note below)
-#   PREDICTORS                                  the 40 model columns
+#   PREDICTORS                                  the 22 model columns
 #   clean_tagged()                              polygons_data_merged.csv -> one clean row per oid
 #   c00_case(d) / c00_pass(d)                   the collection-00 empirical filter
 # =============================================================================
@@ -50,8 +50,8 @@ read_all_objects <- function(years = object_years()) {
 # every training split, where trees are constant anyway. Keep the two parts that carry
 # information a year identifier does not: WHEN in the season it burned, and for HOW LONG.
 # The year itself stays available through fire_year / year_calendar (docs/06).
-# The five aggregated veg fractions are built here too, so BOTH predictor variants are always
-# present on any table the loaders return and the variant choice is purely a column selection.
+# The five aggregated veg fractions are built here too, so every table the loaders return is
+# ready for the model without a second pass.
 add_derived <- function(m) {
   m[, doy_median := as.integer(format(as.Date(date_median, origin = EPOCH), "%j"))]
   m[, date_span  := as.numeric(date_max - date_min)]
@@ -59,18 +59,20 @@ add_derived <- function(m) {
 }
 
 # ── the model columns ────────────────────────────────────────────────────────
-VEG_FRAC   <- sprintf("frac_c%d", 1:23)      # veg_fire abundance per class (docs/05 §3)
+# 22 predictors: 17 non-vegetation metrics + the 5 aggregated vegetation fractions below.
+VEG_FRAC   <- sprintf("frac_c%d", 1:23)      # veg_fire abundance per class (docs/05 §3) — the
+                                             # RAW columns, summed into the 5 groups below; not
+                                             # predictors themselves
 NON_VEG    <- c("n_pixels", "area_ha", "burned_around_1", "burned_around_2", "burned_around_3",
                 "seed_mean", "n_mean", "doy_median", "date_span", "year_calendar", "fire_year",
                 "perimeter_m", "convexity", "mbr_fill", "mbr_elongation", "circularity",
                 "shape_index")
-PREDICTORS <- c(NON_VEG, VEG_FRAC)                       # "full" variant: 40 columns
 
-# ── aggregated vegetation groups — the "grouped" predictor variant ───────────
-# Five summed fractions in place of the 23 raw class fractions (22 predictors instead of 40).
-# Why: 23 sparse columns were most of the design matrix, many classes are near-empty in the
-# labels, and BART draws split variables uniformly over what is available, so the sparse
-# fractions dilute the split budget.
+# ── aggregated vegetation groups ─────────────────────────────────────────────
+# Five summed fractions in place of the 23 raw class fractions. Why: 23 sparse columns were most
+# of the design matrix, many classes are near-empty in the labels, and BART draws split variables
+# uniformly over what is available, so the sparse fractions diluted the split budget. Measured
+# better on every grid-blocked metric (docs/06 "The 22 predictors").
 #
 # Membership is derived from config/veg_fire_remap.csv BY NAME, not from a hand-typed list of
 # codes, so a remap change follows through — and a code landing in two groups is an error, not
@@ -87,7 +89,7 @@ PREDICTORS <- c(NON_VEG, VEG_FRAC)                       # "full" variant: 40 co
 VEG_REMAP_CSV  <- "collection-01/config/veg_fire_remap.csv"
 VEG_GROUP_COLS <- c("frac_agri", "frac_grass_inund", "frac_pasture", "frac_grass_temp",
                     "frac_woody")
-PREDICTORS_GROUPED <- c(NON_VEG, VEG_GROUP_COLS)         # "grouped" variant: 22 columns
+PREDICTORS     <- c(NON_VEG, VEG_GROUP_COLS)             # the 22 model columns
 
 veg_groups <- function(verbose = FALSE) {
   d  <- unique(fread(VEG_REMAP_CSV)[, .(veg_fire, veg_fire_name)])[veg_fire <= 23L][order(veg_fire)]

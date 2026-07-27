@@ -12,30 +12,25 @@
 # for the full 28 years.
 #
 # Usage (from the repo ROOT, inside tmux — see CLAUDE.md "Running long scripts"):
-#   collection-01/scripts/run_06_inspect.sh [-j WORKERS] [--sample N] [--full] [--force] [year ...]
+#   collection-01/scripts/run_06_inspect.sh [-j WORKERS] [--sample N] [--force] [year ...]
 #     -j WORKERS  parallel years (default 6)
 #     --sample N  objects per p_mean decile in the companion GeoJSON (default 20; 0 = skip)
-#     --full      the 40-predictor variant (default: grouped, the deployed one)
 #     --force     rebuild years that already have an output GPKG
 #     year …      only these fire-years (default: every year with a prediction CSV)
 #
-# RESUMABLE: a year whose <fy>_objects_pred_<variant>.gpkg already exists is skipped unless
-# --force.
+# RESUMABLE: a year whose <fy>_objects_pred.gpkg already exists is skipped unless --force.
 set -u
 
 cd "$(dirname "$0")/../.." || exit 1   # repo root (the R scripts expect to run from here)
 
 JOBS=6
 SAMPLE=20
-VARIANT=grouped
-VFLAG=""
 FORCE=0
 YEARS=()
 while (( $# )); do
   case "$1" in
     -j)       JOBS=$2; shift 2 ;;
     --sample) SAMPLE=$2; shift 2 ;;
-    --full)   VARIANT=full; VFLAG="--full"; shift ;;
     --force)  FORCE=1; shift ;;
     [0-9][0-9][0-9][0-9]) YEARS+=("$1"); shift ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
@@ -48,7 +43,7 @@ OUT_DIR=collection-01/data/objects-inspect
 LOGDIR=collection-01/logs
 MONITOR=collection-01/scripts/mem_monitor.sh
 STAMP=$(date '+%Y%m%d_%H%M%S')
-RUNLOG="$LOGDIR/06_inspect_${VARIANT}_${STAMP}.log"
+RUNLOG="$LOGDIR/06_inspect_${STAMP}.log"
 MEMLOG="$LOGDIR/06_inspect_mem_${STAMP}.log"
 mkdir -p "$LOGDIR" "$OUT_DIR"
 
@@ -58,14 +53,14 @@ say() { printf '%s %s\n' "$(date '+%F %T')" "$1" | tee -a "$RUNLOG"; }
 if (( ${#YEARS[@]} == 0 )); then
   while IFS= read -r f; do
     b=$(basename "$f"); YEARS+=("${b:8:4}")
-  done < <(ls "$PRED_DIR"/objects_[0-9][0-9][0-9][0-9]_pred_${VARIANT}.csv 2>/dev/null)
+  done < <(ls "$PRED_DIR"/objects_[0-9][0-9][0-9][0-9]_pred.csv 2>/dev/null)
 fi
-(( ${#YEARS[@]} )) || { echo "no ${VARIANT} predictions in $PRED_DIR — run run_06_predict.sh first" >&2; exit 1; }
+(( ${#YEARS[@]} )) || { echo "no predictions in $PRED_DIR — run run_06_predict.sh first" >&2; exit 1; }
 
 # biggest years first, by source geometry size — keeps a 386 MB year off the tail of the pool
 TODO=()
 while IFS= read -r fy; do
-  out="$OUT_DIR/${fy}_objects_pred_${VARIANT}.gpkg"
+  out="$OUT_DIR/${fy}_objects_pred.gpkg"
   if (( FORCE == 0 )) && [[ -s "$out" ]]; then
     say "SKIP  FY$fy (already built: $(basename "$out"))"
   else
@@ -83,23 +78,23 @@ bash "$MONITOR" "$MEMLOG" 15 3072 &
 MON=$!
 trap 'kill "$MON" 2>/dev/null' EXIT
 
-say "INSPECT ${#TODO[@]} year(s) on $JOBS worker(s), variant=$VARIANT sample=$SAMPLE"
+say "INSPECT ${#TODO[@]} year(s) on $JOBS worker(s), sample=$SAMPLE"
 say "  log=$RUNLOG mem=$MEMLOG"
 say "  order (biggest first): ${TODO[*]}"
 
 t0=$SECONDS
 printf '%s\n' "${TODO[@]}" | xargs -P "$JOBS" -I{} bash -c '
-  fy={}; log="'"$LOGDIR"'/06_inspect_'"$VARIANT"'_${fy}.log"
+  fy={}; log="'"$LOGDIR"'/06_inspect_${fy}.log"
   s=$SECONDS
-  if Rscript collection-01/scripts/objects_inspect_export.R "$fy" --sample '"$SAMPLE"' '"$VFLAG"' > "$log" 2>&1; then
-    mb=$(du -m "'"$OUT_DIR"'/${fy}_objects_pred_'"$VARIANT"'.gpkg" 2>/dev/null | cut -f1)
+  if Rscript collection-01/scripts/objects_inspect_export.R "$fy" --sample '"$SAMPLE"' > "$log" 2>&1; then
+    mb=$(du -m "'"$OUT_DIR"'/${fy}_objects_pred.gpkg" 2>/dev/null | cut -f1)
     printf "%s YEAR  FY%s done in %ss (%s MB)\n" "$(date "+%F %T")" "$fy" "$((SECONDS-s))" "${mb:-?}"
   else
     printf "%s YEAR  FY%s FAILED rc=%s — see %s\n" "$(date "+%F %T")" "$fy" "$?" "$log"
   fi' | tee -a "$RUNLOG"
 
 dt=$(( SECONDS - t0 ))
-n=$(ls "$OUT_DIR"/[0-9][0-9][0-9][0-9]_objects_pred_${VARIANT}.gpkg 2>/dev/null | wc -l)
+n=$(ls "$OUT_DIR"/[0-9][0-9][0-9][0-9]_objects_pred.gpkg 2>/dev/null | wc -l)
 tot=$(du -sh "$OUT_DIR" 2>/dev/null | cut -f1)
 say "BATCH done in $((dt/60))m$((dt%60))s — $n layer(s), $tot in $OUT_DIR"
 grep -c WARN "$MEMLOG" >/dev/null 2>&1 && say "  NOTE: $(grep -c WARN "$MEMLOG") near-OOM WARN line(s) in $MEMLOG"

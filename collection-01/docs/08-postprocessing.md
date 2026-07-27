@@ -69,7 +69,7 @@ Everything is calendar-year.
 
 **Ours (steps 01–07):** per-observation logistic-regression burn probability → per-pixel
 burn-probability time-series metrics → SNIC segmentation into fire objects on a **non-calendar
-fire-year** → object-level XGBoost fire/non-fire classification. Our month of burn is **measured**
+fire-year** → object-level probit-BART fire/non-fire classification. Our month of burn is **measured**
 per pixel (`abs_date`), not inferred from min-NBR.
 
 Two consequences step 08 must absorb — both resolved in §6:
