@@ -78,6 +78,10 @@ POST_DRAWS <- envi("POST_DRAWS",  500L)
 NUM_GFR    <- envi("NUM_GFR",      10L)   # grow-from-root warm start; iterations are cheap
 PRED_CHUNK <- envi("PRED_CHUNK", 20000L)
 GRID_DEG   <- 0.5          # ~50 km spatial blocks for `cv grid` (see do_cv)
+# Size-band cuts on p_mean, chosen on out-of-fold predictions by scripts/objects_threshold.R.
+# Absent -> predict falls back to 0.5 and says so. The bands rise with size (0.18 / 0.41 / 0.60)
+# because the model is far more confident on big objects; docs/06 "Threshold".
+THRESH_CSV <- "collection-01/config/object_model_thresholds.csv"
 
 msg <- function(...) write(sprintf(...), stderr())
 hdr <- function(s) { msg(""); msg("== %s ==", s) }
@@ -121,6 +125,20 @@ summarise_draws <- function(P) {
   data.table(p_mean = round(mu, 4), p_sd = round(sd, 4),
              p_q05 = round(q[1, ], 4), p_q95 = round(q[2, ], 4),
              p_width = round(q[2, ] - q[1, ], 4))
+}
+
+# Per-object fire call. Reads the size-band thresholds if they exist, else 0.5 everywhere.
+fire_call <- function(area_ha, p) {
+  if (!file.exists(THRESH_CSV)) {
+    msg("  no %s — calling fire at the 0.5 default", basename(THRESH_CSV))
+    return(list(fire = as.integer(p > 0.5), rule = "p > 0.5"))
+  }
+  th <- fread(THRESH_CSV)
+  lo <- c("<1 ha" = 0, "1-50 ha" = 1, "50-300 ha" = 50, ">=300 ha" = 300)
+  th <- th[order(lo[stratum])]
+  t_of <- th$threshold[findInterval(area_ha, unname(lo[th$stratum]))]
+  list(fire = as.integer(p > t_of),
+       rule = paste(sprintf("%s: p>%.3f", th$stratum, th$threshold), collapse = " | "))
 }
 
 # n x draws matrix of P(fire). With terms = "y_hat" stochtree returns the matrix bare;
@@ -188,15 +206,19 @@ do_predict <- function(years) {
 
     res <- data.table(oid = obj$oid, fire_year = fy)
     res[ok, names(out[[1]]) := rbindlist(out)]
+    fc <- fire_call(obj$area_ha, res$p_mean)
+    res[, fire := fc$fire]
     f <- file.path(PRED_DIR, sprintf("objects_%d_pred_%s.csv", fy, VARIANT))
     fwrite(res, f, na = "NA")
 
     msg("  predicted %d objects x %d draws in %.1f s (%.0f obj/s, %.1f us/obj/draw)",
         nrow(X), meta$draws, dt_pred, nrow(X) / dt_pred,
         1e6 * dt_pred / (nrow(X) * meta$draws))
-    msg("  p_mean > 0.5: %d objects (%.1f %%), %.0f of %.0f kha",
-        sum(res$p_mean > .5, na.rm = TRUE), 100 * mean(res$p_mean > .5, na.rm = TRUE),
-        sum(obj$area_ha[which(res$p_mean > .5)]) / 1e3, sum(obj$area_ha) / 1e3)
+    msg("  fire call [%s]", fc$rule)
+    msg("  -> %d objects (%.1f %%), %.0f of %.0f kha   [at 0.5 it would be %d / %.0f kha]",
+        sum(res$fire, na.rm = TRUE), 100 * mean(res$fire, na.rm = TRUE),
+        sum(obj$area_ha[which(res$fire == 1L)]) / 1e3, sum(obj$area_ha) / 1e3,
+        sum(res$p_mean > .5, na.rm = TRUE), sum(obj$area_ha[which(res$p_mean > .5)]) / 1e3)
     msg("  mean p_width %.3f | widest decile > %.3f  (round-2 collection targets)",
         mean(res$p_width, na.rm = TRUE), quantile(res$p_width, .9, na.rm = TRUE))
     msg("  -> %s (%.1f MB)", f, file.size(f) / 1024^2)

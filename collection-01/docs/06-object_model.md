@@ -197,6 +197,54 @@ so refitting one never overwrites the other.
 Still open (BACKLOG): the 0.5 cut is not the right threshold — sensitivity 0.73 against specificity
 0.91 under grid blocking. Pick it on `data/objects-predictions/oof_grouped_grid_5.csv`.
 
+### Threshold: 0.5 is wrong, and the right cut RISES with object size
+
+`scripts/objects_threshold.R` sweeps every cut on the **out-of-fold** probabilities
+(`oof_grouped_grid_5.csv` — never in-sample, or the cut would be chosen against answers the model
+already saw) and reports four criteria. **Youden's J (sens + spec − 1) is the headline** because it
+is the only one here that does not move with prevalence, and our labelled set is not a random sample
+of objects. F1 and accuracy are reported but drift with that same sampling bias; `J_area` weights
+each object by `area_ha` (the deliverable is an area product) but a handful of huge objects dominate
+its weights.
+
+| stratum | n | Youden cut | sens | spec | J | J at 0.5 | bootstrap 5–95 % |
+|---|---|---|---|---|---|---|---|
+| **1–50 ha** | 3217 | **0.180** | 0.855 | 0.791 | 0.646 | 0.530 | 0.111–0.236 |
+| **50–300 ha** | 1192 | **0.405** | 0.878 | 0.834 | 0.712 | 0.695 | 0.336–0.476 |
+| **≥ 300 ha** | 732 | **0.598** | 0.910 | 0.880 | 0.789 | 0.763 | 0.520–0.657 |
+| < 1 ha | 114 | 0.233 | 1.000 | 0.953 | 0.953 | 0.609 | 0.233–0.340 |
+| all | 5255 | 0.274 | 0.861 | 0.820 | 0.681 | 0.635 | — |
+
+**The cut rises monotonically with size — 0.18 → 0.41 → 0.60 — and the bootstrap intervals barely
+overlap**, so the per-band difference is signal, not resampling noise. That is the justification for
+per-band cuts over one global 0.274: the model is far more confident on big objects, so a single
+threshold is simultaneously too high for small ones and too low for large ones. The gain is
+concentrated where the error was: in 1–50 ha, J goes 0.530 → 0.646 and sensitivity 0.610 → 0.855.
+Above 300 ha the 0.5 default was already nearly right (0.763 vs 0.789).
+
+Picks are written to **`config/object_model_thresholds.csv`** (tracked) and applied by
+`06-object_model.R predict`, which adds a `fire` 0/1 column and logs the rule it used; with the file
+absent it falls back to 0.5 and says so. The `< 1 ha` row is recorded for completeness but should
+not be leaned on — 114 objects, 29 of them fire, and that whole stratum is 3.4 % of objects for
+0.044 % of area, so the **hard size cut, not a threshold, is the right tool there**.
+
+**The threshold governs object COUNTS, not the area headline.** Against the labelled objects' own
+burned area (2387.6 kha), `p > 0.5` gives 2350.8 kha, the global Youden cut 2437.8 kha and the
+per-band cuts 2330.8 kha — all within ±2.5 %, while the object count moves 2266 → 2895. Same story
+on the full FY 2020: the band cuts call 69 049 objects fire (4350 kha) where 0.5 called 53 654
+(4326 kha) — **+15 395 objects for +24 kha**. Area is dominated by large objects the model is
+confident about, so lowering the cut is cheap in area and expensive only in small-object commission.
+
+**The caveat that limits all of this.** Youden's J is prevalence-invariant *as a measure*, but the
+threshold it selects is optimal for the prevalence of the set it was chosen on — and our labels are
+not a random sample. In the 1–50 ha band labelled prevalence is 0.47, whereas most of the 1.4 M real
+objects in that band are presumably noise. Applied to FY 2020 the band cuts call **83–90 % of
+objects fire in every band**, which is implausible as a population rate; note that even at 0.5 the
+model calls 67 % of 1–50 ha objects fire, so this is the *label sampling*, not the threshold. What
+would settle it is a **randomly sampled** set of small-object labels — a collection task, not a
+modelling one (BACKLOG). Until then, treat 0.18 as the lower bound of a defensible range for the
+1–50 ha cut and expect to raise it once a random sample exists.
+
 ### Cross-validation: the fold design decides the answer
 
 Three designs, same model, same 5255 objects. `Rscript …/06-object_model.R cv [region|grid K|random K]`;

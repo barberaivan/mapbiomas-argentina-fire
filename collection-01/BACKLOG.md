@@ -76,10 +76,22 @@ This is probably for collection 2.
   40. It wins on every grid-blocked metric (AUC 0.902 → 0.921, accuracy 0.786 → 0.812) with the gain
   concentrated in the weak 1–50 ha band (0.872 → 0.903), and is now the DEFAULT variant. See
   docs/06 "Predictor variant".
-- [ ] **Pick the classification threshold on out-of-fold predictions**, not at 0.5. Under
-  grid-blocked CV sensitivity at 0.5 is 0.73 overall and 0.61 in the 1–50 ha band, while specificity
-  is 0.91 — the cut is in the wrong place for a burned-area product that would rather over- than
-  under-detect. `data/objects-predictions/oof_grouped_grid_5.csv` has what is needed.
+- [x] **Classification threshold chosen on out-of-fold predictions** (2026-07-27,
+  `scripts/objects_threshold.R`). Youden's J per size band, on `oof_grouped_grid_5.csv`: the cut
+  RISES with size — 1–50 ha **0.180**, 50–300 ha **0.405**, ≥300 ha **0.598** — with barely
+  overlapping bootstrap intervals, so the per-band difference is real. Written to
+  `config/object_model_thresholds.csv` and applied by `06-object_model.R predict` (adds a `fire`
+  column). See docs/06 "Threshold".
+- [ ] **A RANDOMLY SAMPLED set of small-object labels, to calibrate the threshold level.** This is
+  now the binding limitation, and it is a collection task, not a modelling one. Youden's J is
+  prevalence-invariant as a *measure*, but the cut it selects is optimal for the prevalence of the
+  set it was chosen on, and our labels are not a random sample of objects: labelled prevalence in
+  1–50 ha is 0.47, while most of the 1.4 M real objects in that band are presumably noise. Applied
+  to FY 2020 the band cuts call 83–90 % of objects fire, which is not a plausible population rate
+  (at 0.5 the model still calls 67 % of the 1–50 ha band fire, so it is the sampling, not the cut).
+  Reassuringly the area cost is small either way (+15 395 objects for +24 kha), so this bounds
+  object-count commission, not the headline area. Until a random sample exists, treat 0.180 as the
+  LOWER bound of the defensible range for the 1–50 ha cut.
 - [ ] **More labels in the 1–50 ha band**, which holds 61 % of all objects and is where the
   model is weakest (grid-blocked AUC 0.90 vs 0.95 for ≥300 ha). Aim round-2 collection with
   `p_width` from a `predict all` run.
