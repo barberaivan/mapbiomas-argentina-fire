@@ -8,26 +8,37 @@
 # writes layers you can open locally, today.
 #
 # Two products per fire-year:
-#   [1] <fy>_objects_pred_<variant>.gpkg   EVERY object of the year: geometry + all metrics +
-#       p_mean/p_sd/p_q05/p_q95/p_width + the collection-00 filter verdict (c00_pass).
-#       -> QGIS: open it, graduate the fill on p_mean, add an XYZ imagery basemap, and use
-#          the attribute table / filter expressions to walk through cases. QGIS reads the
-#          GPKG spatial index directly, so 78 k polygons pan smoothly.
-#   [2] <fy>_objects_sample_<variant>.geojson  a SMALL stratified sample (default 20 per
-#       p_mean decile, geometry simplified) — small enough to drop into a browser map as a
-#       CLIENT-SIDE layer: geemap/leafmap `Map.add_geojson(path)` puts it straight on the
-#       map next to GEE tiles (candseed, Landsat min-NBR) with NO asset upload, because only
-#       the GEE *imagery* is server-side. Keep it in the low thousands of features; the
-#       limit here is the browser, not Earth Engine.
+#   [1] <fy>_objects_pred_<variant>.gpkg   EVERY object of the year, with the INSPECTION field
+#       set (see FIELDS below): the two verdicts (model / collection-00 filter), why the model
+#       called it that way, and the evidence behind it.
+#       -> QGIS: graduate the fill on p_mean or categorise on `verdict`, add an XYZ imagery
+#          basemap, and walk cases with attribute-table filters. QGIS reads the GPKG spatial
+#          index directly, so 78 k polygons pan smoothly.
+#   [2] <fy>_objects_sample_<variant>.geojson  a SMALL stratified sample (default 20 per p_mean
+#       decile, geometry simplified) — small enough to drop into a browser map as a CLIENT-SIDE
+#       layer: geemap/leafmap `Map.add_geojson(path)` puts it straight on the map next to GEE
+#       tiles with NO asset upload, because only the GEE *imagery* is server-side.
 #
-# Run from the repo ROOT (needs a `predict` run for the year first):
-#   Rscript collection-01/scripts/objects_inspect_export.R [year ...] [--sample N] [--no-full]
-#     year…      fire-years (default: every year that has a prediction CSV)
-#     --sample N objects per p_mean decile in the GeoJSON (default 20; 0 = skip it)
-#     --no-full  skip the big GPKG, write only the sample
-#     --full     attach the full-predictor model's predictions (default: the grouped model)
+# WHY A CURATED FIELD SET, NOT EVERYTHING (docs/06 "Looking at it on a map"): the 23 raw
+# frac_c* columns are not in the deployed model and 28 years of them is dead weight in an
+# attribute table you have to read by eye. `--fields all` brings them back for one year.
 #
-# Writes to collection-01/data/objects-inspect/.
+# THE QGIS EXPRESSIONS THIS FIELD SET IS DESIGNED FOR:
+#   "verdict" != 'both'            where the model and the c-00 filter disagree
+#   abs("p_margin") < 0.05         the borderline calls — the ones worth eyeballing
+#   "p_width" > 0.5                where the model has no idea (round-2 collection targets)
+#   "size_class" IN ('<0.5 ha','0.5-1 ha')   the minimum-size decision
+#
+# Run from the repo ROOT (needs a `predict` run for the year first — scripts/run_06_predict.sh):
+#   Rscript collection-01/scripts/objects_inspect_export.R [year ...] [options]
+#     year…        fire-years (default: every year that has a prediction CSV)
+#     --sample N   objects per p_mean decile in the GeoJSON (default 20; 0 = skip it)
+#     --no-full    skip the big GPKG, write only the sample
+#     --fields all keep every metric column, including the 23 raw frac_c*
+#     --full       attach the full-predictor model's predictions (default: the grouped model)
+#
+# Writes to collection-01/data/objects-inspect/ (~350 MB per year — 28 years is ~9 GB, so
+# expect to keep only the years you are actively looking at).
 # =============================================================================
 
 suppressPackageStartupMessages({
@@ -44,6 +55,7 @@ msg <- function(...) write(sprintf(...), stderr())
 
 argv    <- commandArgs(trailingOnly = TRUE)
 no_full <- "--no-full" %in% argv
+all_fld <- { i <- match("--fields", argv); !is.na(i) && identical(argv[i + 1L], "all") }
 n_samp  <- { i <- match("--sample", argv); if (is.na(i)) 20L else as.integer(argv[i + 1L]) }
 # which model's predictions to attach — matches the 06-object_model.R variant switch, and goes
 # into the output names so the two models' layers never overwrite each other
@@ -54,7 +66,26 @@ if (!length(years)) {
   years <- sort(as.integer(sub("^objects_([0-9]{4}).*$", "\\1", f)))
 }
 if (!length(years)) stop("no ", VARIANT, " predictions in ", PRED_DIR,
-                         " — run 06-object_model.R predict first")
+                         " — run scripts/run_06_predict.sh first")
+
+# ── the inspection field set ────────────────────────────────────────────────
+# Ordered the way you read a row: what is it, what did we decide, why, then the evidence.
+FIELDS <- c(
+  # identity and size. n_pixels is here because area is latitude-dependent (a pixel is
+  # 900*cos(lat) m², 831 down to 517), so "how many pixels is this really" is a separate question.
+  "oid", "fire_year", "area_ha", "n_pixels", "size_class",
+  # the two verdicts and their disagreement, as one categorical to symbolise on
+  "fire", "c00_pass", "verdict",
+  # WHY the model said that: the probability, its uncertainty, the cut that applied to this
+  # object's size band, and the signed distance to it
+  "p_mean", "p_width", "p_thresh", "p_margin", "th_band", "c00_case",
+  # burn evidence and timing (all model predictors)
+  "seed_mean", "n_mean", "burned_around_1", "burned_around_2", "burned_around_3",
+  "doy_median", "date_span", "date_median_date",
+  # the five aggregated vegetation fractions the deployed model actually uses
+  VEG_GROUP_COLS,
+  # geometry shape metrics (near-meaningless below ~10 px — see the notebook)
+  "perimeter_m", "convexity", "mbr_fill", "mbr_elongation", "circularity", "shape_index")
 
 for (fy in years) {
   pf <- file.path(PRED_DIR, sprintf("objects_%d_pred_%s.csv", fy, VARIANT))
@@ -62,12 +93,40 @@ for (fy in years) {
   msg("")
   msg("== FY %d ==", fy)
 
-  # attributes: step-05 metrics + the model output + the c-00 verdict, all keyed on oid
+  # attributes: step-05 metrics + the model output + both verdicts, all keyed on oid
   att <- read_year_objects(fy)
-  att[, c00_pass := c00_pass(att)]
+  set(att, j = "c00_pass", value = c00_pass(att))
+  set(att, j = "c00_case", value = as.character(c00_case(att)))
+  set(att, j = "size_class", value = as.character(size_class(att$area_ha)))
   att <- merge(att, fread(pf)[, !"fire_year"], by = "oid", all.x = TRUE)
-  msg("  %d objects, %d scored (p_mean > 0.5: %.1f %%)", nrow(att), sum(!is.na(att$p_mean)),
-      100 * mean(att$p_mean > .5, na.rm = TRUE))
+
+  # recompute the threshold that applied, so the layer can show WHY — and cross-check it against
+  # the `fire` column the predict run wrote. A mismatch means config/object_model_thresholds.csv
+  # changed after the prediction, which would make the map lie about the product.
+  th <- apply_thresholds(att$area_ha, att$p_mean)
+  n_diff <- sum(th$fire != att$fire, na.rm = TRUE)
+  if (n_diff > 0L)
+    msg("  WARNING: %d object(s) disagree with the stored `fire` — thresholds changed since the
+         prediction run. Re-run predict for this year.", n_diff)
+  for (k in c("p_thresh", "p_margin", "th_band")) set(att, j = k, value = th[[k]])
+
+  # one categorical for the disagreement map: this is the single most useful symbology here,
+  # because "where do the model and the old empirical filter part ways" is exactly the question
+  set(att, j = "verdict", value = fifelse(
+    is.na(att$fire), "unscored",
+    fifelse(att$fire == 1L & att$c00_pass, "both",
+      fifelse(att$fire == 1L & !att$c00_pass, "model only",
+        fifelse(att$fire == 0L & att$c00_pass, "c00 only", "neither")))))
+
+  keep <- if (all_fld) names(att) else intersect(FIELDS, names(att))
+  miss <- setdiff(FIELDS, names(att))
+  if (!all_fld && length(miss)) stop("missing expected field(s): ", paste(miss, collapse = ", "))
+  att <- att[, ..keep]
+
+  msg("  %d objects, %d scored | fire %.1f %% | c00 %.1f %% | disagree %.1f %%",
+      nrow(att), sum(!is.na(att$p_mean)), 100 * mean(att$fire == 1L, na.rm = TRUE),
+      100 * mean(att$c00_pass, na.rm = TRUE), 100 * mean(att$verdict %in% c("model only", "c00 only")))
+  msg("  %d field(s): %s", ncol(att), paste(head(names(att), 8), collapse = ", "))
 
   t0 <- Sys.time()
   v  <- vect(file.path(POLY_DIR, sprintf("objects_%d.gpkg", fy)),

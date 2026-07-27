@@ -26,9 +26,15 @@
 #
 # WHY BART, AND WHY stochtree (docs/06 "BART" + "Which implementation"): no CV tuning to
 # do honestly on ~5 k labels, and the posterior gives a per-object SD — the targeting
-# signal for round 2. stochtree's num_threads covers the GFR sampler, the MCMC *and*
-# prediction, which is genuine within-chain scaling; BART/dbarts only parallelise across
-# chains (8x draws, not 8x speed).
+# signal for round 2. stochtree's num_threads parallelises the GFR sampler and the MCMC,
+# which is genuine within-chain scaling; BART/dbarts only parallelise across chains (8x
+# draws, not 8x speed).
+#
+# PREDICTION IS SINGLE-THREADED (measured, stochtree 0.4.5): num_threads is a *sampler*
+# setting, and predict.bartmodel takes no thread argument — nor do the C++ predict entry
+# points. One process pegs one core, so `predict all` runs ~37 min on one core. The years
+# are independent, so parallelise at the PROCESS level: scripts/run_06_predict.sh runs one
+# Rscript per fire-year, 8 at a time (~5 min), resumable.
 #
 # MCMC BUDGET. num_mcmc is the RETAINED count and stochtree runs num_mcmc * keep_every
 # iterations, so MCMC_ITER=2000 / POST_DRAWS=500 means 2000 iterations thinned by 4 to 500
@@ -78,10 +84,10 @@ POST_DRAWS <- envi("POST_DRAWS",  500L)
 NUM_GFR    <- envi("NUM_GFR",      10L)   # grow-from-root warm start; iterations are cheap
 PRED_CHUNK <- envi("PRED_CHUNK", 20000L)
 GRID_DEG   <- 0.5          # ~50 km spatial blocks for `cv grid` (see do_cv)
-# Size-band cuts on p_mean, chosen on out-of-fold predictions by scripts/objects_threshold.R.
-# Absent -> predict falls back to 0.5 and says so. The bands rise with size (0.18 / 0.41 / 0.60)
-# because the model is far more confident on big objects; docs/06 "Threshold".
-THRESH_CSV <- "collection-01/config/object_model_thresholds.csv"
+# Size-band cuts on p_mean live in THRESH_CSV (objects_data_functions.R), chosen on out-of-fold
+# predictions by scripts/objects_threshold.R. Absent -> predict falls back to 0.5 and says so.
+# The bands rise with size (0.18 / 0.41 / 0.60) because the model is far more confident on big
+# objects; docs/06 "Threshold".
 
 msg <- function(...) write(sprintf(...), stderr())
 hdr <- function(s) { msg(""); msg("== %s ==", s) }
@@ -128,18 +134,15 @@ summarise_draws <- function(P) {
 }
 
 # Per-object fire call. Reads the size-band thresholds if they exist, else 0.5 everywhere.
+# The band lookup itself is apply_thresholds() (objects_data_functions.R) so that the QGIS
+# inspection layer calls fire exactly the way the product does.
 fire_call <- function(area_ha, p) {
   if (!file.exists(THRESH_CSV)) {
     msg("  no %s — calling fire at the 0.5 default", basename(THRESH_CSV))
     return(list(fire = as.integer(p > 0.5), rule = "p > 0.5"))
   }
-  th <- fread(THRESH_CSV)
-  th[, lo := band_lower(stratum)]
-  if (anyNA(th$lo)) stop("unparseable size band(s) in ", THRESH_CSV, ": ",
-                         paste(th$stratum[is.na(th$lo)], collapse = ", "))
-  setorder(th, lo)
-  t_of <- th$threshold[findInterval(area_ha, th$lo)]
-  list(fire = as.integer(p > t_of),
+  th <- threshold_table()
+  list(fire = apply_thresholds(area_ha, p)$fire,
        rule = paste(sprintf("%s: p>%.3f", th$stratum, th$threshold), collapse = " | "))
 }
 

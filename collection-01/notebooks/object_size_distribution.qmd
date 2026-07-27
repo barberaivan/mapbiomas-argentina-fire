@@ -1,0 +1,383 @@
+---
+title: "Object size and model uncertainty — where to cut the minimum fire size"
+subtitle: "Step 06 · all fire-years · collection-01"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    embed-resources: true
+    fig-width: 9
+    fig-height: 5
+---
+
+```{r setup}
+#| message: false
+#| warning: false
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, dev = "png", dpi = 120)
+# Every step-06 path is written from the repo ROOT. knitr restores the working directory after
+# each chunk, so a setwd() in a later chunk would silently apply to that chunk only (and an
+# unresolvable POLY_DIR yields an EMPTY table, not an error) — root.dir is the only thing that
+# holds for the whole render.
+knitr::opts_knit$set(root.dir = normalizePath(if (dir.exists("collection-01")) "." else "../.."))
+library(data.table)
+library(ggplot2)
+library(patchwork)
+library(knitr)
+theme_set(theme_bw(base_size = 11) +
+          theme(panel.grid.minor = element_blank(),
+                strip.background = element_rect(fill = "grey92", colour = NA)))
+```
+
+```{r paths}
+source("collection-01/scripts/objects_data_functions.R")
+PRED_DIR <- "collection-01/data/objects-predictions"
+VARIANT  <- "grouped"          # the deployed model (docs/06 "Predictor variant")
+PX_HA    <- 0.09               # 30 m Landsat pixel
+```
+
+## Why this notebook
+
+Two decisions hang on the size distribution:
+
+1. **The collection's minimum mapped fire size.** Every burned-area product declares one. Ours
+   is not yet chosen, and the honest basis for choosing it is not a convention borrowed from
+   another product — it is *where our own model stops being able to tell fire from non-fire*.
+2. **Where the mapping effort and the error live.** 61 % of objects sit in one band, and the
+   thresholds already differ by size, so any statement about accuracy is meaningless without
+   knowing how objects and area distribute across sizes.
+
+Section 1–4 need only the step-05 metrics. Sections 5–7 need a `predict all` run.
+
+```{r load-sizes}
+years <- object_years()
+if (!length(years)) stop("no step-05 raster_metrics CSVs under ", POLY_DIR,
+                         " (wd = ", getwd(), ") — nothing to summarise")
+sizes <- rbindlist(lapply(years, function(fy) {
+  d <- fread(file.path(POLY_DIR, sprintf("objects_%d_raster_metrics.csv", fy)),
+             select = c("oid", "n_pixels", "area_ha"))
+  d[, fire_year := fy][]
+}))
+# set(), not `:=`: the column and the helper share a name, and inside data.table's j-scope the
+# argument promise fails to resolve under knitr's eval frame
+set(sizes, j = "size_class", value = size_class(sizes$area_ha))
+cat(sprintf("%s objects, fire-years %d-%d, %.2f Mha total\n",
+            format(nrow(sizes), big.mark = ","), min(years), max(years),
+            sum(sizes$area_ha) / 1e6))
+```
+
+## 1 · How the objects and the area split by size
+
+`size_class` uses the **display** breaks (0.5, 1, 50, 300, 1000 ha) — six classes. These are not
+the four threshold bands: `<0.5` / `0.5-1` exist only because the minimum-size decision lives
+inside them, and `300-1000` / `>=1000` because we want to see whether the very large objects
+behave apart (the threshold work found they do not, statistically).
+
+```{r size-table}
+tab <- sizes[, .(n = .N, area_kha = sum(area_ha) / 1e3), by = size_class][order(size_class)]
+tab[, `:=`(pct_n = 100 * n / sum(n), pct_area = 100 * area_kha / sum(area_kha))]
+tab[, `:=`(cum_pct_n = cumsum(pct_n), cum_pct_area = cumsum(pct_area))]
+kable(tab, digits = c(0, 0, 1, 2, 3, 2, 3), format.args = list(big.mark = ","),
+      col.names = c("size class", "objects", "area (kha)", "% objects", "% area",
+                    "cum % objects", "cum % area"),
+      caption = "Objects and area by display size class, all fire-years pooled.")
+```
+
+The asymmetry between the two "%" columns is the whole story of a minimum-size cut: it buys a
+large reduction in object count for a small loss of area. The `cum %` columns read directly as
+"if I cut here, I discard this many objects and this much area".
+
+```{r size-plot}
+#| fig-height: 4
+p1 <- ggplot(tab, aes(size_class, n)) +
+  geom_col(fill = "grey35") + scale_y_log10(labels = scales::comma) +
+  labs(x = NULL, y = "objects (log)", title = "Object count") +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+p2 <- ggplot(tab, aes(size_class, pct_area)) +
+  geom_col(fill = "firebrick") +
+  labs(x = NULL, y = "% of total area", title = "Share of burned area") +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
+p1 + p2
+```
+
+## 2 · The pixel scale — what "<1 ha" actually means
+
+Areas are **not** on a 0.09 ha grid. The objects carry lat/lon pixel coordinates — ~30 m *at the
+equator* — and area is measured on the ellipsoid, so one pixel is `900 * cos(lat)` m²: 831 m² in
+Formosa, 517 m² in southern Santa Cruz. Harmless, but it means a sub-hectare class is a pixel-count
+**range**, not a fixed count, and the same 15-pixel object is `>=1 ha` in the north and `<1 ha` in
+Patagonia.
+
+```{r px-scale}
+sizes[, px_ha := area_ha / n_pixels]
+pxq <- sizes[, .(min = min(px_ha), q05 = quantile(px_ha, .05), median = median(px_ha),
+                 q95 = quantile(px_ha, .95), max = max(px_ha))]
+kable(round(pxq * 1e4, 1), col.names = c("min", "q05", "median", "q95", "max"),
+      caption = "Per-pixel ground area (m²) across the country.")
+cat(sprintf("0.5 ha = %.0f-%.0f pixels   |   1 ha = %.0f-%.0f pixels\n",
+            0.5 / max(sizes$px_ha), 0.5 / min(sizes$px_ha),
+            1 / max(sizes$px_ha), 1 / min(sizes$px_ha)))
+```
+
+What *does* bound the sub-hectare decision is that these objects have almost no measurable
+geometry: convexity, circularity and `shape_index` on a 4-pixel blob are close to meaningless, so
+the model is working almost entirely from spectral/context predictors there.
+
+```{r quantum}
+q <- sizes[n_pixels <= 24, .(objects = .N, area_ha_range = sprintf("%.2f-%.2f", min(area_ha),
+                                                                   max(area_ha))),
+           by = n_pixels][order(n_pixels)]
+kable(q, format.args = list(big.mark = ","),
+      col.names = c("pixels", "objects", "area range (ha)"),
+      caption = "The smallest objects by pixel count, with the latitude-driven area spread.")
+```
+
+Note the shape of that count column: it **dips** from 3796 one-pixel objects to 778 at five
+pixels, then climbs monotonically (6 px → 3081, 20 px → 12474). A segmentation floor would
+produce a hard cut, not a dip-then-rise, so something is producing isolated 1-2 pixel objects that
+the 3-5 pixel range does not get. The step-05 1-pixel dilation connectivity hack (docs/05) is the
+obvious suspect. Worth a look in QGIS — it is a small share of area either way.
+
+```{r quantum-note}
+#| results: asis
+sub <- sizes[area_ha < 1]
+cat(sprintf(
+  "\nSub-hectare objects: **%s** (%.2f %% of objects) holding **%.1f kha** (%.3f %% of area). ",
+  format(nrow(sub), big.mark = ","), 100 * nrow(sub) / nrow(sizes),
+  sum(sub$area_ha) / 1e3, 100 * sum(sub$area_ha) / sum(sizes$area_ha)))
+cat(sprintf("Of these, %s are a **single pixel** (%.1f %% of the sub-hectare set).\n",
+            format(sum(sub$n_pixels == 1L), big.mark = ","),
+            100 * mean(sub$n_pixels == 1L)))
+```
+
+## 3 · The expanded distribution
+
+```{r expanded}
+#| fig-height: 4.2
+brk <- SIZE_BREAKS_VIEW[is.finite(SIZE_BREAKS_VIEW) & SIZE_BREAKS_VIEW > 0]
+ggplot(sizes, aes(area_ha)) +
+  geom_histogram(bins = 90, fill = "grey40") +
+  geom_vline(xintercept = brk, colour = "firebrick", linetype = 2) +
+  scale_x_log10(breaks = c(.09, .5, 1, 10, 50, 300, 1e3, 1e4, 1e5),
+                labels = c("0.09", "0.5", "1", "10", "50", "300", "1k", "10k", "100k")) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(x = "object area (ha, log scale)", y = "objects",
+       title = "Size distribution of every step-05 object",
+       subtitle = "dashed = display class breaks; 0.09 ha is the one-pixel floor")
+```
+
+The distribution is the classic fire-size power law with a hard left wall at the pixel floor.
+Read the left wall carefully: a monotone rise into the smallest bin is what a **detection-limited**
+distribution looks like — the smallest classes are dominated by whatever the segmentation
+produces at its resolution limit, real fire or not, which is exactly why the model's confidence
+there (§6) is the thing to look at.
+
+## 4 · Is the small-object share stable across years?
+
+If the sub-hectare fraction jumped around by year, a single global minimum size would be the
+wrong instrument. If it is stable, one cut is defensible.
+
+```{r by-year}
+#| fig-height: 4.2
+yr <- sizes[, .(n = .N, area_kha = sum(area_ha) / 1e3,
+                pct_n_lt1    = 100 * mean(area_ha < 1),
+                pct_area_lt1 = 100 * sum(area_ha[area_ha < 1]) / sum(area_ha),
+                pct_n_lt05   = 100 * mean(area_ha < 0.5)), by = fire_year][order(fire_year)]
+py1 <- ggplot(yr, aes(fire_year)) +
+  geom_col(aes(y = n), fill = "grey40") + scale_y_continuous(labels = scales::comma) +
+  labs(x = NULL, y = "objects", title = "Objects per fire-year")
+py2 <- ggplot(yr, aes(fire_year)) +
+  geom_line(aes(y = pct_n_lt1, colour = "objects < 1 ha")) +
+  geom_line(aes(y = pct_n_lt05, colour = "objects < 0.5 ha")) +
+  geom_line(aes(y = pct_area_lt1, colour = "area < 1 ha")) +
+  scale_colour_manual(NULL, values = c("objects < 1 ha" = "grey20",
+                                       "objects < 0.5 ha" = "steelblue",
+                                       "area < 1 ha" = "firebrick")) +
+  labs(x = "fire-year", y = "% of the year", title = "Sub-hectare share by year") +
+  theme(legend.position = "bottom")
+py1 / py2
+```
+
+```{r by-year-table}
+kable(yr, digits = c(0, 0, 1, 2, 3, 2), format.args = list(big.mark = ","),
+      col.names = c("fire-year", "objects", "area (kha)", "% obj <1 ha", "% area <1 ha",
+                    "% obj <0.5 ha"),
+      caption = "Per-year totals and sub-hectare shares.")
+```
+
+## 5 · The labelled data by size and class
+
+Where the labels are is where the model has evidence. This is the constraint on any
+size-specific claim, including the thresholds.
+
+```{r labels}
+tag <- clean_tagged(verbose = FALSE)
+set(tag, j = "size_class", value = size_class(tag$area_ha))
+lt <- dcast(tag[, .N, by = .(size_class, class)], size_class ~ class,
+            value.var = "N", fill = 0L, drop = FALSE)
+setnames(lt, c("0", "1"), c("non-fire", "fire"), skip_absent = TRUE)
+lt[, total := `non-fire` + fire][, prevalence := round(fire / total, 3)]
+kable(lt, format.args = list(big.mark = ","),
+      caption = "Labelled objects by size class and class (the fitting set, 5255 objects).")
+```
+
+```{r labels-plot}
+#| fig-height: 4
+ggplot(tag, aes(area_ha, fill = factor(class, 0:1, c("non-fire", "fire")))) +
+  geom_histogram(bins = 60, position = "identity", alpha = .55) +
+  geom_vline(xintercept = brk, colour = "grey30", linetype = 2) +
+  scale_x_log10(breaks = c(.09, .5, 1, 10, 50, 300, 1e3, 1e4, 1e5),
+                labels = c("0.09", "0.5", "1", "10", "50", "300", "1k", "10k", "100k")) +
+  scale_fill_manual(NULL, values = c("non-fire" = "steelblue", "fire" = "firebrick")) +
+  labs(x = "object area (ha, log scale)", y = "labelled objects",
+       title = "Size distribution of the labelled set, by class") +
+  theme(legend.position = "bottom")
+```
+
+```{r labels-vs-all}
+cmp <- merge(sizes[, .(all_pct = 100 * .N / nrow(sizes)), by = size_class],
+             tag[, .(lab_pct = 100 * .N / nrow(tag)), by = size_class],
+             by = "size_class", all.x = TRUE)[order(size_class)]
+cmp[is.na(lab_pct), lab_pct := 0]
+kable(cmp, digits = 2, col.names = c("size class", "% of all objects", "% of labels"),
+      caption = "Labels are NOT a size-representative sample of the objects.")
+```
+
+## 6 · Model probability and uncertainty
+
+```{r load-preds}
+pf <- list.files(PRED_DIR, pattern = sprintf("^objects_[0-9]{4}_pred_%s\\.csv$", VARIANT),
+                 full.names = TRUE)
+pred_years <- sort(as.integer(sub("^objects_([0-9]{4}).*$", "\\1", basename(pf))))
+HAS_PREDS  <- length(pred_years) > 0L
+COMPLETE   <- setequal(pred_years, years)
+```
+
+```{r preds-status}
+#| results: asis
+if (!HAS_PREDS) {
+  cat("::: {.callout-warning}\n## No predictions yet\n",
+      "Run `Rscript collection-01/workflow/06-object_model.R predict all` (~37 min, tmux),",
+      "then re-render. Sections 1-5 above are complete and do not depend on it.\n:::\n")
+} else if (!COMPLETE) {
+  cat(sprintf("::: {.callout-warning}\n## Partial predictions\n%d of %d fire-years scored (%s).%s\n:::\n",
+      length(pred_years), length(years), paste(range(pred_years), collapse = "-"),
+      " Everything below covers only those years."))
+} else {
+  cat(sprintf("All %d fire-years scored.\n", length(pred_years)))
+}
+```
+
+```{r prob-join}
+#| eval: !expr HAS_PREDS
+pr <- rbindlist(lapply(pf, fread))
+d  <- merge(sizes, pr[, .(oid, p_mean, p_sd, p_q05, p_q95, p_width)], by = "oid")
+d  <- cbind(d, apply_thresholds(d$area_ha, d$p_mean))
+# "undecided": the posterior interval straddles the cut that applies to this object, i.e. the
+# model cannot place it on either side at the 5-95 % level. This is the uncertainty measure that
+# speaks to a minimum-size decision — unlike p_width, it is relative to the decision being made.
+d[, undecided := p_q05 < p_thresh & p_q95 > p_thresh]
+cat(sprintf("%s scored objects joined (%s unscored: NA predictors)\n",
+            format(sum(!is.na(d$p_mean)), big.mark = ","),
+            format(sum(is.na(d$p_mean)), big.mark = ",")))
+```
+
+### 6.1 By size class
+
+```{r prob-table}
+#| eval: !expr HAS_PREDS
+ps <- d[!is.na(p_mean), .(
+  n            = .N,
+  area_kha     = sum(area_ha) / 1e3,
+  p_thresh     = first(p_thresh),
+  med_p        = round(median(p_mean), 3),
+  mean_width   = round(mean(p_width), 3),
+  med_width    = round(median(p_width), 3),
+  pct_fire     = round(100 * mean(fire == 1L), 1),
+  pct_area_fire= round(100 * sum(area_ha[fire == 1L]) / sum(area_ha), 1),
+  pct_undecided= round(100 * mean(undecided), 1)), by = size_class][order(size_class)]
+kable(ps, format.args = list(big.mark = ","),
+      col.names = c("size class", "objects", "area (kha)", "cut", "median p", "mean width",
+                    "median width", "% called fire", "% area called fire", "% undecided"),
+      caption = "Model output by size class. 'cut' is the deployed threshold for that class; '% undecided' = the p_q05-p_q95 interval straddles it.")
+```
+
+```{r prob-dists}
+#| eval: !expr HAS_PREDS
+#| fig-height: 6
+dd <- d[!is.na(p_mean)]
+g1 <- ggplot(dd, aes(p_mean)) +
+  geom_histogram(bins = 60, fill = "grey40") +
+  geom_vline(aes(xintercept = p_thresh), colour = "firebrick", linetype = 2) +
+  facet_wrap(~size_class, scales = "free_y", nrow = 2) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(x = "p_mean", y = "objects", title = "Posterior mean probability of fire",
+       subtitle = "dashed = the deployed cut for that class")
+g2 <- ggplot(dd, aes(p_width)) +
+  geom_histogram(bins = 60, fill = "steelblue4") +
+  facet_wrap(~size_class, scales = "free_y", nrow = 2) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(x = "p_width (q95 - q05)", y = "objects", title = "Posterior width — how unsure the model is")
+g1 / g2
+```
+
+### 6.2 Global distributions
+
+```{r prob-global}
+#| eval: !expr HAS_PREDS
+#| fig-height: 3.6
+gg1 <- ggplot(dd, aes(p_mean)) + geom_histogram(bins = 80, fill = "grey40") +
+  scale_y_continuous(labels = scales::comma) + labs(x = "p_mean", y = "objects", title = "p_mean, all objects")
+gg2 <- ggplot(dd, aes(p_width)) + geom_histogram(bins = 80, fill = "steelblue4") +
+  scale_y_continuous(labels = scales::comma) + labs(x = "p_width", y = NULL, title = "p_width, all objects")
+gg1 + gg2
+```
+
+```{r prob-vs-size}
+#| eval: !expr HAS_PREDS
+#| fig-height: 4.2
+ggplot(dd[sample(.N, min(.N, 300000L))], aes(area_ha, p_width)) +
+  geom_bin2d(bins = 80) +
+  scale_x_log10(breaks = c(.09, .5, 1, 10, 50, 300, 1e3, 1e4, 1e5),
+                labels = c("0.09", "0.5", "1", "10", "50", "300", "1k", "10k", "100k")) +
+  scale_fill_viridis_c(trans = "log10", labels = scales::comma) +
+  labs(x = "area (ha, log)", y = "p_width", title = "Uncertainty vs object size",
+       subtitle = "300 k-object subsample")
+```
+
+### 6.3 The minimum-size decision
+
+```{r min-size}
+#| eval: !expr HAS_PREDS
+cuts <- c(0, 0.09, 0.18, 0.5, 1, 2, 5, 10)
+ms <- rbindlist(lapply(cuts, function(k) {
+  keep <- dd[area_ha >= k]
+  drop <- dd[area_ha < k]
+  data.table(min_size_ha = k,
+             objects_kept   = nrow(keep),
+             pct_obj_dropped  = round(100 * nrow(drop) / nrow(dd), 2),
+             pct_area_dropped = round(100 * sum(drop$area_ha) / sum(dd$area_ha), 3),
+             pct_fire_area_dropped = round(
+               100 * sum(drop$area_ha[drop$fire == 1L]) / sum(dd$area_ha[dd$fire == 1L]), 3),
+             mean_width_dropped = round(mean(drop$p_width), 3),
+             pct_undecided_dropped = round(100 * mean(drop$undecided), 1),
+             mean_width_kept = round(mean(keep$p_width), 3),
+             pct_undecided_kept = round(100 * mean(keep$undecided), 1))
+}))
+kable(ms, format.args = list(big.mark = ","),
+      caption = "What each candidate minimum size discards, and how uncertain the discarded vs retained objects are.")
+```
+
+Read this table as a trade: a cut is *cheap* when `pct_area_dropped` is small, and *justified*
+when `mean_width_dropped` / `pct_undecided_dropped` are clearly worse than the retained set —
+i.e. we are discarding precisely the objects the model cannot classify.
+
+## 7 · Notes
+
+- Everything here is the **grouped** (22-predictor) model, the deployed one.
+- `% called fire` figures inherit the threshold-level caveat from docs/06: the labels are not a
+  random sample of objects, so the *level* of the small-object cuts is uncalibrated and these
+  percentages are an upper bound on plausible fire rates, not an estimate of them.
+- Objects with NA predictors (all-dieback, docs/05 §3) carry NA probabilities and are excluded
+  from §6 counts but present in §1-4.

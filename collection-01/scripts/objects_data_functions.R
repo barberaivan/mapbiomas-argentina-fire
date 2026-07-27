@@ -232,6 +232,55 @@ band_lower <- function(s) {
   ifelse(grepl("^<", s), 0, suppressWarnings(as.numeric(sub("^[^0-9]*([0-9.]+).*$", "\\1", s))))
 }
 
+# ── display size classes ────────────────────────────────────────────────────
+# The bands used for LOOKING at the data (the size notebook, the QGIS layer). They are NOT the
+# threshold bands and must not be conflated:
+#   * these split 1 ha into <0.5 / 0.5-1 and 300+ into 300-1000 / >=1000, because the question
+#     they serve is "where do we cut the collection's minimum size", and that decision lives
+#     entirely inside the first two;
+#   * config/object_model_thresholds.csv has FOUR bands (<1, 1-50, 50-300, >=300) because a
+#     band only earns its own threshold if it has enough labels to place one — below 1 ha there
+#     are 114 labels total, and above 300 ha the two halves were statistically indistinguishable
+#     (docs/06 "Threshold").
+# So a QGIS row can sit in display class ">=1000 ha" while its fire call came from band ">=300 ha".
+# NOTE ON THE QUANTUM: area_ha is NOT n_pixels * 0.09. The objects are in EPSG:4326 with ~30 m
+# cells defined at the equator and area measured on the ellipsoid, so a pixel is 900*cos(lat) m²
+# — 831 m² in Formosa down to 517 m² in southern Santa Cruz (median 778). A sub-hectare class is
+# therefore a pixel-count RANGE, not a fixed count: 0.5 ha is 6-10 px and 1 ha is 12-19 px
+# depending on latitude, so the same 15-px object is >=1 ha in the north and <1 ha in Patagonia.
+SIZE_BREAKS_VIEW <- c(0, 0.5, 1, 50, 300, 1000, Inf)
+SIZE_LABELS_VIEW <- c("<0.5 ha", "0.5-1 ha", "1-50 ha", "50-300 ha", "300-1000 ha", ">=1000 ha")
+
+size_class <- function(area_ha) {
+  cut(area_ha, breaks = SIZE_BREAKS_VIEW, labels = SIZE_LABELS_VIEW, right = FALSE)
+}
+
+# ── the deployed fire call ──────────────────────────────────────────────────
+# One implementation, used by 06-object_model.R (writing the `fire` column) and by
+# objects_inspect_export.R (showing WHY each object was called). Returns the threshold that
+# applies to each object alongside the call, so the QGIS layer can be filtered on how close a
+# call was rather than only on its outcome.
+THRESH_CSV <- "collection-01/config/object_model_thresholds.csv"
+
+threshold_table <- function(path = THRESH_CSV) {
+  th <- fread(path)
+  th[, lo := band_lower(stratum)]
+  if (anyNA(th$lo)) stop("unparseable size band(s) in ", path, ": ",
+                         paste(th$stratum[is.na(th$lo)], collapse = ", "))
+  setorder(th, lo)
+  th
+}
+
+apply_thresholds <- function(area_ha, p, path = THRESH_CSV) {
+  th <- threshold_table(path)
+  i  <- findInterval(area_ha, th$lo)
+  data.table(fire     = as.integer(p > th$threshold[i]),
+             p_thresh = th$threshold[i],
+             th_band  = th$stratum[i],
+             # signed distance to the cut: |p_margin| small = the calls to eyeball first
+             p_margin = round(p - th$threshold[i], 4))
+}
+
 # ── the collection-00 empirical filter ──────────────────────────────────────
 # Verbatim from collection-00/workflow/08-object_based_filtering.js: a size-stratified rule,
 # NOT a model. Three accept cases; anything else (incl. area_ha < a1) is rejected.

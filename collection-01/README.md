@@ -66,7 +66,8 @@ collection-01/
 │   ├── objects_data_functions.R           # step 06: shared helpers (readers, derived predictors, veg groups, label cleaning, regions, c-00 filter)
 │   ├── objects_data_explore.R             # step 06: size distribution of the full table + how the c-00 empirical filter splits it
 │   ├── objects_threshold.R                # step 06: per-size-band fire-call threshold from out-of-fold preds -> config/object_model_thresholds.csv
-│   ├── objects_inspect_export.R           # step 06: GPKG (QGIS) + sampled GeoJSON of predictions, to inspect without a GEE upload
+│   ├── objects_inspect_export.R           # step 06: GPKG (QGIS, 33 curated fields) + sampled GeoJSON of predictions, to inspect without a GEE upload
+│   ├── run_06_predict.sh                  # step 06: parallel scoring — one Rscript per fire-year, 8 at a time, resumable (prediction is single-threaded)
 │   ├── run_05_years.sh                    # Overnight all-years step-05 launcher — one Rscript/year, resumable, OOM-flagging (docs/05 §4.1)
 │   └── mem_monitor.sh                     # Lightweight RAM peak / near-OOM-warn monitor (used by run_05_years.sh; standalone too)
 ├── notebooks/              # Quarto-R (.qmd) exploratory analyses and decisions
@@ -215,8 +216,9 @@ Rscript collection-01/workflow/06-object_model.R cv           # spatially blocke
 Rscript collection-01/workflow/06-object_model.R cv grid 5     # 0.5 deg blocks -> 5 folds (the deployment number)
 Rscript collection-01/workflow/06-object_model.R cv random 5    # random folds, leak-inflated, for contrast
 Rscript collection-01/workflow/06-object_model.R cv grid 5 --full   # same folds, 40-predictor variant
-# every year: ~37 min — use tmux
-tmux new-session -d -s obj06 'Rscript collection-01/workflow/06-object_model.R predict all 2>&1 | tee collection-01/logs/06_predict.log'
+# every year: use the PARALLEL launcher — stochtree prediction is single-threaded, so one
+# process per fire-year (8 at a time) is 4.5 min instead of ~37. Resumable.
+tmux new-session -d -s obj06 '/abs/path/to/collection-01/scripts/run_06_predict.sh -j 8'
 ```
 
 `OBJ_THREADS` (8) `MCMC_ITER` (2000) `POST_DRAWS` (500) `NUM_GFR` (10) `PRED_CHUNK` (20000).
@@ -291,6 +293,7 @@ were used in fitting (`fit == TRUE`) and a red asterisk for held-out dates
 | `logistic_regression_feature_engineering_ideas.qmd` | Feature engineering ideas for the LR model | — |
 | `burn_prob_ts_metrics.qmd` | Exploration of burn-probability time-series summary metrics | — |
 | `categorical_vs_bernoulli.qmd` | Categorical vs Bernoulli formulation notes | — |
+| `object_size_distribution.qmd` | Step 06: size distribution of all 1.69 M objects (6 display classes), the latitude-dependent pixel scale, labels vs population by size, then `p_mean`/`p_width`/`% undecided` per class → the **minimum-fire-size** decision | step-05 metrics + a `run_06_predict.sh` run |
 
 Rendered `.html` versions are tracked alongside the `.qmd` so they can be read without a Quarto/R toolchain.
 

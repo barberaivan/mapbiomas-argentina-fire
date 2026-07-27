@@ -82,6 +82,19 @@ This is probably for collection 2.
   overlapping bootstrap intervals, so the per-band difference is real. Written to
   `config/object_model_thresholds.csv` and applied by `06-object_model.R predict` (adds a `fire`
   column). See docs/06 "Threshold".
+- [x] **All 28 fire-years scored + whole-population size/uncertainty exploration** (2026-07-27).
+  `scripts/run_06_predict.sh` (parallel, one process per year — stochtree prediction is
+  single-threaded) scored 1 689 383 objects in **4m33s**. `notebooks/object_size_distribution.qmd`
+  holds the result: uncertainty falls with size (mean `p_width` 0.476 → 0.235) but the model is
+  unsure **everywhere** (global mean width 0.415, 46 % of objects' intervals straddle their cut), so
+  the minimum-size case is cost/benefit — 1 ha drops 3.4 % of objects for 0.044 % of area — not
+  "the model can't classify them". See docs/06 "Whole-population uncertainty".
+- [ ] **Decide and record the collection's minimum mapped fire size.** The evidence is now in
+  (docs/06 table); 1 ha is the defensible default, 0.5 ha if we want to keep everything that costs
+  nothing (0.005 % of area). Needs to be stated in the ATBD and applied consistently in step 07.
+- [ ] **Explain the `n_pixels` dip at 3–5 px** (3796 objects at 1 px, 778 at 5 px, then a monotone
+  climb to 12 474 at 20 px). Not a segmentation floor — a floor cuts, it does not dip. Prime suspect
+  is the step-05 1-px dilation connectivity hack (docs/05). Negligible area; check in QGIS.
 - [ ] **A RANDOMLY SAMPLED set of small-object labels, to calibrate the threshold level.** This is
   now the binding limitation, and it is a collection task, not a modelling one. Youden's J is
   prevalence-invariant as a *measure*, but the cut it selects is optimal for the prevalence of the

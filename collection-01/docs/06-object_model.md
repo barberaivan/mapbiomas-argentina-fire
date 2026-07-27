@@ -307,10 +307,11 @@ A full-year GEE ingest is ~8 h by hand (no GCS bucket — see "Uploading the cla
 which is not a price worth paying to *inspect* a model. `scripts/objects_inspect_export.R` joins the
 predictions + all 40 predictors + the c-00 verdict onto the step-05 geometry already on disk:
 
-- **`<fy>_objects_pred.gpkg`** — every object of the year, 50 fields. Open in QGIS, graduate the
-  fill on `p_mean` (or `p_width`), add an XYZ imagery basemap, and use the attribute table and
-  filter expressions to walk cases. FY 2020: **354 MB written in 6 s**, and QGIS pans it smoothly
-  off the GPKG spatial index. This is the fastest route to eyes-on and needs nothing new built.
+- **`<fy>_objects_pred.gpkg`** — every object of the year, **33 curated fields** (see below). Open
+  in QGIS, graduate the fill on `p_mean` (or `p_width`), add an XYZ imagery basemap, and use the
+  attribute table and filter expressions to walk cases. FY 2020: **353 MB written in 6 s**, and
+  QGIS pans it smoothly off the GPKG spatial index. This is the fastest route to eyes-on and needs
+  nothing new built.
 - **`<fy>_objects_sample.geojson`** — a stratified sample (default 20 objects per `p_mean` decile,
   geometry simplified to ~30 m; FY 2020 → 200 objects, 1.6 MB). This is the answer to "is there a
   geemap midpoint": **yes.** geemap/leafmap is an ipyleaflet map — `Map.add_geojson(path)` /
@@ -319,12 +320,98 @@ predictions + all 40 predictors + the c-00 verdict onto the step-05 geometry alr
   uploaded to Earth Engine. The binding constraint is the **browser**, not GEE: keep client-side
   features in the low thousands, which is exactly what a decile-stratified sample gives you.
 
+#### The inspection field set (33 fields, not all 50)
+
+The 23 raw `frac_c*` columns are **not** in the deployed model and 28 years of them is dead weight in
+a table read by eye, so the GPKG carries a curated set ordered the way a row is read — what it is,
+what we decided, why, then the evidence. `--fields all` restores everything for one year.
+
+| group | fields |
+|---|---|
+| identity & size | `oid`, `fire_year`, `area_ha`, `n_pixels`, `size_class` |
+| the two verdicts | `fire` (model), `c00_pass` (collection-00 filter), `verdict` |
+| why the model said it | `p_mean`, `p_width`, `p_thresh`, `p_margin`, `th_band`, `c00_case` |
+| burn evidence & timing | `seed_mean`, `n_mean`, `burned_around_{1,2,3}`, `doy_median`, `date_span`, `date_median_date` |
+| aggregated vegetation | `frac_agri`, `frac_grass_inund`, `frac_pasture`, `frac_grass_temp`, `frac_woody` |
+| shape | `perimeter_m`, `convexity`, `mbr_fill`, `mbr_elongation`, `circularity`, `shape_index` |
+
+Four fields do not come from step 05 and are the reason this is worth a script rather than a join:
+
+- **`p_thresh` / `p_margin` / `th_band`** — the cut that applied to *this* object's size band and the
+  signed distance to it. A verdict without its threshold is unreadable when the threshold varies by
+  size; `abs("p_margin") < 0.05` is the filter that finds the calls actually worth eyeballing.
+  `apply_thresholds()` (shared) recomputes them and **cross-checks against the stored `fire`**, so a
+  thresholds-file edit after a prediction run is reported instead of silently making the map lie.
+- **`verdict`** — one categorical (`both` / `model only` / `c00 only` / `neither` / `unscored`) so
+  "where do the model and the old empirical filter part ways" is a single symbology. On FY 2020 they
+  disagree on **69.7 %** of objects (model 88.3 % fire vs filter 22.9 %), so this is the main map.
+
+Note `size_class` (6 display classes) is deliberately finer than `th_band` (4 threshold bands): a row
+can be display class `>=1000 ha` while its call came from band `>=300 ha`. The display breaks split
+1 ha into `<0.5` / `0.5-1` because that is where the minimum-size decision lives.
+
 That covers Lican's suggestion without a Shiny app: the sampling-by-predictor-range panel is a QGIS
 filter expression or a geemap cell. Build the Shiny app only if a *shared* review tool is wanted —
 for one analyst it adds a UI to maintain and no capability QGIS lacks. A whole-country raster
 overview is the other option not taken: rasterizing `p_mean` at 30 m country-wide is 9.16 B cells
 (docs/05 §7), so it would have to be coarsened to ~300 m, which erases the small objects that are
 precisely the ones in doubt.
+
+## Whole-population uncertainty — and why it does not decide the minimum size
+
+`notebooks/object_size_distribution.qmd` scores all **1 689 383** objects (28 fire-years; 36 unscored,
+NA predictors) and asks the question the minimum-size decision was supposed to rest on: *is the model
+measurably less able to classify small objects?* `% undecided` = the `p_q05`-`p_q95` interval straddles
+the cut that applies to that object, i.e. the posterior cannot place it on either side.
+
+| display class | objects | area (kha) | cut | median `p_mean` | mean `p_width` | % called fire | % undecided |
+|---|---|---|---|---|---|---|---|
+| < 0.5 ha | 15 070 | 4.0 | 0.233 | 0.092 | 0.395 | 26.3 | 58.8 |
+| 0.5–1 ha | 42 514 | 33.5 | 0.233 | 0.352 | 0.476 | 59.9 | 58.3 |
+| 1–50 ha | 1 409 244 | 16 787 | 0.180 | 0.415 | 0.418 | 69.4 | 46.6 |
+| 50–300 ha | 192 380 | 20 465 | 0.405 | 0.613 | 0.399 | 63.1 | 42.5 |
+| 300–1000 ha | 22 791 | 11 534 | 0.598 | 0.894 | 0.329 | 75.5 | 36.8 |
+| ≥ 1000 ha | 7 384 | 36 167 | 0.598 | 0.968 | 0.235 | 88.1 | 24.0 |
+| **all** | **1 689 383** | **84 991** | — | 0.438 | **0.415** | 68.2 | **46.3** |
+
+**The answer is no — or rather, not distinctively.** Uncertainty does fall monotonically with size
+(width 0.476 → 0.235, undecided 58 % → 24 %), which is the expected direction, but the model is
+**unsure everywhere**: a mean `p_width` of 0.415 means the average 5–95 % interval spans 41 points of
+probability, and even the ≥1000 ha class cannot place a quarter of its objects on one side of its cut.
+A minimum-size cut therefore removes objects that are *somewhat* worse than average, not objects that
+are qualitatively unclassifiable:
+
+| cut | objects dropped | area dropped | dropped: width / undecided | kept: width / undecided |
+|---|---|---|---|---|
+| 0.5 ha | 0.89 % | 0.005 % | 0.395 / 58.8 % | 0.415 / 46.2 % |
+| 1 ha | 3.41 % | **0.044 %** | 0.455 / 58.4 % | 0.413 / 45.8 % |
+| 2 ha | 12.6 % | 0.321 % | 0.454 / 54.0 % | 0.409 / 45.1 % |
+| 5 ha | 34.0 % | 1.749 % | 0.435 / 50.6 % | 0.405 / 44.1 % |
+
+So **the honest argument for a 1 ha minimum is cost/benefit, not uncertainty**: 3.4 % of objects for
+0.044 % of area, i.e. a large reduction in count and noise for a rounding error in the headline
+number. Do not claim the model "cannot classify" sub-hectare objects — it classifies them the same way
+it classifies everything, only with slightly wider intervals, and it does push them toward non-fire
+(median `p_mean` 0.092 in `<0.5 ha` vs 0.968 in `>=1000 ha`, so the discrimination is real).
+
+**What the width actually indicates is covariate shift.** 5255 labels against 1.69 M objects, collected
+where fires were known rather than sampled from the object population — BART widens its posterior
+exactly where it has no data, and 46 % undecided is that message. This reinforces, from the population
+side, the caveat the threshold work reached from the label side: the binding limitation is the
+labelled sample, not the model or the cut. Combined with 68.2 % of objects / 66.2 of 85.0 Mha called
+fire, the deployed thresholds should be treated as a lower bound on the cuts, not as calibrated.
+
+### Also measured: the pixel scale is latitude-dependent
+
+`area_ha` is **not** `n_pixels * 0.09`. Objects carry lat/lon pixel coordinates (~30 m *at the equator*)
+and area is measured on the ellipsoid, so one pixel is `900*cos(lat)` m² — **831 m² at 22° S down to
+517 m² at 55° S** (median 778). Harmless, but two consequences: a size class is a pixel-count *range*
+(1 ha = 12 px in Formosa, 19 px in Santa Cruz), and the same 15-px object changes class between the
+north and Patagonia. Also visible there: the `n_pixels` count **dips** from 3796 one-pixel objects to
+778 at five, then climbs monotonically (6 px → 3081 … 20 px → 12 474). A segmentation floor would give
+a hard cut, not a dip-then-rise, so something is producing isolated 1–2 px objects that 3–5 px does not
+get — the step-05 1-px dilation connectivity hack is the suspect. Small in area either way; worth a
+QGIS look.
 
 ## What the data says about size limits and the collection-00 filter
 
@@ -456,7 +543,17 @@ The deciding factor is *what kind* of parallelism each package offers, given our
 | `BART` | `mc.pbart(mc.cores=8)` forks concurrent **chains**; OpenMP only in `predict` | 8× draws, not 8× speed; 8× memory |
 | `dbarts` | `bart2`'s `n.threads` defaults to `min(guessNumCores(), n.chains)` — threading is essentially *across* chains | same limitation |
 | `bartMachine` | Java/rJava backend | rJava setup friction; skip |
-| **`stochtree`** | **`num_threads` covers the GFR sampler, the MCMC *and* prediction** | genuine within-chain scaling — real wall-clock reduction |
+| **`stochtree`** | **`num_threads` parallelises the GFR sampler and the MCMC** (not prediction — see below) | genuine within-chain scaling of the FIT — real wall-clock reduction |
+
+> **Correction (measured, stochtree 0.4.5): `num_threads` does NOT cover prediction.** This table
+> claimed it did, on the strength of the docs; the run says otherwise. `predict.bartmodel` has no
+> thread argument, and neither do the C++ predict entry points (`predict_forest_cpp` and friends) —
+> `num_threads` is a *sampler* setting stored for the fit. A `predict all` process therefore pegs
+> exactly one core at 100 % with its 8 OpenMP threads idle, and takes ~37 min for 1.69 M objects.
+> The fix is process-level, not thread-level: the fire-years are independent, so
+> **`scripts/run_06_predict.sh`** runs one `Rscript` per year, 8 at a time (biggest years first,
+> resumable, skipping years already scored) and finishes in ~5 min. Each worker deserializes the
+> 97 MB fit JSON itself (~4 s, ~1.4 GB RSS), so plan ~1.4 GB × workers of RAM.
 
 Relevant `stochtree::bart()` arguments (the last four live inside `general_params`):
 
