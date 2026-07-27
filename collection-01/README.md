@@ -191,6 +191,21 @@ grep -E 'OOM|WARN|FAILED|done rc=0' collection-01/logs/05_{run,mem}_*.log   # mo
 Rscript collection-01/scripts/make_fires_table_stats.R
 ```
 
+### Scripts (R utilities) — step-06 label prep
+
+Downloads the per-collaborator fire/non-fire collections exported by the GEE
+`training_polygons_*` scripts (one GeoPackage per asset, individually
+re-downloadable) and matches every label to the step-05 objects of its own
+fire-year, attaching their metrics → `data/polygons_data/polygons_data_merged.csv`,
+the table the object model is fitted on. Details + measured timings:
+`docs/06-object_model.md` "Label prep".
+
+```bash
+Rscript collection-01/scripts/polygons_data_prep.R              # download missing, then merge
+Rscript collection-01/scripts/polygons_data_prep.R download camilo --force   # one author again
+Rscript collection-01/scripts/polygons_data_prep.R merge        # re-merge everything present
+```
+
 ### Scripts (R utilities) — time-series diagnostics
 
 Per-fire diagnostic: a 4-row (NBR / NBR2 / raw predicted burn probability /

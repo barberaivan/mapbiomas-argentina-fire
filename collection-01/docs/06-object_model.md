@@ -78,6 +78,48 @@ Ya le pedí a algunos que destinen jueves-viernes a tomar datos, por eso era un 
 
 *(This started as a stop-gap for the vectorization delay; it is now the chosen approach — docs/07.)*
 
+### Label prep — `scripts/polygons_data_prep.R` (download + intersect + join)
+
+One script, two stages, either runnable alone:
+`Rscript collection-01/scripts/polygons_data_prep.R [all|download|merge] [--force] [author…]`
+
+**Download** — one asset → **one GeoPackage** in `data/polygons_data/polygons_data_<author>.gpkg`
+(rgee, `getDownloadURL("GeoJSON")`; existing files skipped unless `--force`). A file per asset so a
+collaborator who adds points and re-exports costs one re-download, not seven. **GPKG, not
+shapefile**: the labels mix points and polygons in one table (a shapefile cannot), field names
+survive intact, and step 05 already writes GPKG. `merge` always reads *every* file present, so the
+merged table stays complete after a single-author refresh.
+
+**Merge** — each label is matched to the step-05 objects **of its own fire-year** and the object's
+metrics are attached → `data/polygons_data/polygons_data_merged.csv`, one row per (label, object)
+pair. Both files live under `collection-01/data/`, i.e. in the Insync store, not git.
+
+*Matching, and why it is shaped this way.* A year is ~78 k objects / ~330 MB and only a handful are
+ever hit, so a year is never read whole: labels are grouped into 1° blocks, each block is read back
+through the **GeoPackage R-tree** (`terra::vect(extent=)`), and the exact predicate runs on that
+small subset. Two measured findings worth keeping:
+
+- **`terra::relate(…, "intersects")`, not `sf::st_intersects`.** The 1-px dilation can weld a whole
+  fire season into one object — `1999_24193` is **13 053 parts / 643 742 vertices**. `st_intersects`
+  degrades pathologically there: **one point against that object costs ~55 s** (identical with
+  `prepared = TRUE/FALSE` and with the arguments swapped), which alone made FY 1999 take 176 s and
+  the full run > 30 min. `terra::relate` answers the same block in 1.6 s (0.04 s for that object)
+  and returns **pair-for-pair identical** results — verified against sf on every FY 1999 block.
+  Whole merge: **27 s**.
+- **Never `st_cast` the labels to POINT** to satisfy terra's one-geometry-type-per-SpatVector rule.
+  A polygon label collapses to its first vertex and silently loses its objects (a 1999 polygon label
+  went from 131 objects to 4). The script splits POINT vs POLYGON per block instead.
+
+*Nothing is dropped; problems are flagged* — `n_objects` (0 = the label hit no object, >1 = a drawn
+polygon), `oid_n_labels`, `oid_class_conflict` (object labelled both fire and non-fire). The model
+step decides. First full run (2026-07-27, 4643 labels from 7 collaborators, 21 fire-years):
+**6597 pairs over 5266 objects** (2788 fire / 2468 non-fire after dropping conflicts), **234 labels
+(5 %) hit no object** — a point drawn where SNIC kept no cluster, so there is nothing to classify —
+**10 objects carry both classes**, and labels are **very unevenly spread over objects** (up to 40
+labels on one object; jime's 340 labels land on 21 objects). Expect to dedupe/weight by `oid`
+before fitting. One matched object (`2011_57456`, 1 px) has NA `seed_mean`/`date_median` in step
+05 itself — all-dieback objects have no seed/date stats by design (docs/05 §3), not a join failure.
+
 ## Model fitting and classification
 
 Feed all the metric variables to **XGB additive trees**, fit and classify **locally** (python
