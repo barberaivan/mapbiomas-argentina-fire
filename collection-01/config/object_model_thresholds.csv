@@ -1,5 +1,5 @@
 stratum,n,threshold,sens,spec,J,t_boot_q05,t_boot_q95,model,oof_source,criterion
+<1 ha,114,0.233,1,0.953,0.953,0.233,0.34,grouped,oof_grouped_grid_5.csv,youden_J
 1-50 ha,3217,0.1802,0.855,0.791,0.646,0.111,0.236,grouped,oof_grouped_grid_5.csv,youden_J
 50-300 ha,1192,0.4051,0.878,0.834,0.712,0.336,0.476,grouped,oof_grouped_grid_5.csv,youden_J
-<1 ha,114,0.233,1,0.953,0.953,0.233,0.34,grouped,oof_grouped_grid_5.csv,youden_J
 >=300 ha,732,0.5981,0.91,0.88,0.789,0.52,0.657,grouped,oof_grouped_grid_5.csv,youden_J

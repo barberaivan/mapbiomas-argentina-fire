@@ -225,6 +225,13 @@ assign_region <- function(d) {
   d[, `:=`(region = reg$Region[idx], zona = reg$Zona[idx])]
 }
 
+# Lower bound of a size-band label, parsed from the label itself ("<1 ha" -> 0, "1-50 ha" -> 1,
+# ">=300 ha" -> 300, "300-1000 ha" -> 300). Lets config/object_model_thresholds.csv gain or lose
+# bands without any code knowing their names.
+band_lower <- function(s) {
+  ifelse(grepl("^<", s), 0, suppressWarnings(as.numeric(sub("^[^0-9]*([0-9.]+).*$", "\\1", s))))
+}
+
 # ── the collection-00 empirical filter ──────────────────────────────────────
 # Verbatim from collection-00/workflow/08-object_based_filtering.js: a size-stratified rule,
 # NOT a model. Three accept cases; anything else (incl. area_ha < a1) is rejected.

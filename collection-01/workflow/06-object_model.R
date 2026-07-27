@@ -134,9 +134,11 @@ fire_call <- function(area_ha, p) {
     return(list(fire = as.integer(p > 0.5), rule = "p > 0.5"))
   }
   th <- fread(THRESH_CSV)
-  lo <- c("<1 ha" = 0, "1-50 ha" = 1, "50-300 ha" = 50, ">=300 ha" = 300)
-  th <- th[order(lo[stratum])]
-  t_of <- th$threshold[findInterval(area_ha, unname(lo[th$stratum]))]
+  th[, lo := band_lower(stratum)]
+  if (anyNA(th$lo)) stop("unparseable size band(s) in ", THRESH_CSV, ": ",
+                         paste(th$stratum[is.na(th$lo)], collapse = ", "))
+  setorder(th, lo)
+  t_of <- th$threshold[findInterval(area_ha, th$lo)]
   list(fire = as.integer(p > t_of),
        rule = paste(sprintf("%s: p>%.3f", th$stratum, th$threshold), collapse = " | "))
 }

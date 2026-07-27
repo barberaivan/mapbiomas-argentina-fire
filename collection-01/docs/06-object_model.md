@@ -209,18 +209,29 @@ its weights.
 
 | stratum | n | Youden cut | sens | spec | J | J at 0.5 | bootstrap 5–95 % |
 |---|---|---|---|---|---|---|---|
+| < 1 ha | 114 | 0.233 | 1.000 | 0.953 | 0.953 | 0.609 | 0.233–0.340 |
 | **1–50 ha** | 3217 | **0.180** | 0.855 | 0.791 | 0.646 | 0.530 | 0.111–0.236 |
 | **50–300 ha** | 1192 | **0.405** | 0.878 | 0.834 | 0.712 | 0.695 | 0.336–0.476 |
-| **≥ 300 ha** | 732 | **0.598** | 0.910 | 0.880 | 0.789 | 0.763 | 0.520–0.657 |
-| < 1 ha | 114 | 0.233 | 1.000 | 0.953 | 0.953 | 0.609 | 0.233–0.340 |
-| all | 5255 | 0.274 | 0.861 | 0.820 | 0.681 | 0.635 | — |
+| 300–1000 ha | 399 | 0.562 | 0.893 | 0.850 | 0.743 | 0.710 | 0.496–0.851 |
+| ≥ 1000 ha | 333 | 0.579 | 0.948 | 0.909 | 0.857 | 0.834 | 0.500–0.772 |
+| **≥ 300 ha** (pooled, deployed) | 732 | **0.598** | 0.910 | 0.880 | 0.789 | 0.763 | 0.520–0.657 |
+| ≥ 1 ha (pooled) | 5141 | 0.274 | 0.860 | 0.815 | 0.675 | 0.633 | 0.232–0.326 |
+| all (pooled) | 5255 | 0.274 | 0.861 | 0.820 | 0.681 | 0.635 | 0.231–0.298 |
 
-**The cut rises monotonically with size — 0.18 → 0.41 → 0.60 — and the bootstrap intervals barely
-overlap**, so the per-band difference is signal, not resampling noise. That is the justification for
-per-band cuts over one global 0.274: the model is far more confident on big objects, so a single
-threshold is simultaneously too high for small ones and too low for large ones. The gain is
-concentrated where the error was: in 1–50 ha, J goes 0.530 → 0.646 and sensitivity 0.610 → 0.855.
-Above 300 ha the 0.5 default was already nearly right (0.763 vs 0.789).
+**The cut rises with size — 0.18 → 0.41 → 0.60 — and it flattens above 300 ha.** For 1–50 vs
+50–300 vs ≥300 the bootstrap intervals are near-disjoint, so those differences are signal, not
+resampling noise: the model is far more confident on big objects, and a single threshold would be
+simultaneously too high for small objects and too low for large ones. The gain is concentrated where
+the error was — in 1–50 ha, J 0.530 → 0.646 and sensitivity 0.610 → 0.855. Above 300 ha the 0.5
+default was already nearly right (0.763 vs 0.789).
+
+**Splitting ≥300 ha in two buys nothing**, which is why it is *reported* above but **deployed
+pooled**: 300–1000 gives 0.562 and ≥1000 gives 0.579, with bootstrap intervals that almost coincide
+(0.496–0.851 and 0.500–0.772). Same evidence standard that justified the other bands says these two
+are one band; deploying them separately would add a knob that can only overfit. Hence
+`DEPLOY_BANDS` ≠ `SIZE_BANDS` in the script, and the config carries four rows. `band_lower()`
+(`objects_data_functions.R`) parses each band's lower bound out of its own label, so the config can
+gain or lose bands without any code knowing their names.
 
 Picks are written to **`config/object_model_thresholds.csv`** (tracked) and applied by
 `06-object_model.R predict`, which adds a `fire` 0/1 column and logs the rule it used; with the file

@@ -26,8 +26,10 @@
 #            product, so this is the criterion that matches the deliverable — but read it
 #            knowing a handful of huge objects dominate the weights (docs/06 "the 10 largest").
 #
-# STRATA: the requested <1 ha / >=1 ha split, plus the four collection-00 size cases, since the
-# error is known to be size-structured (1-50 ha is the weak band).
+# STRATA: five disjoint size bands (<1, 1-50, 50-300, 300-1000, >=1000 ha) — the collection-00
+# cases with the open-ended >=300 one split in two, because the optimal cut turned out to keep
+# rising with size and the >=300 band was hiding that. Plus the pooled >=1 ha and all rows for
+# reference (excluded from the deployable pick — they are views of the same objects).
 #
 # Outputs to collection-01/data/objects-explore/:
 #   threshold_sweep_<tag>.csv        the full curve, overall and per stratum
@@ -82,14 +84,26 @@ sweep <- function(p, y, w = rep(1, length(p))) {
     , `:=`(J = sens + spec - 1, F1 = 2 * prec * sens / (prec + sens))][]
 }
 
+# The size bands, in size order, then the two summary rows. SIZE_BANDS is the disjoint partition
+# that gets deployed; `>=1 ha` and `all` are pooled views of the same objects, reported for
+# reference and excluded from the deployable pick so nothing is double-counted.
+SIZE_BREAKS <- c(0, 1, 50, 300, 1000, Inf)
+SIZE_BANDS  <- c("<1 ha", "1-50 ha", "50-300 ha", "300-1000 ha", ">=1000 ha")
+# What actually gets DEPLOYED. Not the same list, on purpose: 300-1000 and >=1000 come out at
+# 0.562 and 0.579 with bootstrap intervals that almost coincide (0.50-0.85 / 0.50-0.77), i.e.
+# the split above 300 ha buys no distinguishable cut — whereas 1-50 vs 50-300 vs >=300 have
+# near-disjoint intervals and earn their own. Deploying the two top bands separately would add a
+# knob that can only overfit, so >=300 ha is deployed as ONE pooled cut and the finer pair stays
+# in the report. Same evidence standard both ways.
+DEPLOY_BANDS <- c("<1 ha", "1-50 ha", "50-300 ha", ">=300 ha")
+
 # stratum -> its sweep (unweighted) + area-weighted sweep, glued on the threshold column
-strata_of <- function(d) list(
-  all          = rep(TRUE, nrow(d)),
-  `<1 ha`      = d$area_ha <  1,
-  `>=1 ha`     = d$area_ha >= 1,
-  `1-50 ha`    = d$area_ha >= 1   & d$area_ha < 50,
-  `50-300 ha`  = d$area_ha >= 50  & d$area_ha < 300,
-  `>=300 ha`   = d$area_ha >= 300)
+strata_of <- function(d) {
+  b <- cut(d$area_ha, SIZE_BREAKS, right = FALSE, labels = SIZE_BANDS)
+  c(setNames(lapply(SIZE_BANDS, function(s) !is.na(b) & b == s), SIZE_BANDS),
+    list(`>=300 ha` = d$area_ha >= 300, `>=1 ha` = d$area_ha >= 1, all = rep(TRUE, nrow(d))))
+}
+STRATUM_ORDER <- c(SIZE_BANDS, ">=300 ha", ">=1 ha", "all")
 
 sw <- rbindlist(lapply(names(strata_of(d)), function(s) {
   i <- strata_of(d)[[s]]
@@ -98,6 +112,7 @@ sw <- rbindlist(lapply(names(strata_of(d)), function(s) {
   b <- sweep(d$p_oof[i], d$class[i], d$area_ha[i])[, .(t, J_area = J, sens_area = sens, spec_area = spec)]
   cbind(stratum = s, n = sum(i), merge(a, b, by = "t", all.x = TRUE))
 }))
+sw[, stratum := factor(stratum, levels = STRATUM_ORDER)]
 setorder(sw, stratum, -t)
 # the full curve is thousands of rows per stratum — written, not printed
 fwrite(sw[, .(stratum, n, t, tp, fp, fn, tn, sens, spec, prec, acc, J, F1, J_area)],
@@ -119,7 +134,7 @@ boot_ci <- function(p, y, B) {
   unname(quantile(t_star, c(.05, .95), na.rm = TRUE))
 }
 
-best <- rbindlist(lapply(unique(sw$stratum), function(s) {
+best <- rbindlist(lapply(levels(droplevels(sw$stratum)), function(s) {
   x <- sw[stratum == s]
   i <- strata_of(d)[[s]]
   ci <- boot_ci(d$p_oof[i], d$class[i], nboot)
@@ -137,7 +152,7 @@ hdr("optimum per stratum per criterion (t_boot_* is the J pick's 5-95 % bootstra
 show(best, sprintf("threshold_chosen_%s.csv", tag))
 
 hdr("what the 0.5 default does, for comparison")
-show(rbindlist(lapply(unique(sw$stratum), function(s) {
+show(rbindlist(lapply(levels(droplevels(sw$stratum)), function(s) {
   x <- sw[stratum == s][which.min(abs(t - 0.5))]
   data.table(stratum = s, n = x$n, t = round(x$t, 3), sens = round(x$sens, 3),
              spec = round(x$spec, 3), prec = round(x$prec, 3), acc = round(x$acc, 3),
@@ -149,8 +164,9 @@ show(rbindlist(lapply(unique(sw$stratum), function(s) {
 # summary of the same thing and would double-count). <1 ha objects are the noisiest stratum and
 # 3.4 % of objects for 0.04 % of area (docs/06), so the size cut, not the threshold, is the
 # right tool there — recorded here anyway so the choice is explicit rather than implied.
-pick <- best[criterion == "J" & stratum %in% c("<1 ha", "1-50 ha", "50-300 ha", ">=300 ha"),
+pick <- best[criterion == "J" & stratum %in% DEPLOY_BANDS,
              .(stratum, n, threshold = t, sens, spec, J, t_boot_q05, t_boot_q95)]
+pick <- pick[order(band_lower(stratum))]
 pick[, `:=`(model = "grouped", oof_source = basename(oof_f), criterion = "youden_J")]
 hdr("deployable: Youden threshold per size band")
 show(pick)
@@ -160,9 +176,9 @@ msg("-> %s", CONFIG_OUT)
 # area consequence of one global cut vs the per-band cuts, against the labelled truth
 area_true <- sum(d$area_ha[d$class == 1L])
 t_glob <- best[stratum == "all" & criterion == "J"]$t
-band   <- cut(d$area_ha, c(0, 1, 50, 300, Inf), right = FALSE,
-              labels = c("<1 ha", "1-50 ha", "50-300 ha", ">=300 ha"))
-t_band <- setNames(pick$threshold, pick$stratum)[as.character(band)]
+# the DEPLOYED rule: each object gets the cut of the band it falls in (bands read off `pick`,
+# so this follows the config rather than restating the breaks)
+t_band <- pick$threshold[findInterval(d$area_ha, band_lower(pick$stratum))]
 hdr("area kept, vs the labelled burned area of the same objects")
 show(data.table(
   rule = c("p > 0.5", sprintf("p > %.3f (global J)", t_glob), "per-band J", "labelled truth"),
