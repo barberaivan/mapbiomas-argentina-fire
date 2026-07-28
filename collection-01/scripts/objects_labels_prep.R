@@ -1,12 +1,12 @@
 #!/usr/bin/env Rscript
 # =============================================================================
-# polygons_data_prep.R — step-06 labels: GEE polygons-data assets -> one table
+# objects_labels_prep.R — step-06 labels: GEE polygons-data assets -> one table
 # =============================================================================
 # Turns the per-collaborator fire/non-fire collections exported by the GEE
-# `training_polygons_*` scripts (docs/06 "Exports") into the single labelled table the
+# `training_polygons_*` scripts (docs/06 §1) into the single labelled table the
 # step-06 object model is fitted on. Two stages, either runnable on its own:
 #
-#   [download] one asset -> ONE FILE, GeoPackage, in collection-01/data/polygons_data/
+#   [download] one asset -> ONE FILE, GeoPackage, in collection-01/data/objects-labels/
 #              `polygons_data_<author>.gpkg`. A file per asset ON PURPOSE: when one
 #              collaborator adds points and re-runs their export, only that file is
 #              re-downloaded. Existing files are SKIPPED unless --force.
@@ -16,13 +16,13 @@
 #
 #   [merge]    every label feature is matched to the step-05 fire OBJECTS OF ITS OWN
 #              FIRE-YEAR, and the object's metrics are attached ->
-#              collection-01/data/polygons_data/polygons_data_merged.csv
+#              collection-01/data/objects-labels/polygons_data_merged.csv
 #              One row per (label feature, intersecting object) pair, so a drawn polygon
 #              covering several objects labels all of them, and a point that hit nothing
 #              is still present with oid = NA.
 #
 # Run from the repo ROOT:
-#   Rscript collection-01/scripts/polygons_data_prep.R [all|download|merge] [--force] [author ...]
+#   Rscript collection-01/scripts/objects_labels_prep.R [all|download|merge] [--force] [author ...]
 #     all       (default) download the missing assets, then merge
 #     download  download only
 #     merge     merge only — ALWAYS uses every .gpkg present in the folder, so the merged
@@ -86,8 +86,8 @@ ASSET_DIR <- paste0("projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/",
                     "TRAINING-DATA/POLYGONS-DATA")
 GEE_PROJECT <- "mapbiomas-fire-485203"          # == utils/constants.py C.GEE_PROJECT
 
-DATA_DIR  <- "collection-01/data/polygons_data" # per-asset gpkg + the merged csv
-POLY_DIR  <- "collection-01/data/snic-polygons" # step-05 objects (symlink into the store)
+DATA_DIR  <- "collection-01/data/objects-labels" # per-asset gpkg + the merged csv
+POLY_DIR  <- "collection-01/data/objects-raw" # step-05 objects (symlink into the store)
 MERGED    <- file.path(DATA_DIR, "polygons_data_merged.csv")
 
 BLOCK_DEG <- 1        # label-grouping block for the r-tree reads (degrees)

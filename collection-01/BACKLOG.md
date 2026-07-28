@@ -70,25 +70,87 @@ This is probably for collection 2.
 
 ## Object model (step 06)
 
+- [x] **`fire_year` / `year_calendar` were leaking the labels — removed, model refitted**
+  (2026-07-28). Symptom: fire-year 1998 called **100.0 %** fire, 2012 96.6 %, 2013 93.3 %. Cause:
+  per-year label prevalence is an artifact of where collaborators drew (0.00 to 1.00 across years,
+  seven years unlabelled), and with the year available the model read it as a lookup — those two
+  columns took **18.4 % of all splits** in the forest, the top two of 22. Grid-blocked CV could not
+  see it: every fold holds 17–20 of the 21 labelled years. Fix: no absolute time
+  coordinate; `doy_median` replaced by circular `doy_sin`/`doy_cos` (the fire season straddles
+  Dec/Jan, so an axis-aligned tree cannot express it in raw DOY); `date_span` kept as a duration.
+  `year_calendar` and `fire_year` keep their product/key roles. Result, on the same grid-5 folds:
+
+  | | leaky (22) | fixed (21) |
+  |---|---|---|
+  | pooled OOF AUC | 0.9211 | 0.8948 |
+  | n-weighted **within-year** OOF AUC | 0.8400 | **0.8467** |
+  | Spearman(label prevalence, % called fire) over all objects | **0.829** | **−0.082** |
+  | per-year fire rate, range / sd | 20.1–100.0 % / 20.7 | 62.6–83.6 % / 5.1 |
+
+  The pooled AUC fell because the leak is gone; **within-year discrimination held**, which is the
+  signature of removing leakage without losing real skill. Thresholds re-derived (all four cuts
+  moved) and all 28 years re-scored. Old outputs kept under
+  `data/objects-pred/stale-leaky-model/`. Full record: docs/06 §4; the standing diagnostic is
+  `notebooks/objects-analysis.qmd` §8.
+- [x] **`n_mean` dropped — deployed model is 20 predictors** (2026-07-28). `n_mean` was carried as a
+  **proxy for polygon quality** (how well-observed each object is) but is a **soft era proxy**: Landsat
+  observation density rises across the record (L5, +L7 1999, +L8 2013, +L9 2021), Spearman(fire_year,
+  mean `n_mean`) = **0.81**, and with it in the model the per-year fire rate inherited a **0.79** time
+  trend — an improving archive masquerading as a rising fire regime, in a collection built for trend
+  analysis. Dropping it is cheap because `seed_mean` already carries observation quality
+  **density-normalised**: the step-04 seed threshold K is chosen per pixel by `(veg_fire, n)`
+  (docs/04 §4.1), which is why the two are near-orthogonal per object (Spearman **+0.014**) and
+  seed_mean's own era trend is much weaker (+0.45 vs +0.81). Identical grid-5 folds:
+
+  | | with `n_mean` (21) | **deployed, without (20)** |
+  |---|---|---|
+  | pooled OOF AUC | 0.8948 | 0.8907 |
+  | within-year OOF AUC | 0.8467 | 0.8453 |
+  | mean Youden J across bands | 0.713 | 0.694 |
+  | **residual time trend** Spearman / Pearson | **0.789 / 0.760** | **0.407 / 0.325** |
+  | observation density vs fire rate, Spearman / Pearson | 0.906 / 0.889 | 0.381 / 0.348 |
+  | per-year fire rate: range / sd | 62.6–83.6 % / 5.0 | 71.0–83.7 % / 3.0 |
+
+  Trend roughly halved for **0.0014** of within-year AUC. The 21-predictor variant and all the
+  variant-selection machinery have been removed — a single model, no `OBJ_VARIANT`. Deployed cuts:
+  0.250 / 0.202 / 0.436 / 0.690. The residual 0.407 trend is **unattributed**, not proven clean:
+  don't publish it as a fire-regime finding without an independent record. Record: docs/06 §4;
+  standing diagnostic `notebooks/objects-analysis.qmd` §8.1.
+- [x] **docs/06 rewritten and its stale statistics refreshed** (2026-07-28). Every figure in the doc
+  is now measured on the deployed 20-predictor model: the whole-population uncertainty table (mean
+  `p_width` **0.317**, **31.3 %** undecided), the size-stratified out-of-fold metrics (AUC 0.871 in
+  1–50 ha up to 0.923 above 300 ha, recomputed from `oof_grid_5.csv`), the model-vs-collection-00
+  cross-tab (**26.6 %** of area in disagreement; `c00 only ≥300 ha` = 5872 objects / 6397 kha), and
+  the threshold area-cost figures. The 22→21→20-predictor turns are compressed to one record each
+  rather than restated as comparisons, and the veg-aggregation AUCs are marked historical. Two
+  corrections worth noting: 1–50 ha is **61 % of the labels but 83 % of the population** (the doc had
+  been quoting the label share as if it were the population share), and the upload section now
+  documents the actual route — **the whole object set, not the fire subset**.
+- [ ] **Collection 2: stop computing `n_mean` and `n_pixels`** in the step-05 object summaries.
+  `n_mean` is an era proxy (see the closed item above). `n_pixels` is not a size — the pixel scale is
+  latitude-dependent — and the importance analysis puts it **last of 20** on every measure
+  (permutation |Δp| 0.0006, AUC drop 0.0000, ALE range 0.008), so `area_ha` carries everything it
+  does. Recorded at docs/05 §2.4 and docs/06 §4.
 - [x] **Aggregated vegetation fractions in the object model** (2026-07-27). Five summed fractions
   (`frac_agri`, `frac_grass_inund`, `frac_pasture`, `frac_grass_temp`, `frac_woody`, derived from
   `config/veg_fire_remap.csv` by name) replaced the 23 raw class fractions: 22 predictors instead of
   40. Better on every grid-blocked metric (AUC 0.902 → 0.921, accuracy 0.786 → 0.812), gain
   concentrated in the weak 1–50 ha band (0.872 → 0.903). The 40-column alternative has been removed
-  from the code. See docs/06 "The 22 predictors".
+  from the code. See docs/06 §4.
 - [x] **Classification threshold chosen on out-of-fold predictions** (2026-07-27,
   `scripts/objects_threshold.R`). Youden's J per size band, on `oof_grid_5.csv`: the cut
-  RISES with size — 1–50 ha **0.180**, 50–300 ha **0.405**, ≥300 ha **0.598** — with barely
+  RISES with size — then 1–50 ha 0.180, 50–300 ha 0.405, ≥300 ha 0.598 — with barely
   overlapping bootstrap intervals, so the per-band difference is real. Written to
-  `config/object_model_thresholds.csv` and applied by `06-object_model.R predict` (adds a `fire`
-  column). See docs/06 "Threshold".
+  `config/object_model_thresholds.csv` and applied by `06-object_model.R predict`. *(Those cuts were
+  measured on the pre-leak-fix model; the deployed set is **0.250 / 0.202 / 0.436 / 0.690** — the
+  rises-with-size finding survived the refit. Current figures: docs/06 §6.)*
 - [x] **All 28 fire-years scored + whole-population size/uncertainty exploration** (2026-07-27).
   `scripts/run_06_predict.sh` (parallel, one process per year — stochtree prediction is
-  single-threaded) scored 1 689 383 objects in **4m33s**. `notebooks/object_size_distribution.qmd`
-  holds the result: uncertainty falls with size (mean `p_width` 0.476 → 0.235) but the model is
-  unsure **everywhere** (global mean width 0.415, 46 % of objects' intervals straddle their cut), so
-  the minimum-size case is cost/benefit — 1 ha drops 3.4 % of objects for 0.044 % of area — not
-  "the model can't classify them". See docs/06 "Whole-population uncertainty".
+  single-threaded) scored 1 689 383 objects in **4m33s**. `notebooks/objects-analysis.qmd`
+  holds the result: uncertainty falls with size but the model is unsure **everywhere**, so the
+  minimum-size case is cost/benefit — 1 ha drops 3.4 % of objects for 0.044 % of area — not "the model
+  can't classify them". *(On the deployed model: mean `p_width` 0.412 → 0.129 across size classes,
+  global 0.317, 31.3 % of intervals straddling their cut. docs/06 §9.)*
 - [ ] **Decide and record the collection's minimum mapped fire size.** The evidence is now in
   (docs/06 table); 1 ha is the defensible default, 0.5 ha if we want to keep everything that costs
   nothing (0.005 % of area). Needs to be stated in the ATBD and applied consistently in step 07.
@@ -100,14 +162,15 @@ This is probably for collection 2.
   prevalence-invariant as a *measure*, but the cut it selects is optimal for the prevalence of the
   set it was chosen on, and our labels are not a random sample of objects: labelled prevalence in
   1–50 ha is 0.47, while most of the 1.4 M real objects in that band are presumably noise. Applied
-  to FY 2020 the band cuts call 83–90 % of objects fire, which is not a plausible population rate
-  (at 0.5 the model still calls 67 % of the 1–50 ha band fire, so it is the sampling, not the cut).
-  Reassuringly the area cost is small either way (+15 395 objects for +24 kha), so this bounds
-  object-count commission, not the headline area. Until a random sample exists, treat 0.180 as the
+  to the population the band cuts call **78.6 %** of 1–50 ha objects fire, which is not a plausible
+  population rate — and the rate stays high at 0.5, so it is the sampling, not the cut. Reassuringly
+  the area cost is small either way (on FY2020, +13 404 objects for +68 kha of 4841), so this bounds
+  object-count commission, not the headline area. Until a random sample exists, treat **0.202** as the
   LOWER bound of the defensible range for the 1–50 ha cut.
-- [ ] **More labels in the 1–50 ha band**, which holds 61 % of all objects and is where the
-  model is weakest (grid-blocked AUC 0.90 vs 0.95 for ≥300 ha). Aim round-2 collection with
-  `p_width` from a `predict all` run.
+- [ ] **More labels in the 1–50 ha band**, which holds **83 % of all objects** (but only 61 % of the
+  labels — it is under-sampled relative to how many there are) and is where the model is weakest
+  (grid-blocked OOF AUC 0.871 vs 0.923 above 300 ha). Aim round-2 collection with `p_width` from the
+  `predict all` output.
 
 ---
 

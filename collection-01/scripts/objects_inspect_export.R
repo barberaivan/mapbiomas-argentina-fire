@@ -2,8 +2,8 @@
 # =============================================================================
 # objects_inspect_export.R — look at the model on a map WITHOUT uploading to GEE
 # =============================================================================
-# A full-year ingest into GEE takes ~8 h (docs/06 "Uploading the classified fire subset":
-# no GCS bucket, so it is a by-hand Code Editor upload). For *inspection* that is wasted
+# A full-year ingest into GEE is a by-hand Code Editor upload (docs/06 §12: no GCS bucket,
+# so `earthengine upload table` cannot be used). For *inspection* that is wasted
 # time — the step-05 GPKG is already on disk, so this joins the model output onto it and
 # writes layers you can open locally, today.
 #
@@ -14,12 +14,12 @@
 #       -> QGIS: graduate the fill on p_mean or categorise on `verdict`, add an XYZ imagery
 #          basemap, and walk cases with attribute-table filters. QGIS reads the GPKG spatial
 #          index directly, so 78 k polygons pan smoothly.
-#   [2] <fy>_objects_sample.geojson  a SMALL stratified sample (default 20 per p_mean
-#       decile, geometry simplified) — small enough to drop into a browser map as a CLIENT-SIDE
-#       layer: geemap/leafmap `Map.add_geojson(path)` puts it straight on the map next to GEE
-#       tiles with NO asset upload, because only the GEE *imagery* is server-side.
+#   [2] <fy>_objects_sample.geojson  OFF BY DEFAULT (`--sample 0`). A small stratified sample
+#       (N per p_mean decile, geometry simplified) for a browser/geemap CLIENT-SIDE layer:
+#       `Map.add_geojson(path)` puts it on the map next to GEE tiles with NO asset upload.
+#       Inspection is done in QGIS off the GPKG, so this is opt-in: pass `--sample 20`.
 #
-# WHY A CURATED FIELD SET, NOT EVERYTHING (docs/06 "Looking at it on a map"): the 23 raw
+# WHY A CURATED FIELD SET, NOT EVERYTHING (docs/06 §11): the 23 raw
 # frac_c* columns are not model predictors (they are summed into 5 groups) and 28 years of them is dead weight in an
 # attribute table you have to read by eye. `--fields all` brings them back for one year.
 #
@@ -32,12 +32,13 @@
 # Run from the repo ROOT (needs a `predict` run for the year first — scripts/run_06_predict.sh):
 #   Rscript collection-01/scripts/objects_inspect_export.R [year ...] [options]
 #     year…        fire-years (default: every year that has a prediction CSV)
-#     --sample N   objects per p_mean decile in the GeoJSON (default 20; 0 = skip it)
+#     --sample N   objects per p_mean decile in the companion GeoJSON (default 0 = skip it)
 #     --no-full    skip the big GPKG, write only the sample
 #     --fields all keep every metric column, including the 23 raw frac_c*
 #
-# Writes to collection-01/data/objects-inspect/ (~350 MB per year — 28 years is ~9 GB, so
-# expect to keep only the years you are actively looking at).
+# Writes to collection-01/data/objects-inspect-cache/ (up to ~350 MB per year; all 28 years is
+# 6.3 GB). That directory is a CACHE — delete it freely, scripts/run_06_inspect.sh rebuilds it in
+# about a minute from the prediction CSVs.
 # =============================================================================
 
 suppressPackageStartupMessages({
@@ -46,8 +47,8 @@ suppressPackageStartupMessages({
 })
 source("collection-01/scripts/objects_data_functions.R")
 
-OUT_DIR  <- "collection-01/data/objects-inspect"
-PRED_DIR <- "collection-01/data/objects-predictions"
+OUT_DIR  <- "collection-01/data/objects-inspect-cache"
+PRED_DIR <- OBJ_PRED_DIR
 dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
 
 msg <- function(...) write(sprintf(...), stderr())
@@ -55,7 +56,7 @@ msg <- function(...) write(sprintf(...), stderr())
 argv    <- commandArgs(trailingOnly = TRUE)
 no_full <- "--no-full" %in% argv
 all_fld <- { i <- match("--fields", argv); !is.na(i) && identical(argv[i + 1L], "all") }
-n_samp  <- { i <- match("--sample", argv); if (is.na(i)) 20L else as.integer(argv[i + 1L]) }
+n_samp  <- { i <- match("--sample", argv); if (is.na(i)) 0L else as.integer(argv[i + 1L]) }
 years   <- suppressWarnings(as.integer(grep("^[0-9]{4}$", argv, value = TRUE)))
 if (!length(years)) {
   f <- list.files(PRED_DIR, pattern = "^objects_[0-9]{4}_pred\\.csv$")
@@ -70,13 +71,15 @@ FIELDS <- c(
   # identity and size. n_pixels is here because area is latitude-dependent (a pixel is
   # 900*cos(lat) m², 831 down to 517), so "how many pixels is this really" is a separate question.
   "oid", "fire_year", "area_ha", "n_pixels", "size_class",
-  # the two verdicts and their disagreement, as one categorical to symbolise on
-  "fire", "c00_pass", "verdict",
+  # the deployed call, its two inputs, and the c-00 baseline
+  #   fire_model  the model at its size-band cut | fire_tag  the collected label (-1 = none)
+  #   fire        THE DEPLOYED CALL: the tag where there is one, else the model
+  "fire", "fire_model", "fire_tag", "c00_pass", "verdict",
   # WHY the model said that: the probability, its uncertainty, the cut that applied to this
   # object's size band, and the signed distance to it
   "p_mean", "p_width", "p_thresh", "p_margin", "th_band", "c00_case",
   # burn evidence and timing (all model predictors)
-  "seed_mean", "n_mean", "burned_around_1", "burned_around_2", "burned_around_3",
+  "seed_mean", "burned_around_1", "burned_around_2", "burned_around_3",
   "doy_median", "date_span", "date_median_date",
   # the five aggregated vegetation fractions the model uses
   VEG_GROUP_COLS,
@@ -100,7 +103,7 @@ for (fy in years) {
   # the `fire` column the predict run wrote. A mismatch means config/object_model_thresholds.csv
   # changed after the prediction, which would make the map lie about the product.
   th <- apply_thresholds(att$area_ha, att$p_mean)
-  n_diff <- sum(th$fire != att$fire, na.rm = TRUE)
+  n_diff <- sum(th$fire != att$fire_model, na.rm = TRUE)
   if (n_diff > 0L)
     msg("  WARNING: %d object(s) disagree with the stored `fire` — thresholds changed since the
          prediction run. Re-run predict for this year.", n_diff)
@@ -109,10 +112,10 @@ for (fy in years) {
   # one categorical for the disagreement map: this is the single most useful symbology here,
   # because "where do the model and the old empirical filter part ways" is exactly the question
   set(att, j = "verdict", value = fifelse(
-    is.na(att$fire), "unscored",
-    fifelse(att$fire == 1L & att$c00_pass, "both",
-      fifelse(att$fire == 1L & !att$c00_pass, "model only",
-        fifelse(att$fire == 0L & att$c00_pass, "c00 only", "neither")))))
+    is.na(att$fire_model), "unscored",
+    fifelse(att$fire_model == 1L & att$c00_pass, "both",
+      fifelse(att$fire_model == 1L & !att$c00_pass, "model only",
+        fifelse(att$fire_model == 0L & att$c00_pass, "c00 only", "neither")))))
 
   keep <- if (all_fld) names(att) else intersect(FIELDS, names(att))
   miss <- setdiff(FIELDS, names(att))

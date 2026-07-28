@@ -1,75 +1,69 @@
-# Notes on the final processing steps
+# 07 — From classified objects to the raster products
 
-In `06-object_model.md` we mentioned that we would upload the polygons
-with metadata to GEE. Even if we could for timing, that's not reasonable.
-They are lots, heavy, with lots of unnecessary variables.
+Step 07 is the hand-off from *our* mapping method to the network's common post-processing (docs/08).
+Its job: get the classified objects into GEE and turn them into the **raster of month-of-burn per
+calendar year**, which is what every MapBiomas Fuego country publishes.
 
-Instead, we'll just collect data in GEE using the SNIC layer, not the polygons.
-The docs/06**md should be edited so that is the preferred option, with no 
-mention to the full polygons upload. 
-
-Then the output of workflow/05 should consider how we will manage the
-next steps. 
-
-The object_model will classify polygons locally, and it will need only
-the data table, not the geometries, so the polygons and the table can live
-in separate files, with no redundancy. The only metadata that polygons should
-have is the oid/pid (oid is preferred). 
-
-Once classified, the fire polygons will be uploaded to GEE to filter the
-snic images. The official mapbiomas layer is a raster with month of burn 
-each calendar year. We will build that combining the uploaded fire polygons
-and the snic_metrics images.
-
-In addition, we will have an unofficial vectorial database (Feature Collection = FC)
-in GEE of these polygons with metadata. So, we will have to upload only the 
-fire-polygons (classified) with the metadata that we want for the FC. 
-
-So far, the workflow/05 generates a gpkg file by year that contains both 
-polygons and metadata: this should be reduced to save space. I.e., the geojson
-should only store polygons and oid. 
+No script yet — this file records the decisions that shape it, and where each one is implemented.
 
 ---
 
-More changes to workflow/05:
+## 1. Decisions that are settled
 
-Keep all the shape/sparcity metrics as in docs/05, but only these 
-raster-based (less than in docs/05):
-- **veg abundance** — per-class fractions `frac_c1…c23` (absent = 0) [without
-  first 5 ranked]
-- **area** — `area_ha`, not in m2 = Σ per-cell `cellSize` (for a lon/lat grid 
-  computed on a 1-column strip by latitude, O(nrow)) and `n_pixels`.
-  (it probably outputs to m2, but turn into ha)
-- **`abs_date` summaries** — `{median, min, max}`
-- **`year_calendar`** and **`year_fire`**: compute the calendar-year and the 
-    fire-year for each pixel's date. Then, take the mode across all pixels. 
-    This is to assign the most common fire- or calendar-year to the polygon.
-- **`n_mean`** the average number of observations of the polygon.
-- **neighbourhood sparseness** `burned_around_{1,2,3}` — mean over the object's pixels of the
-  burned fraction in the (2r+1)² window. Direct tiles carry it pre-computed in GEE (cell counts
-  → ÷(2r+1)²); the legacy COG computes it here.
+**Label collection happens on the SNIC layer, not on uploaded objects.** The objects are many,
+heavy, and carry metrics a collector never looks at, while the step-04 `candseed` asset already shows
+candidate-vs-seed per pixel — and shape plus seed density is the discriminating signal. Full
+rationale and the collection code: docs/06 §1.
 
+**Geometry and metrics stay split, with no redundancy.** Step 05 writes `objects_<fy>.gpkg`
+(geometry + `oid` only) and two metrics CSVs keyed by `oid` (docs/05 §4). Step 06 fits and predicts
+from the CSVs alone. Geometry is read only to build a QGIS layer or an upload package.
 
-Pixels dilation for connecting components
+**The whole object set is uploaded, not only the fire subset** *(revised 2026-07-28)*. This file
+originally specified fire-only, to save space. Overridden: an expert user needs the rejected objects
+to find fires the model **missed**, and those objects with their predictors are what aims the next
+label campaign. One FeatureCollection per fire-year, 28 of them, at
+`…/WORKFLOW-EXPORTS/objects_raw/objects_raw_YYYY` — the packaging, the field set, the 2 GB
+Shapefile cap that forces per-year uploads, and the manual-ingest recipe are all in **docs/06 §12**.
 
-The candseed = 3 (candidates from next-year spring) in patagonia bring problems in
-the steppe. So, remove these pixels east of longitude -70.6. 
-The correct would be to re-run SNIC, but that is expensive. This is clumsy but 
-cheap solution.
+**The fire call the raster must use is `fire`, not `fire_model`** — the collected label wherever
+there is one, else the model (docs/06 §5). `fire_tag = -1` means "unlabelled", *not* "not fire";
+reading it as 0 would throw away the model's call on 1.68 M objects.
 
-In the union-find approach we have more conditions under which 
-pixels must not to have enlarged context:
+**Calendar year comes from the `year_calendar` metric, not from the fire-year.** Objects are
+fire-year entities (the season straddles Dec/Jan, 04 §2) and the products are calendar-year, so each
+object is placed by the mode of its pixels' calendar years (05 §2.4). `candseed==3` dieback pixels
+inherit the parent object's date and never their own next-year date (04 §4.3). Argentina's route
+through the network's calendar-year products is docs/08 §6.
 
-Ag/grass/pasture = veg_fire ∈
-**{1, 2, 3, 12, 13, 15, 17, 18, 19}** 
-(`agriculture_*`, `grassland_chaco`, `grassland-inund_chaco`,
-    `grassland_ba`, `grassland_pampa` and `pasture_`),
-OR
-candseed = 3 pixels. 
+## 2. What still has to be built
 
-None of this have enlarged context; they are connected only to their 8-neighbors.
+- **The month-of-burn raster.** Server-side in GEE: rasterize the uploaded objects where `fire == 1`
+  and combine with the SNIC metrics images to take the per-pixel burn date, coded as month within the
+  calendar year. `oid` is the join key between the FeatureCollection and the raster side.
+- **The unofficial vector database.** The uploaded per-year FeatureCollections *are* this, once
+  merged — `ee.FeatureCollection([...]).flatten()` over the 28 assets into one asset. Nothing is
+  lost by merging: `oid` carries the fire-year.
+- **The minimum mapped fire size.** Evidence is in (docs/06 §9); 1 ha is the defensible default,
+  0.5 ha if we want to keep everything that costs nothing. Must be stated in the ATBD and applied
+  consistently here. Open (BACKLOG).
+- **The manual ash/drought mask.** A hand-made pass removing false positives that survive
+  classification; needs domain-expert review before the raster is final.
 
---- 
+## 3. Original notes (2026-07, superseded in part)
 
-Given all these changes, year 2000 should be re-run.
-its gpkg and csv files could be removed later, as well as the test ones.
+Kept for the reasoning, not the instructions — the metric-set changes below were implemented in
+step 05 and are documented at docs/05 §2.4.
+
+Raster-based metrics kept for each object: per-class veg fractions `frac_c1…c23` (no ranked top-5),
+`area_ha` + `n_pixels`, `abs_date` `{median, min, max}`, `year_calendar` (pixel mode);
+~~`n_mean`~~ *(computed in collection 1, but dropped as a predictor and not uploaded — docs/06 §4;
+collection 2 should not compute it, and should drop `n_pixels` too)*; and neighbourhood sparseness
+`burned_around_{1,2,3}` (pre-computed in GEE for direct tiles, computed locally for the legacy COG).
+
+Pixel dilation for connecting components: `candseed == 3` (next-year spring candidates) causes
+problems in the Patagonian steppe, so those pixels are dropped east of longitude −70.6. Re-running
+SNIC would be the correct fix but is expensive; this is clumsy and cheap. In the union-find
+labelling, pixels get **no enlarged context** (8-neighbour connectivity only) when they are
+ag/grass/pasture — `veg_fire ∈ {1, 2, 3, 12, 13, 15, 17, 18, 19}` — **or** `candseed == 3`. Full
+geometry of the distance thresholds: docs/05 §2.2.

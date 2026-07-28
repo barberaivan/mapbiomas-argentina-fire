@@ -8,15 +8,15 @@
 # Contents
 #   read_year_objects(fy) / read_all_objects()  step-05 raster+shape metrics, joined on oid
 #   add_derived(m)                              doy_median + date_span (see note below)
-#   PREDICTORS                                  the 22 model columns
+#   PREDICTORS                                  the 20 model columns
 #   clean_tagged()                              polygons_data_merged.csv -> one clean row per oid
 #   c00_case(d) / c00_pass(d)                   the collection-00 empirical filter
 # =============================================================================
 
 suppressPackageStartupMessages(library(data.table))
 
-POLY_DIR   <- "collection-01/data/snic-polygons"                              # step-05 outputs
-MERGED_CSV <- "collection-01/data/polygons_data/polygons_data_merged.csv"     # step-06 labels
+POLY_DIR   <- "collection-01/data/objects-raw"                              # step-05 outputs
+MERGED_CSV <- "collection-01/data/objects-labels/polygons_data_merged.csv"     # step-06 labels
 EPOCH      <- "1970-01-01"                                                    # abs_date origin
 
 # MapBiomas Argentina regions, 2 km buffered — the blocks for the spatially-blocked CV
@@ -44,27 +44,56 @@ read_all_objects <- function(years = object_years()) {
 }
 
 # ── derived date features ────────────────────────────────────────────────────
-# date_{median,min,max} are ABSOLUTE day counts since the epoch, so their raw value is
-# mostly a year label — a tree splitting on them would be splitting on the year twice, and
-# the 7 fire-years with NO labels (2000, 2002, 2007, 2013, 2018, 2021, 2025) fall outside
-# every training split, where trees are constant anyway. Keep the two parts that carry
-# information a year identifier does not: WHEN in the season it burned, and for HOW LONG.
-# The year itself stays available through fire_year / year_calendar (docs/06).
+# NO ABSOLUTE TIME COORDINATE IS EVER A PREDICTOR. date_{median,min,max} are absolute day
+# counts since the epoch, so their raw value is mostly a year label; `year_calendar` and
+# `fire_year` are year labels outright. Any of them lets the model read the YEAR, and per-year
+# label prevalence in our fitting set is an artifact of where people drew (0.00 in 2001/2009/2016
+# up to 1.00 in 1998) rather than a property of the fire regime. A model given the year learns
+# that sampling pattern and applies it to every object of the year. Measured, when
+# year_calendar + fire_year WERE predictors:
+#   * those two took 18.4 % of all splits in the forest and 17.4 % of root splits — the TOP TWO
+#     of 22, ahead of seed_mean at 6.7 %;
+#   * Spearman(per-year label prevalence, per-year predicted fire %) = 0.83 deployed, 0.96
+#     out-of-fold — out of fold the prediction for a year WAS that year's label prevalence;
+#   * fire-year 1998 (82 labels, all of them fire) came out 100.0 % fire, 2012 (prevalence 0.906)
+#     96.6 %, and 2013 — which has NO labels at all — 93.3 % by extrapolating off its neighbours;
+#   * grid-blocked CV cannot see any of it: every grid fold holds 17-20 of the 21 labelled years,
+#     so the year lookup sits on both sides of every split and reads as skill. Pooled grid-5 OOF
+#     AUC 0.9211 against an n-weighted WITHIN-year OOF AUC of 0.8400 is that gap.
+# So the year is gone. What survives is the part of a date that is not a year identifier:
+#
+#   doy_sin / doy_cos   WHEN IN THE SEASON it burned, encoded CIRCULARLY. Raw day-of-year is
+#                       wrong for this model even though it carries no year: doy_median is the
+#                       CALENDAR day of year, and the fire season straddles Dec/Jan — which is
+#                       the whole reason a fire-year exists (docs/04 §2). An axis-aligned tree
+#                       cannot express "December through February" as one region in raw DOY, but
+#                       a threshold on sin or cos selects a single arc of the circle, so the pair
+#                       represents wrap-around intervals in two splits. (A linear day-of-FIRE-year
+#                       coordinate would also fix the wrap in one column, but it would hard-code
+#                       the fire-year start convention; the circular pair does not.)
+#   date_span           for HOW LONG it burned. A duration, not a position in time — it names no
+#                       year and no season, so it carries no sampling signal.
+#
+# `doy_median` itself is still computed: the inspection layer and the notebook display it, and
+# it is the input to the circular pair. It is NOT in PREDICTORS.
 # The five aggregated veg fractions are built here too, so every table the loaders return is
 # ready for the model without a second pass.
+DOY_PERIOD <- 365.25
 add_derived <- function(m) {
   m[, doy_median := as.integer(format(as.Date(date_median, origin = EPOCH), "%j"))]
+  m[, doy_sin    := sin(2 * pi * doy_median / DOY_PERIOD)]
+  m[, doy_cos    := cos(2 * pi * doy_median / DOY_PERIOD)]
   m[, date_span  := as.numeric(date_max - date_min)]
   add_veg_groups(m)
 }
 
 # ── the model columns ────────────────────────────────────────────────────────
-# 22 predictors: 17 non-vegetation metrics + the 5 aggregated vegetation fractions below.
+# NOTHING HERE MAY IDENTIFY THE YEAR — see the block above before adding a column.
 VEG_FRAC   <- sprintf("frac_c%d", 1:23)      # veg_fire abundance per class (docs/05 §3) — the
                                              # RAW columns, summed into the 5 groups below; not
                                              # predictors themselves
 NON_VEG    <- c("n_pixels", "area_ha", "burned_around_1", "burned_around_2", "burned_around_3",
-                "seed_mean", "n_mean", "doy_median", "date_span", "year_calendar", "fire_year",
+                "seed_mean", "doy_sin", "doy_cos", "date_span",
                 "perimeter_m", "convexity", "mbr_fill", "mbr_elongation", "circularity",
                 "shape_index")
 
@@ -72,7 +101,7 @@ NON_VEG    <- c("n_pixels", "area_ha", "burned_around_1", "burned_around_2", "bu
 # Five summed fractions in place of the 23 raw class fractions. Why: 23 sparse columns were most
 # of the design matrix, many classes are near-empty in the labels, and BART draws split variables
 # uniformly over what is available, so the sparse fractions diluted the split budget. Measured
-# better on every grid-blocked metric (docs/06 "The 22 predictors").
+# better on every grid-blocked metric (docs/06 §4).
 #
 # Membership is derived from config/veg_fire_remap.csv BY NAME, not from a hand-typed list of
 # codes, so a remap change follows through — and a code landing in two groups is an error, not
@@ -89,7 +118,14 @@ NON_VEG    <- c("n_pixels", "area_ha", "burned_around_1", "burned_around_2", "bu
 VEG_REMAP_CSV  <- "collection-01/config/veg_fire_remap.csv"
 VEG_GROUP_COLS <- c("frac_agri", "frac_grass_inund", "frac_pasture", "frac_grass_temp",
                     "frac_woody")
-PREDICTORS     <- c(NON_VEG, VEG_GROUP_COLS)             # the 22 model columns
+PREDICTORS     <- c(NON_VEG, VEG_GROUP_COLS)             # the 20 model columns
+
+# ── step-06 paths ────────────────────────────────────────────────────────────
+# One definition, so the fit, the prediction run, the threshold pick and the QGIS export cannot
+# disagree about where the model lives.
+OBJ_MODEL_DIR <- "collection-01/models-store/object_model"
+OBJ_PRED_DIR  <- "collection-01/data/objects-pred"
+OBJ_ANA_DIR   <- "collection-01/data/objects-analysis"
 
 veg_groups <- function(verbose = FALSE) {
   d  <- unique(fread(VEG_REMAP_CSV)[, .(veg_fire, veg_fire_name)])[veg_fire <= 23L][order(veg_fire)]
@@ -128,9 +164,56 @@ add_veg_groups <- function(m) {
   m[]
 }
 
+# ── the collected tag, and the deployed fire call ───────────────────────────
+# THREE COLUMNS, not one, on every prediction / inspection / upload table:
+#
+#   fire_model  {0,1}     what the model called it, at its size band's threshold
+#   fire_tag    {0,1,-1}  what a collaborator LABELLED it; -1 = no usable label
+#   fire        {0,1}     THE DEPLOYED CALL — the tag where there is one, else the model
+#
+# WHY -1 AND NOT NA for "untagged". The upload leg is a zipped Shapefile (scripts/
+# objects_upload.py — geometry is the whole cost, so SHP not GeoJSON), and OGR writes an UNSET
+# DBF integer as **0**. A missing value would therefore come back from GEE as `fire_tag = 0`,
+# i.e. silently indistinguishable from "a human labelled this NOT fire" — the one confusion that
+# would matter. GEE itself can carry nulls (`ee.Filter.notNull`), but the Shapefile step destroys
+# them before GEE ever sees them, so the sentinel has to be explicit. Filters stay simple:
+# `fire_tag == 1`, `fire_tag == 0`, `fire_tag == -1` (or `fire_tag >= 0` for "has a label").
+#
+# WHY THE TAG WINS. A drawn label is direct evidence; a posterior probability is an inference from
+# 20 metrics. Where both exist, the label is better. Consequences to keep in mind:
+#   * the ~5 k labelled objects are ALSO the fitting set, so for them `fire` is not a prediction —
+#     model accuracy figures describe `fire_model`, never `fire`;
+#   * labels are unevenly spread over years and space (2020 alone has 1647), so any DIAGNOSTIC of
+#     model behaviour must read `fire_model`. `fire` is the product column.
+TAG_NONE <- -1L
+
+# oid -> resolved tag, from the merged label table. Same conflict/duplicate resolution as
+# clean_tagged() so the two can never disagree about what an object was labelled, but WITHOUT its
+# NA-predictor drop: that drop exists because the model cannot SCORE such an object, which has no
+# bearing on whether a human labelled it.
+tag_lookup <- function(verbose = FALSE) {
+  d <- fread(MERGED_CSV, na.strings = c("NA", ""), select = c("feat_id", "oid", "class",
+                                                              "oid_class_conflict"))
+  d <- d[!is.na(oid)]
+  conflicted <- unique(d[oid_class_conflict %in% TRUE]$oid)   # labelled BOTH ways -> no usable tag
+  d <- d[!oid %in% conflicted]
+  setorder(d, oid, feat_id)                                   # lowest feat_id wins, deterministic
+  d <- unique(d, by = "oid")
+  if (verbose)
+    write(sprintf("tag_lookup(): %d tagged object(s) (%d fire / %d non-fire); %d dropped as conflicting",
+                  nrow(d), sum(d$class == 1L), sum(d$class == 0L), length(conflicted)), stderr())
+  d[, .(oid, fire_tag = as.integer(class))]
+}
+
+# THE single definition of the deployed call. Everything downstream (step 07 rasterization, the
+# QGIS layer, the upload) must use this rather than re-deriving the rule.
+resolve_fire <- function(fire_model, fire_tag) {
+  ifelse(!is.na(fire_tag) & fire_tag >= 0L, as.integer(fire_tag), as.integer(fire_model))
+}
+
 # ── clean tagged table: the fitting set ─────────────────────────────────────
 # polygons_data_merged.csv is one row per (label, object) PAIR and keeps every problem case
-# flagged rather than dropped (scripts/polygons_data_prep.R). Fitting needs the opposite:
+# flagged rather than dropped (scripts/objects_labels_prep.R). Fitting needs the opposite:
 # one row per OBJECT, no ambiguity, no NA. Four cuts, each reported:
 #   [1] oid == NA          the label hit no object — nothing to classify
 #   [2] oid_class_conflict the same object was labelled fire AND non-fire — unresolvable
@@ -179,7 +262,7 @@ print_clean_report <- function(rep) {
 }
 
 # ── regions, for the spatially-blocked CV ───────────────────────────────────
-# Same rgee bootstrap as scripts/polygons_data_prep.R::init_ee — if the venv discovery
+# Same rgee bootstrap as scripts/objects_labels_prep.R::init_ee — if the venv discovery
 # changes, change it in both.
 init_ee <- function() {
   if (file.exists(".local-paths")) {
@@ -243,7 +326,7 @@ band_lower <- function(s) {
 #   * config/object_model_thresholds.csv has FOUR bands (<1, 1-50, 50-300, >=300) because a
 #     band only earns its own threshold if it has enough labels to place one — below 1 ha there
 #     are 114 labels total, and above 300 ha the two halves were statistically indistinguishable
-#     (docs/06 "Threshold").
+#     (docs/06 §6).
 # So a QGIS row can sit in display class ">=1000 ha" while its fire call came from band ">=300 ha".
 # NOTE ON THE QUANTUM: area_ha is NOT n_pixels * 0.09. The objects are in EPSG:4326 with ~30 m
 # cells defined at the equator and area measured on the ellipsoid, so a pixel is 900*cos(lat) m²

@@ -5,7 +5,7 @@ whole-country **FY2000** grid and compared the two vectorization strategies. Fin
 resulting decisions live in **`docs/05-object_metrics.md` §7–§8**; these scripts are kept so the
 numbers are reproducible. They are **not** part of the production pipeline.
 
-Input: the FY2000 direct-download tiles in `collection-01/data/snic-direct/2000/` (04 §5b).
+Input: the FY2000 direct-download tiles in `collection-01/data/snic-rasters/2000/` (04 §5b).
 Interpreter: the project GEE venv (`$PYTHON`) for the `.py` files; system `Rscript` for the `.R`.
 
 ## Headline result (FY2000: 116.1 M burned cells, 9.16 B-cell grid, 82,025 objects)

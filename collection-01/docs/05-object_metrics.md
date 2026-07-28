@@ -19,13 +19,13 @@ abandoned. The old dense route survives as a ROI-scale `terra` fallback.
 `snic_tifs`/`load_snic` read **either** layout, preferring the first:
 
 **A. Direct-download per-carta tiles (preferred; 04 §5b).** `04-snic.py --to-asset` +
-`download_snic.py` land **248 per-carta GeoTIFFs** in `collection-01/data/snic-direct/<fy>/`.
+`download_snic.py` land **248 per-carta GeoTIFFs** in `collection-01/data/snic-rasters/<fy>/`.
 **7 bands** — the four below **plus `burned_around_{1,2,3}` pre-computed in GEE** as **cell
 counts** (R divides by (2r+1)²). This is the layout that scales: the extract reads one carta at
 a time (§2.1).
 
 **B. Legacy Drive COG.** `04-snic.py --to-drive` writes one GeoTIFF per fire-year to
-`snic-polygons/`. **4 bands** (no `burned_around`; computed locally). **ROI-scale only** — one
+`objects-raw/`. **4 bands** (no `burned_around`; computed locally). **ROI-scale only** — one
 big COG is a single "tile", so it re-hits the whole-mosaic extract limit at country scale.
 
 | band | meaning |
@@ -134,6 +134,10 @@ memory that drove the peak (§9.3):
   the official calendar-year month-of-burn raster, step 07). *(No `year_fire`: it is redundant with
   the fire-year already encoded in `oid`.)*
 - **`n_mean`** — mean Landsat observation count over the object's pixels (skipped if no `n` band).
+  **Computed in collection 1 but NOT a model predictor, and collection 2 should not compute it at
+  all**: it is an era proxy (observation density rises as sensors come online) and reintroduced a
+  spurious time trend in the fire rate. Observation count belongs where it is already used and
+  normalised — inside the step-04 seed threshold. Full record: docs/06 §4.
 - **neighbourhood sparseness** `burned_around_{1,2,3}` — mean over the object's pixels of the
   burned fraction in the (2r+1)² window. Direct tiles carry it pre-computed in GEE (cell counts
   → ÷(2r+1)²); the legacy COG computes it here.
@@ -161,10 +165,10 @@ written.
 
 ## 4. Outputs & run
 
-Written to `collection-01/data/snic-polygons/`. **Geometry and metrics are split with no
-redundancy**, and the metrics themselves are split by their compute phase — each of the two metric
-phases (§2.4) writes its own CSV directly, keyed by `oid`, so there is **no join-onto-geometry
-step** (minimal code):
+Written to `collection-01/data/objects-raw/` (the Insync store; gitignored symlink). **Geometry and
+metrics are split with no redundancy**, and the metrics themselves are split by their compute phase —
+each of the two metric phases (§2.4) writes its own CSV directly, keyed by `oid`, so there is **no
+join-onto-geometry step** (minimal code):
 
 | file | contents |
 |---|---|
@@ -172,11 +176,19 @@ step** (minimal code):
 | `objects_<fy>_raster_metrics.csv` | the §2.4 **raster** metrics (`aggregate_metrics`), keyed by `oid` |
 | `objects_<fy>_shape_metrics.csv` | the §2.4 **geometry/shape** metrics (`add_shape_metrics`), keyed by `oid` |
 
-Why GPKG and not GeoJSON: the per-year file is a **local intermediate** (used to turn collected
-points into per-object labels, and to subset the fire objects) — GPKG is lighter, faster, and
-coordinate-lossless. **GeoJSON is produced only later, for the classified fire subset** that gets
-uploaded to GEE (step 06), never for the full year. The step-06 model reads the two CSVs (join on
-`oid`) — no geometry needed — so all three files stay independent through classification.
+**The two directories this step lives between** (both under `collection-01/data/`, both in the
+store): `snic-rasters/<fy>/` holds the step-04 per-carta GeoTIFF input (§1A, 11 GB), `objects-raw/`
+holds the output above (6.8 GB). Everything downstream is step 06's — `objects-labels/`,
+`objects-pred/`, `objects-analysis/` and the two regenerable `*-cache/` directories (docs/06
+"Files, directories and scripts"). The naming is uniform on purpose: a fire is an **object**, the
+metrics are object-level, and a `-cache` suffix marks a directory that can be deleted and rebuilt.
+
+Why GPKG and not GeoJSON: the per-year file is a **local intermediate** — used to turn collected
+points into per-object labels, to build the QGIS inspection layers, and to package the GEE upload —
+and GPKG is lighter, faster and coordinate-lossless. The GEE upload converts to zipped Shapefile at
+that point (docs/06 §12), never GeoJSON, which measured ~12× larger. The step-06 model reads the two
+CSVs (join on `oid`) with no geometry at all, so all three files stay independent through
+classification.
 
 ```
 OBJ_CORES=13 Rscript collection-01/workflow/05-objects_metrics.R 2000   # union-find (default)

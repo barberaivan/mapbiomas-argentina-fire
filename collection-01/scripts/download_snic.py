@@ -60,7 +60,7 @@ from utils import constants as C
 
 # Repo-local default output. MUST stay OUTSIDE the Insync-synced store (the whole point
 # is to stop round-tripping through Drive); this path is under the repo, not STORE_ROOT.
-DEFAULT_OUT_DIR = Path(__file__).resolve().parents[1] / "data" / "snic-direct"
+DEFAULT_OUT_DIR = Path(__file__).resolve().parents[1] / "data" / "snic-rasters"
 
 
 def parse_shard(text):

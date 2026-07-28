@@ -4,7 +4,7 @@
 # =============================================================================
 # Pipeline step 06 (R, stochtree). Fits ONE model on the labelled step-05 objects and
 # scores every object of a fire-year with a POSTERIOR probability of being fire, so the
-# step-07 upload can take the fire subset and the round-2 point collection can be aimed
+# step-07 upload carries a call per object and the round-2 point collection can be aimed
 # at the objects the model is unsure about. Design + rationale: docs/06-object_model.md.
 #
 # Run from the repo ROOT:
@@ -18,7 +18,7 @@
 # Env: OBJ_THREADS (8) MCMC_ITER (2000) POST_DRAWS (500) NUM_GFR (10) PRED_CHUNK (20000)
 # For all years use scripts/run_06_predict.sh (parallel, resumable) — see below.
 #
-# THE 22 PREDICTORS are objects_data_functions.R::PREDICTORS — 17 non-vegetation metrics plus 5
+# THE 20 PREDICTORS are objects_data_functions.R::PREDICTORS — 15 non-vegetation metrics plus 5
 # aggregated vegetation fractions (the 23 raw frac_c* columns summed by group). docs/06.
 #
 # THE FITTING SET is the clean labelled table built by
@@ -27,7 +27,7 @@
 # removed and each cut reported. Uneven label density across objects is deliberately NOT
 # corrected: a label is a label, and reweighting by it would invent information.
 #
-# WHY probit BART VIA stochtree (docs/06 "The model"): no CV tuning to do honestly on ~5 k
+# WHY probit BART VIA stochtree (docs/06 §3): no CV tuning to do honestly on ~5 k
 # labels, and the posterior gives a per-object interval — the targeting signal for a round-2
 # collection. stochtree's num_threads parallelises the GFR sampler and the MCMC, which is
 # genuine within-chain scaling of the fit.
@@ -62,8 +62,8 @@ mode <- if (length(pos)) pos[1] else "probe"
 rest <- if (length(pos)) pos[-1] else character()
 
 # ── config ───────────────────────────────────────────────────────────────────
-MODEL_DIR  <- "collection-01/models-store/object_model"
-PRED_DIR   <- "collection-01/data/objects-predictions"
+MODEL_DIR  <- OBJ_MODEL_DIR
+PRED_DIR   <- OBJ_PRED_DIR
 PROBE_YEAR <- 2020L        # the default single-year timing probe (78 k objects, the big one)
 
 FIT_JSON   <- file.path(MODEL_DIR, "bart_object_model.json")
@@ -81,7 +81,7 @@ GRID_DEG   <- 0.5          # ~50 km spatial blocks for `cv grid` (see do_cv)
 # Size-band cuts on p_mean live in THRESH_CSV (objects_data_functions.R), chosen on out-of-fold
 # predictions by scripts/objects_threshold.R. Absent -> predict falls back to 0.5 and says so.
 # The bands rise with size (0.18 / 0.41 / 0.60) because the model is far more confident on big
-# objects; docs/06 "Threshold".
+# objects; docs/06 §6.
 
 msg <- function(...) write(sprintf(...), stderr())
 hdr <- function(s) { msg(""); msg("== %s ==", s) }
@@ -180,6 +180,9 @@ do_predict <- function(years) {
   msg("loaded fit (%d draws, %d training objects) in %.1f s",
       meta$draws, meta$n_train, elapsed(t0))
   dir.create(PRED_DIR, showWarnings = FALSE, recursive = TRUE)
+  # the collected labels, once for every year: fire_tag overrides fire_model in the deployed
+  # `fire` column (objects_data_functions.R "the collected tag, and the deployed fire call")
+  tags <- tag_lookup(verbose = TRUE)
 
   for (fy in years) {
     hdr(sprintf("predict fire-year %d", fy))
@@ -206,24 +209,42 @@ do_predict <- function(years) {
     res <- data.table(oid = obj$oid, fire_year = fy)
     res[ok, names(out[[1]]) := rbindlist(out)]
     fc <- fire_call(obj$area_ha, res$p_mean)
-    res[, fire := fc$fire]
+    res[, fire_model := fc$fire]
+    # fire_tag: -1 where no collaborator labelled this object (NOT 0 — see TAG_NONE)
+    res[tags, fire_tag := i.fire_tag, on = "oid"]
+    res[is.na(fire_tag), fire_tag := TAG_NONE]
+    res[, fire := resolve_fire(fire_model, fire_tag)]
     f <- file.path(PRED_DIR, sprintf("objects_%d_pred.csv", fy))
     fwrite(res, f, na = "NA")
+
+    # DERIVED PREDICTORS, for the upload (docs/07). 12 of the 20 predictors are verbatim columns of
+    # the step-05 metrics CSVs, but 8 are built here by add_derived()/add_veg_groups() and exist
+    # nowhere on disk. scripts/objects_upload.py needs all 20 on the FeatureCollection, and
+    # reimplementing the veg grouping in Python would duplicate logic that is deliberately derived
+    # from config/veg_fire_remap.csv BY NAME — so R writes them out instead. Keyed on oid.
+    derived <- intersect(c("doy_sin", "doy_cos", "date_span", VEG_GROUP_COLS), names(obj))
+    fd <- file.path(PRED_DIR, sprintf("objects_%d_derived.csv", fy))
+    fwrite(obj[, c("oid", derived), with = FALSE], fd, na = "NA")
+    n_tag <- sum(res$fire_tag >= 0L)
+    if (n_tag)
+      msg("  %d tagged object(s) (%d fire / %d non-fire) override the model on %d call(s)",
+          n_tag, sum(res$fire_tag == 1L), sum(res$fire_tag == 0L),
+          sum(res$fire_tag >= 0L & res$fire_tag != res$fire_model, na.rm = TRUE))
 
     msg("  predicted %d objects x %d draws in %.1f s (%.0f obj/s, %.1f us/obj/draw)",
         nrow(X), meta$draws, dt_pred, nrow(X) / dt_pred,
         1e6 * dt_pred / (nrow(X) * meta$draws))
     msg("  fire call [%s]", fc$rule)
     msg("  -> %d objects (%.1f %%), %.0f of %.0f kha   [at 0.5 it would be %d / %.0f kha]",
-        sum(res$fire, na.rm = TRUE), 100 * mean(res$fire, na.rm = TRUE),
-        sum(obj$area_ha[which(res$fire == 1L)]) / 1e3, sum(obj$area_ha) / 1e3,
+        sum(res$fire_model, na.rm = TRUE), 100 * mean(res$fire_model, na.rm = TRUE),
+        sum(obj$area_ha[which(res$fire_model == 1L)]) / 1e3, sum(obj$area_ha) / 1e3,
         sum(res$p_mean > .5, na.rm = TRUE), sum(obj$area_ha[which(res$p_mean > .5)]) / 1e3)
     msg("  mean p_width %.3f | widest decile > %.3f  (round-2 collection targets)",
         mean(res$p_width, na.rm = TRUE), quantile(res$p_width, .9, na.rm = TRUE))
     msg("  -> %s (%.1f MB)", f, file.size(f) / 1024^2)
 
     # what the same rate implies for the whole country, the number that decides whether
-    # per-year chunked prediction is viable at all (docs/06 "Prediction is the memory risk")
+    # per-year chunked prediction is viable at all (docs/06 §3)
     all_n <- 1689419
     msg("  extrapolated to all %s objects: %.1f min at this rate", format(all_n, big.mark = ","),
         dt_pred / nrow(X) * all_n / 60)

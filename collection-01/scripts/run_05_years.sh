@@ -17,7 +17,7 @@ END=${2:-2025}
 STAMP=$(date '+%Y%m%d_%H%M%S')
 
 LOGDIR=collection-01/logs
-OUTDIR=collection-01/data/snic-polygons
+OUTDIR=collection-01/data/objects-raw
 RSCRIPT=collection-01/workflow/05-objects_metrics.R
 MONITOR=collection-01/scripts/mem_monitor.sh
 mkdir -p "$LOGDIR"

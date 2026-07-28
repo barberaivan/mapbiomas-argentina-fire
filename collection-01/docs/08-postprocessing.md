@@ -253,10 +253,10 @@ series is **1999–2025** — matching `C.YEARS` and the network's South-America
 
 | Thing | Where | Notes |
 |---|---|---|
-| SNIC per-pixel bands, local | `data/snic-direct/<fy>/<carta>.tif`, 28 fire-years × ~248 cartas | `abs_date, veg_fire, n, burned_around_{1,2,3}, candseed`, Int16 |
+| SNIC per-pixel bands, local | `data/snic-rasters/<fy>/<carta>.tif`, 28 fire-years × ~248 cartas | `abs_date, veg_fire, n, burned_around_{1,2,3}, candseed`, Int16 |
 | SNIC per-pixel bands, **in GEE** | `C.SNIC_METRICS_COL/snic_metrics_<fy>` + `C.SNIC_COL/snic_<fy>` (`candseed`) | candseed is **not** duplicated into the metrics asset |
 | `abs_date` encoding | whole **days since 1970-01-01** (`05-objects_metrics.R:84`, `EPOCH`) | |
-| Objects + metrics | `data/snic-polygons/objects_<fy>.gpkg`, `_raster_metrics.csv`, `_shape_metrics.csv` | metrics carry `date_{median,min,max}`, `year_calendar`, `area_ha`, `n_pixels`, `seed_mean`, `frac_c*` |
+| Objects + metrics | `data/objects-raw/objects_<fy>.gpkg`, `_raster_metrics.csv`, `_shape_metrics.csv` | metrics carry `date_{median,min,max}`, `year_calendar`, `area_ha`, `n_pixels`, `seed_mean`, `frac_c*` |
 | Per-pixel calendar year | **already computed in step 05** — `05-objects_metrics.R:227`: `cyear := year(as.IDate(abs_date, origin = EPOCH))` | |
 
 ### 6.4 Three gotchas that decide correctness

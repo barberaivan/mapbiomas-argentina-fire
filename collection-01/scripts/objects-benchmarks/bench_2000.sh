@@ -17,7 +17,7 @@ echo; echo "######## STEP 1: build burned-mask uint8 sparse tif (terra, out-of-c
 $TIME -v Rscript -e '
 suppressPackageStartupMessages(library(terra)); terraOptions(progress=0)
 t<-Sys.time()
-tifs <- list.files("collection-01/data/snic-polygons", pattern="^snic_2000-.*\\.tif$", full.names=TRUE)
+tifs <- list.files("collection-01/data/objects-raw", pattern="^snic_2000-.*\\.tif$", full.names=TRUE)
 r <- terra::vrt(tifs, filename=tempfile(fileext=".vrt"), overwrite=TRUE)
 m <- terra::ifel(r[[1]] > 0, 1L, NA)                      # band 1 = candseed; burned = >0
 terra::writeRaster(m, "'"$MASK"'", datatype="INT1U", overwrite=TRUE, NAflag=0,

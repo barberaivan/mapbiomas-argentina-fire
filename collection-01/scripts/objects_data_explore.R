@@ -21,7 +21,7 @@
 #   Rscript collection-01/scripts/objects_data_explore.R [year ...]
 #     year…  restrict the FULL table to these fire-years (default: all of them)
 #
-# Writes CSVs + PNGs to collection-01/data/objects-explore/ and prints every table.
+# Writes CSVs + PNGs to collection-01/data/objects-analysis/ and prints every table.
 # Nothing here is a pipeline step — it exists to choose the cuts that step 06 will use.
 # =============================================================================
 
@@ -32,7 +32,7 @@ suppressPackageStartupMessages({
 })
 source("collection-01/scripts/objects_data_functions.R")
 
-OUT_DIR <- "collection-01/data/objects-explore"
+OUT_DIR <- "collection-01/data/objects-analysis"
 dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
 
 argv  <- commandArgs(trailingOnly = TRUE)

@@ -14,7 +14,7 @@
 # Usage (from the repo ROOT, inside tmux — see CLAUDE.md "Running long scripts"):
 #   collection-01/scripts/run_06_inspect.sh [-j WORKERS] [--sample N] [--force] [year ...]
 #     -j WORKERS  parallel years (default 6)
-#     --sample N  objects per p_mean decile in the companion GeoJSON (default 20; 0 = skip)
+#     --sample N  objects per p_mean decile in the companion GeoJSON (default 0 = skip)
 #     --force     rebuild years that already have an output GPKG
 #     year …      only these fire-years (default: every year with a prediction CSV)
 #
@@ -24,7 +24,7 @@ set -u
 cd "$(dirname "$0")/../.." || exit 1   # repo root (the R scripts expect to run from here)
 
 JOBS=6
-SAMPLE=20
+SAMPLE=0
 FORCE=0
 YEARS=()
 while (( $# )); do
@@ -37,9 +37,9 @@ while (( $# )); do
   esac
 done
 
-POLY_DIR=collection-01/data/snic-polygons
-PRED_DIR=collection-01/data/objects-predictions
-OUT_DIR=collection-01/data/objects-inspect
+POLY_DIR=collection-01/data/objects-raw
+PRED_DIR=collection-01/data/objects-pred
+OUT_DIR=collection-01/data/objects-inspect-cache
 LOGDIR=collection-01/logs
 MONITOR=collection-01/scripts/mem_monitor.sh
 STAMP=$(date '+%Y%m%d_%H%M%S')

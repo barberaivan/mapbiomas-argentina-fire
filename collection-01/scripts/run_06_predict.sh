@@ -36,8 +36,8 @@ while (( $# )); do
   esac
 done
 
-POLY_DIR=collection-01/data/snic-polygons
-PRED_DIR=collection-01/data/objects-predictions
+POLY_DIR=collection-01/data/objects-raw
+PRED_DIR=collection-01/data/objects-pred
 LOGDIR=collection-01/logs
 STAMP=$(date '+%Y%m%d_%H%M%S')
 RUNLOG="$LOGDIR/06_predict_${STAMP}.log"

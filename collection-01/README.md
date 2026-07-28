@@ -41,7 +41,7 @@ collection-01/
 │   ├── constants.py        # All paths, feature lists, MB reclass table, LR terms
 │   └── functions.py        # Shared cross-step GEE helpers ONLY (Landsat, indices, MB sampling, veg_fire); step-specific code lives with its step
 ├── config/                 # veg_fire_remap.csv — canonical MB→fire-class remap (source of truth)
-│                           # object_model_thresholds.csv — step-06 fire-call cut per size band (docs/06 "Threshold")
+│                           # object_model_thresholds.csv — step-06 fire-call cut per size band (docs/06 §6)
 ├── models/                 # Tracked: *_coefficients.csv (the GEE deliverable) + README; see models/README.md
 ├── models-store/           # symlink → Insync store (gitignored): heavy fits, CV metrics, tuning, OOF preds
 ├── workflow/               # Numbered pipeline steps (mixed Python + R)
@@ -62,19 +62,39 @@ collection-01/
 │   ├── ts_plot_cache.R                    # Build models-store/ts_plot_cache_v1.rds (in-sample p_pred + n5-smoothed prob, every fitted class)
 │   ├── ts_plot_functions.R                # Shared plot_fire_panel() (NBR/NBR2/raw p/smoothed p, Burned-over-Unburned); sourced below and by the notebook
 │   ├── ts_plot_by_fire.R                  # Driver: one panel per fire (pooled across classes) -> models-store/prediction_plots/{region}/region_fireNN.png
-│   ├── polygons_data_prep.R               # step 06: download the per-collaborator label assets, join them to objects -> polygons_data_merged.csv
-│   ├── objects_data_functions.R           # step 06: shared helpers (readers, derived predictors, veg groups, label cleaning, regions, c-00 filter)
+│   ├── objects_data_functions.R           # step 06: THE SHARED MODULE — readers, derived predictors, veg groups, clean_tagged(), tag lookup, thresholds, regions, c-00 filter
+│   ├── objects_labels_prep.R               # step 06: download the per-collaborator label assets, join them to objects -> polygons_data_merged.csv
 │   ├── objects_data_explore.R             # step 06: size distribution of the full table + how the c-00 empirical filter splits it
 │   ├── objects_threshold.R                # step 06: per-size-band fire-call threshold from out-of-fold preds -> config/object_model_thresholds.csv
-│   ├── objects_inspect_export.R           # step 06: GPKG (QGIS, 33 curated fields) + sampled GeoJSON of predictions, to inspect without a GEE upload
+│   ├── objects_importance_ale.R           # step 06: 4 importance measures + 1-D ALE curves for the 20 predictors -> data/objects-analysis/
+│   ├── objects_inspect_export.R           # step 06: GPKG (QGIS, 32 curated fields) of predictions, to inspect without a GEE upload (--sample N adds a GeoJSON)
+│   ├── objects_upload.py                  # step 06/07: package one fire-year (geometry + all 20 predictors + the calls) as a zipped Shapefile for GEE
+│   ├── validate_upload_zips.py            # step 06/07: pre-upload gate over the 28 zips (schema, code fields, counts, geometry) -> upload_zip_validation.csv
 │   ├── run_06_predict.sh                  # step 06: parallel scoring — one Rscript per fire-year, 8 at a time, resumable (prediction is single-threaded)
 │   ├── run_06_inspect.sh                  # step 06: parallel QGIS-layer build — one Rscript per fire-year, 6 at a time (I/O + memory bound), resumable
+│   ├── run_07_upload_zips.sh              # step 07: parallel upload-package build — one process per fire-year, 4 at a time, resumable
 │   ├── run_05_years.sh                    # Overnight all-years step-05 launcher — one Rscript/year, resumable, OOM-flagging (docs/05 §4.1)
 │   └── mem_monitor.sh                     # Lightweight RAM peak / near-OOM-warn monitor (used by run_05_years.sh; standalone too)
 ├── notebooks/              # Quarto-R (.qmd) exploratory analyses and decisions
 ├── samples/                # ARCHIVE — JS templates from interactive point collection
-└── data/                   # symlink → Insync store (gitignored): local downloads and training inputs
+└── data/                   # symlink → Insync store (gitignored): downloads, training inputs, steps 04–06 outputs
 ```
+
+### Where the step-04→06 data lives (`data/`, in the store — not git)
+
+| directory | contents | size |
+|---|---|---|
+| `snic-rasters/<fy>/` | step-04 per-carta SNIC GeoTIFFs — the step-05 input | 11 GB |
+| `objects-raw/` | step-05 output: `objects_<fy>.gpkg` (geometry + `oid`) + the two metrics CSVs | 6.8 GB |
+| `objects-labels/` | the collected labels: one GPKG per collaborator + `polygons_data_merged.csv` | 4 MB |
+| `objects-pred/` | step-06 output: `objects_<fy>_pred.csv` (`p_*`, `fire_model`, `fire_tag`, `fire`), `_derived.csv`, `oof_grid_5.csv` | 317 MB |
+| `objects-analysis/` | every reported table/plot from the scripts and the notebook | 2 MB |
+| `objects-inspect-cache/` | 28 QGIS layers + a `.qgz` project — **regenerable** | 6.3 GB |
+| `objects-upload-cache/` | the 28 GEE upload zips + loose Shapefile components — **regenerable** | 8.4 GB |
+
+A fire is an **object** (the layer is sparse, not an OBIA partition), and a **`-cache` suffix means
+regenerable**: delete it and re-run its launcher. Details: `docs/05-object_metrics.md` §4 and
+`docs/06-object_model.md` "Files, directories and scripts".
 
 ---
 
@@ -201,20 +221,28 @@ Rscript collection-01/scripts/make_fires_table_stats.R
 
 ### Step 06 — object model (R, stochtree BART)
 
-Fits one probit-BART on the clean labelled objects and scores a fire-year's objects with a
-posterior probability of being fire (`p_mean/p_sd/p_q05/p_q95/p_width`). Needs
-`stochtree` (CRAN). Measured timings + the CV result: `docs/06-object_model.md`.
+Fits one probit-BART on the clean labelled objects (5255 objects, prevalence 0.53) and scores a
+fire-year's objects with a posterior probability of being fire
+(`p_mean`/`p_sd`/`p_q05`/`p_q95`/`p_width`). Needs `stochtree` (CRAN). Measured timings, the CV
+result and every decision: `docs/06-object_model.md`.
 
-22 predictors: 17 non-vegetation metrics + 5 aggregated vegetation fractions (the 23 raw class
-fractions summed by group, which measured better than using them raw). See
-`docs/06-object_model.md`.
+**20 predictors**: 15 non-vegetation metrics + 5 aggregated vegetation fractions (the 23 raw class
+fractions summed by group, which measured better than using them raw). **No predictor identifies the
+year, and none proxies for it** — `fire_year` and `year_calendar` were removed after they were found
+to be reading the per-year label prevalence rather than the fire regime, `n_mean` after it was found
+to track the growth of the Landsat record, and day-of-year enters circularly as `doy_sin`/`doy_cos`.
+Read `docs/06-object_model.md` §4 before touching the predictor set.
+
+**Three call columns** come out of `predict`: `fire_model` (the model at its size-band cut),
+`fire_tag` (the collected label, `-1` where there is none) and **`fire`** — the deployed call, which
+is the tag where there is one and the model otherwise.
 
 ```bash
 Rscript collection-01/workflow/06-object_model.R              # fit, then time one year (FY2020)
 Rscript collection-01/workflow/06-object_model.R fit
 Rscript collection-01/workflow/06-object_model.R predict 2020 2014
-Rscript collection-01/workflow/06-object_model.R cv           # spatially blocked: leave-one-region-out
-Rscript collection-01/workflow/06-object_model.R cv grid 5     # 0.5 deg blocks -> 5 folds (the deployment number)
+Rscript collection-01/workflow/06-object_model.R cv grid 5     # 0.5 deg blocks -> 5 folds — THE DEPLOYED DESIGN (AUC 0.891)
+Rscript collection-01/workflow/06-object_model.R cv           # leave-one-region-out (harsher than deployment; not maintained)
 Rscript collection-01/workflow/06-object_model.R cv random 5    # random folds, leak-inflated, for contrast
 # every year: use the PARALLEL launcher — stochtree prediction is single-threaded, so one
 # process per fire-year (8 at a time) is 4.5 min instead of ~37. Resumable.
@@ -222,6 +250,15 @@ tmux new-session -d -s obj06 '/abs/path/to/collection-01/scripts/run_06_predict.
 ```
 
 `OBJ_THREADS` (8) `MCMC_ITER` (2000) `POST_DRAWS` (500) `NUM_GFR` (10) `PRED_CHUNK` (20000).
+
+The fire call uses a **per-size-band cut** (0.250 / 0.202 / 0.436 / 0.690 — the cut *rises* with
+object size), re-derivable from the out-of-fold predictions, plus the importance/ALE analysis that
+says which predictors carry the model:
+
+```bash
+Rscript collection-01/scripts/objects_threshold.R        # -> config/object_model_thresholds.csv (tracked)
+Rscript collection-01/scripts/objects_importance_ale.R   # -> data/objects-analysis/{importance,ale_curves}_objects.csv
+```
 
 Map inspection with **no GEE upload** — joins the predictions onto the step-05 geometry
 already on disk: a full GPKG for QGIS, plus a small decile-stratified GeoJSON light enough
@@ -237,18 +274,19 @@ Rscript collection-01/scripts/objects_inspect_export.R 2020 --fields all  # keep
 tmux new-session -d -s obj06i '/abs/path/to/collection-01/scripts/run_06_inspect.sh -j 6'
 ```
 
-The GPKG carries **33 curated fields**: identity/size, both verdicts (`fire`,
-`c00_pass`, and `verdict` = their agreement), why the model called it (`p_mean`, `p_width`,
-`p_thresh`, `p_margin`, `th_band`), burn evidence + timing, the 5 aggregated veg fractions and the
-6 shape metrics. Useful QGIS filters: `"verdict" != 'both'` (disagreement), `abs("p_margin") <
-0.05` (borderline calls), `"p_width" > 0.5` (model has no idea). Note the layer name starts with a
-digit, so SQL contexts need it double-quoted. **Where to start:** `"verdict" = 'c00 only' AND
-"area_ha" >= 300` — 6477 objects / 6785 kha (8 % of all object area) that the old filter keeps and the
-model rejects without confidence. Full guidance: docs/06 "How to actually inspect it".
+The GPKG carries **32 curated fields**: identity/size, the verdicts (`fire`, `fire_model`,
+`fire_tag`, `c00_pass`, and `verdict` = model-vs-c00 agreement), why the model called it (`p_mean`,
+`p_width`, `p_thresh`, `p_margin`, `th_band`), burn evidence + timing, the 5 aggregated veg
+fractions and the 6 shape metrics. Useful QGIS filters: `"verdict" != 'both'` (disagreement),
+`abs("p_margin") < 0.05` (borderline calls), `"p_width" > 0.5` (model has no idea), `"fire_tag" >= 0`
+(the collected labels). Note the layer name starts with a digit, so SQL contexts need it
+double-quoted. **Where to start:** `"verdict" = 'c00 only' AND "area_ha" >= 300` — 5872 objects /
+6397 kha (7.5 % of all object area) that the old filter keeps and the model rejects without
+confidence. Full guidance: docs/06 §11.
 
 Data exploration behind the size cuts and the collection-00 filter comparison — reads the
 full 1.69 M-object table and the clean labelled table, writes CSVs + PNGs to
-`data/objects-explore/`:
+`data/objects-analysis/`:
 
 ```bash
 Rscript collection-01/scripts/objects_data_explore.R          # ~1 min, ~1 GB
@@ -257,19 +295,49 @@ Rscript collection-01/scripts/objects_data_explore.R          # ~1 min, ~1 GB
 Both share `scripts/objects_data_functions.R` (loaders, `clean_tagged()`, the c-00 filter),
 so "the clean labelled table" means the same rows in both.
 
+### Step 07 — the GEE upload packages
+
+**Every object of every fire-year goes up**, not only the ones called fire: a fire-only layer can
+only show commission error, and a reviewer needs the rejected objects to find the fires the model
+*missed*. One FeatureCollection per fire-year, carrying `oid`, all **20 predictors**, the three call
+columns, `p_mean`/`p_width`, `year_cal` and `date_medd`:
+
+```
+projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/WORKFLOW-EXPORTS/objects_raw/objects_raw_YYYY
+```
+
+`YYYY` is the **fire-year**. Ingest is **by hand** (Code Editor → Assets → NEW → Table upload →
+Shapefile) because `earthengine upload table` only accepts `gs://` sources and no GCS bucket is
+reachable — **set max vertices = 1000000** in the dialog for every year (two years hold a single
+feature above 1 M vertices). A single all-years table is impossible on ingest: `.shp` caps at 2 GB.
+Merge server-side afterwards if one FC is wanted.
+
+```bash
+# build all 28 packages (biggest first, resumable) — 1.3 GB total
+tmux new-session -d -s zip07 '/abs/path/to/collection-01/scripts/run_07_upload_zips.sh -j 4'
+
+# then GATE them before uploading: schema, code fields, counts, geometry
+tmux new-session -d -s validate '$PYTHON collection-01/scripts/validate_upload_zips.py -j 8'
+```
+
+The validator exists because a hand upload has no failing pipeline to catch a bad zip — it would
+surface weeks later as a wrong map. Its sharpest check is that `fire`/`fire_model`/`fire_tag` are
+never NULL: OGR writes an unset DBF integer as null and GEE reads it as `0`, indistinguishable from
+"a human said NOT fire", hence the `-1` sentinel. Full detail: docs/06 §12.
+
 ### Scripts (R utilities) — step-06 label prep
 
 Downloads the per-collaborator fire/non-fire collections exported by the GEE
 `training_polygons_*` scripts (one GeoPackage per asset, individually
 re-downloadable) and matches every label to the step-05 objects of its own
-fire-year, attaching their metrics → `data/polygons_data/polygons_data_merged.csv`,
+fire-year, attaching their metrics → `data/objects-labels/polygons_data_merged.csv`,
 the table the object model is fitted on. Details + measured timings:
 `docs/06-object_model.md` "Label prep".
 
 ```bash
-Rscript collection-01/scripts/polygons_data_prep.R              # download missing, then merge
-Rscript collection-01/scripts/polygons_data_prep.R download camilo --force   # one author again
-Rscript collection-01/scripts/polygons_data_prep.R merge        # re-merge everything present
+Rscript collection-01/scripts/objects_labels_prep.R              # download missing, then merge
+Rscript collection-01/scripts/objects_labels_prep.R download camilo --force   # one author again
+Rscript collection-01/scripts/objects_labels_prep.R merge        # re-merge everything present
 ```
 
 ### Scripts (R utilities) — time-series diagnostics
@@ -306,7 +374,7 @@ were used in fitting (`fit == TRUE`) and a red asterisk for held-out dates
 | `logistic_regression_feature_engineering_ideas.qmd` | Feature engineering ideas for the LR model | — |
 | `burn_prob_ts_metrics.qmd` | Exploration of burn-probability time-series summary metrics | — |
 | `categorical_vs_bernoulli.qmd` | Categorical vs Bernoulli formulation notes | — |
-| `object_size_distribution.qmd` | Step 06: size distribution of all 1.69 M objects (6 display classes), the latitude-dependent pixel scale, labels vs population by size, then `p_mean`/`p_width`/`% undecided` per class → the **minimum-fire-size** decision | step-05 metrics + a `run_06_predict.sh` run |
+| `objects-analysis.qmd` | Step 06, the standing analysis: size distribution of all 1.69 M objects (6 display classes), the latitude-dependent pixel scale, labels vs population by size, `p_mean`/`p_width`/`% undecided` per class → the **minimum-fire-size** decision; the **per-size-band classification cuts** (Youden J, sens/spec, bootstrap intervals, ROC); the **per-year leak diagnostic** (§8 — the check that caught `fire_year`, plus §8.1 the residual time trend); and **§9 predictor importance + ALE curves** | step-05 metrics + `run_06_predict.sh` + `objects_threshold.R` + `objects_importance_ale.R` |
 
 Rendered `.html` versions are tracked alongside the `.qmd` so they can be read without a Quarto/R toolchain.
 
@@ -337,7 +405,7 @@ Export status across regions: `python collection-01/scripts/status.py`.
 | 03 — burn-probability time series | Running (per-carta export; `docs/03-bpts.md`). |
 | 04 — SNIC segmentation | Whole-country fire-year SNIC settled; Drive-COG handoff to R (`docs/04-snic.md`). |
 | 05 — object metrics (R/terra) | 2001–2025 measured and run; 1.69 M objects (`docs/05-object_metrics.md`). |
-| 06 — object model (R, BART) | Fitted + thresholded on 5255 labels; grid-blocked AUC 0.921. `predict all` and visual inspection pending (`docs/06-object_model.md`). |
-| 07 — vector→raster | Decisions recorded, no script yet (`docs/07-vector_to_raster.md`). |
+| 06 — object model (R, BART) | **Done.** 20 predictors, fitted on 5255 labels, grid-blocked OOF AUC 0.891 (within-year 0.845); per-size-band cuts deployed; all 28 fire-years scored (1 689 419 objects, 36 unscored); 28 QGIS layers built and inspected (`docs/06-object_model.md`). |
+| 07 — vector→raster | Upload packages built and validated (28 zips, ALL PASS); manual GEE ingest in progress. Month-of-burn raster + merged FC not built yet (`docs/07-vector_to_raster.md`). |
 | 08 — network post-processing & published subproducts | Not started; design notes only (`docs/08-postprocessing.md`). Assets due **31 Jul 2026** |
 | 09 — statistics, publication, launch | Not started; design notes only (`docs/09-statistics.md`). Launch **24 Sep 2026** |

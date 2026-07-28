@@ -1,5 +1,5 @@
 ---
-title: "Object size and model uncertainty — where to cut the minimum fire size"
+title: "Objects: size, model probability, and the classification cuts"
 subtitle: "Step 06 · all fire-years · collection-01"
 date: today
 format:
@@ -32,21 +32,29 @@ theme_set(theme_bw(base_size = 11) +
 
 ```{r paths}
 source("collection-01/scripts/objects_data_functions.R")
-PRED_DIR <- "collection-01/data/objects-predictions"
+PRED_DIR <- OBJ_PRED_DIR
+ANA_DIR  <- OBJ_ANA_DIR
 ```
 
 ## Why this notebook
 
-Two decisions hang on the size distribution:
+Four things that have to be read together, because each one decides how to read the others:
 
 1. **The collection's minimum mapped fire size.** Every burned-area product declares one. Ours
    is not yet chosen, and the honest basis for choosing it is not a convention borrowed from
    another product — it is *where our own model stops being able to tell fire from non-fire*.
 2. **Where the mapping effort and the error live.** 61 % of objects sit in one band, and the
-   thresholds already differ by size, so any statement about accuracy is meaningless without
+   thresholds differ by size, so any statement about accuracy is meaningless without
    knowing how objects and area distribute across sizes.
+3. **The classification cuts themselves** (§7) — the per-size-band Youden thresholds that turn
+   `p_mean` into the `fire` call, with the sensitivity/specificity they buy and how well the
+   labels actually identify them.
+4. **The per-year sanity check** (§8). This is the diagnostic that caught the `fire_year` /
+   `year_calendar` label-prevalence leak (docs/06 §4), and it
+   is the first thing to look at after any refit.
 
-Section 1–4 need only the step-05 metrics. Sections 5–7 need a `predict all` run.
+Sections 1–4 need only the step-05 metrics. Sections 5–8 need a `predict all` run; §7 also needs
+`scripts/objects_threshold.R`.
 
 ```{r load-sizes}
 years <- object_years()
@@ -198,7 +206,8 @@ py1 / py2
 ```
 
 ```{r by-year-table}
-kable(yr, digits = c(0, 0, 1, 2, 3, 2), format.args = list(big.mark = ","),
+kable(copy(yr)[, fire_year := as.character(fire_year)],
+      digits = c(0, 0, 1, 2, 3, 2), format.args = list(big.mark = ","),
       col.names = c("fire-year", "objects", "area (kha)", "% obj <1 ha", "% area <1 ha",
                     "% obj <0.5 ha"),
       caption = "Per-year totals and sub-hectare shares.")
@@ -370,10 +379,278 @@ Read this table as a trade: a cut is *cheap* when `pct_area_dropped` is small, a
 when `mean_width_dropped` / `pct_undecided_dropped` are clearly worse than the retained set —
 i.e. we are discarding precisely the objects the model cannot classify.
 
-## 7 · Notes
+## 7 · The classification cuts
+
+`p_mean` becomes a `fire` call through a **per-size-band threshold**, chosen by Youden's J on
+**out-of-fold** predictions (`scripts/objects_threshold.R` on `oof_grid_5.csv`). Never in-sample: a
+cut picked on probabilities the model has already seen the answers for is not a cut, it is a fit.
+
+Why Youden and not F1 or accuracy: **J = sens + spec − 1 is the only criterion here that does not
+move with prevalence**, and our labelled set is not a random sample of objects (§5, and see §8) — so
+every prevalence-dependent criterion is biased by how the points were collected rather than by the
+model.
+
+```{r th-load}
+th_chosen <- file.path(ANA_DIR, "threshold_chosen_grid_5.csv")
+th_at05   <- file.path(ANA_DIR, "threshold_at_0.5_grid_5.csv")
+th_sweep  <- file.path(ANA_DIR, "threshold_sweep_grid_5.csv")
+HAS_TH    <- file.exists(th_chosen)
+```
+
+```{r th-status}
+#| results: asis
+if (!HAS_TH)
+  cat("::: {.callout-warning}\n## No threshold run yet\n",
+      "Run `Rscript collection-01/scripts/objects_threshold.R` (needs an `oof_grid_5.csv` from",
+      "`06-object_model.R cv grid 5`), then re-render.\n:::\n")
+```
+
+### 7.1 What is deployed
+
+`config/object_model_thresholds.csv` — the four bands that actually run in `predict`. Deliberately
+coarser than the six display classes of §1: a band only earns its own cut if it has enough labels to
+place one.
+
+```{r th-deployed}
+kable(threshold_table()[, .(stratum, n, threshold, sens, spec, J, t_boot_q05, t_boot_q95)],
+      digits = c(0, 0, 4, 3, 3, 3, 3, 3), format.args = list(big.mark = ","),
+      col.names = c("size band", "labels", "cut on p_mean", "sens", "spec", "Youden J",
+                    "boot q05", "boot q95"),
+      caption = "The deployed per-band cuts. `boot q05/q95` bootstraps the Youden pick within the band — a wide interval means this many labels do not identify the cut to three decimals.")
+```
+
+The cuts **rise with size** because the model is far more confident on large objects. Read the
+bootstrap interval as the honest precision of each cut: where it is wide, the *size* cut rather than
+the *probability* cut is the right instrument.
+
+### 7.2 Every stratum and every criterion
+
+Five disjoint size bands plus the pooled views, each at its optimum under four criteria — so the
+choice of criterion is visible rather than implied.
+
+```{r th-chosen}
+#| eval: !expr HAS_TH
+tc <- fread(th_chosen)
+kable(tc[criterion == "J", .(stratum, n, t, sens, spec, prec, acc, J, F1, J_area,
+                             t_boot_q05, t_boot_q95)],
+      format.args = list(big.mark = ","),
+      col.names = c("size band", "labels", "cut", "sens", "spec", "prec", "acc", "J", "F1",
+                    "J (area-wt)", "boot q05", "boot q95"),
+      caption = "Youden's J optimum per stratum. `>=1 ha` and `all` are pooled views of the same objects, reported for reference and excluded from the deployed pick.")
+```
+
+```{r th-criteria}
+#| eval: !expr HAS_TH
+kable(dcast(tc, stratum ~ criterion, value.var = "t")[
+        , .(stratum, J, F1, acc, J_area)],
+      digits = 4,
+      col.names = c("size band", "J", "F1", "accuracy", "J (area-weighted)"),
+      caption = "The cut each criterion would choose. Where these disagree strongly, the band's cut is weakly identified — F1 and accuracy chase the majority class, which is a property of the sampling, not of the model.")
+```
+
+### 7.3 What the 0.5 default would have done
+
+```{r th-05}
+#| eval: !expr HAS_TH
+kable(fread(th_at05), format.args = list(big.mark = ","),
+      caption = "The naive 0.5 cut, for comparison. Under grid-blocked CV the model under-detects at 0.5 — the wrong way round for a burned-area product.")
+```
+
+### 7.4 The curves
+
+```{r th-curves}
+#| eval: !expr HAS_TH
+#| fig-height: 7
+sw <- fread(th_sweep)
+DEPLOY <- threshold_table()$stratum
+c1 <- ggplot(melt(sw[, .(stratum, t, J, F1, acc, J_area)], id.vars = c("stratum", "t")),
+             aes(t, value, colour = variable)) +
+  geom_line(linewidth = .4) + facet_wrap(~stratum) +
+  geom_vline(xintercept = 0.5, linetype = 3) +
+  scale_colour_brewer(palette = "Dark2") +
+  labs(title = "Criterion vs threshold", subtitle = "dotted = the 0.5 default",
+       x = "cut on p_mean", y = NULL, colour = NULL)
+c2 <- ggplot(sw, aes(1 - spec, sens, colour = stratum)) +
+  geom_line(linewidth = .5) + geom_abline(linetype = 3) +
+  geom_point(data = merge(fread(th_chosen)[criterion == "J"], data.table(stratum = unique(sw$stratum)),
+                          by = "stratum"), size = 2) +
+  labs(title = "ROC by size band", subtitle = "dot = the Youden pick",
+       x = "1 - specificity", y = "sensitivity", colour = NULL)
+c1 / c2
+```
+
+## 8 · Per-year sanity check — the leak diagnostic
+
+**This is the section to read first after any refit.** The labelled set's per-year prevalence is an
+artifact of where collaborators drew, ranging 0.00 to 1.00 across years and absent entirely in seven
+fire-years. If any predictor lets the model identify the year, it learns that sampling pattern and
+reports it back as a fire rate. That is exactly what happened when `fire_year` and `year_calendar`
+were predictors (docs/06 §4): Spearman(label prevalence,
+predicted fire %) reached **0.83**, fire-year 1998 came out **100.0 % fire**, and grid-blocked CV
+could not see any of it because every fold contains 17–20 of the 21 labelled years.
+
+The current predictor set contains no year identifier, so **this correlation should now be weak**.
+It will not be zero — years genuinely differ, and collaborators drew more in big fire years — but a
+strong monotone relationship is the alarm.
+
+```{r year-qc}
+#| eval: !expr HAS_PREDS
+lab_y <- tag[, .(labels = .N, lab_prev = round(mean(class == 1L), 3)), by = fire_year]
+yq <- merge(
+  d[!is.na(p_mean), .(objects = .N,
+                      pred_fire_pct = round(100 * mean(fire == 1L), 1),
+                      med_p = round(median(p_mean), 3),
+                      area_kha = round(sum(area_ha) / 1e3, 1)), by = fire_year],
+  lab_y, by = "fire_year", all.x = TRUE)[order(fire_year)]
+kable(copy(yq)[, fire_year := as.character(fire_year)], format.args = list(big.mark = ","),
+      col.names = c("fire-year", "objects", "% called fire", "median p", "area (kha)",
+                    "labels", "label prevalence"),
+      caption = "Per-year model output against per-year label prevalence. Blank label columns are the seven fire-years with no labels at all.")
+```
+
+```{r year-qc-cor}
+#| eval: !expr HAS_PREDS
+#| results: asis
+ok <- yq[!is.na(lab_prev)]
+rho <- cor(ok$lab_prev, ok$pred_fire_pct, method = "spearman")
+cat(sprintf(
+  "\nSpearman(label prevalence, %% called fire) over the %d labelled fire-years: **%.3f**",
+  nrow(ok), rho))
+cat(sprintf(" (Pearson %.3f).\n\n", cor(ok$lab_prev, ok$pred_fire_pct)))
+cat(if (abs(rho) > 0.7)
+      sprintf("::: {.callout-important}\n## Check this\nAt %.2f this is as strong as the leak that removed `fire_year` (0.83). Either a predictor is identifying the year again, or the labelled years really are the extreme ones — check which before trusting the per-year rates.\n:::\n", rho)
+    else
+      sprintf("::: {.callout-note}\nAt %.2f this is far below the **0.83** the leaking 22-predictor model showed on the same statistic, and the spread of per-year rates collapsed with it (the leaking model ran 20.1-100.0 %% across years, sd 20.7). Some residual association either way is expected and benign.\n:::\n", rho))
+```
+
+### 8.1 Does the fire rate still trend with time?
+
+A leak-free predictor set is not the same as a trend-free product. Nothing left in the model names a
+year, but a predictor that merely **correlates** with the observation record would still let an
+improving satellite archive masquerade as a rising fire regime — and trend analysis is the point of a
+28-year collection. So this is checked directly, on the output.
+
+Both coefficients are reported: Spearman is the honest headline (monotone, outlier-robust, assumes no
+functional form), Pearson is what a linear trend test would use. A Spearman clearly above Pearson
+says the relationship is rank-monotone but not a constant per-year increment.
+
+```{r time-trend}
+#| eval: !expr HAS_PREDS
+tt <- d[!is.na(p_mean), .(objects = .N, fire_pct = 100 * mean(fire == 1L),
+                          area_kha = sum(area_ha) / 1e3), by = fire_year][order(fire_year)]
+kable(copy(tt)[, `:=`(fire_year = as.character(fire_year), fire_pct = round(fire_pct, 1),
+                      area_kha = round(area_kha, 1))],
+      format.args = list(big.mark = ","),
+      col.names = c("fire-year", "objects", "% called fire", "area (kha)"),
+      caption = "Per-year fire rate and burned area from the deployed model.")
+```
+
+```{r time-trend-cor}
+#| eval: !expr HAS_PREDS
+kable(data.table(
+  relationship = c("fire-year vs % called fire", "fire-year vs burned area"),
+  spearman = round(c(cor(tt$fire_year, tt$fire_pct, method = "spearman"),
+                     cor(tt$fire_year, tt$area_kha, method = "spearman")), 3),
+  pearson  = round(c(cor(tt$fire_year, tt$fire_pct),
+                     cor(tt$fire_year, tt$area_kha)), 3)),
+  col.names = c("relationship", "Spearman", "Pearson"),
+  caption = "Residual time trend in the deployed product.")
+```
+
+```{r time-trend-verdict}
+#| eval: !expr HAS_PREDS
+#| results: asis
+rs <- cor(tt$fire_year, tt$fire_pct, method = "spearman")
+rp <- cor(tt$fire_year, tt$fire_pct)
+cat(sprintf(
+  "::: {.callout-note}\nResidual trend in the fire rate: **Spearman %.3f / Pearson %.3f**, over a range of %.1f-%.1f %% (sd %.1f). Some interannual structure is expected and real. What was removed to get here was a predictor that made this trend an artifact — see docs/06 \"Why no predictor may identify the year\" and the note on observation density. Treat any remaining trend as **unattributed** until it is checked against an independent record; do not publish it as a fire-regime finding on this evidence alone.\n:::\n",
+  rs, rp, min(tt$fire_pct), max(tt$fire_pct), sd(tt$fire_pct)))
+```
+
+## 9 · What the model leans on — importance and ALE
+
+Two questions share this evidence: which metrics an expert needs on the uploaded FeatureCollection to
+be able to re-judge a call, and whether any predictor is doing something it should not (this is how
+the `fire_year` leak was caught).
+
+**Four measures, because none of them is trustworthy alone here.** The predictors are strongly
+correlated — `area_ha` / `n_pixels` / `perimeter_m` are near-collinear, `burned_around_{1,2,3}` are
+nested windows — and every importance measure mishandles correlation in its own way:
+
+| measure | what it is | how it misleads |
+|---|---|---|
+| `split_share` | fraction of all forest splits taken by the column (BART's native measure, read from the saved forest) | biased toward high-cardinality continuous columns; splits credit arbitrarily between correlated columns |
+| `perm_dp` | mean \|change in predicted probability\| when the column is shuffled, over a sample of **all** objects | the measure that matches the upload question — but a correlated pair can both look small |
+| `perm_auc_drop` | AUC lost on the **labelled** set when the column is shuffled | in-sample (the fit saw these labels), so it is "what separates the classes it was shown", not validation |
+| `ale_range` | max − min of the 1-D ALE curve, i.e. effect size in probability units | ALE not PDP **because** of the correlation: a PDP averages over combinations that do not exist (a 1-pixel object with a 10 km perimeter) and invents effects there |
+
+```{r imp-load}
+imp_f <- file.path(ANA_DIR, "importance_objects.csv")
+ale_f <- file.path(ANA_DIR, "ale_curves_objects.csv")
+HAS_IMP <- file.exists(imp_f) && file.exists(ale_f)
+```
+
+```{r imp-status}
+#| results: asis
+if (!HAS_IMP)
+  cat("::: {.callout-warning}\n## Not computed yet\n",
+      "Run `Rscript collection-01/scripts/objects_importance_ale.R` (in tmux), then re-render.\n:::\n")
+```
+
+```{r imp-table}
+#| eval: !expr HAS_IMP
+imp <- fread(imp_f)
+setorder(imp, -perm_dp)
+kable(imp[, .(predictor, split_share = round(split_share, 4), root_share = round(root_share, 4),
+              perm_dp = round(perm_dp, 4), perm_auc_drop = round(perm_auc_drop, 4),
+              ale_range = round(ale_range, 4))],
+      col.names = c("predictor", "split share", "root share", "perm |dp|", "perm AUC drop",
+                    "ALE range"),
+      caption = "The 20 predictors, ordered by how much shuffling them moves the deployed output.")
+```
+
+```{r imp-plot}
+#| eval: !expr HAS_IMP
+#| fig-height: 5.5
+m <- melt(imp[, .(predictor, `split share` = split_share, `perm |dp|` = perm_dp,
+                  `perm AUC drop` = perm_auc_drop, `ALE range` = ale_range)],
+          id.vars = "predictor")
+m[, predictor := factor(predictor, levels = imp$predictor)]
+ggplot(m, aes(value, predictor)) +
+  geom_col(fill = "grey35") +
+  facet_wrap(~variable, scales = "free_x", nrow = 1) +
+  labs(x = NULL, y = NULL,
+       title = "Four views of predictor importance",
+       subtitle = "ordered by perm |dp|; disagreement between panels is the correlation structure, not noise")
+```
+
+```{r ale-plot}
+#| eval: !expr HAS_IMP
+#| fig-height: 9
+ale <- fread(ale_f)
+ale[, predictor := factor(predictor, levels = imp$predictor)]
+ggplot(ale, aes(x, ale)) +
+  geom_hline(yintercept = 0, colour = "grey70", linewidth = .3) +
+  geom_step(colour = "firebrick", linewidth = .5) +
+  facet_wrap(~predictor, scales = "free_x", ncol = 4) +
+  labs(x = "predictor value", y = "ALE (probability units)",
+       title = "1-D accumulated local effects",
+       subtitle = "how P(fire) moves with each predictor, holding the rest at their observed joint distribution")
+```
+
+Reading the ALE panel: a **flat** curve means the model does not use the variable over most of its
+range regardless of what the importance columns say; a **monotone** curve is a legible effect an
+expert can reason with; a **jagged** one is the model fitting local structure that may not generalise.
+For the upload decision, a variable earns its place by being either legible to a human adjudicating a
+call, or required by the product — not by ranking high on `split_share` alone.
+
+## 10 · Notes
 
 - `% called fire` figures inherit the threshold-level caveat from docs/06: the labels are not a
-  random sample of objects, so the *level* of the small-object cuts is uncalibrated and these
-  percentages are an upper bound on plausible fire rates, not an estimate of them.
+  random sample of objects, so the *level* of the cuts is uncalibrated and these
+  percentages are an upper bound on plausible fire rates, not an estimate of them. Removing the
+  year leak did not change that — it removed the model *reading* the sampling, not the sampling.
 - Objects with NA predictors (all-dieback, docs/05 §3) carry NA probabilities and are excluded
-  from §6 counts but present in §1-4.
+  from §6-9 counts but present in §1-4.
+- The predictor set carries no absolute time coordinate. `doy_sin`/`doy_cos` encode season
+  circularly because the fire season straddles Dec/Jan; `date_span` is a duration. See docs/06.

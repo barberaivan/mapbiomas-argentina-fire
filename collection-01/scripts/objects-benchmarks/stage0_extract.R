@@ -5,7 +5,7 @@ suppressPackageStartupMessages({ library(terra); library(data.table); library(js
 terraOptions(progress = 0)
 source("collection-01/workflow/05-objects_metrics.R")
 OUT <- Sys.getenv("F2000_DIR"); fy <- 2000
-tifs <- list.files(file.path("collection-01/data/snic-direct", as.character(fy)),
+tifs <- list.files(file.path("collection-01/data/snic-rasters", as.character(fy)),
                    pattern = "\\.tif$", full.names = TRUE)
 t0 <- Sys.time()
 r  <- terra::vrt(tifs, overwrite = TRUE)

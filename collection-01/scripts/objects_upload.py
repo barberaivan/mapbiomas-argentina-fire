@@ -1,17 +1,25 @@
 """
-collection-01/scripts/polygons_upload.py
+collection-01/scripts/objects_upload.py
 
-Upload one fire-year of step-05 objects (geometry + ALL predictors) to GEE as a
-FeatureCollection asset, for interactive on-map inspection of candidate filters
-(docs/06 §"Model fitting", docs/07).
+Package one fire-year of step-05 objects — geometry + ALL 20 predictors + the model/label calls —
+for the GEE table upload, and ingest it if a GCS bucket is reachable (as of 2026-07 none is, so the
+zip IS the deliverable and the upload is done by hand). docs/06 §12.
+
+EVERY object goes up, not only the ones called fire: a fire-only layer can show commission error
+but never omission, and the rejected objects with their predictors are what aims the next label
+campaign. One asset per fire-year -> .../WORKFLOW-EXPORTS/objects_raw/objects_raw_YYYY.
 
 Pipeline per year:
-  1. read <store>/collection-01/data/snic-polygons/objects_<fy>.gpkg   (oid + geometry)
-  2. join objects_<fy>_{raster,shape}_metrics.csv on `oid`
+  1. read <store>/collection-01/data/objects-raw/objects_<fy>.gpkg   (oid + geometry)
+  2. join objects_<fy>_{raster,shape}_metrics.csv + the step-06 prediction and derived-predictor
+     CSVs on `oid`
   3. write a zipped ESRI Shapefile with EXPLICITLY renamed <=10-char fields
   4. stage the .zip in GCS (the `earthengine` CLI only accepts gs:// sources)
-  5. `earthengine upload table` -> projects/.../polygons_raw/polygons_raw_<fy>
+  5. `earthengine upload table` -> projects/.../objects_raw/objects_raw_<fy>
   6. delete the staged object once ingestion is queued (unless --keep-staged)
+
+Build all 28 with scripts/run_07_upload_zips.sh, then GATE them with
+scripts/validate_upload_zips.py before uploading anything by hand.
 
 Why zipped Shapefile and not GeoJSON: geometry is the whole cost here (the GPKGs
 carry no attributes). Measured on 2014, one year is 73 MB GPKG -> 166 MB GeoJSON
@@ -21,9 +29,9 @@ every field by hand below -- never let OGR auto-truncate, `date_median` /
 
 Usage
 -----
-  $PYTHON collection-01/scripts/polygons_upload.py --year 2000
-  $PYTHON collection-01/scripts/polygons_upload.py --year 2000 --dry-run     # build zip, no upload
-  $PYTHON collection-01/scripts/polygons_upload.py --year 2000 --force       # overwrite the asset
+  $PYTHON collection-01/scripts/objects_upload.py --year 2000
+  $PYTHON collection-01/scripts/objects_upload.py --year 2000 --dry-run     # build zip, no upload
+  $PYTHON collection-01/scripts/objects_upload.py --year 2000 --force       # overwrite the asset
 """
 
 from __future__ import annotations
@@ -47,9 +55,9 @@ osr.UseExceptions()
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 ASSET_FOLDER = (
-    "projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/WORKFLOW-EXPORTS/polygons_raw"
+    "projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/WORKFLOW-EXPORTS/objects_raw"
 )
-ASSET_PREFIX = "polygons_raw"
+ASSET_PREFIX = "objects_raw"
 # Staging bucket for the ingest hand-off. Lives in the GEE compute project; the
 # object is deleted after the ingestion task is queued.
 DEFAULT_BUCKET = "mapbiomas-fire-485203-ee-staging"
@@ -62,6 +70,25 @@ DEFAULT_BUCKET_LOCATION = "southamerica-east1"
 RENAME = {
     # raster metrics
     "oid": "oid",
+    # the deployed call and its two inputs. fire_tag is -1 where nothing was labelled, NEVER
+    # absent: OGR writes an unset DBF integer as 0, which would be indistinguishable from a
+    # human labelling the object NOT fire (objects_data_functions.R::TAG_NONE).
+    "fire": "fire",
+    "fire_model": "fire_model",
+    "fire_tag": "fire_tag",
+    "p_mean": "p_mean",
+    "p_width": "p_width",
+    # the 8 DERIVED predictors (the other 12 are verbatim metrics columns above). Written by
+    # 06-object_model.R into objects_<fy>_derived.csv, because add_veg_groups() resolves group
+    # membership from config/veg_fire_remap.csv by NAME and must not be reimplemented here.
+    "doy_sin": "doy_sin",
+    "doy_cos": "doy_cos",
+    "date_span": "date_span",
+    "frac_agri": "frac_agri",
+    "frac_grass_inund": "frac_gr_in",
+    "frac_pasture": "frac_past",
+    "frac_grass_temp": "frac_gr_tp",
+    "frac_woody": "frac_woody",
     "n_pixels": "n_pixels",
     "area_ha": "area_ha",
     "burned_around_1": "burn_ar1",
@@ -72,7 +99,6 @@ RENAME = {
     "date_min": "date_min",
     "date_max": "date_max",
     "year_calendar": "year_cal",
-    "n_mean": "n_mean",
     "date_median_date": "date_medd",
     # shape metrics
     "perimeter_m": "perim_m",
@@ -87,10 +113,31 @@ RENAME.update({f"frac_c{i}": f"frac_c{i}" for i in range(1, 24)})
 
 # Columns written as text rather than a number.
 STRING_FIELDS = {"oid", "date_medd"}
+# Written as DBF integers, not reals: they are codes, and a real-typed 1.0000000001 in GEE would
+# break `fire == 1` filters.
+INT_FIELDS = {"fire", "fire_model", "fire_tag"}
+# "no usable label" -- must match objects_data_functions.R::TAG_NONE
+TAG_NONE = -1
+
+# Present in the step-05 metrics but deliberately NOT uploaded. `n_mean` is an era proxy that was
+# removed as a predictor (docs/06 §4); collection 2 should
+# not compute it at all. Dropped explicitly rather than left to trip the RENAME check, so the
+# omission is a stated decision instead of an error someone "fixes" by adding it back.
+DROP_COLS = {"n_mean"}
+
+# The 20 step-06 predictors, mirroring objects_data_functions.R::PREDICTORS. Kept here only to
+# ASSERT that every one of them reaches the upload (see load_metrics); the model itself never
+# reads this list, so a drift between the two is caught as a missing column, not silently used.
+PREDICTOR_NAMES = {
+    "n_pixels", "area_ha", "burned_around_1", "burned_around_2", "burned_around_3",
+    "seed_mean", "doy_sin", "doy_cos", "date_span", "perimeter_m", "convexity", "mbr_fill",
+    "mbr_elongation", "circularity", "shape_index", "frac_agri", "frac_grass_inund",
+    "frac_pasture", "frac_grass_temp", "frac_woody",
+}
 
 
 def log(msg: str) -> None:
-    print(f"[polygons_upload] {msg}", flush=True)
+    print(f"[objects_upload] {msg}", flush=True)
 
 
 def store_root() -> Path:
@@ -107,17 +154,49 @@ def store_root() -> Path:
     sys.exit(f"STORE_ROOT not set in {lp}")
 
 
-def load_metrics(poly_dir: Path, year: int) -> pd.DataFrame:
-    """Join the two per-year metric CSVs on `oid` and rename to DBF-safe names."""
+def load_metrics(poly_dir: Path, pred_dir: Path, year: int) -> pd.DataFrame:
+    """Join the metric CSVs + the step-06 prediction on `oid`, renamed to DBF-safe names."""
     raster = poly_dir / f"objects_{year}_raster_metrics.csv"
     shape = poly_dir / f"objects_{year}_shape_metrics.csv"
-    for p in (raster, shape):
+    pred = pred_dir / f"objects_{year}_pred.csv"
+    derived = pred_dir / f"objects_{year}_derived.csv"
+    for p in (raster, shape, pred, derived):
         if not p.exists():
-            sys.exit(f"missing metrics file: {p}")
+            sys.exit(f"missing input file: {p}")
 
     df_r = pd.read_csv(raster)
     df_s = pd.read_csv(shape)
     df = df_r.merge(df_s, on="oid", how="left", validate="one_to_one")
+
+    # The model output is the point of the layer: the deployed call `fire`, the two inputs it is
+    # built from (`fire_model` / `fire_tag`), and the posterior summaries an expert needs to judge
+    # a call. `fire_year` is dropped -- it is already the `oid` prefix (docs/05 SS3).
+    df_p = pd.read_csv(pred, usecols=["oid", "p_mean", "p_width", "fire", "fire_model", "fire_tag"])
+    df = df.merge(df_p, on="oid", how="left", validate="one_to_one")
+    df_d = pd.read_csv(derived)
+    df = df.merge(df_d, on="oid", how="left", validate="one_to_one")
+    # -1 IN ALL THREE CODE COLUMNS MEANS "no value", and it has to be written explicitly: OGR
+    # leaves an unset DBF integer null, which GEE reads as 0 -- indistinguishable from "a human
+    # said NOT fire" (fire_tag) or "the model said NOT fire" (fire_model / fire). Two sources of
+    # missingness, one encoding:
+    #   fire_tag                  -1 = nobody labelled this object (the common case)
+    #   fire_model / fire         -1 = NOT CLASSIFIED -- the object has an NA predictor and could
+    #                                  not be scored at all (all-dieback objects, docs/05 SS3)
+    # The CSVs keep R-native NA; the sentinel exists only because DBF cannot express it.
+    n_unscored = int(df["fire_model"].isna().sum())
+    if n_unscored:
+        log(f"{n_unscored:,} unscored object(s) (NA predictor) -> fire_model/fire = -1")
+    for col in ("fire", "fire_model", "fire_tag"):
+        n_na = int(df[col].isna().sum())
+        if n_na and col == "fire_tag" and n_na != n_unscored:
+            log(f"WARNING: {n_na:,} row(s) had no prediction row; {col} set to -1")
+        df[col] = df[col].fillna(TAG_NONE).astype("int64")
+    log(
+        f"tags: {int((df.fire_tag >= 0).sum()):,} labelled "
+        f"({int((df.fire_tag == 1).sum()):,} fire / {int((df.fire_tag == 0).sum()):,} non-fire)"
+    )
+
+    df = df.drop(columns=[c for c in DROP_COLS if c in df.columns])
 
     unknown = [c for c in df.columns if c not in RENAME]
     if unknown:
@@ -135,7 +214,16 @@ def load_metrics(poly_dir: Path, year: int) -> pd.DataFrame:
     if too_long:
         sys.exit(f"field names longer than 10 chars: {too_long}")
 
-    log(f"metrics: {len(df):,} rows x {len(df.columns)} columns")
+    # Every model predictor MUST reach the FeatureCollection: the layer exists so an expert can
+    # re-examine a call, which is impossible without the inputs the call was made from. Names here
+    # are post-RENAME, so this also catches a rename that silently drops one.
+    missing = [v for k, v in RENAME.items() if k in PREDICTOR_NAMES and v not in df.columns]
+    if missing:
+        sys.exit(f"predictor column(s) missing from the upload table: {missing}")
+    log(
+        f"metrics: {len(df):,} rows x {len(df.columns)} columns "
+        f"(all {len(PREDICTOR_NAMES)} predictors present)"
+    )
     return df
 
 
@@ -168,6 +256,8 @@ def build_shapefile(gpkg: Path, df: pd.DataFrame, out_dir: Path, year: int) -> P
     for name in field_names:
         if name in STRING_FIELDS:
             dst_layer.CreateField(_make_field(name, ogr.OFTString))
+        elif name in INT_FIELDS:
+            dst_layer.CreateField(_make_field(name, ogr.OFTInteger))
         else:
             dst_layer.CreateField(_make_field(name, ogr.OFTReal))
 
@@ -199,6 +289,8 @@ def build_shapefile(gpkg: Path, df: pd.DataFrame, out_dir: Path, year: int) -> P
                 continue
             if name in STRING_FIELDS:
                 out.SetField(name, str(value))
+            elif name in INT_FIELDS:
+                out.SetField(name, int(value))
             else:
                 out.SetField(name, float(value))
         dst_layer.CreateFeature(out)
@@ -224,6 +316,8 @@ def _make_field(name: str, ftype: int) -> ogr.FieldDefn:
     if ftype == ogr.OFTReal:
         fld.SetWidth(24)
         fld.SetPrecision(10)
+    elif ftype == ogr.OFTInteger:
+        fld.SetWidth(3)          # -1 .. 1
     else:
         fld.SetWidth(64)
     return fld
@@ -315,19 +409,22 @@ def main() -> None:
     ap.add_argument("--keep-local", action="store_true", help="keep the local work dir")
     args = ap.parse_args()
 
-    poly_dir = store_root() / "collection-01" / "data" / "snic-polygons"
+    poly_dir = store_root() / "collection-01" / "data" / "objects-raw"
+    pred_dir = store_root() / "collection-01" / "data" / "objects-pred"
     gpkg = poly_dir / f"objects_{args.year}.gpkg"
     if not gpkg.exists():
         sys.exit(f"missing {gpkg}")
     log(f"source: {gpkg} ({gpkg.stat().st_size / 1e6:.0f} MB)")
 
-    # Default to a durable dir in the store: if GCS staging is unavailable the zip
-    # is the deliverable (manual Code Editor upload), so it must survive the run.
-    work_dir = Path(args.work_dir) if args.work_dir else poly_dir / "upload"
+    # Default to a durable dir in the store: with no GCS staging the zip IS the deliverable
+    # (manual Code Editor upload), so it must survive the run. Named *-cache because it is
+    # regenerable from the metrics + prediction CSVs at any time.
+    work_dir = (Path(args.work_dir) if args.work_dir
+                else store_root() / "collection-01" / "data" / "objects-upload-cache")
     log(f"work dir: {work_dir}")
 
     try:
-        df = load_metrics(poly_dir, args.year)
+        df = load_metrics(poly_dir, pred_dir, args.year)
         shp = build_shapefile(gpkg, df, work_dir, args.year)
         zip_path = zip_shapefile(shp)
 

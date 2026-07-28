@@ -4,8 +4,8 @@
 # =============================================================================
 # Pipeline step 05 (R, terra/sf/data.table + a small Rcpp union-find). Consumes the
 # step-04 SNIC product for one fire-year — EITHER the direct-download per-carta tiles
-# (snic-direct/<fy>/, 7 bands incl. burned_around_{1,2,3} pre-computed in GEE; preferred,
-# 04 §5b) OR the legacy Drive COG (snic-polygons/) — and turns the burned pixels into
+# (snic-rasters/<fy>/, 7 bands incl. burned_around_{1,2,3} pre-computed in GEE; preferred,
+# 04 §5b) OR the legacy Drive COG (objects-raw/) — and turns the burned pixels into
 # fire-scar OBJECTS with a metrics table, ready for the step-06 object filter. One fire-year
 # at a time; objects are global within a year (no tiling), so nearby fragments of the same
 # scar share one id.
@@ -34,13 +34,14 @@
 #   [1] Extract burned cells (per-carta tile) into a data.table with all bands.
 #   [2] Assign object ids via the 1-px DILATION connectivity (union-find, §2).
 #   [3] Per-object RASTER metrics (data.table over burned cells): seed share, veg_fire abundance
-#       (frac_c1..23), area_ha, {median,min,max} of abs_date + year_calendar (mode), n_mean,
+#       (frac_c1..23), area_ha, {median,min,max} of abs_date + year_calendar (mode), n_mean
+#       (NOT a model predictor — docs/06; collection 2 should drop it),
 #       burned_around_{1,2,3}. Date/seed/year stats EXCLUDE candseed==3 dieback pixels.
 #   [4] Vectorize the objects (one (multi)polygon per id), parallel per-object.
 #   [5] Geometry SHAPE metrics (ported from collection-00 addShapeMetrics).
 #   [6] Write GPKG (oid + geometry ONLY) + two metric CSVs (raster, shape), keyed by oid — no join.
 #
-# Outputs (collection-01/data/snic-polygons/):
+# Outputs (collection-01/data/objects-raw/):
 #   objects_<fire_year>.gpkg                — polygons (one per object) + `oid` only (no metrics)
 #   objects_<fire_year>_raster_metrics.csv  — raster metrics (aggregate_metrics), keyed by oid
 #   objects_<fire_year>_shape_metrics.csv   — geometry/shape metrics, keyed by oid
@@ -61,13 +62,13 @@ UF_CPP <- file.path(HERE, "..", "utils", "label_uf.cpp")
 
 # ── config ───────────────────────────────────────────────────────────────────
 # Two input layouts (snic_tifs prefers the first):
-#   snic-direct/<fy>/<carta>.tif — direct-download per-carta tiles (04 §5b): 248 cartas,
+#   snic-rasters/<fy>/<carta>.tif — direct-download per-carta tiles (04 §5b): 248 cartas,
 #       7 bands incl. burned_around_{1,2,3} PRE-COMPUTED in GEE as CELL COUNTS.
-#   snic-polygons/snic_<fy>*.tif — legacy Drive COG: candseed+abs_date+veg_fire[+n];
+#   objects-raw/snic_<fy>*.tif — legacy Drive COG: candseed+abs_date+veg_fire[+n];
 #       burned_around computed locally here. (Legacy is ROI-scale only — one big COG is one
 #       "tile", so it re-hits the whole-mosaic extract limit at country scale.)
-SNIC_DIR        <- "collection-01/data/snic-polygons"   # legacy Drive COG (symlink into store)
-SNIC_DIRECT_DIR <- "collection-01/data/snic-direct"     # direct-download per-carta tiles
+SNIC_DIR        <- "collection-01/data/objects-raw"   # legacy Drive COG (symlink into store)
+SNIC_DIRECT_DIR <- "collection-01/data/snic-rasters"     # direct-download per-carta tiles
 
 # veg_fire codes that get NO enlarged connectivity context (8-connectivity only): agriculture
 # (1,2,3) + grasslands ba/chaco/pampa/inund (12,13,15,17) + pastures ba/chaco (18,19). Burned

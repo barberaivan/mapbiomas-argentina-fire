@@ -190,7 +190,7 @@ Replaces the Drive+Insync round-trip. Two commands:
 2. **`download_snic.py --year <fy>` (or `--all-years`)** (`collection-01/scripts/download_snic.py`) — builds
    `snic_metrics_<fy>.addBands(candseed)` (7 bands) and downloads it **one carta at a time** via
    `geedim`, which sub-tiles each carta to the compute-pixels limits (≤32 MB / ≤10000 px / ≤1024
-   bands) and fetches tiles concurrently. Output `data/snic-direct/<fy>/<carta_id>.tif` (int16,
+   bands) and fetches tiles concurrently. Output `data/snic-rasters/<fy>/<carta_id>.tif` (int16,
    masked→`NoData=0`). The carta set is the **248 cartas intersecting the ARG 2 km buffer**
    (`C.ARG_BUFFER_FC`, the bpts/SNIC footprint), not the full ~286-carta grid.
    - **carta = outer partition, geedim = inner tiling.** geedim tiles for the request limit either
@@ -204,7 +204,7 @@ Replaces the Drive+Insync round-trip. Two commands:
      05 reads full-res full-coverage). geedim writes the mask → NoData tag, which terra honours. At
      carta granularity (~20 M cells) there is no OOM risk regardless.
 
-**R-side change still needed (step 05):** point `load_snic` at `data/snic-direct/<fy>/` and
+**R-side change still needed (step 05):** point `load_snic` at `data/snic-rasters/<fy>/` and
 `terra::vrt()` the per-carta tifs into one year mosaic *before* labelling (objects stay global),
 and read the **new band set/order** (`abs_date, veg_fire, n, burned_around_{1,2,3}, candseed`);
 `burned_around_*` now arrive pre-computed as **cell counts** (divide by (2r+1)² for the

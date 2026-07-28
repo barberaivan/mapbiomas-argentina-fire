@@ -251,8 +251,8 @@ SNIC_METRICS_COL = f"{_FIRE_ROOT}/COLLECTION-1/WORKFLOW-EXPORTS/snic_metrics"
 # GEE's toDrive `folder` is a folder NAME, not a path: it writes into an existing
 # Drive folder of that name wherever it lives. This one already exists on the
 # comahue account's Drive at MapBiomas/mapbiomas-arg-fire-store/collection-01/data/
-# snic-polygons, which Insync syncs to STORE_ROOT/collection-01/data/snic-polygons.
-SNIC_DRIVE_FOLDER = "snic-polygons"
+# objects-raw, which Insync syncs to STORE_ROOT/collection-01/data/objects-raw.
+SNIC_DRIVE_FOLDER = "objects-raw"
 
 # Fire-year calendar (§2): FY Y1 = 1 May Y1 → 30 Apr (Y1+1), named by START year Y1.
 FY_START_MONTH = 5

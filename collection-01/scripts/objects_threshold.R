@@ -10,7 +10,7 @@
 #
 # Run from the repo ROOT:
 #   Rscript collection-01/scripts/objects_threshold.R [oof-file] [--boot N]
-#     oof-file  default data/objects-predictions/oof_grid_5.csv (grid-blocked folds — the
+#     oof-file  default data/objects-pred/oof_grid_5.csv (grid-blocked folds — the
 #               deployment-relevant design, docs/06)
 #     --boot N  bootstrap resamples for the threshold's stability interval (default 1000)
 #
@@ -24,14 +24,14 @@
 #   acc      plain accuracy at the cut. Same caveat, worse.
 #   J_area   Youden's J with every object WEIGHTED BY area_ha. The product is a burned-AREA
 #            product, so this is the criterion that matches the deliverable — but read it
-#            knowing a handful of huge objects dominate the weights (docs/06 "the 10 largest").
+#            knowing a handful of huge objects dominate the weights (docs/06 §6).
 #
 # STRATA: five disjoint size bands (<1, 1-50, 50-300, 300-1000, >=1000 ha) — the collection-00
 # cases with the open-ended >=300 one split in two, because the optimal cut turned out to keep
 # rising with size and the >=300 band was hiding that. Plus the pooled >=1 ha and all rows for
 # reference (excluded from the deployable pick — they are views of the same objects).
 #
-# Outputs to collection-01/data/objects-explore/:
+# Outputs to collection-01/data/objects-analysis/:
 #   threshold_sweep_<tag>.csv        the full curve, overall and per stratum
 #   threshold_chosen_<tag>.csv       one row per stratum x criterion + bootstrap interval
 #   threshold_<tag>.png              criterion curves + ROC + the area consequence
@@ -45,14 +45,14 @@ suppressPackageStartupMessages({
 })
 source("collection-01/scripts/objects_data_functions.R")
 
-OUT_DIR    <- "collection-01/data/objects-explore"
-CONFIG_OUT <- "collection-01/config/object_model_thresholds.csv"
+OUT_DIR    <- OBJ_ANA_DIR
+CONFIG_OUT <- THRESH_CSV
 dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
 
 argv <- commandArgs(trailingOnly = TRUE)
 nboot <- { i <- match("--boot", argv); if (is.na(i)) 1000L else as.integer(argv[i + 1L]) }
 oof_f <- { f <- grep("^--", argv, value = TRUE, invert = TRUE)
-           if (length(f)) f[1] else "collection-01/data/objects-predictions/oof_grid_5.csv" }
+           if (length(f)) f[1] else file.path(OBJ_PRED_DIR, "oof_grid_5.csv") }
 tag   <- sub("^oof_", "", tools::file_path_sans_ext(basename(oof_f)))
 
 msg <- function(...) write(sprintf(...), stderr())
