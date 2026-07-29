@@ -78,15 +78,17 @@ Built 2026-07-29 (`docs/07-vector_to_raster.md`). What remains:
   matching the local build, and `scar_id` surviving the DBF round trip as an integer (a string would
   have failed `ee.Image().paint` only at raster time). Mask agreement checked on 2003/2020/2025:
   `month px == scar px`, `month-only = scar-only = 0`.
-- [ ] **CLEANUP once the scar rasters are built: delete the export path that was NOT used.**
-  `07-scar_rasters.py` currently carries both the monolithic default (three 27-band images, the
-  reference's own shape) and a `--per-year` + `--merge` fallback, because it was unknown whether one
-  task painting 27 FCs would hold. As soon as that is known, drop the loser — the flags, their
-  helper functions (`export_per_year` / `merge_per_year`), `SCAR_PARTS_COL`, and the matching
-  paragraphs in the module docstring, docs/07 and this file. Keep at most one line saying *why* the
-  other was rejected if a real GEE limit was measured. Also retire `--roi` and prepare (for Iván to
-  run) the deletion of the `*_roitest` assets and, if the fallback went unused,
-  `FINAL_PRODUCTS/scar_year_parts`.
+- [x] **Unused scar-raster export path deleted** (2026-07-29). All three monolithic tasks succeeded,
+  so `--per-year` / `--merge`, `export_per_year` / `merge_per_year`, `SCAR_PARTS_COL`,
+  `ensure_container` and the `--roi` smoke test are gone from `07-scar_rasters.py`, along with their
+  paragraphs here and in docs/07. No GEE limit was ever measured against the monolith — it simply
+  worked, and that one line is all the record it needs. `--roi` survives as the `--check` extent only.
+  Two fixes went in with it: the export now **skips an asset that already exists** (a re-`--launch`
+  would otherwise grind through the whole country and die on "cannot overwrite"), and task
+  descriptions are namespaced `arg07c_<subproduct>` for the shared-project reason in docs/07 §12.7.
+  - [ ] **Iván to delete `FINAL_PRODUCTS/scar_year_parts`** — an empty IMAGE_COLLECTION left by an
+    early `--per-year` dry run (that dry-run-creates-assets bug is itself already fixed). Confirmed
+    empty: 0 images. Nothing else needs deleting — the `*_roitest` assets are already gone.
 - [ ] **Cross-check the local and GEE masks per year.** `objects-scars/scars_<Y>_months.csv` holds
   the per-month pixel histogram from the local build; `07-month_of_burn.py --check` gives the same
   histogram from the raster. They should match exactly — both derive from the same object pixel set,

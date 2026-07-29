@@ -17,7 +17,7 @@ Run in this order; each sub-step needs the one before it.
 |---|---|---|---|
 | **07a** | **Month of burn** per calendar year → `CLASSIFICATION_COLLECTIONS/collection1_fire_mask_v1` (ImageCollection, one 1-band uint8 image per year, 1–12, masked elsewhere). The pivot everything else reads. | `workflow/07-month_of_burn.py` (GEE) | ✅ **done** — 27/27 exported |
 | **07b** | **Calendar-year scars**, 8-connected, labelled locally → `data/scars-upload-cache/scars_<Y>.zip`, then ingested by hand as `FINAL_PRODUCTS/annual_burned_vectors/scars_<Y>` | `workflow/07-calendar_scars.R` + `scripts/run_07_scars.sh` (local, two passes) | ✅ **done** — 27/27 built, gated and ingested, all verified against the local build |
-| **07c** | **Scar rasters** — `annual_burned_id`, `annual_burned_area_ha`, `annual_burned_scar_size_range`, painted from the ingested scars and masked to 07a | `workflow/07-scar_rasters.py` (GEE) | 🔄 **exporting** (3 tasks, whole country, 27 bands each) |
+| **07c** | **Scar rasters** — `annual_burned_id`, `annual_burned_area_ha`, `annual_burned_scar_size_range`, painted from the ingested scars and masked to 07a | `workflow/07-scar_rasters.py` (GEE) | ✅ **done** — 3/3 exported and verified on the landed assets (§9.1) |
 | **07d** | **The nine derived subproducts** — `monthly_burned`, `annual_burned`, both `*_coverage`, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`), `year_last_fire` | `workflow/07-subproducts.py` (GEE) | 🔄 **exporting** (9 tasks, 2026-07-29; the 4 `*_coverage` ones re-launched against LULC col-3, §12.1) |
 
 Commands, in order:
@@ -369,6 +369,28 @@ from the reference `5-export_annual_burned_id_and_size_by_year`:
 **The scar mask is forced to equal the month-of-burn mask** — both products are painted with
 `.updateMask(month.mask())`, so the requirement holds by construction, and `--check` reports
 `month-only` and `scar-only` pixel counts per year so the residual is a number, not an assumption.
+
+### 9.1 The built result, verified on the LANDED assets
+
+All three exported 2026-07-29. Checked against the exported assets, not the graph — a different
+question, and the one that catches export-time grid or masking surprises:
+
+| Asset | Bands | dtype | Grid |
+|---|---|---|---|
+| `…_annual_burned_id_v1` | 27, `scar_id_1999 … scar_id_2025` | int | pinned, 74085 × 123601 |
+| `…_annual_burned_area_ha_v1` | 27, `scar_area_ha_1999 …` | float | idem |
+| `…_annual_burned_scar_size_range_v1` | 27, `scar_area_ha_1999 …` | int | idem |
+
+Over the Chaco audit box, calendar 2003 / 2020 / 2025: `month px == scar px == size px`
+(15,492 / 32,559 / 27,508), **`month-only = scar-only = 0`** in every year, and **0** pixels where the
+stored size class disagrees with recomputing it from the painted `area_ha`. The mask invariant holds
+on the published rasters, not just in the expression that built them.
+
+**The monolith held**, so the `--per-year` + `--merge` fallback and the `--roi` smoke test were
+deleted rather than left as a second path to maintain (docs/08 open decisions do not cover this; it
+was a build-time hedge). No GEE limit was ever measured against one task painting 27
+FeatureCollections — it simply worked. The empty `FINAL_PRODUCTS/scar_year_parts` collection that a
+dry run once created is left for Iván to delete.
 
 ---
 

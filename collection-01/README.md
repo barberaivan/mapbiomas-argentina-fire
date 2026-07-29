@@ -376,8 +376,9 @@ $PYTHON collection-01/scripts/validate_scar_zips.py
 `.../COLLECTION-1/FINAL_PRODUCTS/annual_burned_vectors/scars_<Y>`:
 
 ```bash
-$PYTHON collection-01/workflow/07-scar_rasters.py --check --years 1999,2000   # mask agreement
-$PYTHON collection-01/workflow/07-scar_rasters.py --launch
+# mask agreement; pass a --roi box, a whole-country interactive reduce is slow
+$PYTHON collection-01/workflow/07-scar_rasters.py --check --years 2003,2020 --roi=-61.6,-25.6,-61.1,-25.1
+$PYTHON collection-01/workflow/07-scar_rasters.py --launch     # skips assets that already exist
 ```
 
 **7d — the nine derived subproducts, in GEE.** `monthly_burned`, `annual_burned`, both
@@ -473,6 +474,6 @@ Export status across regions: `python collection-01/scripts/status.py`.
 | 04 — SNIC segmentation | Whole-country fire-year SNIC settled; Drive-COG handoff to R (`docs/04-snic.md`). |
 | 05 — object metrics (R/terra) | 2001–2025 measured and run; 1.69 M objects (`docs/05-object_metrics.md`). |
 | 06 — object model (R, BART) | **Done.** 20 predictors, fitted on 5255 labels, grid-blocked OOF AUC 0.891 (within-year 0.845); per-size-band cuts deployed; all 28 fire-years scored (1 689 419 objects, 36 unscored); 28 QGIS layers built and inspected (`docs/06-object_model.md`). |
-| 07 — calendar-year products | Object FCs ingested (28). **07a month-of-burn ImageCollection** done (27/27); **07b calendar-year scars** built locally, gated and ingested (27/27); **07c scar rasters** exporting (3 tasks); **07d the nine derived subproducts** exporting (9 tasks) — `docs/07-vector_to_raster.md`. |
+| 07 — calendar-year products | Object FCs ingested (28). **07a month-of-burn ImageCollection** done (27/27); **07b calendar-year scars** built locally, gated and ingested (27/27); **07c scar rasters** done (3/3, verified on the landed assets); **07d the nine derived subproducts** exporting (9 tasks) — `docs/07-vector_to_raster.md`. |
 | 08 — network post-processing & published subproducts | Not started; design notes only (`docs/08-postprocessing.md`). Assets due **31 Jul 2026** |
 | 09 — statistics, publication, launch | Not started; design notes only (`docs/09-statistics.md`). Launch **24 Sep 2026** |
