@@ -86,9 +86,11 @@ Built 2026-07-29 (`docs/07-vector_to_raster.md`). What remains:
   Two fixes went in with it: the export now **skips an asset that already exists** (a re-`--launch`
   would otherwise grind through the whole country and die on "cannot overwrite"), and task
   descriptions are namespaced `arg07c_<subproduct>` for the shared-project reason in docs/07 §12.7.
-  - [ ] **Iván to delete `FINAL_PRODUCTS/scar_year_parts`** — an empty IMAGE_COLLECTION left by an
-    early `--per-year` dry run (that dry-run-creates-assets bug is itself already fixed). Confirmed
-    empty: 0 images. Nothing else needs deleting — the `*_roitest` assets are already gone.
+  - [x] **`FINAL_PRODUCTS/scar_year_parts` deleted** (2026-07-29) — an empty IMAGE_COLLECTION left by
+    an early `--per-year` dry run (that dry-run-creates-assets bug is itself already fixed). Iván
+    authorised this one deletion explicitly as an exception to the "user runs deletions" rule; the
+    script asserted type, path and 0 children before deleting, and re-listed afterwards (3 products +
+    27 scar FCs intact). The `*_roitest` assets were already gone.
 - [ ] **Cross-check the local and GEE masks per year.** `objects-scars/scars_<Y>_months.csv` holds
   the per-month pixel histogram from the local build; `07-month_of_burn.py --check` gives the same
   histogram from the raster. They should match exactly — both derive from the same object pixel set,
@@ -125,8 +127,16 @@ Built 2026-07-29 (`docs/07-vector_to_raster.md`). What remains:
   docs/07 §12.7. **Consider the same prefix for `07-scar_rasters.py`**, whose descriptions
   (`annual_burned_id`, …) are equally generic — it has no in-flight check today, so it cannot
   false-skip, but it is the same hazard if one is ever added (fold into that file's cleanup item).
-- [ ] **Build `regiones_fuego_argentina_v1` as a FeatureCollection.** Only the 5-region raster
-  exists. Needed by the reference scripts and by the statistics stage (docs/09).
+- [ ] **Build `regiones_fuego_argentina_v1` as a FeatureCollection.** ⚠️ **The premise was wrong**: a
+  5-feature region VECTOR does exist — `ANCILLARY_DATA/VECTOR/ARG/regiones_arg_col1_simplificada_num`,
+  with `Region` (`Pampas`, `Bosque Atlantico`, `Puna,Monte y Altos Andes`, `Patagonia`, `Chaco`) and an
+  integer `Zona` 1-5 (found 2026-07-29). So this is a rename/reproperty job, not a build from the
+  raster. Two things to check before relying on it:
+  - **`Zona` numbering vs `REGION_RASTER`'s `region_id`** — NOT verified to agree. Zona is
+    Puna/Monte=1, Patagonia=2, Pampas=3, Chaco=4, BA=5, which is not `C.REGIONS` order.
+  - **It is `simplificada`** — simplified geometry. Fine as an export geometry or a `region` property
+    source; do NOT assume it is adequate for the area statistics, which are checked to ~1 % (docs/09)
+    and whose authoritative regions are the raster.
 - [x] **Scar-size ranges settled — the published legend's, not the reference script's** (2026-07-29).
   Confirmed from the Coleção 5 legend-code PDF and the live Fogo col-5 platform legend, so no IPAM
   ruling was needed. `C.SCAR_SIZE_LOWER_HA = [10, 250, 500, 5000, 10000, 50000, 100000]`; we write

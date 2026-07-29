@@ -455,5 +455,8 @@ See **[`09-statistics.md`](09-statistics.md)**: the six area-statistics CSVs, th
    today.
 9. **`frequency_burned` band name** — the publish map says `frequency_burned_{year1}_{year2}` while
    script 2 writes `fire_frequency_<y1>_<y2>`; confirm which the platform reads.
-10. **`regiones_fuego_argentina_v1` as a FeatureCollection** — does not exist; only the 5-region raster.
-    Needed by the reference scripts and by the statistics stage (docs/09).
+10. **`regiones_fuego_argentina_v1` as a FeatureCollection** — does not exist *under that name*, but
+    ⚠️ **the "only the raster exists" claim was wrong**: `ANCILLARY_DATA/VECTOR/ARG/regiones_arg_col1_simplificada_num`
+    is a 5-feature region vector with `Region` + integer `Zona` 1-5 (found 2026-07-29). So this is a
+    rename/reproperty job. But it is **simplified** geometry and its `Zona` numbering is unverified
+    against `REGION_RASTER.region_id`, so confirm both before the statistics stage leans on it (docs/09).

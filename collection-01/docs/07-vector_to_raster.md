@@ -32,10 +32,9 @@ tmux new-session -d -s s07scar 'OBJ_CORES=6 /abs/path/collection-01/scripts/run_
 $PYTHON collection-01/scripts/validate_scar_zips.py              # gate the zips  -> 27/27
 $PYTHON collection-01/scripts/validate_scar_zips.py --ingested   # gate the upload -> 27/27
 
-# 07c  (in flight)
+# 07c  (done; re-runnable, skips existing assets)
 $PYTHON collection-01/workflow/07-scar_rasters.py --check --years 2003,2020 --roi=-61.6,-25.6,-61.1,-25.1
 $PYTHON collection-01/workflow/07-scar_rasters.py --launch
-#   if the monolith fails:  --per-year --launch   then   --merge --launch
 
 # 07d  (in flight) — all nine derive from 07a, so they do NOT wait for 07c
 $PYTHON collection-01/workflow/07-subproducts.py --check     # band bookkeeping + ROI counts
@@ -450,9 +449,15 @@ folder and the per-year names have to be aligned — not just the folder.
   deliverable, same hand-off as docs/06 §12.
 - ~~The stage-4 raster subproducts~~ — **built and exporting** (07d, §12). The LULC-to-2025 item was
   never a blocker: duplicating 2024 forward is the network's own answer (§12.4).
-- **`regiones_fuego_argentina_v1` does not exist** as a FeatureCollection — only the 5-region
-  raster. Every reference script uses it for the export geometry and the `region` property; step 07
-  uses `ARG_BUFFER_FC` instead and sets `region = 'argentina'`.
+- **`regiones_fuego_argentina_v1` does not exist** *under that name*. Every reference script uses it
+  for the export geometry and the `region` property; step 07 uses `ARG_BUFFER_FC` instead and sets
+  `region = 'argentina'`, which is fine because our products have no region dimension at all (§12.1).
+  ⚠️ **Correction (2026-07-29): a 5-feature region vector DOES exist** —
+  `ANCILLARY_DATA/VECTOR/ARG/regiones_arg_col1_simplificada_num`, carrying `Region` and an integer
+  `Zona` 1-5. Earlier notes here and in docs/08 said only the raster existed; that was wrong. It is
+  **`simplificada`** (simplified geometry) and its `Zona` numbering is **not** verified against
+  `REGION_RASTER.region_id`, so it is a candidate for the statistics stage's territorial layer, not a
+  drop-in for it (docs/09 checks to ~1 %).
 - ~~Scar-size ranges~~ — **settled**: the published legend's, confirmed from two independent sources
   (docs/08 §5.4). No IPAM ruling needed. Do not copy `6-export_scar_size_range_by_year`.
 - **Asset-name cosmetics**: the month images are
