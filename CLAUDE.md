@@ -27,7 +27,7 @@ one step, e.g. the remap and the fit are both inputs to step 02):
 | `collection-01/docs/04-snic.md` | step 04 — burned-area segmentation: the whole-country **non-calendar fire-year** SNIC (fire-year `candseed` construction, Patagonia dieback padding, supervised SNIC, Drive-COG handoff to R); the shelved SNIC-3D attempt in brief; the `explore_snic_IB-0{2,3}` GEE tuning/inspection tools |
 | `collection-01/docs/05-object_metrics.md` | step 05 — fire-object vectorization & metrics (R/terra): the 1-px dilation connectivity hack, per-object raster metrics (veg abundance, area, `abs_date`/`n` summaries, sparseness) + geometry shape metrics ported from collection-00; sparse igraph labelling vs terra fallback; **§4** the outputs (`data/snic-rasters/` → `data/objects-raw/`, geometry/metrics split) and **§4.1** the overnight all-years batch launcher (`scripts/run_05_years.sh` + `scripts/mem_monitor.sh`) |
 | `collection-01/docs/06-object_model.md` | step 06 — object-based fire/non-fire classification. Opens with **"Files, directories and scripts"** — the step-06 data layout (`objects-labels/`, `objects-pred/`, `objects-analysis/`, the regenerable `*-cache/`) and what each script is for; then label collection in GEE (drawing layers → one asset per collaborator) and their join to objects; the **probit BART** fit (`stochtree`) with posterior probability bounds; the 20 predictors (incl. 5 aggregated vegetation fractions) and **§4 why no predictor may identify the year or proxy for it** (the `fire_year`/`year_calendar` label-prevalence leak, the `n_mean` era proxy, and the two metrics collection 2 should stop computing); **§5 the three call columns** (`fire_model` / `fire_tag` / deployed `fire`, and why `-1` not `NA`); the per-size-band **classification threshold** (Youden's J out-of-fold); **grid-blocked CV** and why the fold design decides the answer; **§8 importance + ALE**; **§11 QGIS inspection** without a GEE upload; **§12 the upload** — all 28 fire-years, whole object set, zipped Shapefiles + the validation gate |
-| `collection-01/docs/07-vector_to_raster.md` | step 07 — decisions for the hand-off to the network's products: geometry/metrics split, collect on the SNIC layer (not polygons), upload the **whole** object set (revised — the fire-only plan was overridden), use the deployed `fire` column, calendar year from `year_calendar`; then what is still to build (month-of-burn raster, merged vector FC, minimum size, ash/drought mask) |
+| `collection-01/docs/07-vector_to_raster.md` | step 07 — **implemented**: fire-year objects → calendar-year products. The **month-of-burn** ImageCollection built in GEE (`07-month_of_burn.py`), the **8-connected calendar-year scars** built locally (`07-calendar_scars.R`, two passes) and the **scar rasters** painted from them (`07-scar_rasters.py`). Covers the ONE pinned grid (`crsTransform`, never `scale=30`) and the col-0 lattice collision; the verified calendar-year partition; the **`candseed==3` parent-date substitution** (881 k px / ~79 kha, and why it protects the scar product); why the LULC mask + solitary-pixel filter are **already embedded upstream** (verified: zero candidates on non-burnable `veg_fire`); the proof that polygon paint/rasterize reproduces the object pixel set **exactly**; and why `terra::cells()` is the right membership tool |
 | `collection-01/docs/08-postprocessing.md` | step 08 — the **MapBiomas Fuego network-wide post-processing** (stages 1–4: the GEE assets), identical in every country and summarised from the network's [*Guía del Proceso de Lanzamiento*](https://docs.google.com/presentation/d/1Y5SUeS_405k5zZkBX4z6BDaC_umI8Saiguk7coITB1Q/edit) (§1 gives the `curl …/export/pdf` recipe to read the slides as a PDF): LULC masking + month coding, the `FINAL_PRODUCTS` subproducts (annual/monthly burned, burned coverage, frequency, accumulated, year-last-fire, scar id/area/size-range). Also: their mapping method (Alencar et al. 2022) vs ours, and **§6 Argentina's route — vectors-only upload, calendar-year products from fire-year objects** |
 | `collection-01/docs/09-statistics.md` | **stages 5–6 + launch** (1 Aug → 24 Sep 2026): the six area-statistics CSVs, the **territorial layer we must build**, Looker Studio (~1 % tolerance), public assets vs Cloud-Storage COGs (the platform reads **GEE assets**), the **Workspace** subtheme/legend/territory catastro, and the launch track (ATBD, methodology page, downloads, materials, event) |
 
@@ -98,10 +98,23 @@ stages can be inspected and limits avoided:
    `scripts/objects_upload.py` + `scripts/validate_upload_zips.py`.
    **Never give the model a predictor that names the year or proxies for it** — that leak has been
    found and fixed twice here; docs/06 §4 before touching `PREDICTORS`.
-5. **Step 08 — post-processing to the network's common products.** After step 07 the work stops being
+5. **Step 07 — fire-year objects → calendar-year products** (docs/07). Three scripts:
+   `07-month_of_burn.py` builds the **month-of-burn ImageCollection** in GEE (one 1-band uint8 image
+   per calendar year, 1–12, masked elsewhere) by painting the step-06 objects filtered to
+   `fire == 1 & area_ha >= 1` against the SNIC assets; `07-calendar_scars.R` builds the
+   **8-connected calendar-year scars** locally (GEE cannot label them — `connectedPixelCount` caps
+   at 1024 px); `07-scar_rasters.py` paints the ingested scar FCs into the three size subproducts.
+   Calendar year and month are assigned **per pixel** from `abs_date`, never per object from
+   `year_calendar` — that is what makes annual/monthly/scar agree pixel-for-pixel, at the cost of
+   splitting a fire that straddles 31 December. **Pin `crs` + `crsTransform` on every export**;
+   `scale=30` in EPSG:4326 is a *different* grid.
+6. **Step 08 — post-processing to the network's common products.** After step 07 the work stops being
    ours: every MapBiomas Fuego country runs the *same* post-processing to publish the *same* subproducts,
    even though their mapping method differs from ours. **Do not innovate there** — reproduce the
-   reference code (see `docs/08-postprocessing.md` and the reference repo below).
+   reference code (see `docs/08-postprocessing.md` and the reference repo below). **But read
+   docs/08's header box first:** its §§1–5 describe what *Brazil* does, and several of those stages
+   (the LULC mask, the solitary-pixel filter) are already embedded upstream in our pipeline — running
+   them again is a no-op at best. docs/07 wins where the two disagree.
 
 See `collection-01/README.md` for the full structure and run commands, and the `docs/` notes
 above for per-step design.
@@ -189,3 +202,13 @@ The same one-process-per-fire-year pattern covers step 06: `run_06_predict.sh` (
 prediction is single-threaded, so `-j 8`), `run_06_inspect.sh` (QGIS layers — I/O- and memory-bound,
 `-j 6`), `run_07_upload_zips.sh` (upload packages, `-j 4`). All three are resumable, biggest-year
 first, and log per year to `collection-01/logs/`.
+
+Step 07's local scar build uses the same launcher shape in **two passes**
+(`scripts/run_07_scars.sh pixels|scars`): `pixels` is one process per **fire-year** (28, `-j 5`,
+tile-read bound, ~6-9 min each), `scars` is one process per **calendar year** (27, `-j 2` with
+`OBJ_CORES=6`, dominated by the per-scar vectorize). Run `pixels` to completion first — a calendar
+year needs **both** its fire-years. Memory, not CPU, is the binding constraint on `scars`: it holds
+a whole calendar year's pixel set (up to ~100 M px) through the union-find, so prefer fewer
+concurrent years with more `OBJ_CORES` each — `mclapply` forks share the parent's table
+copy-on-write, which separate year processes do not. Gate the packages with
+`scripts/validate_scar_zips.py` before any manual ingest.

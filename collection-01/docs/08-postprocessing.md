@@ -1,5 +1,21 @@
 # 08 — Post-processing: building the MapBiomas Fuego products
 
+> ## How to read this file — §§1–5 are NOT our pipeline
+>
+> **§§1–5 describe what Brazil and the other countries do.** They are a reference for the *shape* of
+> the published products — asset topology, band names, encodings, dtypes, pyramiding, legends — and
+> nothing more. Do **not** read them as a to-do list for Argentina: several stages that they run as
+> post-processing are already embedded earlier in our pipeline, and reproducing them here would be a
+> no-op at best and double-counting at worst.
+>
+> **§6 is ours, and it is implemented** — see **[`07-vector_to_raster.md`](07-vector_to_raster.md)**
+> for the built article. Where §§1–5 and §6/docs-07 disagree, docs/07 wins.
+>
+> Three specific claims in the earlier draft of this file were wrong and are corrected in §6:
+> we do **not** owe the LULC mask or the solitary-pixel filter (§6.2); painting a polygon does
+> **not** fill its interior (§6.3); and the calendar-year scars are **not** a regrouping of the
+> step-05 objects but a separate 8-connected labelling pass (§6.4).
+
 Everything up to step 07 is **ours**: our own mapping method (obs-level burn probability → time-series
 metrics → SNIC objects → object-based classification). Step 08 is **not ours** — it is the
 **post-processing every MapBiomas Fuego country runs**, unchanged, so the published products are
@@ -218,132 +234,141 @@ write (§8.6).
 
 ---
 
-## 6. Argentina's route — calendar-year products from fire-year objects
+## 6. Argentina's route — implemented
 
-### 6.1 The design in one line
+**Built. The article, with the verification numbers and the run commands, is
+[`07-vector_to_raster.md`](07-vector_to_raster.md).** This section is the summary and, where the
+earlier draft of this file got it wrong, the correction.
 
-**Upload vectors only; let GEE do the pixel work.** Two FeatureCollections go up; every raster product
-is built server-side from them plus the **SNIC assets that are already in GEE**.
+### 6.1 The design
 
-| Upload | Content | Feeds |
+**Vectors only; GEE does the pixel work.** Nothing new is uploaded for the month layer — step 06
+already put the whole object set in GEE (`objects_raw_<fy>`, 28 FCs, every object with all 20
+predictors and the three call columns, docs/06 §12). Step 07 filters it at read time to
+`fire == 1 & area_ha >= 1` and paints it against the SNIC assets that are already there
+(`snic_metrics_<fy>.abs_date`, `snic_<fy>.candseed`). The per-pixel calendar year and month that R
+computed locally are knowingly recomputed in GEE; that redundancy is the price of not moving 28
+fire-years × ~248 cartas of imagery.
+
+One thing *is* uploaded, by hand: **`scars_<Y>`, 27 FeatureCollections**, the calendar-year scars
+(`scar_id`, `area_ha`, `n_px`, `year`), because the labelling cannot be done in GEE (§5.4) and is
+done locally instead.
+
+| Layer | Source | Feeds |
 |---|---|---|
-| `fires_<fire_year>` (28 FCs, one per fire-year 1998–2025) | our **step-06 filtered** fire objects: geometry + `oid`, `year_calendar`, `date_median` | the **month-of-burn / annual / coverage / frequency / accumulated / year-last-fire** chain |
-| `scars_<calendar_year>` (27 FCs, 1999–2025) | **calendar-year scar parts**: geometry + `scar_id` (int), `area_ha`, `oid` | `annual_burned_id`, `annual_burned_area_ha`, `annual_burned_scar_size_range` |
+| `objects_raw_<fy>` (28, already uploaded) | step 06 | the month-of-burn collection, and every raster subproduct derived from it |
+| `scars_<Y>` (27, manual ingest) | `07-calendar_scars.R` | `annual_burned_id`, `annual_burned_area_ha`, `annual_burned_scar_size_range` |
 
-Rationale: the per-pixel dates we need are **already in GEE** as `C.SNIC_METRICS_COL`
-(`snic_metrics_<fy>`: `abs_date`, `veg_fire`, `n`, `burned_around_*`) alongside `C.SNIC_COL`
-(`snic_<fy>.candseed`). So there is no reason to upload rasters — the polygons are far lighter than
-28 fire-years × ~248 cartas of imagery. **We knowingly recompute in GEE the per-pixel calendar year and
-month that R already computed locally; that redundancy is the price of not moving the data.**
+### 6.2 CORRECTION — the LULC mask and the solitary-pixel filter are NOT owed
 
-### 6.2 Why fire-year → calendar-year is a clean partition
+The earlier draft listed both as things "we still owe" from stage 3. **We do not.** Both are already
+in the pipeline, and stricter than the reference:
 
-The fire-year runs **1 May Y → 30 Apr Y+1** (`docs/04` §2), and fire-years partition the calendar. So:
+- `veg_fire` comes from the **previous-year MapBiomas LULC**, and every non-burnable class is
+  unreachable as a SNIC candidate (no `VEG_TABLE` entry → `THR_DEF = 9` → no delta ever passes).
+  Verified on FY2000/2014/2023 over ~3.6 M candidate pixels: **zero `candseed>0` pixels on
+  `veg_fire` 24 (non-burnable) or 25 (non-observed)**. The reference drops water (26) only; ours
+  drops every non-burnable class.
+- The `>= 1 ha` object cut (≈ 11 px) is stricter than deleting 4-connected components of ≤ 4 px.
+
+Running the reference's versions anyway "so the rule is identical across countries" — which the
+earlier draft recommended — would be a no-op for the mask and would only shave true positives off
+calendar-year fragments of already-qualifying fires. The output collection keeps the name
+`collection1_fire_mask_v1` (that is the asset downstream scripts read) and records
+`lulc_mask` / `solitary_pixel_filter` properties saying the rule was applied upstream, not skipped.
+
+### 6.3 CORRECTION — painting a polygon does not fill its interior
+
+The earlier draft's §6.4.2 warned that `ee.Image().paint(fc, 1)` "fills holes and gaps" and that the
+result must always be intersected with the real burned mask. **That is not what happens.** Step 05
+vectorized the *accepted pixel set* with `as.polygons(dissolve=TRUE)`, so holes are true interior
+rings and the boundary follows pixel edges; both GEE's `paint` and `terra::cells` use
+pixel-centre-in-polygon and recover exactly that set. Verified twice:
+
+- `terra::cells(country template, accepted polygons)`, FY2020 → **55,008,255** cells vs
+  `sum(n_pixels) = 55,008,255`. Exact, over 55 M pixels. Every fire-year reports `EXACT`.
+- In GEE, `paint` vs the `candseed` burned mask → **0 painted-but-not-burned** on the audited ROIs.
+
+The `candseed > 0` intersection is kept on both sides as a **guard**, and the residual is logged per
+year rather than assumed. What *is* real is the step-05 **longitude cut**: `candseed==3` east of
+−70.6 was dropped before labelling, so the objects exclude it while `snic_<fy>` still carries it
+(65,752 px over 28 fire-years) — GEE replays the cut with `pixelLonLat`.
+
+### 6.4 CORRECTION — the scars are a new labelling pass, not a regrouping
+
+The earlier draft proposed getting the calendar-year scar parts by grouping step 05's pixels by
+`(pid, cyear)` — "without any new labelling pass and without re-vectorizing". That would have
+produced *calendar-year parts of our dilation-connectivity objects*, which is not what the network
+means by a scar. The published definition is "sets of spatially connected pixels within the same
+year", so the scars are labelled afresh:
+
+- **calendar** year, not fire-year;
+- **plain 8-connectivity**, deliberately *not* step 05's 1-px-dilation connectivity, so two distinct
+  fires that touch merge into one scar — matching the reference;
+- and yes, a fire straddling 31 December becomes two scars, one per year. That is the intended
+  consequence of per-pixel dating (§6.6).
+
+`scar_id` is a fresh integer, 1..n within the year, ordered by the scar's first cell — deterministic
+across re-runs. **No size class is stored in the vectors**; it is applied in GEE from `area_ha`, so a
+legend change (§5.4 is still unresolved) does not mean 27 re-uploads.
+
+### 6.5 The calendar-year partition, verified
 
 ```
-calendar year Y  =  Jan–Apr Y  from fire-year (Y−1)      ⊎  May–Dec Y  from fire-year Y
+calendar year Y  =  Jan–Apr Y  from fire-year (Y−1)   ⊎   May–Dec Y  from fire-year Y
 ```
 
-Exactly **two** source fire-years per calendar year, disjoint in time — a union, not an overlay
-requiring arbitration (except genuine reburn, §6.4.3). It also lands exactly on our target series:
-FY1998 exists only as its Jan–Apr 1999 part, which is precisely what calendar 1999 needs, so the
-series is **1999–2025** — matching `C.YEARS` and the network's South-America range.
+Checked over all 28 fire-years: **no object's date range leaves its own fire-year window**, 0
+exceptions. So the merge is a **union**, not an arbitration; `max` only decides genuine reburn, where
+the later date wins. Series: **1999–2025** (FY1998 contributes only its Jan–Apr 1999 part; its
+Nov–Dec 1998 remainder falls outside the published series and is reported as dropped).
 
-### 6.3 What already exists on disk / in GEE
+`candseed==3` pixels are the one exception — their raw dates *do* leave the window — so each
+fire-year is filtered with the general `date ∈ [Y, Y+1)` test, never shortcut to "Jan–Apr".
 
-| Thing | Where | Notes |
-|---|---|---|
-| SNIC per-pixel bands, local | `data/snic-rasters/<fy>/<carta>.tif`, 28 fire-years × ~248 cartas | `abs_date, veg_fire, n, burned_around_{1,2,3}, candseed`, Int16 |
-| SNIC per-pixel bands, **in GEE** | `C.SNIC_METRICS_COL/snic_metrics_<fy>` + `C.SNIC_COL/snic_<fy>` (`candseed`) | candseed is **not** duplicated into the metrics asset |
-| `abs_date` encoding | whole **days since 1970-01-01** (`05-objects_metrics.R:84`, `EPOCH`) | |
-| Objects + metrics | `data/objects-raw/objects_<fy>.gpkg`, `_raster_metrics.csv`, `_shape_metrics.csv` | metrics carry `date_{median,min,max}`, `year_calendar`, `area_ha`, `n_pixels`, `seed_mean`, `frac_c*` |
-| Per-pixel calendar year | **already computed in step 05** — `05-objects_metrics.R:227`: `cyear := year(as.IDate(abs_date, origin = EPOCH))` | |
+### 6.6 `candseed == 3`: parent-object date, and why it is not cosmetic
 
-### 6.4 Three gotchas that decide correctness
+A dieback pixel's `abs_date` is when the **dieback was detected** the following spring, not when the
+pixel burned. Measured: **881 k pixels (~79 kha)** survive the longitude cut over 28 fire-years —
+**4.0 %** of candidate pixels west of the cut, **14–18 % in FY2014/2015/2021/2024** — with dates in
+Jun–Nov.
 
-**1. `candseed == 3` pixels must not use their own `abs_date`.** Their date is a *next-year spring*
-dieback date, so per-pixel binning would throw them into the wrong calendar year and split the scar.
-Step 05 already excludes them from object date/year stats (`dtf <- dt[candseed != 3L]`, line 235), so
-`year_calendar` and `date_median` are clean — but the **raster still carries the raw dieback date**.
-Rule (already the intent in `docs/04` §4.3 and `docs/07`): a dieback pixel takes the **parent object's**
-date, so it joins the part containing the object's `year_calendar`. In GEE:
-`date = abs_date.where(candseed.eq(3), paint(fires_fc, 'date_median'))`.
+Left raw they report Andean Patagonia burning in austral winter, and — whenever the parent fire
+burned May–Dec — fall into the *next* calendar year, splitting the scar and minting a **phantom
+scar** with its own id and size class. So each takes its **parent object's `date_median`**
+(`date_med`, already a property on the uploaded FCs, so the fix is free). No pixel that has a real
+measured date is touched. The 36 all-dieback objects have no parent date and are filtered out.
 
-**2. Painting a polygon fills its interior — that is not our pixel set.** Step 05's accepted pixels
-exclude, among others, `candseed==3` pixels east of lon −70.6 (`docs/07`). `ee.Image().paint(fc, 1)`
-fills holes and gaps those exclusions created. **Always intersect the painted mask with the real burned
-mask**: `objmask = paint(fires_fc,1).gt(0).and(candseed.gt(0))` — and replicate the lon −70.6 rule if
-`candseed==3` pixels survive inside a polygon footprint. Never trust polygon fill alone.
-
-**3. Reburn inside one calendar year** is the only genuine conflict: a pixel burning Feb *Y* (from
-FY *Y*−1) and Sep *Y* (from FY *Y*) is claimed by both sources. The published raster allows one month
-per pixel per year — take the **later** date (what the pixel looks like at year end), and record that
-the earlier scar loses those pixels in `annual_burned` while keeping them in its own fire-year object.
-
-### 6.5 Building the monthly layer in GEE
-
-Per calendar year `Y`, for `fy in {Y-1, Y}`:
-
-```js
-var m   = ee.Image(SNIC_METRICS + '/snic_metrics_' + fy);       // abs_date, …
-var cs  = ee.Image(SNIC_COL     + '/snic_'         + fy).select('candseed');
-var fc  = ee.FeatureCollection(OBJECTS + '/fires_' + fy);       // step-06 filtered
-var objmask = ee.Image().paint(fc, 1).gt(0).and(cs.gt(0));      // §6.4.2
-var date = m.select('abs_date')
-            .where(cs.eq(3), ee.Image().paint(fc, 'date_median'));  // §6.4.1
-// → keep pixels whose calendar year == Y, value = month 1–12
-```
-then mosaic the two contributions, later date winning (§6.4.3).
-
-> **GEE has no per-pixel date decomposition.** `abs_date` is days-since-epoch, and there is no
-> per-pixel `ee.Date`. Decode by **thresholding against month boundaries**: with `b_k` = day-number of
-> the first day of each month, `k = Σ_k date.gte(b_k)` gives the month index, from which year and month
-> follow by integer arithmetic. Only the ~24 boundaries spanning the two candidate fire-years are
-> needed per output year, so it's cheap.
-
-### 6.6 Building the calendar-year scar parts
-
-Step 05 already groups by `pid`; grouping by **`(pid, cyear)`** instead yields, per object × calendar
-year: pixel count, `area_ha`, date summaries and the modal month — i.e. the calendar-year **scar parts**,
-with areas, **without any new labelling pass and without re-vectorizing**. Then:
-
-- `scar_id` — a fresh **integer**, unique within the calendar year (`ee.Image().paint` cannot use our
-  string `oid`; keep `oid` as an extra property for traceability). Must be stable across re-runs (§8.5).
-- `area_ha` — from the part's pixel count × cell area, exactly as step 05 computes area today.
-- Dieback pixels follow their parent object's part (§6.4.1).
-- Upload as `scars_<Y>`; then reference scripts 5 and 6 run **unchanged** on it.
-- **Do not simplify the geometries** on export — vertices follow pixel edges, and simplification would
-  misalign the painted rasters from the month raster.
+**FY2025 has no dieback padding at all** (it needs the FY2026 image) — the series' last year is
+asymmetric in that one respect. Worth a line in the ATBD.
 
 ### 6.7 What this buys us
 
-- **Per-pixel month, measured** — strictly better grounded than min-NBR, at no transport cost.
-- **`annual_burned`, `monthly_burned` and `scar_size` agree pixel-for-pixel**, because all three derive
-  from the same per-pixel calendar-year assignment. (The alternative — painting each whole object into
-  its modal `year_calendar` — is cheaper but makes `scar_size` disagree with `annual_burned` on every
-  scar that straddles 31 December, which in Argentina is not a corner case: the Patagonian/Pampean
-  season peaks Dec–Feb. That is exactly why we chose a non-calendar fire-year.)
-- **Faithful to the network's semantics** — their scars are calendar-clipped too (they polygonize the
-  annual mask) — with one improvement: our parts come from *fire objects*, so two distinct fires that
-  happen to touch stay separate instead of merging into one scar.
-- **Our fire-year objects survive as a richer database**, ours to publish later as vectors
-  (Brazil already publishes `annual_burned_vectors_v1`, so that door is open — just slow; §8.8).
+- **Per-pixel month, measured** rather than inferred from min-NBR — strictly better grounded than
+  the reference method, at no transport cost.
+- **`annual_burned`, `monthly_burned` and `scar_size` agree pixel-for-pixel**, because all three
+  derive from the same per-pixel calendar-year assignment. Painting each whole object into its modal
+  `year_calendar` would have been cheaper but would make `scar_size` disagree with `annual_burned` on
+  every scar straddling 31 December — in Argentina not a corner case, since the Patagonian/Pampean
+  season peaks Dec–Feb. That is exactly why the fire-year is non-calendar in the first place.
+- **Faithful to the network's semantics** — their scars are calendar-clipped too — with one
+  improvement: ours are labelled from the burn mask with the standard connectivity, so the
+  definition matches while the *underlying* fire objects stay separate in our own database.
+- **One grid, pinned.** All 56 SNIC assets and all 248 carta tiles share one lattice, and every
+  export pins `crs` + `crsTransform` rather than `scale: 30` (which is a *different* grid in
+  EPSG:4326). The GEE rasters and the locally-built vectors are therefore aligned by construction.
 
-### 6.8 What we still owe from §5.2
+### 6.8 What stage 3 still leaves us
 
-We replace stage 3's month coding and stage 2's version curation (no competing model versions), but we
-still owe:
+Not the mask and not the pixel filter (§6.2). What remains:
 
-- the **LULC mask** — which Argentina classes? (§8.2);
-- the **solitary-pixel removal** — our step-06 `< 1 ha` cut (≈11 px) is stricter than `≤ 4 px`, so
-  likely a no-op; **run it anyway** so the rule is identical across countries;
-- the **property block** (`source`, `pixel_unit`, `year`, `region`, `system:time_start/end`);
-- a **single ImageCollection covering all years and regions** — our predictions are tiled by *cartas*,
-  not by their regions, so the mosaic step must reconcile the two;
-- `regiones_fuego_argentina_v1` as a FeatureCollection where their scripts expect it (only the 5 fire
-  regions exist today, as a raster via `scripts/export_region_raster.py`).
-
----
+- the **property block** (`source`, `pixel_unit`, `year`, `region`, `system:time_start/end`) — done,
+  set by `07-month_of_burn.py`;
+- **one ImageCollection covering all years** — done: one whole-country image per calendar year, so
+  the cartas-vs-regions mismatch never arises;
+- `regiones_fuego_argentina_v1` as a **FeatureCollection** — still missing; only the 5-region raster
+  exists (`scripts/export_region_raster.py`). Step 07 uses `ARG_BUFFER_FC` for the export geometry
+  and sets `region = 'argentina'`.
 
 ## 7. What Argentina delivers, and when
 
@@ -354,12 +379,16 @@ appear in the publish script's lists but **not** in the country table — Brazil
 
 ### By 31 July 2026 — the assets (this doc)
 
-1. Upload `fires_<fy>` (28) and `scars_<Y>` (27) — §6.1.
-2. `collection1_fire_mask_v1` equivalent: the month-of-burn collection, LULC-masked, solitary-pixel
-   filtered, properties set — §6.5 + §6.8.
-3. Subproducts: `monthly_burned`, `annual_burned`, **`monthly_burned_coverage`**,
-   **`annual_burned_coverage`**, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`),
-   `year_last_fire`, `annual_burned_id`, `annual_burned_area_ha`, `annual_burned_scar_size_range`.
+| # | Item | State |
+|---|---|---|
+| 1 | Object FCs `objects_raw_<fy>` (28) | **done** in step 06 — no separate `fires_<fy>` upload; step 07 filters at read time (§6.1) |
+| 2 | `collection1_fire_mask_v1` — the month-of-burn collection, 1-band uint8 per calendar year, properties set | **done** — `07-month_of_burn.py`; the LULC mask and pixel filter are upstream, not owed (§6.2) |
+| 3 | `scars_<Y>` (27) calendar-year scar FCs | **built locally** (`07-calendar_scars.R`); the 27 zips need the **manual GEE ingest** |
+| 4 | `annual_burned_id`, `annual_burned_area_ha`, `annual_burned_scar_size_range` | **coded** (`07-scar_rasters.py`), runs once item 3 is ingested |
+| 5 | `monthly_burned`, `annual_burned`, `monthly_burned_coverage`, `annual_burned_coverage`, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`), `year_last_fire` | **to build** — straightforward from item 2; the `*_coverage` ones need the LULC asset extended to 2025 |
+
+⚠️ The `*_coverage` products are the easiest to forget and are exactly what the statistics read
+(docs/09 §2).
 
 ### Between 1 August and 24 September 2026 — statistics, publication, launch
 
@@ -371,21 +400,29 @@ See **[`09-statistics.md`](09-statistics.md)**: the six area-statistics CSVs, th
 
 ## 8. Open decisions
 
-1. **Asset naming.** Adopt their `COLLECTION1` / `AUXILIARY_DATA` spelling for step-08 outputs (breaking
-   our `COLLECTION-1` convention), or keep ours and rename only at publish time? The `mapbiomas-public`
-   copy must use their names regardless.
-2. **LULC mask classes per region.** Water (26) at minimum; the guide's example adds 22 (non-vegetated);
-   others add 9 (forest plantation). Verify ids against the **MapBiomas Argentina** legend (not
-   Paraguay's) and decide per fire region — Patagonian steppe, Chaco and Pampa don't want the same rule.
-3. **LULC year coverage.** Check the last year in `C.MAPBIOMAS_LULC` and duplicate it forward to 2025,
-   as they do 2024→2025. Blocks every `*_coverage` product.
-4. ~~Month per pixel or per object~~ — **decided: per pixel**, from `snic_metrics.abs_date` in GEE (§6.5).
-5. **`scar_id` numbering.** Integer, unique per calendar year, stable across re-runs — pick the rule
-   (e.g. order by `oid`) and record it.
-6. **Scar-size ranges** — the reference script's or the Workspace legend's (§5.4)? Ask IPAM; the LatAm
-   ranges are probably right for us, but the registered legend must match the pixel values we write.
-7. **Reburn rule** (§6.4.3) — later date wins; confirm nobody downstream expects otherwise.
+1. ~~Asset naming~~ — **decided (provisional): keep `COLLECTION-1`**, ours, and rename at publish time.
+   The asset *names* inside already follow the network exactly (`C.product_name()`). Revisit before the
+   `mapbiomas-public` copy, which must use their spelling regardless.
+2. ~~LULC mask classes per region~~ — **not applicable.** The mask is embedded upstream and is stricter
+   than the reference (§6.2). Nothing to choose.
+3. **LULC year coverage.** `C.MAPBIOMAS_LULC` ends at `classification_2024` (40 bands, 1985–2024), so
+   2025 must be duplicated forward as the reference does. **Still blocks every `*_coverage` product** —
+   the only place LULC still enters our chain.
+4. ~~Month per pixel or per object~~ — **decided: per pixel**, from `snic_metrics.abs_date` (§6.5).
+5. ~~`scar_id` numbering~~ — **decided: integer 1..n within the calendar year, ordered by the scar's
+   first cell** on the global lattice. Deterministic and stable across re-runs; `oid` is unusable
+   because `ee.Image().paint` needs a number.
+6. **Scar-size ranges** — the reference script's or the Workspace legend's (§5.4)? Ask IPAM. **No longer
+   blocking**: the classification is applied server-side from `C.SCAR_SIZE_LOWER_HA`, so a change is a
+   one-line re-export, not 27 re-uploads. The registered legend must still match the values written.
+7. ~~Reburn rule~~ — **later date wins**, and it is nearly moot: the two fire-years feeding a calendar
+   year are disjoint in month (§6.5), so `max` only fires on genuine reburn. Confirm nobody downstream
+   expects otherwise.
 8. **Our fire-year vector database** — ask whether Argentina may publish it as `annual_burned_vectors`.
-   Until settled, keep it out of `FINAL_PRODUCTS` so it can't leak into a published collection.
+   Until settled, keep it out of `FINAL_PRODUCTS` so it cannot leak into a published collection. Note
+   `objects_raw_<fy>` currently lives under `WORKFLOW-EXPORTS`, not `FINAL_PRODUCTS`, so this is safe
+   today.
 9. **`frequency_burned` band name** — the publish map says `frequency_burned_{year1}_{year2}` while
    script 2 writes `fire_frequency_<y1>_<y2>`; confirm which the platform reads.
+10. **`regiones_fuego_argentina_v1` as a FeatureCollection** — does not exist; only the 5-region raster.
+    Needed by the reference scripts and by the statistics stage (docs/09).

@@ -68,6 +68,43 @@ This is probably for collection 2.
 
 ---
 
+## Calendar-year products (step 07)
+
+Built 2026-07-29 (`docs/07-vector_to_raster.md`). What remains:
+
+- [ ] **Ingest the 27 calendar-year scar FeatureCollections by hand** —
+  `data/scars-upload-cache/scars_<Y>.zip` → `.../COLLECTION-1/FINAL_PRODUCTS/annual-burned-vectors/scars_<Y>`.
+  Gate them first with `scripts/validate_scar_zips.py` (a hand upload has no failing pipeline to
+  catch a bad package). Then `07-scar_rasters.py --check` before `--launch`.
+- [ ] **Cross-check the local and GEE masks per year.** `objects-scars/scars_<Y>_months.csv` holds
+  the per-month pixel histogram from the local build; `07-month_of_burn.py --check` gives the same
+  histogram from the raster. They should match exactly — both derive from the same object pixel set,
+  which was verified exact — so any divergence is a real bug, not tolerance.
+- [ ] **Build the stage-4 raster subproducts** from the month-of-burn collection: `monthly_burned`,
+  `annual_burned`, `monthly_burned_coverage`, `annual_burned_coverage`, `frequency_burned`
+  (+`_coverage`), `accumulated_burned` (+`_coverage`), `year_last_fire`. Single multiband images,
+  one band per year (docs/07 §10). The `*_coverage` ones are the easiest to forget and are exactly
+  what the statistics read.
+- [ ] **Extend the LULC asset to 2025.** `C.MAPBIOMAS_LULC` ends at `classification_2024`; duplicate
+  it forward as the reference does. **Blocks every `*_coverage` product** — the only place LULC
+  still enters our chain (the mask itself is embedded upstream, docs/08 §6.2).
+- [ ] **Build `regiones_fuego_argentina_v1` as a FeatureCollection.** Only the 5-region raster
+  exists. Needed by the reference scripts and by the statistics stage (docs/09).
+- [ ] **Confirm the scar-size ranges with IPAM** — the reference script and the Workspace legend
+  disagree on the same pixel values 1-8 (docs/08 §5.4). Not blocking (classification is applied
+  server-side from `C.SCAR_SIZE_LOWER_HA`), but the registered legend must match what we write.
+- [ ] **ATBD note: FY2025 has no Patagonian dieback padding** (it needs the FY2026 image), so the
+  last year of the series is asymmetric in that one respect.
+- [ ] **ATBD note: ~76 kha of mapped Nov–Dec 1998 burned area is in no published product.** The
+  calendar series starts 1999, so FY1998's Nov–Dec 1998 part (1,058,206 px) has nowhere to go. Both
+  edges of the series are therefore asymmetric: 1998 loses its Nov–Dec tail, 2025 loses its dieback
+  padding. Verified: every other fire-year's pixels are accounted for exactly (docs/07 §2).
+- [ ] Cosmetic: the month images are named
+  `mapbiomas_argentina_fire_collection1_fire_mask_v1_<year>`, carrying `v1` mid-name. Only the `year`
+  property is read downstream, so this is harmless — but rename before the publish copy if at all.
+
+---
+
 ## Object model (step 06)
 
 - [x] **`fire_year` / `year_calendar` were leaking the labels — removed, model refitted**

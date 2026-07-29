@@ -349,3 +349,96 @@ TEST_ROI_COORDS = [[[-71.04026772918293, -41.14289047797963],
                     [-71.04026772918293, -41.18424486013236],
                     [-70.96885659637043, -41.18424486013236],
                     [-70.96885659637043, -41.14289047797963]]]
+
+# ─── Step 06 — uploaded object FeatureCollections ─────────────────────────────
+# One FC per fire-year, the WHOLE object set with all 20 predictors and the three
+# call columns (docs/06 §12).  Field names are the <=10-char Shapefile ones from
+# scripts/objects_upload.py::RENAME — `fire`, `area_ha`, `date_med`, `year_cal`.
+OBJECTS_RAW_COL = f"{_FIRE_ROOT}/COLLECTION-1/WORKFLOW-EXPORTS/objects_raw"
+
+# ─── Step 07 — calendar-year products (month of burn, scars) ──────────────────
+# See docs/07-vector_to_raster.md.  The published series is CALENDAR years, built
+# from the non-calendar fire-year objects: calendar Y = Jan-Apr Y (from FY Y-1)
+# ⊎ May-Dec Y (from FY Y).  Verified over all 28 fire-years: no object's date range
+# leaves its own fire-year window, so the two contributions are a strict partition
+# and merging them is a union, not an arbitration (the only overlap is real reburn,
+# where the later date wins).  EXCEPT for candseed==3 dieback pixels, whose own
+# abs_date is a NEXT-year spring date and does leave the window — hence the general
+# `date in [Y, Y+1)` test per fire-year, never a "Jan-Apr only" shortcut.
+CALENDAR_YEARS = list(range(1999, 2026))   # 1999-2025, matches YEARS
+
+# Minimum mapped fire: an OBJECT (fire-year entity) must reach this to contribute
+# any pixel (docs/07 §1).  Applied on the object, before the calendar-year split, so
+# a calendar-year part of a qualifying object may itself be smaller.
+MIN_FIRE_HA = 1.0
+
+# The canonical 30 m grid of every SNIC asset.  VERIFIED 2026-07-29: all 56 assets
+# (28 `snic_<fy>` + 28 `snic_metrics_<fy>`) share this exact crs + transform, and the
+# per-carta tiles in data/snic-rasters/ sit on the same lattice (offset 22578 columns,
+# 0 rows).  PIN THIS ON EVERY EXPORT.  `scale: 30` in EPSG:4326 — what all the
+# reference scripts use — is a DIFFERENT grid (origin 0,0 and a different degree step),
+# and a half-pixel shift would misalign the painted rasters from the month raster.
+SNIC_CRS = "EPSG:4326"
+SNIC_TRANSFORM = [0.000269494585236, 0, -73.58468801489491,
+                  0, -0.000269494585236, -21.764113209062533]
+
+# `abs_date` (SNIC metrics) is whole days since this epoch — same encoding as
+# 05-objects_metrics.R::EPOCH.
+EPOCH = "1970-01-01"
+
+# Patagonia dieback longitude cut, MIRRORED from 05-objects_metrics.R::DIEBACK_LON_CUT.
+# Step 05 dropped candseed==3 pixels EAST of this before labelling, so the objects were
+# built without them — but the `snic_<fy>` asset still carries them (65,752 px over the
+# 28 fire-years).  GEE must replay the cut or the painted pixel set is not the one the
+# objects describe.  KEEP IN SYNC with the R constant.
+DIEBACK_LON_CUT = -70.6
+
+# candseed==3 dieback pixels take their PARENT OBJECT's median date, not their own
+# abs_date (docs/07 §4.3).  Their own date is a next-year spring DIEBACK-detection date,
+# a different physical event from the burn — Jun-Nov, measured: 881k such pixels (~79 kha)
+# survive the longitude cut over the 28 fire-years, 4.0 % of all candidate pixels west of
+# the cut and 14-18 % in FY2014/2015/2021/2024.  Left raw they would (a) report Andean
+# Patagonia burning in austral winter and (b) fall into the NEXT calendar year whenever the
+# parent fire burned May-Dec, splitting the scar and minting a phantom scar with its own id
+# and size class.  Substituting costs nothing (`date_med` is already a property on the
+# uploaded FCs) and no pixel that has a real measured date is touched.
+# 36 objects in the whole collection are ALL dieback, so their `date_med` is null (<=4 ha
+# total); they carry no usable date and are excluded outright.
+DIEBACK_USE_PARENT_DATE = True
+
+# Destination for the month-of-burn collection — the network's stage-3 pivot, one image per
+# calendar year, value 1-12 = month of burn, masked elsewhere.  Kept under OUR `COLLECTION-1`
+# spelling (docs/08 open decision #1); the asset NAMES inside follow the network exactly, and
+# the mapbiomas-public copy is renamed at publish time.
+# The name says `mask` because that is what every downstream reference script reads, but for
+# Argentina the LULC mask is a NO-OP applied upstream, not skipped: `veg_fire` comes from the
+# previous-year MapBiomas LULC and every non-burnable class is unreachable as a SNIC candidate
+# (no VEG_TABLE entry -> THR_DEF = 9 -> no delta passes).  Verified on FY2000/2014/2023: zero
+# candseed>0 pixels on veg_fire 24 (non-burnable) or 25 (non-observed).  That is STRICTER than
+# the reference rule, which drops water (26) only.  Recorded as the `lulc_mask` property.
+CLASSIFICATION_COLLECTIONS = f"{_FIRE_ROOT}/COLLECTION-1/CLASSIFICATION_COLLECTIONS"
+MONTH_OF_BURN_COL = f"{CLASSIFICATION_COLLECTIONS}/collection1_fire_mask_v1"
+MONTH_OF_BURN_BAND = "burned_monthly"
+
+# Final products + the calendar-year scar vectors that feed the scar-size chain.
+FINAL_PRODUCTS = f"{_FIRE_ROOT}/COLLECTION-1/FINAL_PRODUCTS"
+ANNUAL_BURNED_VECTORS = f"{FINAL_PRODUCTS}/annual-burned-vectors"
+
+# Scar-size classes 1..8 — LOWER bounds in ha, from the LatAm reference script
+# (`6-export_scar_size_range_by_year`): <5, 5-25, 25-50, 50-250, 250-500, 500-1000,
+# 1000-5000, >=5000.  ⚠️ The Workspace "Scar size" legend uses DIFFERENT ranges on the same
+# pixel values 1-8 (docs/08 §5.4) — ours are Amazon-scale-free and almost certainly right,
+# but the REGISTERED legend must match these values.  Confirm with IPAM before publishing.
+SCAR_SIZE_LOWER_HA = [5, 25, 50, 250, 500, 1000, 5000]
+
+# Common property block for every step-07/08 output (the reference's stage-3 block).
+PRODUCT_SOURCE = "mapbiomas-fuego"
+PRODUCT_REGION = "argentina"   # one image per year, whole country: our predictions are tiled
+                               # by cartas, not by the network's fire regions
+
+
+def product_name(subproduct, collection=1, version=1):
+    """Network-standard asset name, e.g.
+    ``mapbiomas_argentina_fire_collection1_annual_burned_v1``."""
+    return (f"mapbiomas_{PRODUCT_REGION}_fire_collection{collection}"
+            f"_{subproduct}_v{version}")

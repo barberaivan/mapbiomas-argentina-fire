@@ -47,7 +47,10 @@ collection-01/
 ├── workflow/               # Numbered pipeline steps (mixed Python + R)
 │   ├── 01-training_data_export.py   # Export training data (one GEE task per fire)
 │   ├── 02-model_fitting.R           # Fit LR per veg_fire class (R, glmnet)
-│   └── 03–07-*.{py,R}      # Prediction pipeline (bp ts → SNIC → objects → filter → raster) — in development
+│   ├── 03–06-*.{py,R}      # Prediction pipeline (bp ts → SNIC → objects → object model)
+│   ├── 07-month_of_burn.py          # Month of burn per CALENDAR year, in GEE (docs/07 §7)
+│   ├── 07-calendar_scars.R          # 8-connected calendar-year scars, locally, two passes (docs/07 §8)
+│   └── 07-scar_rasters.py           # Scar id / area / size-range rasters from the ingested scar FCs
 │                           # step 08 (network post-processing) has no script yet — docs/08-postprocessing.md
 ├── scripts/                # Ad-hoc utilities — not mandatory pipeline steps
 │   ├── status.py                          # Check GEE export status across all regions
@@ -73,6 +76,8 @@ collection-01/
 │   ├── run_06_predict.sh                  # step 06: parallel scoring — one Rscript per fire-year, 8 at a time, resumable (prediction is single-threaded)
 │   ├── run_06_inspect.sh                  # step 06: parallel QGIS-layer build — one Rscript per fire-year, 6 at a time (I/O + memory bound), resumable
 │   ├── run_07_upload_zips.sh              # step 07: parallel upload-package build — one process per fire-year, 4 at a time, resumable
+│   ├── run_07_scars.sh                    # step 07: calendar-year scar build in two passes — `pixels` per fire-year (-j 5), `scars` per calendar year (-j 2), resumable
+│   ├── validate_scar_zips.py              # step 07: pre-ingest gate over the 27 scar zips (fields/types, gapless scar_id, area vs summary, CRS, geometry)
 │   ├── run_05_years.sh                    # Overnight all-years step-05 launcher — one Rscript/year, resumable, OOM-flagging (docs/05 §4.1)
 │   └── mem_monitor.sh                     # Lightweight RAM peak / near-OOM-warn monitor (used by run_05_years.sh; standalone too)
 ├── notebooks/              # Quarto-R (.qmd) exploratory analyses and decisions
@@ -295,7 +300,7 @@ Rscript collection-01/scripts/objects_data_explore.R          # ~1 min, ~1 GB
 Both share `scripts/objects_data_functions.R` (loaders, `clean_tagged()`, the c-00 filter),
 so "the clean labelled table" means the same rows in both.
 
-### Step 07 — the GEE upload packages
+### Step 06b — the GEE upload packages (the object FeatureCollections)
 
 **Every object of every fire-year goes up**, not only the ones called fire: a fire-only layer can
 only show commission error, and a reviewer needs the rejected objects to find the fires the model
@@ -324,6 +329,55 @@ The validator exists because a hand upload has no failing pipeline to catch a ba
 surface weeks later as a wrong map. Its sharpest check is that `fire`/`fire_model`/`fire_tag` are
 never NULL: OGR writes an unset DBF integer as null and GEE reads it as `0`, indistinguishable from
 "a human said NOT fire", hence the `-1` sentinel. Full detail: docs/06 §12.
+
+### Step 07 — the calendar-year products
+
+Two deliverables, and they must agree pixel-for-pixel: the **month-of-burn raster** per calendar
+year, and the **calendar-year scars** the size products are painted from. Design and the
+verification numbers are in `docs/07-vector_to_raster.md`.
+
+```
+calendar year Y  =  Jan-Apr Y  from fire-year (Y-1)   |+|   May-Dec Y  from fire-year Y
+```
+
+Only objects with `fire == 1 & area_ha >= 1` contribute, and calendar year + month are taken
+**per pixel** from `abs_date` — never per object from `year_calendar`.
+
+**7a — month of burn, in GEE.** Nothing to upload: it paints the step-06 object FCs against the
+SNIC assets already in GEE.
+
+```bash
+# audit a SMALL roi first — never the whole country (reduceRegion at 30 m is not cheap)
+$PYTHON collection-01/workflow/07-month_of_burn.py --year 2020 --check --roi=-61.6,-25.6,-61.1,-25.1
+
+$PYTHON collection-01/workflow/07-month_of_burn.py --all --launch    # 27 tasks — inside tmux
+```
+
+**7b — calendar-year scars, locally.** GEE cannot label these: `connectedPixelCount` caps at
+1024 px (~92 ha), far below a real scar. Two passes, because each fire-year feeds two calendar
+years and reading the 248 carta tiles is the dominant cost. **Run `pixels` to completion first** —
+a calendar year needs both of its fire-years.
+
+```bash
+tmux new-session -d -s s07pix '/abs/path/to/collection-01/scripts/run_07_scars.sh pixels -j 5'
+# then, one process per calendar year; memory-bound, so few years x more cores each
+tmux new-session -d -s s07scar 'OBJ_CORES=6 /abs/path/to/collection-01/scripts/run_07_scars.sh scars -j 2'
+
+# GATE the 27 packages before any manual ingest
+$PYTHON collection-01/scripts/validate_scar_zips.py
+```
+
+`pixels` writes a regenerable cache (`data/scars-pixels-cache/`, ~24 GB — safe to delete);
+`scars` writes `data/objects-scars/scars_<Y>.gpkg` + summary CSVs and the upload package
+`data/scars-upload-cache/scars_<Y>.zip`.
+
+**7c — scar rasters, in GEE**, once the 27 scar FCs are ingested by hand into
+`.../COLLECTION-1/FINAL_PRODUCTS/annual-burned-vectors/scars_<Y>`:
+
+```bash
+$PYTHON collection-01/workflow/07-scar_rasters.py --check --years 1999,2000   # mask agreement
+$PYTHON collection-01/workflow/07-scar_rasters.py --launch
+```
 
 ### Scripts (R utilities) — step-06 label prep
 
@@ -406,6 +460,6 @@ Export status across regions: `python collection-01/scripts/status.py`.
 | 04 — SNIC segmentation | Whole-country fire-year SNIC settled; Drive-COG handoff to R (`docs/04-snic.md`). |
 | 05 — object metrics (R/terra) | 2001–2025 measured and run; 1.69 M objects (`docs/05-object_metrics.md`). |
 | 06 — object model (R, BART) | **Done.** 20 predictors, fitted on 5255 labels, grid-blocked OOF AUC 0.891 (within-year 0.845); per-size-band cuts deployed; all 28 fire-years scored (1 689 419 objects, 36 unscored); 28 QGIS layers built and inspected (`docs/06-object_model.md`). |
-| 07 — vector→raster | Upload packages built and validated (28 zips, ALL PASS); manual GEE ingest in progress. Month-of-burn raster + merged FC not built yet (`docs/07-vector_to_raster.md`). |
+| 07 — calendar-year products | Object FCs ingested (28). **Month-of-burn ImageCollection** exporting in GEE (27 calendar years); **calendar-year scars** built locally (two passes, 27 years) and packaged for the manual ingest; **scar rasters** coded, pending that ingest (`docs/07-vector_to_raster.md`). |
 | 08 — network post-processing & published subproducts | Not started; design notes only (`docs/08-postprocessing.md`). Assets due **31 Jul 2026** |
 | 09 — statistics, publication, launch | Not started; design notes only (`docs/09-statistics.md`). Launch **24 Sep 2026** |
