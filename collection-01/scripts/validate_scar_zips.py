@@ -18,9 +18,21 @@ through the GEE asset manager and is discovered late. This checks every zip the 
   * the CRS is geographic WGS84 -- a projected .prj would silently misalign the painted raster
   * geometries are valid and non-empty
 
+And `--ingested` closes the other half of the loop, AFTER the manual upload: it compares what
+actually landed in GEE against the local build. That is where a silent error hides -- a hand ingest
+has no failing pipeline either, and a partially-uploaded Shapefile still produces a valid-looking
+FeatureCollection. It checks the feature count and the `area_ha` total per year, and that `scar_id`
+survived as a NUMBER (`ee.Image().paint` cannot use a string).
+
+Note ingest tasks are `INGEST_TABLE` and run in a DIFFERENT queue from `EXPORT_IMAGE`, so they do
+not contend with the month-of-burn exports -- and `ee.data.listOperations()` is PROJECT-SCOPED, so a
+Code Editor upload made while the session was on `mapbiomas-argentina` will not appear under
+`mapbiomas-fire-485203`. Pass `--project` to look in the right place.
+
 Usage (from the repo ROOT):
-  $PYTHON collection-01/scripts/validate_scar_zips.py
+  $PYTHON collection-01/scripts/validate_scar_zips.py                     # gate the zips
   $PYTHON collection-01/scripts/validate_scar_zips.py --years 1999,2000
+  $PYTHON collection-01/scripts/validate_scar_zips.py --ingested          # verify the upload
 """
 
 from __future__ import annotations
@@ -133,13 +145,80 @@ def check_year(year):
     return ok, [head] + [f"       - {m}" for m in msgs]
 
 
+def check_ingested(years, project):
+    """Compare the INGESTED FeatureCollections against the local build.
+
+    Only years already present are compared; the rest are reported as still-in-flight rather than
+    as failures, because 27 hand uploads land over a long stretch.
+    """
+    import ee
+    sys.path.insert(0, str(REPO_ROOT / "collection-01"))
+    import utils.constants as C
+
+    ee.Initialize(project=project)
+    present = {a["id"].split("/")[-1] for a in
+               ee.data.listAssets(C.ANNUAL_BURNED_VECTORS).get("assets", [])}
+    print(f"ingested into {C.ANNUAL_BURNED_VECTORS}\n")
+    print(f"{'year':>5} {'GEE feats':>11} {'local':>11} {'GEE ha':>13} {'local ha':>13}  verdict")
+
+    bad, waiting, checked = [], [], 0
+    for y in years:
+        if f"scars_{y}" not in present:
+            waiting.append(y)
+            continue
+        fc = ee.FeatureCollection(f"{C.ANNUAL_BURNED_VECTORS}/scars_{y}")
+        n = fc.size().getInfo()
+        ha = fc.aggregate_sum("area_ha").getInfo() or 0.0
+        spath = SCAR_DIR / f"scars_{y}_summary.csv"
+        if not spath.exists():
+            print(f"{y:>5} {n:>11,} {'?':>11} {ha:>13,.0f} {'?':>13}  no local summary")
+            continue
+        row = next(csv.DictReader(open(spath, newline="")))
+        ln, lha = int(row["n_scars"]), float(row["area_ha"])
+        ok = (n == ln) and (lha == 0 or abs(ha - lha) / lha < 1e-6)
+        checked += 1
+        if not ok:
+            bad.append(y)
+        print(f"{y:>5} {n:>11,} {ln:>11,} {ha:>13,.0f} {lha:>13,.0f}  "
+              f"{'MATCH' if ok else 'MISMATCH'}")
+
+    # scar_id must have survived the DBF round trip as a number, or paint() cannot use it
+    if present:
+        one = sorted(present)[0]
+        props = ee.Feature(ee.FeatureCollection(
+            f"{C.ANNUAL_BURNED_VECTORS}/{one}").first()).getInfo()["properties"]
+        kinds = {k: type(v).__name__ for k, v in props.items()}
+        print(f"\nproperty types on {one}: {kinds}")
+        if not isinstance(props.get("scar_id"), (int, float)):
+            print("  ERROR scar_id is not numeric — ee.Image().paint() will reject it")
+            bad.append(one)
+
+    print(f"\n{checked}/{len(years)} verified against the local build")
+    if waiting:
+        print(f"still ingesting (not a failure): {waiting}")
+    if bad:
+        print(f"MISMATCHED — re-upload these: {sorted(set(bad))}")
+        sys.exit(1)
+    if not waiting:
+        print("All 27 ingests verified. Run 07-scar_rasters.py --check next.")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--years", help="comma-separated calendar years (default: 1999-2025)")
+    ap.add_argument("--ingested", action="store_true",
+                    help="verify the UPLOADED FeatureCollections against the local build "
+                         "(feature count, area_ha total, scar_id type) instead of the zips")
+    ap.add_argument("--project", default="mapbiomas-fire-485203",
+                    help="GEE project to initialize under (default: %(default)s)")
     args = ap.parse_args()
     years = ([int(v) for v in args.years.split(",")] if args.years
              else list(range(1999, 2026)))
+
+    if args.ingested:
+        check_ingested(years, args.project)
+        return
 
     failed = []
     for y in years:
