@@ -76,6 +76,15 @@ Built 2026-07-29 (`docs/07-vector_to_raster.md`). What remains:
   `data/scars-upload-cache/scars_<Y>.zip` → `.../COLLECTION-1/FINAL_PRODUCTS/annual_burned_vectors/scars_<Y>`.
   Gate them first with `scripts/validate_scar_zips.py` (a hand upload has no failing pipeline to
   catch a bad package). Then `07-scar_rasters.py --check` before `--launch`.
+- [ ] **CLEANUP once the scar rasters are built: delete the export path that was NOT used.**
+  `07-scar_rasters.py` currently carries both the monolithic default (three 27-band images, the
+  reference's own shape) and a `--per-year` + `--merge` fallback, because it was unknown whether one
+  task painting 27 FCs would hold. As soon as that is known, drop the loser — the flags, their
+  helper functions (`export_per_year` / `merge_per_year`), `SCAR_PARTS_COL`, and the matching
+  paragraphs in the module docstring, docs/07 and this file. Keep at most one line saying *why* the
+  other was rejected if a real GEE limit was measured. Also retire `--roi` and prepare (for Iván to
+  run) the deletion of the `*_roitest` assets and, if the fallback went unused,
+  `FINAL_PRODUCTS/scar_year_parts`.
 - [ ] **Cross-check the local and GEE masks per year.** `objects-scars/scars_<Y>_months.csv` holds
   the per-month pixel histogram from the local build; `07-month_of_burn.py --check` gives the same
   histogram from the raster. They should match exactly — both derive from the same object pixel set,
