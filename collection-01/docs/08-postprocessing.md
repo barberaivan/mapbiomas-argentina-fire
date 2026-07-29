@@ -403,7 +403,7 @@ appear in the publish script's lists but **not** in the country table — Brazil
 | 2 | `collection1_fire_mask_v1` — the month-of-burn collection, 1-band uint8 per calendar year, properties set | **done** — `07-month_of_burn.py`; the LULC mask and pixel filter are upstream, not owed (§6.2) |
 | 3 | `scars_<Y>` (27) calendar-year scar FCs | **built locally** (`07-calendar_scars.R`); the 27 zips need the **manual GEE ingest** |
 | 4 | `annual_burned_id`, `annual_burned_area_ha`, `annual_burned_scar_size_range` | **coded** (`07-scar_rasters.py`), runs once item 3 is ingested |
-| 5 | `monthly_burned`, `annual_burned`, `monthly_burned_coverage`, `annual_burned_coverage`, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`), `year_last_fire` | **to build** — straightforward from item 2; the `*_coverage` ones need the LULC asset extended to 2025 |
+| 5 | `monthly_burned`, `annual_burned`, `monthly_burned_coverage`, `annual_burned_coverage`, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`), `year_last_fire` | **coded + launched** (`07-subproducts.py`, 9 tasks, 2026-07-29) — all nine derive from item 2; the LULC-to-2025 gap is closed by duplicating 2024 forward, as every reference country does (docs/07 §12.4) |
 
 ⚠️ The `*_coverage` products are the easiest to forget and are exactly what the statistics read
 (docs/09 §2).
@@ -423,9 +423,12 @@ See **[`09-statistics.md`](09-statistics.md)**: the six area-statistics CSVs, th
    `mapbiomas-public` copy, which must use their spelling regardless.
 2. ~~LULC mask classes per region~~ — **not applicable.** The mask is embedded upstream and is stricter
    than the reference (§6.2). Nothing to choose.
-3. **LULC year coverage.** `C.MAPBIOMAS_LULC` ends at `classification_2024` (40 bands, 1985–2024), so
-   2025 must be duplicated forward as the reference does. **Still blocks every `*_coverage` product** —
-   the only place LULC still enters our chain.
+3. ~~LULC year coverage~~ — **decided: duplicate `classification_2024` forward to 2025**, which is what
+   every reference country does; it was never a blocker. Done in `07-subproducts.py`, which reads the
+   available band list from the asset so it self-corrects when the LULC is extended. Also verified
+   (docs/07 §12.4): the LULC sits on the **same lattice** as our grid — integer 9953-column /
+   −25102-row offset — so the coverage products involve no resampling of a categorical band, and its
+   footprint contains the 2 km buffer. Still the only place LULC enters our chain.
 4. ~~Month per pixel or per object~~ — **decided: per pixel**, from `snic_metrics.abs_date` (§6.5).
 5. ~~`scar_id` numbering~~ — **decided: integer 1..n within the calendar year, ordered by the scar's
    first cell** on the global lattice. Deterministic and stable across re-runs; `oid` is unusable

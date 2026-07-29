@@ -18,7 +18,7 @@ Run in this order; each sub-step needs the one before it.
 | **07a** | **Month of burn** per calendar year → `CLASSIFICATION_COLLECTIONS/collection1_fire_mask_v1` (ImageCollection, one 1-band uint8 image per year, 1–12, masked elsewhere). The pivot everything else reads. | `workflow/07-month_of_burn.py` (GEE) | ✅ **done** — 27/27 exported |
 | **07b** | **Calendar-year scars**, 8-connected, labelled locally → `data/scars-upload-cache/scars_<Y>.zip`, then ingested by hand as `FINAL_PRODUCTS/annual_burned_vectors/scars_<Y>` | `workflow/07-calendar_scars.R` + `scripts/run_07_scars.sh` (local, two passes) | ✅ **done** — 27/27 built, gated and ingested, all verified against the local build |
 | **07c** | **Scar rasters** — `annual_burned_id`, `annual_burned_area_ha`, `annual_burned_scar_size_range`, painted from the ingested scars and masked to 07a | `workflow/07-scar_rasters.py` (GEE) | 🔄 **exporting** (3 tasks, whole country, 27 bands each) |
-| **07d** | **The derived subproducts** — `monthly_burned`, `annual_burned`, both `*_coverage`, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`), `year_last_fire` | `workflow/07-subproducts.py` — **NOT WRITTEN YET**, §12 | ⛔ **to build**; blocked only by the LULC-to-2025 item |
+| **07d** | **The nine derived subproducts** — `monthly_burned`, `annual_burned`, both `*_coverage`, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`), `year_last_fire` | `workflow/07-subproducts.py` (GEE) | 🔄 **exporting** (9 tasks, launched 2026-07-29) |
 
 Commands, in order:
 
@@ -37,7 +37,10 @@ $PYTHON collection-01/workflow/07-scar_rasters.py --check --years 2003,2020 --ro
 $PYTHON collection-01/workflow/07-scar_rasters.py --launch
 #   if the monolith fails:  --per-year --launch   then   --merge --launch
 
-# 07d  (to build) — see §12
+# 07d  (in flight) — all nine derive from 07a, so they do NOT wait for 07c
+$PYTHON collection-01/workflow/07-subproducts.py --check     # band bookkeeping + ROI counts
+$PYTHON collection-01/workflow/07-subproducts.py --launch     # 9 tasks
+#   one product only:  --only frequency_burned
 ```
 
 `scripts/run_07_scars.sh` is the launcher for 07b (two modes, resumable, biggest-year first, one
@@ -263,6 +266,11 @@ The whole-country histogram cannot be taken interactively — `reduceRegion(...)
 74085 × 123601 grid returns *Computation timed out*. `--stats` submits it as a batch task instead and
 `--stats-read` prints it beside `scars_<Y>_months.csv`; that pair is the standing local↔GEE check.
 
+⚠️ **That check has not actually run yet.** The one task submitted (`mobstats_2000`) **FAILED** with
+*"Unable to export features with null geometry"* — `ee.Feature(None, …)` cannot be written to a table
+**asset**. Fixed 2026-07-29 (the feature now carries a placeholder point); the 27 tasks still need
+submitting.
+
 ---
 
 ## 8. The local scar build
@@ -418,10 +426,8 @@ folder and the per-year names have to be aligned — not just the folder.
 
 - **The 27 scar FCs must be ingested by hand** — no GCS bucket is reachable, so the zip is the
   deliverable, same hand-off as docs/06 §12.
-- **The stage-4 raster subproducts** (`monthly_burned`, `annual_burned`, both `*_coverage`,
-  `frequency_burned`, `accumulated_burned`, `year_last_fire`) are not built yet. They are
-  straightforward from the month-of-burn collection; the `*_coverage` ones need the LULC asset
-  extended to 2025 (it ends at `classification_2024`).
+- ~~The stage-4 raster subproducts~~ — **built and exporting** (07d, §12). The LULC-to-2025 item was
+  never a blocker: duplicating 2024 forward is the network's own answer (§12.4).
 - **`regiones_fuego_argentina_v1` does not exist** as a FeatureCollection — only the 5-region
   raster. Every reference script uses it for the export geometry and the `region` property; step 07
   uses `ARG_BUFFER_FC` instead and sets `region = 'argentina'`.
@@ -434,10 +440,11 @@ folder and the per-year names have to be aligned — not just the folder.
 
 ---
 
-## 12. Sub-step 07d — the derived subproducts (TO BUILD)
+## 12. Sub-step 07d — the nine derived subproducts
 
 Everything here derives from **07a's month-of-burn collection** plus the **MapBiomas LULC**. No new
-vectors, no local work, no re-labelling. Planned script: `workflow/07-subproducts.py`.
+vectors, no local work, no re-labelling. Script: `workflow/07-subproducts.py`, **9 export tasks
+launched 2026-07-29**.
 
 Reference: `Reference/2-Collection_Fire_Subproducts/1_burned_area_products_monthly_annual_coverage`
 (products 1–4), `2_burned_area_frequency_accumulated_coverage` (5–8), `3_year_last_fire` (9).
@@ -490,11 +497,18 @@ territory — that is a different stage and a different layer.)
 | `year_last_fire` | `classification_<year+1>` | calendar year of the most recent fire up to that band | uint16 | mode |
 
 Export with `crs=C.SNIC_CRS` + `crsTransform=C.SNIC_TRANSFORM` (never `scale=30`, §3),
-`region = ARG_BUFFER_FC`, `maxPixels=1e13`.
+`region = ARG_BUFFER_FC`, `maxPixels=1e13`, `pyramidingPolicy` `mode` throughout.
+
+Band counts as built: **27** for the four annual/monthly products and for `year_last_fire`, **53**
+for each of the four window products (frequency / accumulated, with and without coverage).
 
 **Frequency windows are two-sided.** A forward pass accumulates `y_first…y` and a backward pass
-`y…y_last`; both band sets are concatenated and sorted, and the duplicated join band is dropped
-(`freqPost.slice(0,-1)`). Never-burned pixels are `selfMask`ed out.
+`y…y_last`; both band sets are concatenated and sorted, and the duplicated join band — the full
+`1999_2025` window, which both passes produce — is kept from the forward pass only (the reference
+drops the backward copy with `freqPost.slice(0,-1)`). 27 + 27 − 1 = **53**. Never-burned pixels are
+`selfMask`ed out, so frequency is `1..N`-or-absent, never 0. The coverage variant encodes the LULC of
+the window's **moving end** — `y` in both passes, i.e. the window's end going forward and its start
+going backward.
 
 ### 12.3 Four traps in the reference code
 
@@ -510,13 +524,60 @@ Export with `crs=C.SNIC_CRS` + `crsTransform=C.SNIC_TRANSFORM` (never `scale=30`
 4. **The `*_coverage` products are the easiest to forget** and are exactly what the statistics stage
    reads (docs/09 §2). Four of the nine are coverage products.
 
-### 12.4 The one blocker
+### 12.4 The LULC year — no longer a blocker
 
 **`C.MAPBIOMAS_LULC` ends at `classification_2024`** (40 bands, 1985–2024) and the series runs to
-2025, so 2025 must be duplicated forward from 2024 — which is what every reference country does
-(`.slice(-1).rename(['classification_2025'])`). This blocks **all four** `*_coverage` products and
-both frequency-coverage variants; the non-coverage products (`monthly_burned`, `annual_burned`,
-`frequency_burned`, `accumulated_burned`, `year_last_fire`) need no LULC and can be built first.
+2025, so **2025 takes 2024's classification**, which is exactly what every reference country does
+(`.slice(-1).rename(['classification_2025'])`). It was listed as blocking all four `*_coverage`
+products; it does not — duplicating forward *is* the network's answer, and the script does it (and
+prints the substitution). The available band list is read from the asset, not from `C.MB_LIMIT_YEAR`,
+so this self-corrects the day the LULC is extended.
 
 This is the **only** remaining place LULC enters our pipeline — the stage-3 LULC *mask* does not
 apply to us (docs/08 §6.2).
+
+**The LULC sits on our lattice.** Verified 2026-07-29: `C.MAPBIOMAS_LULC` has the same 30 m pixel
+size as the SNIC grid, and its origin is offset by exactly **9953 columns / −25102 rows — integers**.
+So combining it with the month raster on `C.SNIC_TRANSFORM` involves no resampling and no half-pixel
+shift, which for a *categorical* band is the difference between a class code and its neighbour's.
+Its footprint also `contains` the 2 km buffer, so no burned pixel can fall outside the LULC and
+silently drop out of a coverage product (`add` propagates the mask). Measured over the Chaco audit
+box, all 27 years: `lulc_missing = 0`, and `month == annual == coverage` to the pixel.
+
+### 12.5 What was verified before launch
+
+`--check` prints the band bookkeeping for all nine products plus per-year ROI counts; that plus a
+value-level decode of every encoding was run on the Chaco 0.5° box before submitting:
+
+| Check | Result |
+|---|---|
+| Band names / counts | 27 / 27 / 27 / 27 / 53 / 53 / 53 / 53 / 27, `year_last_fire` = `classification_2000 … classification_2026` |
+| `monthly_burned_coverage` decode | `max │mc//100 − month│ = 0`, `max │mc mod 100 − L│ = 0` |
+| `annual_burned_coverage` decode | `max │ac − L│ = 0` |
+| `frequency_burned_coverage` decode | `max │fc//100 − freq│ = 0` |
+| `accumulated_burned_coverage` decode | `max │acc_cov − L(2025)│ = 0` (window `1999_2025`, moving end 2025) |
+| Single-year window vs annual | `freq_2025_2025` = `annual_2025` = **27,508 px**, exactly |
+| Cross-product mask agreement | `freq_1999_2025` = `accum` = `accum_cov` = `year_last_fire` = **241,281 px**, exactly |
+| `year_last_fire` values | `classification_2000` is 1999 only; `classification_2026` spans 1999–2025 with the expected per-year counts |
+
+Note the ROI histograms taken with `frequencyHistogram` come out a few pixels below the
+`sum().unweighted()` counts (241,195 vs 241,281) — that is `reduceRegion`'s **edge weighting** of
+partial pixels at the box boundary, the same artefact §9 records for the scar check, not a
+disagreement between products.
+
+### 12.6 Three departures from the reference, all plumbing
+
+The encodings are copied verbatim; what differs is how the graph is fed.
+
+1. **The grid is pinned** (`crs` + `crsTransform`), never `scale=30` — §3, the same rule as 07a/07c.
+2. **`region = ARG_BUFFER_FC`** instead of `regions.union().geometry()`, because
+   `regiones_fuego_argentina_v1` does not exist as a FeatureCollection (§11).
+3. **All nine products read the 07a month collection**, whereas the reference exports `annual_burned`
+   first and has scripts 2 and 3 read *that asset*. `annual_burned` is *defined* as `month > 0`, so a
+   frequency built from the month images is bit-identical to one built from the exported annual
+   product — and deriving everything from the single pivot makes the nine consistent **by
+   construction** rather than by sequencing. The operational win is that the nine tasks are
+   independent: nothing waits for a 27-band export to land, and any one product can be re-run alone
+   (`--only`). Confirmed by the two exact cross-product agreements in §12.5.
+
+The reference's `accumulated_burned` filename typo is not copied (§12.3.2).

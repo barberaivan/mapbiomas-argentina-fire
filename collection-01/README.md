@@ -50,7 +50,8 @@ collection-01/
 │   ├── 03–06-*.{py,R}      # Prediction pipeline (bp ts → SNIC → objects → object model)
 │   ├── 07-month_of_burn.py          # Month of burn per CALENDAR year, in GEE (docs/07 §7)
 │   ├── 07-calendar_scars.R          # 8-connected calendar-year scars, locally, two passes (docs/07 §8)
-│   └── 07-scar_rasters.py           # Scar id / area / size-range rasters from the ingested scar FCs
+│   ├── 07-scar_rasters.py           # Scar id / area / size-range rasters from the ingested scar FCs
+│   └── 07-subproducts.py            # The 9 derived subproducts, from the month collection (docs/07 §12)
 │                           # step 08 (network post-processing) has no script yet — docs/08-postprocessing.md
 ├── scripts/                # Ad-hoc utilities — not mandatory pipeline steps
 │   ├── status.py                          # Check GEE export status across all regions
@@ -379,6 +380,18 @@ $PYTHON collection-01/workflow/07-scar_rasters.py --check --years 1999,2000   # 
 $PYTHON collection-01/workflow/07-scar_rasters.py --launch
 ```
 
+**7d — the nine derived subproducts, in GEE.** `monthly_burned`, `annual_burned`, both
+`*_coverage`, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`),
+`year_last_fire`. All nine derive from 7a's month collection plus the MapBiomas LULC, so they do
+**not** wait for 7c, and the encodings are copied verbatim from the network's reference scripts —
+do not innovate there (`docs/07-vector_to_raster.md` §12).
+
+```bash
+$PYTHON collection-01/workflow/07-subproducts.py --check      # band bookkeeping + ROI counts
+$PYTHON collection-01/workflow/07-subproducts.py --launch      # 9 tasks
+$PYTHON collection-01/workflow/07-subproducts.py --launch --only frequency_burned   # just one
+```
+
 ### Scripts (R utilities) — step-06 label prep
 
 Downloads the per-collaborator fire/non-fire collections exported by the GEE
@@ -460,6 +473,6 @@ Export status across regions: `python collection-01/scripts/status.py`.
 | 04 — SNIC segmentation | Whole-country fire-year SNIC settled; Drive-COG handoff to R (`docs/04-snic.md`). |
 | 05 — object metrics (R/terra) | 2001–2025 measured and run; 1.69 M objects (`docs/05-object_metrics.md`). |
 | 06 — object model (R, BART) | **Done.** 20 predictors, fitted on 5255 labels, grid-blocked OOF AUC 0.891 (within-year 0.845); per-size-band cuts deployed; all 28 fire-years scored (1 689 419 objects, 36 unscored); 28 QGIS layers built and inspected (`docs/06-object_model.md`). |
-| 07 — calendar-year products | Object FCs ingested (28). **Month-of-burn ImageCollection** exporting in GEE (27 calendar years); **calendar-year scars** built locally (two passes, 27 years) and packaged for the manual ingest; **scar rasters** coded, pending that ingest (`docs/07-vector_to_raster.md`). |
+| 07 — calendar-year products | Object FCs ingested (28). **07a month-of-burn ImageCollection** done (27/27); **07b calendar-year scars** built locally, gated and ingested (27/27); **07c scar rasters** exporting (3 tasks); **07d the nine derived subproducts** exporting (9 tasks) — `docs/07-vector_to_raster.md`. |
 | 08 — network post-processing & published subproducts | Not started; design notes only (`docs/08-postprocessing.md`). Assets due **31 Jul 2026** |
 | 09 — statistics, publication, launch | Not started; design notes only (`docs/09-statistics.md`). Launch **24 Sep 2026** |

@@ -271,7 +271,11 @@ def stats_year(cal_year, region, launch):
     hist = img.reduceRegion(ee.Reducer.frequencyHistogram(), region,
                             crs=C.SNIC_CRS, crsTransform=C.SNIC_TRANSFORM,
                             maxPixels=int(1e13))
-    fc = ee.FeatureCollection([ee.Feature(None, {
+    # The feature needs a GEOMETRY: `ee.Feature(None, …)` fails the task outright with
+    # "Unable to export features with null geometry" (measured — mobstats_2000 FAILED that way).
+    # A table ASSET cannot hold a null-geometry feature; toDrive/CSV can, but then the result is
+    # not readable by --stats-read. The point is a placeholder and carries no meaning.
+    fc = ee.FeatureCollection([ee.Feature(ee.Geometry.Point([-64.0, -34.0]), {
         "year": cal_year,
         "histogram": ee.Dictionary(hist.get(C.MONTH_OF_BURN_BAND)).map(
             lambda k, v: ee.Number(v).toInt64()),

@@ -91,15 +91,22 @@ Built 2026-07-29 (`docs/07-vector_to_raster.md`). What remains:
   the per-month pixel histogram from the local build; `07-month_of_burn.py --check` gives the same
   histogram from the raster. They should match exactly — both derive from the same object pixel set,
   which was verified exact — so any divergence is a real bug, not tolerance.
-- [ ] **Build sub-step 07d, the nine derived subproducts** — `workflow/07-subproducts.py`, not
-  written yet. **Full spec in docs/07 §12**: the encodings, the four settled answers (MapBiomas LULC
-  not `veg_fire`; SAME calendar year; no region split; one asset per subproduct with one band per
-  year), and the four traps in the reference code. Everything derives from 07a plus the LULC — no new
-  vectors, no local work. The five non-coverage products need no LULC and can be built immediately;
-  the four `*_coverage` ones wait on the LULC-to-2025 item below.
-- [ ] **Extend the LULC asset to 2025.** `C.MAPBIOMAS_LULC` ends at `classification_2024`; duplicate
-  it forward as the reference does. **Blocks every `*_coverage` product** — the only place LULC
-  still enters our chain (the mask itself is embedded upstream, docs/08 §6.2).
+  **The whole-country half of this is still unrun**: `--stats` submits a batch histogram per year, and
+  the one task tried (`mobstats_2000`) FAILED with *"Unable to export features with null geometry"* —
+  a table **asset** cannot hold `ee.Feature(None, …)`. Fixed 2026-07-29; the 27 tasks still need
+  submitting, then `--stats-read`.
+- [x] **Sub-step 07d built and launched** (2026-07-29) — `workflow/07-subproducts.py`, 9 export tasks.
+  All nine derive from 07a's month collection plus the LULC; encodings copied verbatim from the
+  reference (docs/07 §12), the `accumulate1` filename typo not copied. Verified before launch: band
+  counts 27/27/27/27/53/53/53/53/27, every coverage code decoding exactly (`mc//100 == month`,
+  `mc mod 100 == L`, `fc//100 == freq`, `acc_cov == L`), `freq_2025_2025 == annual_2025` to the pixel,
+  and `frequency`/`accumulated`/`accumulated_coverage`/`year_last_fire` agreeing on 241,281 px in the
+  audit box. See docs/07 §12.5-§12.6.
+- [x] **LULC to 2025 — not a blocker, closed** (2026-07-29). `classification_2024` is duplicated
+  forward, which is what every reference country does; `07-subproducts.py` reads the available band
+  list from the asset so it self-corrects when the LULC is extended. Also verified the LULC sits on
+  our **exact lattice** (integer 9953-col / −25102-row offset) and its footprint contains the 2 km
+  buffer, so the coverage products resample nothing and lose no burned pixel (docs/07 §12.4).
 - [ ] **Build `regiones_fuego_argentina_v1` as a FeatureCollection.** Only the 5-region raster
   exists. Needed by the reference scripts and by the statistics stage (docs/09).
 - [x] **Scar-size ranges settled — the published legend's, not the reference script's** (2026-07-29).
