@@ -613,3 +613,30 @@ The encodings are copied verbatim; what differs is how the graph is fed.
    (`--only`). Confirmed by the two exact cross-product agreements in §12.5.
 
 The reference's `accumulated_burned` filename typo is not copied (§12.3.2).
+
+### 12.7 Namespace the task descriptions — the compute project is shared
+
+`mapbiomas-fire-485203` is used by **many people across the network**, and
+`ee.data.listOperations()` is **project-scoped, not per-account**: it returns every user's tasks (226
+of them when 07d was launched — Peru's `MONITOR_01_*`, Bolivia's
+`GT_Fuego-mapbiomas_bolivia_fire_collection1_burned_area_*`, …). Step 03 already documents that
+scoping for `bpts_` (`03-bp_ts_metrics.py::_inflight_bpts_names`).
+
+07d was first written matching in-flight tasks on the **bare** subproduct name (`annual_burned`,
+`monthly_burned`, `year_last_fire`) — which is exactly what another country's adaptation of these same
+reference scripts would call its exports. A collision would print
+`[skip] … has a PENDING/RUNNING task` and **silently not submit one of our products**, which is the
+worst kind of failure here: it looks like the resumable-skip working. Descriptions are therefore
+namespaced **`arg07d_<subproduct>`** (`TASK_PREFIX`).
+
+`destinationUris` — which would identify the task by *our* asset path and settle it exactly — is
+populated **only on FINISHED operations**, so it cannot serve the in-flight test. The prefix is the
+fix, not a workaround for a nicer one.
+
+⚠️ **Never cancel or touch a task you did not launch**, and never match one by a generic description:
+in this project the other tasks belong to other countries' teams.
+
+The first batch went out under the bare descriptions, so `LEGACY_DESCRIPTIONS` keeps them accepted by
+the in-flight test — otherwise a re-run before they landed would have double-submitted. **Delete that
+fallback once those nine tasks have finished**; it is the collision-prone form the prefix exists to
+retire.

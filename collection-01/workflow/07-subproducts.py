@@ -97,6 +97,24 @@ ACCUM_BAND_PREFIX = "fire_accumulated"
 # Default --check extent: the Chaco 0.5 deg audit box used throughout step 07 (docs/07 §7).
 CHECK_ROI = "-61.6,-25.6,-61.1,-25.1"
 
+# Task descriptions are NAMESPACED, and that is not cosmetic.  `ee.data.listOperations()` is
+# PROJECT-scoped, not per-account: in the shared `mapbiomas-fire` compute project it returns EVERY
+# user's tasks (226 of them when this was written — Peru's `MONITOR_01_*`, Bolivia's
+# `GT_Fuego-mapbiomas_bolivia_fire_collection1_burned_area_*`, …), which is the same scoping step 03
+# documents for `bpts_` (03-bp_ts_metrics.py::_inflight_bpts_names).  A BARE description like
+# `annual_burned` is exactly what another country's adaptation of these same reference scripts would
+# use, and a collision makes task_in_flight() report a false in-flight — silently NOT submitting one
+# of OUR products, with `[skip] … has a PENDING/RUNNING task` as the only trace.
+# `destinationUris` would disambiguate by asset path but is populated only on FINISHED operations,
+# so it cannot serve the in-flight test.
+TASK_PREFIX = "arg07d_"
+
+# LEGACY: the first launch (2026-07-29) used the bare subproduct name as the description. Accepted by
+# the in-flight test ONLY so that re-running --launch while that batch is still queued cannot
+# double-submit. Delete this the moment those nine tasks have all finished — it is the very
+# collision-prone form this prefix exists to retire.
+LEGACY_DESCRIPTIONS = True
+
 
 # ---------------------------------------------------------------------------
 # asset plumbing
@@ -109,10 +127,18 @@ def asset_exists(asset_id):
         return False
 
 
-def task_in_flight(description):
+def task_in_flight(sub, suffix=""):
+    """Is one of OUR exports of this subproduct already PENDING/RUNNING?
+
+    Matches the namespaced description, plus the legacy bare one while the first batch drains
+    (see TASK_PREFIX — this scan sees every user's tasks in the shared project).
+    """
+    wanted = {f"{TASK_PREFIX}{sub}{suffix}"}
+    if LEGACY_DESCRIPTIONS:
+        wanted.add(f"{sub}{suffix}")
     for op in ee.data.listOperations():
         meta = op.get("metadata", {})
-        if (meta.get("description") == description
+        if (meta.get("description") in wanted
                 and meta.get("state") in ("PENDING", "RUNNING")):
             return True
     return False
@@ -309,12 +335,12 @@ def export(specs, years, launch, roi=None):
     suffix = "_roitest" if roi else ""
     for sub, img, band_format in specs:
         asset_id = product_asset(sub, suffix)
-        description = sub + suffix
+        description = f"{TASK_PREFIX}{sub}{suffix}"
         if asset_exists(asset_id):
             print(f"[skip] {asset_id} already exists")
             continue
-        if task_in_flight(description):
-            print(f"[skip] {description} has a PENDING/RUNNING task")
+        if task_in_flight(sub, suffix):
+            print(f"[skip] {sub}{suffix} has a PENDING/RUNNING task")
             continue
         img = img.set({
             "source": C.PRODUCT_SOURCE,

@@ -113,6 +113,16 @@ Built 2026-07-29 (`docs/07-vector_to_raster.md`). What remains:
   what makes `M*100 + L` decodable and `mod 100` exact. docs/07 §12.1/§12.4.
   - If a **col-3 v2** lands, this is a one-line change to `C.PRODUCT_LULC` plus a re-export of the
     four coverage products (they will need deleting first, or `--overwrite` adding to the script).
+- [ ] **Drop `LEGACY_DESCRIPTIONS` from `07-subproducts.py`** once the nine tasks launched
+  2026-07-29 have all finished. The first batch used the BARE subproduct name as the task
+  description; the namespaced `arg07d_<subproduct>` (`TASK_PREFIX`) replaced it because
+  `listOperations()` is **project-scoped and cross-user** — the shared `mapbiomas-fire` project had
+  226 tasks from other countries' teams, and a bare `annual_burned` colliding with one of theirs
+  would make the in-flight check silently skip one of our products. The fallback only exists so a
+  re-run mid-batch could not double-submit; it reintroduces the very collision it replaced.
+  docs/07 §12.7. **Consider the same prefix for `07-scar_rasters.py`**, whose descriptions
+  (`annual_burned_id`, …) are equally generic — it has no in-flight check today, so it cannot
+  false-skip, but it is the same hazard if one is ever added (fold into that file's cleanup item).
 - [ ] **Build `regiones_fuego_argentina_v1` as a FeatureCollection.** Only the 5-region raster
   exists. Needed by the reference scripts and by the statistics stage (docs/09).
 - [x] **Scar-size ranges settled — the published legend's, not the reference script's** (2026-07-29).
