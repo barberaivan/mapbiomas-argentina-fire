@@ -423,12 +423,16 @@ See **[`09-statistics.md`](09-statistics.md)**: the six area-statistics CSVs, th
    `mapbiomas-public` copy, which must use their spelling regardless.
 2. ~~LULC mask classes per region~~ — **not applicable.** The mask is embedded upstream and is stricter
    than the reference (§6.2). Nothing to choose.
-3. ~~LULC year coverage~~ — **decided: duplicate `classification_2024` forward to 2025**, which is what
-   every reference country does; it was never a blocker. Done in `07-subproducts.py`, which reads the
-   available band list from the asset so it self-corrects when the LULC is extended. Also verified
-   (docs/07 §12.4): the LULC sits on the **same lattice** as our grid — integer 9953-column /
-   −25102-row offset — so the coverage products involve no resampling of a categorical band, and its
-   footprint contains the 2 km buffer. Still the only place LULC enters our chain.
+3. ~~LULC year coverage~~ — **resolved, and moot**: the coverage products cross against **LULC
+   collection 3 v1** (`C.PRODUCT_LULC`), which carries `classification_2025` natively, so nothing is
+   duplicated forward. It was never a blocker either way — duplicating the last year forward is what
+   every reference country does, and `07-subproducts.py` reads the band list from the asset so it
+   self-corrects. `C.PRODUCT_LULC` is deliberately **separate from `C.MAPBIOMAS_LULC`**, the
+   model-side input `veg_fire` was built from (col-2 v8, frozen). Verified (docs/07 §12.1): col-3 v1
+   has a byte-identical grid to col-2 v8 and to our lattice up to an integer 9953-column /
+   −25102-row offset, its footprint contains the 2 km buffer, and its class codes max out at **77 <
+   100** — the condition that makes the `*100 + L` encodings decodable. Still the only place LULC
+   enters our chain.
 4. ~~Month per pixel or per object~~ — **decided: per pixel**, from `snic_metrics.abs_date` (§6.5).
 5. ~~`scar_id` numbering~~ — **decided: integer 1..n within the calendar year, ordered by the scar's
    first cell** on the global lattice. Deterministic and stable across re-runs; `oid` is unusable

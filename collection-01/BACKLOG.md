@@ -102,11 +102,17 @@ Built 2026-07-29 (`docs/07-vector_to_raster.md`). What remains:
   `mc mod 100 == L`, `fc//100 == freq`, `acc_cov == L`), `freq_2025_2025 == annual_2025` to the pixel,
   and `frequency`/`accumulated`/`accumulated_coverage`/`year_last_fire` agreeing on 241,281 px in the
   audit box. See docs/07 §12.5-§12.6.
-- [x] **LULC to 2025 — not a blocker, closed** (2026-07-29). `classification_2024` is duplicated
-  forward, which is what every reference country does; `07-subproducts.py` reads the available band
-  list from the asset so it self-corrects when the LULC is extended. Also verified the LULC sits on
-  our **exact lattice** (integer 9953-col / −25102-row offset) and its footprint contains the 2 km
-  buffer, so the coverage products resample nothing and lose no burned pixel (docs/07 §12.4).
+- [x] **LULC to 2025 — closed, and moot** (2026-07-29). The four `*_coverage` products now cross
+  against **LULC collection 3 v1** (`C.PRODUCT_LULC`, Iván's call), which carries
+  `classification_2025` natively — nothing is duplicated forward. `C.PRODUCT_LULC` is a **separate
+  constant from `C.MAPBIOMAS_LULC`** on purpose: the latter is the model-side input `veg_fire` (and
+  hence the whole SNIC candidate set) was built from at col-2 v8 and must stay frozen there, while
+  the published products track whatever LULC Argentina publishes. Verified col-3 v1 has a
+  byte-identical grid to col-2 v8 (so the lattice proof and decode audit transferred untouched), a
+  footprint containing the 2 km buffer, and the same class codes with **max 77 < 100** — which is
+  what makes `M*100 + L` decodable and `mod 100` exact. docs/07 §12.1/§12.4.
+  - If a **col-3 v2** lands, this is a one-line change to `C.PRODUCT_LULC` plus a re-export of the
+    four coverage products (they will need deleting first, or `--overwrite` adding to the script).
 - [ ] **Build `regiones_fuego_argentina_v1` as a FeatureCollection.** Only the 5-region raster
   exists. Needed by the reference scripts and by the statistics stage (docs/09).
 - [x] **Scar-size ranges settled — the published legend's, not the reference script's** (2026-07-29).

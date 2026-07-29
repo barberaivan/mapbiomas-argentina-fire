@@ -59,10 +59,35 @@ def fire_token(fire_id):
     return s if s.startswith("fire_") else f"fire_{s}"
 
 
-# MapBiomas land-cover: multi-band image, one band per year named classification_YYYY
+# MapBiomas land-cover: multi-band image, one band per year named classification_YYYY.
+#
+# ⚠️ THIS IS THE MODEL-SIDE LULC, and it must NOT be repointed casually.  It is what
+# `veg_fire` is derived from (utils/functions.py::get_mb_class_band -> the step 01 training
+# export and the step 03/04 candidate mask), so the WHOLE collection's SNIC candidate set was
+# built against this exact asset.  Changing it silently changes what a step-01/03 re-run would
+# produce, and would put the model's land cover out of step with the objects already scored.
+# For the PUBLISHED coverage products use PRODUCT_LULC below instead.
 MAPBIOMAS_LULC = (
     "projects/mapbiomas-argentina/assets/LAND-COVER/COLLECTION-2/INTEGRATION/"
     "mapbiomas_argentina_collection1_integration_v8_buffer"
+)
+
+# The PUBLISHED Argentina land-cover integration, crossed with burned area to make the four
+# `*_coverage` subproducts (step 07d, docs/07 §12).  DELIBERATELY SEPARATE from MAPBIOMAS_LULC:
+# the coverage products answer "which published land cover burned in year Y" and so must track
+# whatever LULC collection Argentina publishes, while `veg_fire` stays frozen on the collection
+# the model was fitted against.  The two being different assets is not an inconsistency to fix.
+#
+# Set to LULC collection 3 (v1) on 2026-07-29, at Iván's call — it is the collection that will be
+# published alongside this fire collection.  VERIFIED against col-2 v8, which 07d was first
+# launched with: 41 bands 1985-2025 (so 2025 is NATIVE — no forward duplication needed, unlike
+# col-2 which ended at 2024), and byte-identical grid (same pixel size, same origin
+# -76.26696762174738 / -14.999260130472063, same 89361 x 155938 dimensions), so the
+# integer-offset lattice proof in docs/07 §12.4 carries over unchanged.
+# If a col-3 v2 supersedes this, change this ONE line and re-export the four coverage products.
+PRODUCT_LULC = (
+    "projects/mapbiomas-argentina/assets/LAND-COVER/COLLECTION-3/INTEGRATION/"
+    "mapbiomas_argentina_collection3_integration_v1_buffer"
 )
 
 # MapBiomas annual mosaic: ImageCollection, filter by 'year' integer property

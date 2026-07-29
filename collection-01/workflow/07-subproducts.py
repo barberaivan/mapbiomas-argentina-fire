@@ -52,18 +52,25 @@ Resumable: a product whose asset exists, or whose task is PENDING/RUNNING, is sk
 
 The LULC year, and the 2025 duplication
 ---------------------------------------
-`C.MAPBIOMAS_LULC` (the published Argentina land-cover integration, NOT our internal
-`veg_fire` remap — docs/07 §12.1) ends at `classification_2024`, so 2025 is duplicated
-forward from 2024, exactly as every reference country does.  The coverage products use the
-**same** calendar year as the burn (not the previous year, unlike `veg_fire`): they answer
-"which land cover burned in year Y, as classified in year Y".
+`C.PRODUCT_LULC` — the PUBLISHED Argentina land-cover integration, NOT our internal `veg_fire`
+remap (docs/07 §12.1), and deliberately NOT `C.MAPBIOMAS_LULC` either: that one is the model-side
+input `veg_fire` was derived from and stays frozen on the collection the model was fitted
+against, while these products must track whatever LULC Argentina publishes.  Currently LULC
+collection 3 (v1), whose bands run 1985-2025, so nothing is duplicated forward; when the source
+ends before the series does, the last available year is duplicated forward as every reference
+country does (`.slice(-1).rename(['classification_2025'])`) and the substitution is printed.  The
+coverage products use the **same** calendar year as the burn (not the previous year, unlike
+`veg_fire`): they answer "which land cover burned in year Y, as classified in year Y".
 
-VERIFIED 2026-07-29: the LULC asset sits on the SAME 30 m lattice as the SNIC grid — same
-pixel size, and its origin is offset by exactly 9953 columns / -25102 rows (integer).  So
-combining it with the month raster on `C.SNIC_TRANSFORM` involves no resampling and no
-half-pixel shift, and its footprint contains the 2 km buffer (`contains == True`), so no
-burned pixel can fall outside the LULC and silently drop out of a `*_coverage` product.
-`--check` re-measures that residual per year rather than trusting it.
+VERIFIED 2026-07-29 for col-2 v8 and col-3 v1 alike — their grids are byte-identical, so the
+proof transferred with the switch rather than needing to be redone: the LULC asset sits on the
+SAME 30 m lattice as the SNIC grid (same pixel size, origin offset by exactly 9953 columns /
+-25102 rows, integers).  So combining it with the month raster on `C.SNIC_TRANSFORM` involves no
+resampling and no half-pixel shift — which for a CATEGORICAL band is the difference between a
+class code and its neighbour's.  Its footprint also contains the 2 km buffer
+(`contains == True`), so no burned pixel can fall outside the LULC and silently drop out of a
+`*_coverage` product (`add` propagates the mask).  `--check` re-measures that residual per year
+rather than trusting it.
 """
 
 from __future__ import annotations
@@ -135,12 +142,13 @@ def month_image(cal_year):
 def lulc_series(years, verbose=True):
     """`year -> classification_<year>` band, duplicating the last available year forward.
 
-    `C.MAPBIOMAS_LULC` ends at `classification_2024` and the series runs to 2025, so 2025 takes
-    2024's classification — what every reference country does
-    (`.slice(-1).rename(['classification_2025'])`).  The available band list is read from the
-    asset rather than from `C.MB_LIMIT_YEAR` so this self-corrects the day the LULC is extended.
+    The available band list is read from the ASSET, never from `C.MB_LIMIT_YEAR` — so pointing
+    `C.PRODUCT_LULC` at a newer LULC collection needs no code change here.  LULC col-3 v1 already
+    carries `classification_2025`, so nothing is filled; col-2 v8 ended at 2024 and its 2025 was
+    duplicated forward from it, which is what every reference country does
+    (`.slice(-1).rename(['classification_2025'])`).
     """
-    lulc = ee.Image(C.MAPBIOMAS_LULC)
+    lulc = ee.Image(C.PRODUCT_LULC)
     have = sorted(int(b.split("_")[1]) for b in lulc.bandNames().getInfo()
                   if b.startswith("classification_"))
     out, filled = {}, []
@@ -313,7 +321,7 @@ def export(specs, years, launch, roi=None):
             "region": C.PRODUCT_REGION,
             "band_format": band_format,
             "years": f"{years[0]}-{years[-1]}",
-            "lulc_asset": C.MAPBIOMAS_LULC,
+            "lulc_asset": C.PRODUCT_LULC,
             "lulc_year": "same calendar year as the burn",
             "derived_from": C.MONTH_OF_BURN_COL,
         })

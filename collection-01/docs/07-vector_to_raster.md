@@ -18,7 +18,7 @@ Run in this order; each sub-step needs the one before it.
 | **07a** | **Month of burn** per calendar year → `CLASSIFICATION_COLLECTIONS/collection1_fire_mask_v1` (ImageCollection, one 1-band uint8 image per year, 1–12, masked elsewhere). The pivot everything else reads. | `workflow/07-month_of_burn.py` (GEE) | ✅ **done** — 27/27 exported |
 | **07b** | **Calendar-year scars**, 8-connected, labelled locally → `data/scars-upload-cache/scars_<Y>.zip`, then ingested by hand as `FINAL_PRODUCTS/annual_burned_vectors/scars_<Y>` | `workflow/07-calendar_scars.R` + `scripts/run_07_scars.sh` (local, two passes) | ✅ **done** — 27/27 built, gated and ingested, all verified against the local build |
 | **07c** | **Scar rasters** — `annual_burned_id`, `annual_burned_area_ha`, `annual_burned_scar_size_range`, painted from the ingested scars and masked to 07a | `workflow/07-scar_rasters.py` (GEE) | 🔄 **exporting** (3 tasks, whole country, 27 bands each) |
-| **07d** | **The nine derived subproducts** — `monthly_burned`, `annual_burned`, both `*_coverage`, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`), `year_last_fire` | `workflow/07-subproducts.py` (GEE) | 🔄 **exporting** (9 tasks, launched 2026-07-29) |
+| **07d** | **The nine derived subproducts** — `monthly_burned`, `annual_burned`, both `*_coverage`, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`), `year_last_fire` | `workflow/07-subproducts.py` (GEE) | 🔄 **exporting** (9 tasks, 2026-07-29; the 4 `*_coverage` ones re-launched against LULC col-3, §12.1) |
 
 Commands, in order:
 
@@ -452,12 +452,39 @@ Reference: `Reference/2-Collection_Fire_Subproducts/1_burned_area_products_month
 
 ### 12.1 The four settled answers
 
-**1. Which LULC layer?** `C.MAPBIOMAS_LULC` — the **MapBiomas Argentina land-cover integration**,
-bands `classification_<year>`. **NOT `veg_fire`.** `veg_fire` is our internal 25-class fire-modelling
-remap (region-specific, built for the burn-probability model); it is not the published LULC legend
-and no other country has it. Using it would make our `*_coverage` products undecodable by the
-platform and incomparable across the network. `veg_fire`'s only role in step 07 is the argument that
-the LULC *mask* is already embedded upstream (docs/08 §6.2) — it never enters a product.
+**1. Which LULC layer?** `C.PRODUCT_LULC` — the **published MapBiomas Argentina land-cover
+integration**, bands `classification_<year>`. **NOT `veg_fire`.** `veg_fire` is our internal
+25-class fire-modelling remap (region-specific, built for the burn-probability model); it is not the
+published LULC legend and no other country has it. Using it would make our `*_coverage` products
+undecodable by the platform and incomparable across the network. `veg_fire`'s only role in step 07 is
+the argument that the LULC *mask* is already embedded upstream (docs/08 §6.2) — it never enters a
+product.
+
+⚠️ **`C.PRODUCT_LULC` is deliberately a SECOND constant, not a repoint of `C.MAPBIOMAS_LULC`.**
+`MAPBIOMAS_LULC` is the **model-side** input: `utils/functions.py::get_mb_class_band` derives
+`veg_fire` from it, which drives the step-01 training export and the step-03/04 candidate mask, so
+the entire collection's SNIC candidate set was built against that exact asset (LULC col-2 v8) and it
+must stay frozen there. The coverage products answer a different question — "which *published* land
+cover burned in year Y" — so they track whatever LULC Argentina publishes. **The two pointing at
+different collections is not an inconsistency to fix.**
+
+Currently `PRODUCT_LULC` = **LULC collection 3, v1** (`mapbiomas_argentina_collection3_integration_v1_buffer`),
+set 2026-07-29. Verified against col-2 v8, which 07d was first launched with:
+
+| | col-2 v8 | col-3 v1 |
+|---|---|---|
+| Bands | 40, 1985–2024 (2025 duplicated forward) | **41, 1985–2025 — 2025 is native** |
+| Grid | origin −76.26696762174738 / −14.999260130472063, 89361 × 155938 | **byte-identical** |
+| Offset from the SNIC lattice | 9953 col / −25102 rows (integer) | **identical** |
+| Footprint ⊇ 2 km buffer | yes | yes |
+| Class codes present | 3,4,6,9,11,12,15,19,21,24,25,27,33,34,36,63,66,73,77 | **identical**, max **77** |
+
+The grids being byte-identical is why the switch cost nothing: the §12.4 alignment proof and the
+§12.5 decode audit both transferred rather than needing to be redone (re-run against col-3: all 27
+years `lulc_missing = 0`, every residual 0). **Max class 77 < 100 matters** — it is what makes
+`M*100 + L` and `freq*100 + L` decodable and `mod 100` exact; measured peak encoded values in the
+audit box are 1277 (uint16) and 812 (int16). If a col-3 v2 supersedes v1, change that one line and
+re-export the four coverage products.
 
 **2. Same year or previous year?** **The same calendar year.** The reference selects
 `lulc.select('classification_' + year)` for the burning year itself. Note this differs from
@@ -524,20 +551,25 @@ going backward.
 4. **The `*_coverage` products are the easiest to forget** and are exactly what the statistics stage
    reads (docs/09 §2). Four of the nine are coverage products.
 
-### 12.4 The LULC year — no longer a blocker
+### 12.4 The LULC year — never a blocker, and now moot
 
-**`C.MAPBIOMAS_LULC` ends at `classification_2024`** (40 bands, 1985–2024) and the series runs to
-2025, so **2025 takes 2024's classification**, which is exactly what every reference country does
-(`.slice(-1).rename(['classification_2025'])`). It was listed as blocking all four `*_coverage`
-products; it does not — duplicating forward *is* the network's answer, and the script does it (and
-prints the substitution). The available band list is read from the asset, not from `C.MB_LIMIT_YEAR`,
-so this self-corrects the day the LULC is extended.
+It was listed as blocking all four `*_coverage` products that `C.MAPBIOMAS_LULC` ends at
+`classification_2024` while the series runs to 2025. **It never blocked anything**: duplicating the
+last year forward *is* the network's answer (`.slice(-1).rename(['classification_2025'])`, in every
+reference country), and the script does it and prints the substitution. The available band list is
+read from the **asset**, never from `C.MB_LIMIT_YEAR`, so this self-corrects whenever the source is
+extended or repointed — no code change was needed to move to col-3.
+
+With `C.PRODUCT_LULC` on LULC col-3 v1 the question is moot anyway: it carries
+`classification_2025` natively, so **nothing is duplicated forward** and the last year of the fire
+series is crossed with its own land cover.
 
 This is the **only** remaining place LULC enters our pipeline — the stage-3 LULC *mask* does not
 apply to us (docs/08 §6.2).
 
-**The LULC sits on our lattice.** Verified 2026-07-29: `C.MAPBIOMAS_LULC` has the same 30 m pixel
-size as the SNIC grid, and its origin is offset by exactly **9953 columns / −25102 rows — integers**.
+**The LULC sits on our lattice.** Verified 2026-07-29 for col-2 v8 and col-3 v1 alike: the LULC has
+the same 30 m pixel size as the SNIC grid, and its origin is offset by exactly **9953 columns /
+−25102 rows — integers**.
 So combining it with the month raster on `C.SNIC_TRANSFORM` involves no resampling and no half-pixel
 shift, which for a *categorical* band is the difference between a class code and its neighbour's.
 Its footprint also `contains` the 2 km buffer, so no burned pixel can fall outside the LULC and

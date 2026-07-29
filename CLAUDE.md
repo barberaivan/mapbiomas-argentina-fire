@@ -107,6 +107,9 @@ stages can be inspected and limits avoided:
    `07-subproducts.py` derives the **nine remaining subproducts** (monthly/annual burned, both
    `*_coverage`, frequency, accumulated, year-last-fire) from the month collection plus the
    MapBiomas LULC — encodings copied verbatim from the network's reference, do not innovate there.
+   The published products cross against **`C.PRODUCT_LULC`** (LULC col-3), which is a *separate*
+   constant from **`C.MAPBIOMAS_LULC`** (col-2 v8) on purpose: the latter is the model-side layer
+   `veg_fire` — and hence the whole SNIC candidate set — was built from, and must stay frozen.
    Calendar year and month are assigned **per pixel** from `abs_date`, never per object from
    `year_calendar` — that is what makes annual/monthly/scar agree pixel-for-pixel, at the cost of
    splitting a fire that straddles 31 December. **Pin `crs` + `crsTransform` on every export**;
