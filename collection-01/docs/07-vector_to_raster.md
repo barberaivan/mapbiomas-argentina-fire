@@ -1,19 +1,47 @@
 # 07 — From classified objects to the calendar-year products
 
-Step 07 is the hand-off from *our* mapping method to the network's calendar-year products. Its job
-is to turn the step-06 fire-year objects into **month of burn per calendar year** and into the
-**calendar-year scars** (id + area) that the size products are painted from.
+Step 07 is the hand-off from *our* mapping method to the network's calendar-year products. It turns
+the step-06 fire-year objects into every published raster: month of burn, the calendar-year scars,
+and the derived subproducts.
 
-This is **implemented**. Three scripts:
+**Everything Argentina builds lives in step 07** (this file), in the sub-steps below.
+**docs/08 is the network's reference** — what Brazil and the other countries do, who owns what, and
+the delivery dates. Read docs/08 for the *shape* of a product; read this file for what we actually
+run. Where they disagree, this file wins.
 
-| Script | Where it runs | Produces |
-|---|---|---|
-| `workflow/07-month_of_burn.py` | GEE, server-side | `CLASSIFICATION_COLLECTIONS/collection1_fire_mask_v1` — one 1-band uint8 image per calendar year, value 1–12 = month of burn, masked elsewhere |
-| `workflow/07-calendar_scars.R` | local (terra/sf/data.table + the step-05 Rcpp union-find) | `data/objects-scars/scars_<Y>.gpkg` + `data/scars-upload-cache/scars_<Y>.zip` — 8-connected calendar-year scars with `scar_id`, `area_ha`, `n_px`, `year` |
-| `workflow/07-scar_rasters.py` | GEE, after the manual ingest | the three scar subproducts, multiband, one band per year |
+## Order of operations
 
-`scripts/run_07_scars.sh` is the launcher for the local pass (two modes, resumable, biggest-year
-first, one process per year — same pattern as `run_05_years.sh` / `run_06_predict.sh`).
+Run in this order; each sub-step needs the one before it.
+
+| # | Sub-step | Script | State |
+|---|---|---|---|
+| **07a** | **Month of burn** per calendar year → `CLASSIFICATION_COLLECTIONS/collection1_fire_mask_v1` (ImageCollection, one 1-band uint8 image per year, 1–12, masked elsewhere). The pivot everything else reads. | `workflow/07-month_of_burn.py` (GEE) | ✅ **done** — 27/27 exported |
+| **07b** | **Calendar-year scars**, 8-connected, labelled locally → `data/scars-upload-cache/scars_<Y>.zip`, then ingested by hand as `FINAL_PRODUCTS/annual_burned_vectors/scars_<Y>` | `workflow/07-calendar_scars.R` + `scripts/run_07_scars.sh` (local, two passes) | ✅ **done** — 27/27 built, gated and ingested, all verified against the local build |
+| **07c** | **Scar rasters** — `annual_burned_id`, `annual_burned_area_ha`, `annual_burned_scar_size_range`, painted from the ingested scars and masked to 07a | `workflow/07-scar_rasters.py` (GEE) | 🔄 **exporting** (3 tasks, whole country, 27 bands each) |
+| **07d** | **The derived subproducts** — `monthly_burned`, `annual_burned`, both `*_coverage`, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`), `year_last_fire` | `workflow/07-subproducts.py` — **NOT WRITTEN YET**, §12 | ⛔ **to build**; blocked only by the LULC-to-2025 item |
+
+Commands, in order:
+
+```bash
+# 07a  (done; re-runnable, skips existing assets)
+$PYTHON collection-01/workflow/07-month_of_burn.py --all --launch
+
+# 07b  (done) — pass 1 must finish before pass 2: a calendar year needs BOTH its fire-years
+tmux new-session -d -s s07pix  '/abs/path/collection-01/scripts/run_07_scars.sh pixels -j 5'
+tmux new-session -d -s s07scar 'OBJ_CORES=6 /abs/path/collection-01/scripts/run_07_scars.sh scars -j 2'
+$PYTHON collection-01/scripts/validate_scar_zips.py              # gate the zips  -> 27/27
+$PYTHON collection-01/scripts/validate_scar_zips.py --ingested   # gate the upload -> 27/27
+
+# 07c  (in flight)
+$PYTHON collection-01/workflow/07-scar_rasters.py --check --years 2003,2020 --roi=-61.6,-25.6,-61.1,-25.1
+$PYTHON collection-01/workflow/07-scar_rasters.py --launch
+#   if the monolith fails:  --per-year --launch   then   --merge --launch
+
+# 07d  (to build) — see §12
+```
+
+`scripts/run_07_scars.sh` is the launcher for 07b (two modes, resumable, biggest-year first, one
+process per year — same pattern as `run_05_years.sh` / `run_06_predict.sh`).
 
 ---
 
@@ -403,3 +431,92 @@ folder and the per-year names have to be aligned — not just the folder.
   `mapbiomas_argentina_fire_collection1_fire_mask_v1_<year>`, which carries `v1` mid-name. Only the
   `year` property is read downstream, so this is cosmetic — but if it is to be renamed, do it
   before the publish copy.
+
+---
+
+## 12. Sub-step 07d — the derived subproducts (TO BUILD)
+
+Everything here derives from **07a's month-of-burn collection** plus the **MapBiomas LULC**. No new
+vectors, no local work, no re-labelling. Planned script: `workflow/07-subproducts.py`.
+
+Reference: `Reference/2-Collection_Fire_Subproducts/1_burned_area_products_monthly_annual_coverage`
+(products 1–4), `2_burned_area_frequency_accumulated_coverage` (5–8), `3_year_last_fire` (9).
+**Do not innovate here** — copy the encodings exactly; they are what the platform decodes.
+
+### 12.1 The four settled answers
+
+**1. Which LULC layer?** `C.MAPBIOMAS_LULC` — the **MapBiomas Argentina land-cover integration**,
+bands `classification_<year>`. **NOT `veg_fire`.** `veg_fire` is our internal 25-class fire-modelling
+remap (region-specific, built for the burn-probability model); it is not the published LULC legend
+and no other country has it. Using it would make our `*_coverage` products undecodable by the
+platform and incomparable across the network. `veg_fire`'s only role in step 07 is the argument that
+the LULC *mask* is already embedded upstream (docs/08 §6.2) — it never enters a product.
+
+**2. Same year or previous year?** **The same calendar year.** The reference selects
+`lulc.select('classification_' + year)` for the burning year itself. Note this differs from
+`veg_fire`, which is built from the **previous** year's LULC (the classifier must not see the burn it
+is predicting). The coverage products have no such constraint — they answer "which land cover burned
+in year Y", as classified in year Y — so the two layers are genuinely different and differently
+aligned in time. Do not "fix" one to match the other.
+
+For the **frequency** products the LULC year is the **moving end of the window**: the forward pass
+(`fire_frequency_<y_first>_<y>`) uses `classification_<y>`, the backward pass
+(`fire_frequency_<y>_<y_last>`) also uses `classification_<y>`. In both cases it is the end that
+varies, not the fixed anchor.
+
+**3. Do they split by region?** **No.** Scripts 1, 2, 3, 5 and 6 all export **one multiband image per
+subproduct** over `regions.union().geometry()` — the whole country. The only per-region assets in the
+network's chain are the stage-2/3 classification collections (one image per region-year), and ours has
+no region dimension at all: 07a wrote one whole-country image per calendar year. So there is nothing
+to reconcile. (Not to be confused with the **statistics** exports, docs/09, which *are* cut by
+territory — that is a different stage and a different layer.)
+
+**4. Shape.** One asset per subproduct, one **band** per year — never one asset per year (§10).
+
+### 12.2 The nine products
+
+`M` = the month-of-burn band (1–12, masked elsewhere); `L` = `classification_<year>`.
+
+| Subproduct | Band | Encoding | dtype | Pyramiding |
+|---|---|---|---|---|
+| `monthly_burned` | `burned_monthly_<year>` | `M` | uint8 | mode |
+| `annual_burned` | `burned_area_<year>` | `M > 0` → 1 | uint8 | mode |
+| `monthly_burned_coverage` | `burned_coverage_<year>` | `M * 100 + L` | uint16 | mode |
+| `annual_burned_coverage` | `burned_coverage_<year>` | `(M >= 1) * L` | uint8 | mode |
+| `frequency_burned` | `fire_frequency_<y1>_<y2>` | count of years burned in the window, `selfMask()`ed | int16 | mode |
+| `frequency_burned_coverage` | `fire_frequency_<y1>_<y2>` | `freq * 100 + L` | int16 | mode |
+| `accumulated_burned` | `fire_accumulated_<y1>_<y2>` | `freq >= 1` → 1 | uint8 | mode |
+| `accumulated_burned_coverage` | `fire_accumulated_<y1>_<y2>` | `freq_coverage mod 100` (recovers `L`) | uint8 | mode |
+| `year_last_fire` | `classification_<year+1>` | calendar year of the most recent fire up to that band | uint16 | mode |
+
+Export with `crs=C.SNIC_CRS` + `crsTransform=C.SNIC_TRANSFORM` (never `scale=30`, §3),
+`region = ARG_BUFFER_FC`, `maxPixels=1e13`.
+
+**Frequency windows are two-sided.** A forward pass accumulates `y_first…y` and a backward pass
+`y…y_last`; both band sets are concatenated and sorted, and the duplicated join band is dropped
+(`freqPost.slice(0,-1)`). Never-burned pixels are `selfMask`ed out.
+
+### 12.3 Four traps in the reference code
+
+1. **`year_last_fire` bands are `classification_<year+1>`** — an off-by-one the platform expects.
+   Preserve it; it looks like a bug and is not.
+2. **The `accumulated_burned` filename typo.** Script 2 builds
+   `'..._accumulate' + coll_n + '_burned_v1'` → `..._accumulate1_burned_v1`, while the publish list
+   expects `..._accumulated_burned_v1`. Use the correct spelling.
+3. **`frequency_burned`'s band name is unresolved.** Script 2 writes `fire_frequency_<y1>_<y2>`, but
+   `ToPublish/2-toAsset-Public`'s `band_format` map says `frequency_burned_{year1}_{year2}`. The
+   `accumulated_*` pair is consistent (`fire_accumulated_*` both places); only frequency disagrees.
+   **Confirm with IPAM which the platform reads** — docs/08 open #9.
+4. **The `*_coverage` products are the easiest to forget** and are exactly what the statistics stage
+   reads (docs/09 §2). Four of the nine are coverage products.
+
+### 12.4 The one blocker
+
+**`C.MAPBIOMAS_LULC` ends at `classification_2024`** (40 bands, 1985–2024) and the series runs to
+2025, so 2025 must be duplicated forward from 2024 — which is what every reference country does
+(`.slice(-1).rename(['classification_2025'])`). This blocks **all four** `*_coverage` products and
+both frequency-coverage variants; the non-coverage products (`monthly_burned`, `annual_burned`,
+`frequency_burned`, `accumulated_burned`, `year_last_fire`) need no LULC and can be built first.
+
+This is the **only** remaining place LULC enters our pipeline — the stage-3 LULC *mask* does not
+apply to us (docs/08 §6.2).

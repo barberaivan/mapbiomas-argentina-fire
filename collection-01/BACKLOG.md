@@ -89,11 +89,12 @@ Built 2026-07-29 (`docs/07-vector_to_raster.md`). What remains:
   the per-month pixel histogram from the local build; `07-month_of_burn.py --check` gives the same
   histogram from the raster. They should match exactly — both derive from the same object pixel set,
   which was verified exact — so any divergence is a real bug, not tolerance.
-- [ ] **Build the stage-4 raster subproducts** from the month-of-burn collection: `monthly_burned`,
-  `annual_burned`, `monthly_burned_coverage`, `annual_burned_coverage`, `frequency_burned`
-  (+`_coverage`), `accumulated_burned` (+`_coverage`), `year_last_fire`. Single multiband images,
-  one band per year (docs/07 §10). The `*_coverage` ones are the easiest to forget and are exactly
-  what the statistics read.
+- [ ] **Build sub-step 07d, the nine derived subproducts** — `workflow/07-subproducts.py`, not
+  written yet. **Full spec in docs/07 §12**: the encodings, the four settled answers (MapBiomas LULC
+  not `veg_fire`; SAME calendar year; no region split; one asset per subproduct with one band per
+  year), and the four traps in the reference code. Everything derives from 07a plus the LULC — no new
+  vectors, no local work. The five non-coverage products need no LULC and can be built immediately;
+  the four `*_coverage` ones wait on the LULC-to-2025 item below.
 - [ ] **Extend the LULC asset to 2025.** `C.MAPBIOMAS_LULC` ends at `classification_2024`; duplicate
   it forward as the reference does. **Blocks every `*_coverage` product** — the only place LULC
   still enters our chain (the mask itself is embedded upstream, docs/08 §6.2).
