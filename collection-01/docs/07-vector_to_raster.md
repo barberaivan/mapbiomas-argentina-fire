@@ -345,11 +345,22 @@ what every stage-4 script reads.
 | Asset | Type | Built by |
 |---|---|---|
 | `COLLECTION-1/CLASSIFICATION_COLLECTIONS/collection1_fire_mask_v1` | ImageCollection, 1-band uint8 per year | `07-month_of_burn.py` |
-| `COLLECTION-1/FINAL_PRODUCTS/annual-burned-vectors/scars_<Y>` | FeatureCollection per year | manual ingest of `scars_<Y>.zip` |
+| `COLLECTION-1/FINAL_PRODUCTS/annual_burned_vectors/scars_<Y>` | FeatureCollection per year | manual ingest of `scars_<Y>.zip` |
 | `COLLECTION-1/FINAL_PRODUCTS/…annual_burned_{id,area_ha,scar_size_range}_v1` | multiband image | `07-scar_rasters.py` |
 
 Naming keeps **our** `COLLECTION-1` spelling (docs/08 open #1) while the asset *names* inside follow
 the network exactly; the `mapbiomas-public` copy is renamed at publish time.
+
+**`annual_burned_vectors` uses underscores, unlike the reference's `annual-burned-vectors`.** That is
+deliberate, not a typo: everything else under `FINAL_PRODUCTS` is underscored (`FINAL_PRODUCTS`
+itself, `..._annual_burned_v1`, `..._annual_burned_area_ha_v1`), so the hyphenated folder is an
+oddity in the reference tree. Nothing external reads the path — the only consumer is
+`07-scar_rasters.py` via `C.ANNUAL_BURNED_VECTORS`, because we **replaced** reference script
+`5-export_annual_burned_id_and_size_by_year` rather than adapting it (§9: we paint our own
+pixel-count `area_ha` instead of letting it recompute `geometry().area()`, and we classify sizes
+server-side). That script would not run against our tree anyway: it expects per-year assets named
+`mbfogo-col1-<year>-v1`, and ours are `scars_<Y>`. If IPAM ever needs to run their version, both the
+folder and the per-year names have to be aligned — not just the folder.
 
 ---
 

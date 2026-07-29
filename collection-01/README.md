@@ -372,7 +372,7 @@ $PYTHON collection-01/scripts/validate_scar_zips.py
 `data/scars-upload-cache/scars_<Y>.zip`.
 
 **7c — scar rasters, in GEE**, once the 27 scar FCs are ingested by hand into
-`.../COLLECTION-1/FINAL_PRODUCTS/annual-burned-vectors/scars_<Y>`:
+`.../COLLECTION-1/FINAL_PRODUCTS/annual_burned_vectors/scars_<Y>`:
 
 ```bash
 $PYTHON collection-01/workflow/07-scar_rasters.py --check --years 1999,2000   # mask agreement

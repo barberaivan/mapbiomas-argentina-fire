@@ -73,7 +73,7 @@ This is probably for collection 2.
 Built 2026-07-29 (`docs/07-vector_to_raster.md`). What remains:
 
 - [ ] **Ingest the 27 calendar-year scar FeatureCollections by hand** —
-  `data/scars-upload-cache/scars_<Y>.zip` → `.../COLLECTION-1/FINAL_PRODUCTS/annual-burned-vectors/scars_<Y>`.
+  `data/scars-upload-cache/scars_<Y>.zip` → `.../COLLECTION-1/FINAL_PRODUCTS/annual_burned_vectors/scars_<Y>`.
   Gate them first with `scripts/validate_scar_zips.py` (a hand upload has no failing pipeline to
   catch a bad package). Then `07-scar_rasters.py --check` before `--launch`.
 - [ ] **Cross-check the local and GEE masks per year.** `objects-scars/scars_<Y>_months.csv` holds

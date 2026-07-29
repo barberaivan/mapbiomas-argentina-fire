@@ -153,7 +153,7 @@ def main():
         print(f"DO NOT UPLOAD — fix and rebuild: {failed}")
         sys.exit(1)
     print("All packages pass. Safe to ingest by hand into "
-          ".../COLLECTION-1/FINAL_PRODUCTS/annual-burned-vectors/scars_<Y>")
+          ".../COLLECTION-1/FINAL_PRODUCTS/annual_burned_vectors/scars_<Y>")
 
 
 if __name__ == "__main__":

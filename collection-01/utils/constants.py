@@ -422,7 +422,7 @@ MONTH_OF_BURN_BAND = "burned_monthly"
 
 # Final products + the calendar-year scar vectors that feed the scar-size chain.
 FINAL_PRODUCTS = f"{_FIRE_ROOT}/COLLECTION-1/FINAL_PRODUCTS"
-ANNUAL_BURNED_VECTORS = f"{FINAL_PRODUCTS}/annual-burned-vectors"
+ANNUAL_BURNED_VECTORS = f"{FINAL_PRODUCTS}/annual_burned_vectors"
 
 # Scar-size classes 1..8 — LOWER bounds in ha, from the LatAm reference script
 # (`6-export_scar_size_range_by_year`): <5, 5-25, 25-50, 50-250, 250-500, 500-1000,
