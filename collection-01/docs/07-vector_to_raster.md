@@ -342,11 +342,28 @@ The **one** ImageCollection in the chain is the stage-3 pivot,
 `collection1_fire_mask_v1` — one single-band image per year — which is what step 07 produces and
 what every stage-4 script reads.
 
-| Asset | Type | Built by |
-|---|---|---|
-| `COLLECTION-1/CLASSIFICATION_COLLECTIONS/collection1_fire_mask_v1` | ImageCollection, 1-band uint8 per year | `07-month_of_burn.py` |
-| `COLLECTION-1/FINAL_PRODUCTS/annual_burned_vectors/scars_<Y>` | FeatureCollection per year | manual ingest of `scars_<Y>.zip` |
-| `COLLECTION-1/FINAL_PRODUCTS/…annual_burned_{id,area_ha,scar_size_range}_v1` | multiband image | `07-scar_rasters.py` |
+**One asset per subproduct, with one BAND per year — not one asset per year.** The scar chain is
+three images of 27 bands, never 27 images of 3 bands. Reference script 5 builds them that way
+(`ee.Image().select()` then `addBands` per year, one export each), script 6 reclassifies every band
+of the area image in a single expression, and `ToPublish/2-toAsset-Public` attaches a `band_format`
+property per subproduct (`scar_id_{year}`, `scar_area_ha_{year}`) — a `{year}` token that only means
+anything if each band *is* a year.
+
+| Asset | Shape | Bands | dtype / pyramiding | Built by |
+|---|---|---|---|---|
+| `CLASSIFICATION_COLLECTIONS/collection1_fire_mask_v1` | **ImageCollection**, one 1-band image per year | `burned_monthly` (1–12) | uint8 / `mode` | `07-month_of_burn.py` |
+| `FINAL_PRODUCTS/annual_burned_vectors/scars_<Y>` | FeatureCollection per year | `scar_id`, `area_ha`, `n_px`, `year` | — | manual ingest of `scars_<Y>.zip` |
+| `FINAL_PRODUCTS/…_annual_burned_id_v1` | single multiband image | `scar_id_1999` … `scar_id_2025` | int / `mode` | `07-scar_rasters.py` |
+| `FINAL_PRODUCTS/…_annual_burned_area_ha_v1` | single multiband image | `scar_area_ha_1999` … | float / `median` | idem |
+| `FINAL_PRODUCTS/…_annual_burned_scar_size_range_v1` | single multiband image | `scar_area_ha_1999` … (see below) | uint8 / `mode` | idem |
+
+⚠️ **The size-range bands are named `scar_area_ha_<year>`, NOT `scar_size_range_<year>`.** That is
+not a copy-paste slip: the reference inherits the band names from the area product, and the publish
+map lists `annual_burned_scar_size_range: 'scar_area_ha_{year}'`. Renaming them to something more
+sensible would break the platform's band lookup.
+
+The **only** ImageCollection in the whole chain is the stage-3 pivot `collection1_fire_mask_v1`;
+everything downstream of it is a single multiband image per subproduct.
 
 Naming keeps **our** `COLLECTION-1` spelling (docs/08 open #1) while the asset *names* inside follow
 the network exactly; the `mapbiomas-public` copy is renamed at publish time.
