@@ -211,10 +211,12 @@ Their route, in four sub-steps:
 similarly bounded. Real scars exceed that, so labelling must happen outside GEE. **We skip sub-steps
 1–2 entirely: we already own the labels** (§6).
 
-⚠️ **The size ranges in the reference script and in the Workspace legend disagree while using the same
-pixel values 1–8** — a raster built with one and registered with the other is silently wrong:
+⚠️ **The reference script's size ranges do NOT match the published legend, on the same pixel values
+1–8** — a raster built with the script and registered with the legend is silently mislabelled in
+every class. **RESOLVED 2026-07-29: the legend wins, and we write the legend's ranges**
+(`C.SCAR_SIZE_LOWER_HA`).
 
-| pixel | LatAm reference script | Workspace legend "Scar size" (Brazil col-5) |
+| pixel | ⛔ LatAm reference script | ✅ published legend — what we write |
 |---|---|---|
 | 1 | `< 5 ha` | `< 10 ha` |
 | 2 | `5–25 ha` | `10–250 ha` |
@@ -223,7 +225,23 @@ pixel values 1–8** — a raster built with one and registered with the other i
 | 5 | `250–500 ha` | `5 000–10 000 ha` |
 | 6 | `500–1 000 ha` | `10 000–50 000 ha` |
 | 7 | `1 000–5 000 ha` | `50 000–100 000 ha` |
-| 8 | `≥ 5 000 ha` | `> 100 000 ha` |
+| 8 | `≥ 5 000 ha` | `≥ 100 000 ha` |
+
+Confirmed from **two independent sources**, so this needs no ruling from IPAM:
+
+- **[`CODIGO DE LEGENDA FOGO COLECAO 5`](https://brasil.mapbiomas.org/wp-content/uploads/sites/4/2026/05/CODIGO-DE-LEGENDA-FOGO-COLECAO-5.pdf)**
+  (May 2026) — §4 *Área queimada anual por tamanho de cicatriz*, verbatim `1: '< 10 ha'` …
+  `8: '>= 100.000 ha'`, asset
+  `mapbiomas_fire_collection5_annual_burned_scar_size_range_v1`, bands `scar_area_ha_<year>`.
+- the **live platform legend** for Fogo col-5 (launched July 2026), which shows exactly those 8
+  classes as *level 2*.
+
+**docs/08 previously guessed the reference ranges were right for us** because Brazil's are tuned to
+Amazon-scale scars and ours are smaller. Measured over all 27 calendar years (2,734,416 scars,
+69,020,102 ha), that guess was **wrong**: the legend's scheme populates **all 8 classes**, because
+Argentina does reach the top bin — **24 scars ≥ 100 000 ha**, the largest 219 410 ha in calendar
+2003. Counts concentrate in class 1 (76 % of scars, but only 5.7 % of area) while the **area** spreads
+across all eight, which is what the product is read for.
 
 The Workspace legend is also **two-level** (level-1 aggregates at pixel values 10/20/30/40/50: `<250`,
 `250–500`, `500–10 000`, `10 000–100 000`, `>100 000` ha), defined as *"annual burned area classified
@@ -412,13 +430,19 @@ See **[`09-statistics.md`](09-statistics.md)**: the six area-statistics CSVs, th
 5. ~~`scar_id` numbering~~ — **decided: integer 1..n within the calendar year, ordered by the scar's
    first cell** on the global lattice. Deterministic and stable across re-runs; `oid` is unusable
    because `ee.Image().paint` needs a number.
-6. **Scar-size ranges** — the reference script's or the Workspace legend's (§5.4)? Ask IPAM. **No longer
-   blocking**: the classification is applied server-side from `C.SCAR_SIZE_LOWER_HA`, so a change is a
-   one-line re-export, not 27 re-uploads. The registered legend must still match the values written.
+6. ~~Scar-size ranges~~ — **RESOLVED 2026-07-29: the published legend's, not the reference script's**
+   (§5.4). Confirmed from the Coleção 5 legend-code PDF *and* the live col-5 platform legend, so no
+   IPAM ruling is needed. `C.SCAR_SIZE_LOWER_HA = [10, 250, 500, 5000, 10000, 50000, 100000]`. We write
+   only **level 2** (values 1–8); the platform derives its level-1 aggregation
+   (`<250 / 250–500 / 500–10 000 / 10 000–100 000 / >100 000 ha`) itself, exactly as Brazil's own
+   asset does. Do NOT copy `6-export_scar_size_range_by_year`.
 7. ~~Reburn rule~~ — **later date wins**, and it is nearly moot: the two fire-years feeding a calendar
    year are disjoint in month (§6.5), so `max` only fires on genuine reburn. Confirm nobody downstream
    expects otherwise.
 8. **Our fire-year vector database** — ask whether Argentina may publish it as `annual_burned_vectors`.
+   Precedent confirmed: Brazil publishes col-5 annual burned vectors publicly, one asset per year, at
+   `projects/mapbiomas-public/assets/brazil/fire/collection5/mapbiomas_fire_collection5_annual_burned_vectors/mbfogo_col5_<year>_v1`,
+   each polygon carrying a unique numeric `id` (Coleção 5 legend-code PDF §1.1). So the door is open.
    Until settled, keep it out of `FINAL_PRODUCTS` so it cannot leak into a published collection. Note
    `objects_raw_<fy>` currently lives under `WORKFLOW-EXPORTS`, not `FINAL_PRODUCTS`, so this is safe
    today.

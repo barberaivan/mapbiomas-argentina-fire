@@ -307,10 +307,10 @@ plus the `reburn:` lines in `logs/07_scars_<Y>.log`.
 Largest calendar year: **2001, 227,146 scars / 5.25 Mha** — FY2000's very large Jan–Apr 2001
 portion (47.2 M px) lands there, which is why it is bigger than either adjacent fire-year total.
 
-**No size class is written into the vectors.** It is derived in GEE from `area_ha`, so the ranges
-follow whatever the platform finally registers — the reference script and the Workspace legend
-still disagree on the same pixel values 1–8 (docs/08 §5.4), and a legend change must not mean 27
-re-uploads.
+**No size class is written into the vectors.** It is derived in GEE from `area_ha`
+(`C.SCAR_SIZE_LOWER_HA`), so the ranges are a one-line, one-task change rather than 27 re-uploads.
+That mattered: the reference script's ranges turned out **not** to match the published legend, and the
+classes were switched to the legend's after the vectors were already built (docs/08 §5.4).
 
 ---
 
@@ -323,7 +323,12 @@ from the reference `5-export_annual_burned_id_and_size_by_year`:
   `area_ha = feat.geometry().area()/10000`. For a pixel-edge polygon with interior rings, GEE's
   geodesic polygon area is not the pixel-count area that every other figure we publish derives
   from, and the statistics stage is checked to ~1 % (docs/09).
-- **Size classes are applied server-side** from `C.SCAR_SIZE_LOWER_HA`, for the reason in §8.
+- **Size classes are applied server-side** from `C.SCAR_SIZE_LOWER_HA`, for the reason in §8. The
+  values are the **published legend's**, not the reference script's: `< 10 / 10–250 / 250–500 /
+  500–5 000 / 5 000–10 000 / 10 000–50 000 / 50 000–100 000 / ≥ 100 000 ha`, confirmed from the
+  Coleção 5 legend-code PDF and the live col-5 platform legend (docs/08 §5.4). We write **level 2
+  only** (1–8); the platform derives its level-1 aggregation. Argentina populates all 8 classes —
+  24 scars ≥ 100 000 ha, largest 219 410 ha in calendar 2003.
 
 **The scar mask is forced to equal the month-of-burn mask** — both products are painted with
 `.updateMask(month.mask())`, so the requirement holds by construction, and `--check` reports
@@ -392,8 +397,8 @@ folder and the per-year names have to be aligned — not just the folder.
 - **`regiones_fuego_argentina_v1` does not exist** as a FeatureCollection — only the 5-region
   raster. Every reference script uses it for the export geometry and the `region` property; step 07
   uses `ARG_BUFFER_FC` instead and sets `region = 'argentina'`.
-- **Scar-size ranges** — reference script vs Workspace legend (docs/08 §5.4). Nothing is blocked
-  until the raster is registered, but the legend must match the values written.
+- ~~Scar-size ranges~~ — **settled**: the published legend's, confirmed from two independent sources
+  (docs/08 §5.4). No IPAM ruling needed. Do not copy `6-export_scar_size_range_by_year`.
 - **Asset-name cosmetics**: the month images are
   `mapbiomas_argentina_fire_collection1_fire_mask_v1_<year>`, which carries `v1` mid-name. Only the
   `year` property is read downstream, so this is cosmetic — but if it is to be renamed, do it

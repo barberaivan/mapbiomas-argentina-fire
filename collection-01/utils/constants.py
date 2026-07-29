@@ -424,12 +424,33 @@ MONTH_OF_BURN_BAND = "burned_monthly"
 FINAL_PRODUCTS = f"{_FIRE_ROOT}/COLLECTION-1/FINAL_PRODUCTS"
 ANNUAL_BURNED_VECTORS = f"{FINAL_PRODUCTS}/annual_burned_vectors"
 
-# Scar-size classes 1..8 — LOWER bounds in ha, from the LatAm reference script
-# (`6-export_scar_size_range_by_year`): <5, 5-25, 25-50, 50-250, 250-500, 500-1000,
-# 1000-5000, >=5000.  ⚠️ The Workspace "Scar size" legend uses DIFFERENT ranges on the same
-# pixel values 1-8 (docs/08 §5.4) — ours are Amazon-scale-free and almost certainly right,
-# but the REGISTERED legend must match these values.  Confirm with IPAM before publishing.
-SCAR_SIZE_LOWER_HA = [5, 25, 50, 250, 500, 1000, 5000]
+# Scar-size classes 1..8 — LOWER bounds in ha.  These are the classes the PUBLISHED PLATFORM
+# legend defines, confirmed 2026-07-29 from two independent sources:
+#   * "CODIGO DE LEGENDA FOGO COLECAO 5" (brasil.mapbiomas.org, May 2026): 1 '< 10 ha',
+#     2 '10 - 250 ha', 3 '250 - 500 ha', 4 '500 - 5.000 ha', 5 '5.000 - 10.000 ha',
+#     6 '10.000 - 50.000 ha', 7 '50.000 - 100.000 ha', 8 '>= 100.000 ha'.
+#   * the live MapBiomas Fogo col-5 platform legend (launched July 2026), which is TWO-LEVEL:
+#     level 2 is the 8 classes above; level 1 aggregates them into <250 / 250-500 /
+#     500-10.000 / 10.000-100.000 / >100.000 ha.  We write ONLY level 2 (1-8), exactly as
+#     Brazil's own asset does; the platform derives level 1.
+#
+# ⚠️ DO NOT copy the LatAm reference script `6-export_scar_size_range_by_year`.  It writes
+# <5 / 5-25 / 25-50 / 50-250 / 250-500 / 500-1000 / 1000-5000 / >=5000 onto the SAME pixel
+# values 1-8, which does NOT match the legend the platform renders — a raster built with the
+# script and registered with the legend is silently mislabelled in every class (docs/08 §5.4).
+#
+# docs/08 previously guessed the reference ranges were "almost certainly right for us" because
+# Brazil's are tuned to Amazon-scale scars.  MEASURED over all 27 calendar years (2,734,416
+# scars, 69,020,102 ha), that guess was wrong — the Brazil scheme populates ALL 8 classes here,
+# because Argentina does reach the top bin (24 scars >= 100,000 ha, largest 219,410 ha in 2003):
+#     <10 ha  76.14 % of scars /  5.67 % of area      5k-10k    0.02 % /  5.48 %
+#     10-250  22.78 %           / 35.41 %             10k-50k   0.02 % / 11.57 %
+#     250-500  0.57 %           /  7.71 %             50k-100k  0.00 % /  4.47 %
+#     500-5k   0.48 %           / 22.85 %             >=100k    0.00 % /  6.83 %
+# The count is concentrated in class 1 (small fires dominate everywhere), but the AREA spreads
+# across all eight, which is what the product is read for.  Legend compatibility decides this
+# anyway: the pixel values must mean what the registered legend says.
+SCAR_SIZE_LOWER_HA = [10, 250, 500, 5000, 10000, 50000, 100000]
 
 # Common property block for every step-07/08 output (the reference's stage-3 block).
 PRODUCT_SOURCE = "mapbiomas-fuego"

@@ -90,9 +90,12 @@ Built 2026-07-29 (`docs/07-vector_to_raster.md`). What remains:
   still enters our chain (the mask itself is embedded upstream, docs/08 §6.2).
 - [ ] **Build `regiones_fuego_argentina_v1` as a FeatureCollection.** Only the 5-region raster
   exists. Needed by the reference scripts and by the statistics stage (docs/09).
-- [ ] **Confirm the scar-size ranges with IPAM** — the reference script and the Workspace legend
-  disagree on the same pixel values 1-8 (docs/08 §5.4). Not blocking (classification is applied
-  server-side from `C.SCAR_SIZE_LOWER_HA`), but the registered legend must match what we write.
+- [x] **Scar-size ranges settled — the published legend's, not the reference script's** (2026-07-29).
+  Confirmed from the Coleção 5 legend-code PDF and the live Fogo col-5 platform legend, so no IPAM
+  ruling was needed. `C.SCAR_SIZE_LOWER_HA = [10, 250, 500, 5000, 10000, 50000, 100000]`; we write
+  level 2 (1-8) only and the platform derives level 1. Measured check: all 8 classes are populated
+  for Argentina (24 scars >= 100,000 ha), so docs/08's guess that the reference's smaller ranges
+  suited us was wrong. Do NOT copy `6-export_scar_size_range_by_year`.
 - [ ] **ATBD note: FY2025 has no Patagonian dieback padding** (it needs the FY2026 image), so the
   last year of the series is asymmetric in that one respect.
 - [ ] **ATBD note: ~76 kha of mapped Nov–Dec 1998 burned area is in no published product.** The
