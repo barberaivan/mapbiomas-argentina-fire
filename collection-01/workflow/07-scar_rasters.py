@@ -160,7 +160,10 @@ def export_per_year(years, launch):
     Band names are generic here (`scar_id`, `area_ha`, `size_class`); `--merge` renames them to the
     published `scar_id_<year>` / `scar_area_ha_<year>` when it assembles the multiband images.
     """
-    ensure_container(SCAR_PARTS_COL, "IMAGE_COLLECTION")
+    # Only create the destination when actually launching — a --dry-run must not leave assets
+    # behind. (It did: the first `--per-year` dry run created an empty scar_year_parts collection.)
+    if launch:
+        ensure_container(SCAR_PARTS_COL, "IMAGE_COLLECTION")
     region = ee.FeatureCollection(C.ARG_BUFFER_FC).geometry()
     for y in years:
         asset_id = f"{SCAR_PARTS_COL}/scar_parts_{y}"

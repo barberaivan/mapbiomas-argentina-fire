@@ -386,7 +386,8 @@ def main():
         return
 
     if args.stats:
-        ensure_container(STATS_COL, "FOLDER")
+        if args.launch:            # a dry run must not leave containers behind
+            ensure_container(STATS_COL, "FOLDER")
         region = ee.FeatureCollection(C.ARG_BUFFER_FC).geometry()
         for y in years:
             stats_year(y, region, args.launch)
@@ -401,8 +402,9 @@ def main():
             check(y, roi)
         return
 
-    ensure_container(C.CLASSIFICATION_COLLECTIONS, "FOLDER")
-    ensure_container(C.MONTH_OF_BURN_COL, "IMAGE_COLLECTION")
+    if args.launch:                # ditto — creating assets is not a dry-run side effect
+        ensure_container(C.CLASSIFICATION_COLLECTIONS, "FOLDER")
+        ensure_container(C.MONTH_OF_BURN_COL, "IMAGE_COLLECTION")
 
     region = ee.FeatureCollection(C.ARG_BUFFER_FC).geometry()
     for y in years:
