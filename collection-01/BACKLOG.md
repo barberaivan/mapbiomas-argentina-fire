@@ -127,6 +127,10 @@ Built 2026-07-29 (`docs/07-vector_to_raster.md`). What remains:
   docs/07 §12.7. **Consider the same prefix for `07-scar_rasters.py`**, whose descriptions
   (`annual_burned_id`, …) are equally generic — it has no in-flight check today, so it cannot
   false-skip, but it is the same hazard if one is ever added (fold into that file's cleanup item).
+- [ ] **The territorial layer — NOT before ~20 August 2026** (Iván, 2026-07-29). Not needed for the
+  31 July assets, and **which territories to cut by is undecided** — possibly a **vegetation-units
+  map** rather than the 5 fire regions. That decision comes first; the layer is mechanical after it.
+  docs/08 §8.10. What follows applies only if the 5 fire regions win:
 - [ ] **Build `regiones_fuego_argentina_v1` as a FeatureCollection.** ⚠️ **The premise was wrong**: a
   5-feature region VECTOR does exist — `ANCILLARY_DATA/VECTOR/ARG/regiones_arg_col1_simplificada_num`,
   with `Region` (`Pampas`, `Bosque Atlantico`, `Puna,Monte y Altos Andes`, `Patagonia`, `Chaco`) and an

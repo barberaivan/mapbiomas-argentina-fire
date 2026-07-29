@@ -70,7 +70,7 @@ more of this in collection 2):
 | Standardising into a single ImageCollection; mask script; subproduct generation | **Brazil support** (IPAM — Wallace Silva, Vera Arruda) |
 | Copy of subproducts to the public repository with the standardised properties | **Brazil** |
 | Registering assets + legends in Workspace | Brazil support |
-| **Territorial layers** for platform statistics | **us** |
+| **Territorial layers** for platform statistics | **us** — deferred to ~20 Aug 2026; the territory set is undecided (possibly vegetation units, not the 5 fire regions). §8.10 |
 | Reviewing and validating every product | **us** |
 
 ---
@@ -455,8 +455,16 @@ See **[`09-statistics.md`](09-statistics.md)**: the six area-statistics CSVs, th
    today.
 9. **`frequency_burned` band name** — the publish map says `frequency_burned_{year1}_{year2}` while
    script 2 writes `fire_frequency_<y1>_<y2>`; confirm which the platform reads.
-10. **`regiones_fuego_argentina_v1` as a FeatureCollection** — does not exist *under that name*, but
-    ⚠️ **the "only the raster exists" claim was wrong**: `ANCILLARY_DATA/VECTOR/ARG/regiones_arg_col1_simplificada_num`
-    is a 5-feature region vector with `Region` + integer `Zona` 1-5 (found 2026-07-29). So this is a
-    rename/reproperty job. But it is **simplified** geometry and its `Zona` numbering is unverified
-    against `REGION_RASTER.region_id`, so confirm both before the statistics stage leans on it (docs/09).
+10. **The territorial layer — DEFERRED to ~20 August 2026, by Iván's call (2026-07-29).** Not needed
+    for the 31 July asset delivery; it belongs to the statistics stage (docs/09), which cannot start
+    until the 07d `*_coverage` products land anyway. Do not build it before then, because
+    **which territories to cut by is still an open question** — possibly *not* the 5 fire regions at
+    all, but a **vegetation-units map**. That decision comes first; the layer is mechanical after it.
+    - When it is taken, note that `regiones_fuego_argentina_v1` does not exist *under that name* but
+      ⚠️ **the "only the raster exists" claim was wrong**:
+      `ANCILLARY_DATA/VECTOR/ARG/regiones_arg_col1_simplificada_num` is a 5-feature region vector with
+      `Region` + integer `Zona` 1-5 (found 2026-07-29). If the 5 fire regions win, this is a
+      rename/reproperty job rather than a build from the raster.
+    - Two caveats to settle either way: it is **`simplificada`** (simplified geometry — the statistics
+      are checked to ~1 %, docs/09), and its `Zona` numbering is **unverified** against
+      `REGION_RASTER.region_id` and is not `C.REGIONS` order.
