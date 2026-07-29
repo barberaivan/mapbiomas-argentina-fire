@@ -150,6 +150,16 @@ above for per-step design.
   needs domain-expert review before vectorization (exact step number is in flux).
 - **GEE asset deletions**: the user runs deletions themselves — prepare the script and a
   dry-run, then hand off. Don't delete assets directly.
+- **The GEE compute project is SHARED with the whole network — never touch a task you did not
+  launch.** `mapbiomas-fire-485203` is used by many people across MapBiomas Fuego, and
+  `ee.data.listOperations()` is **project-scoped, not per-account**: it returns *every* user's
+  tasks (226 of them in July 2026 — Peru's `MONITOR_01_*`, Bolivia's `GT_Fuego-…`, …). Two rules
+  follow. **(1)** Never cancel, restart or reason about an unfamiliar task as if it were ours —
+  other countries' teams are mid-run in there. **(2)** **Namespace every task `description`**
+  (`bpts_…`, `mob_…`, `arg07d_…`) and never match one by a generic name: an in-flight check that
+  matches a bare `annual_burned` can collide with another country's export and silently skip one of
+  ours, which is indistinguishable from the resumable-skip working. `destinationUris` would
+  disambiguate by asset path but exists only on FINISHED operations. See docs/07 §12.7.
 
 ## GEE Code Editor scripts (separate repos)
 
