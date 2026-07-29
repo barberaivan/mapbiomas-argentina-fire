@@ -110,19 +110,31 @@ def year_bands(cal_year):
             size_class(area_ha).rename(f"scar_area_ha_{cal_year}"))
 
 
-def check(cal_year):
-    """Do the scar vectors cover exactly the month-of-burn mask? Cheap: one reduceRegion pair."""
+def check(cal_year, roi=None):
+    """Do the scar vectors cover exactly the month-of-burn mask?
+
+    Pass an `roi` unless you mean it: an interactive reduceRegion over the whole 74085 x 123601
+    country grid returns "Computation timed out" (measured on the month histogram, which is why
+    07-month_of_burn.py --stats submits a batch task instead). A small box is enough here, because
+    the export masks by mob.mask() anyway, so this is a diagnostic rather than a gate.
+    """
     fc_id = f"{C.ANNUAL_BURNED_VECTORS}/scars_{cal_year}"
     if not asset_exists(fc_id):
         print(f"[{cal_year}] scar FC not ingested yet ({fc_id})")
         return
     mob = month_image(cal_year).mask()
     painted = ee.Image().paint(scars_fc(cal_year), 1).gt(0)
-    region = ee.FeatureCollection(C.ARG_BUFFER_FC).geometry()
+    region = (ee.Geometry.Rectangle([float(v) for v in roi.split(",")], None, False) if roi
+              else ee.FeatureCollection(C.ARG_BUFFER_FC).geometry())
     stats = (mob.rename("mob").addBands(painted.unmask(0).rename("scar"))
              .addBands(mob.And(painted.unmask(0).Not()).rename("mob_only"))
              .addBands(painted.unmask(0).And(mob.Not()).rename("scar_only"))
-             .reduceRegion(ee.Reducer.sum(), region,
+             # .unweighted() matters: reduceRegion weights partial pixels at the region edge by
+             # default, so a plain sum() returns a FRACTIONAL "pixel count" (measured 15493.906
+             # on a 0.5 deg box where the true count is 15492). The agreement verdict is unaffected
+             # -- month_only/scar_only are reduced the same way -- but the reported numbers would
+             # not be integers, and someone would eventually chase the difference as a bug.
+             .reduceRegion(ee.Reducer.sum().unweighted(), region,
                            crs=C.SNIC_CRS, crsTransform=C.SNIC_TRANSFORM,
                            maxPixels=int(1e13)).getInfo())
     n = scars_fc(cal_year).size().getInfo()
@@ -245,7 +257,7 @@ def main():
 
     if args.check:
         for y in years:
-            check(y)
+            check(y, args.roi)
         return
 
     if args.merge:                       # reads materialized per-year assets; no FC/mask needed
