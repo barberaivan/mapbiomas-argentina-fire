@@ -72,10 +72,12 @@ This is probably for collection 2.
 
 Built 2026-07-29 (`docs/07-vector_to_raster.md`). What remains:
 
-- [ ] **Ingest the 27 calendar-year scar FeatureCollections by hand** —
-  `data/scars-upload-cache/scars_<Y>.zip` → `.../COLLECTION-1/FINAL_PRODUCTS/annual_burned_vectors/scars_<Y>`.
-  Gate them first with `scripts/validate_scar_zips.py` (a hand upload has no failing pipeline to
-  catch a bad package). Then `07-scar_rasters.py --check` before `--launch`.
+- [x] **27 calendar-year scar FeatureCollections ingested and verified** (2026-07-29).
+  `annual_burned_vectors/scars_<Y>`, 1999-2025. Both gates pass: `validate_scar_zips.py` 27/27 on the
+  packages, and `--ingested` 27/27 on what landed — every year's feature count and `area_ha` total
+  matching the local build, and `scar_id` surviving the DBF round trip as an integer (a string would
+  have failed `ee.Image().paint` only at raster time). Mask agreement checked on 2003/2020/2025:
+  `month px == scar px`, `month-only = scar-only = 0`.
 - [ ] **CLEANUP once the scar rasters are built: delete the export path that was NOT used.**
   `07-scar_rasters.py` currently carries both the monolithic default (three 27-band images, the
   reference's own shape) and a `--per-year` + `--merge` fallback, because it was unknown whether one
