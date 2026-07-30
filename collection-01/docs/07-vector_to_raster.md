@@ -19,7 +19,7 @@ Run in this order; each sub-step needs the one before it.
 | **07b** | **Calendar-year scars**, 8-connected, labelled locally → `data/scars-upload-cache/scars_<Y>.zip`, then ingested by hand as `FINAL_PRODUCTS/annual_burned_vectors/scars_<Y>` | `workflow/07-calendar_scars.R` + `scripts/run_07_scars.sh` (local, two passes) | ✅ **done** — 27/27 built, gated and ingested, all verified against the local build |
 | **07c** | **Scar rasters** — `annual_burned_id`, `annual_burned_area_ha`, `annual_burned_scar_size_range`, painted from the ingested scars and masked to 07a | `workflow/07-scar_rasters.py` (GEE) | ✅ **done** — 3/3 exported and verified on the landed assets (§9.1) |
 | **07d** | **The nine derived subproducts** — `monthly_burned`, `annual_burned`, both `*_coverage`, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`), `year_last_fire` | `workflow/07-subproducts.py` (GEE) | ✅ **done** — 9/9 landed and verified on the exported assets (§12.8) |
-| **07e** | **The fire-object polygon layer** — every mapped fire, all 28 fire-years, merged into one FC with ten properties, for early users | `workflow/07-burned_area_polygons.py` (GEE) | 🔄 §13 |
+| **07e** | **The fire-object polygon layer** — every mapped fire, all 28 fire-years, merged into one FC with ten properties, for early users → `FINAL_PRODUCTS/burned_area_polygons_v1` | `workflow/07-burned_area_polygons.py` (GEE) | 🔄 **exporting** (1 task, 2026-07-30, submitted as the **comahue** account on `mapbiomas-argentina` — §13.5); FY2012 already landed as the schema check |
 
 Commands, in order:
 
@@ -37,7 +37,7 @@ $PYTHON collection-01/scripts/validate_scar_zips.py --ingested   # gate the uplo
 $PYTHON collection-01/workflow/07-scar_rasters.py --check --years 2003,2020 --roi=-61.6,-25.6,-61.1,-25.1
 $PYTHON collection-01/workflow/07-scar_rasters.py --launch
 
-# 07d  (in flight) — all nine derive from 07a, so they do NOT wait for 07c
+# 07d  (done; re-runnable, skips existing assets) — all nine derive from 07a, NOT from 07c
 $PYTHON collection-01/workflow/07-subproducts.py --check     # band bookkeeping + ROI counts
 $PYTHON collection-01/workflow/07-subproducts.py --launch     # 9 tasks
 #   one product only:  --only frequency_burned
@@ -468,10 +468,23 @@ folder and the per-year names have to be aligned — not just the folder.
 
 ## 11. What is still open
 
-- **The 27 scar FCs must be ingested by hand** — no GCS bucket is reachable, so the zip is the
-  deliverable, same hand-off as docs/06 §12.
-- ~~The stage-4 raster subproducts~~ — **built and exporting** (07d, §12). The LULC-to-2025 item was
-  never a blocker: duplicating 2024 forward is the network's own answer (§12.4).
+Nothing in **07a–07d** is outstanding: all 12 images and the 27 scar FCs are landed and verified on
+the exported assets (§9.1, §12.8), and docs/08 §7 is the delivery checklist. What is left:
+
+- **The whole-country month-histogram cross-check has never completed** (§7). The GEE half is on its
+  third submission (27 tasks, relaunched 2026-07-30); the **local half is missing from disk** —
+  `data/objects-scars` is a stray 6.3 MB serialized data.table rather than the directory of
+  `scars_<Y>_months.csv`, and `data/scars-upload-cache` is empty — so `07-calendar_scars.R`'s pass 2
+  has to be re-run from `scars-pixels-cache` before `--stats-read` can report `MATCH`. This is the
+  last unrun verification of the month product.
+- **07e is still exporting** (§13): 1.26 M polygons in one table task, submitted as the second
+  account. `--set-props` once it lands, `--per-year` if it dies.
+- ~~The 27 scar FCs must be ingested by hand~~ — **done**, 27/27, both gates passing (§8.1). The
+  hand-ingest route stands for any future re-upload: no GCS bucket is reachable, so the zip is the
+  deliverable (docs/06 §12).
+- ~~The stage-4 raster subproducts~~ — **done**, 9/9 landed and re-verified (§12.8). The LULC-to-2025
+  item was never a blocker: duplicating the last year forward is the network's own answer, and col-3
+  v1 made it moot (§12.4).
 - **`regiones_fuego_argentina_v1` does not exist** *under that name*. Every reference script uses it
   for the export geometry and the `region` property; step 07 uses `ARG_BUFFER_FC` instead and sets
   `region = 'argentina'`, which is fine because our products have no region dimension at all (§12.1).

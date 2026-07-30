@@ -70,7 +70,26 @@ This is probably for collection 2.
 
 ## Calendar-year products (step 07)
 
-Built 2026-07-29 (`docs/07-vector_to_raster.md`). What remains:
+Built 2026-07-29/30 (`docs/07-vector_to_raster.md`). **All 12 product images and the 27 scar FCs are
+landed and verified on the exported assets** — docs/08 §7 is the delivery checklist.
+
+**Next actions, in order** (everything else in this section is history, kept for the reasoning):
+
+1. **`--set-props` on `burned_area_polygons_v1`** once its export lands, then share the path with
+   early users — pointing them at docs/07 §13.3, because `calendar_year` is the object's *modal* year
+   and will not cross-tabulate exactly against the rasters. If the single task died, run `--per-year`
+   (FY2012 is already there) and share the folder one-liner that `--check` prints.
+2. **Regenerate `scars_<Y>_months.csv`** (`07-calendar_scars.R` pass 2, from `scars-pixels-cache`),
+   then `07-month_of_burn.py --all --stats-read` — the last unrun verification of the month product.
+3. **The network's visual validation gate** (docs/08 §2): `1-Toolkit_Collection1/Visualize-Collections-Fire`
+   over a few years by eye, before IPAM copies anything to `mapbiomas-public`.
+4. **Ask IPAM the three open questions** (docs/08 §8): #9 `frequency_burned`'s band name — the only one
+   that changes an asset — plus #1 the `COLLECTION-1` spelling and #8 whether we may publish the
+   fire-year vectors.
+5. **Then the statistics stage** (docs/09), which cannot start before the territorial-layer decision —
+   deferred to ~20 Aug 2026, see below.
+
+What remains, in detail:
 
 - [x] **27 calendar-year scar FeatureCollections ingested and verified** (2026-07-29).
   `annual_burned_vectors/scars_<Y>`, 1999-2025. Both gates pass: `validate_scar_zips.py` 27/27 on the

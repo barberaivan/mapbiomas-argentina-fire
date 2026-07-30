@@ -51,7 +51,8 @@ collection-01/
 │   ├── 07-month_of_burn.py          # Month of burn per CALENDAR year, in GEE (docs/07 §7)
 │   ├── 07-calendar_scars.R          # 8-connected calendar-year scars, locally, two passes (docs/07 §8)
 │   ├── 07-scar_rasters.py           # Scar id / area / size-range rasters from the ingested scar FCs
-│   └── 07-subproducts.py            # The 9 derived subproducts, from the month collection (docs/07 §12)
+│   ├── 07-subproducts.py            # The 9 derived subproducts, from the month collection (docs/07 §12)
+│   └── 07-burned_area_polygons.py   # All fires, 28 fire-years, one FC for early users (docs/07 §13)
 │                           # step 08 (network post-processing) has no script yet — docs/08-postprocessing.md
 ├── scripts/                # Ad-hoc utilities — not mandatory pipeline steps
 │   ├── status.py                          # Check GEE export status across all regions
@@ -393,6 +394,23 @@ $PYTHON collection-01/workflow/07-subproducts.py --launch      # 9 tasks
 $PYTHON collection-01/workflow/07-subproducts.py --launch --only frequency_burned   # just one
 ```
 
+**7e — the fire-object polygon layer, for early users.** Every mapped fire, all 28 fire-years, in one
+FeatureCollection with ten properties (`FINAL_PRODUCTS/burned_area_polygons_v1`, 1.26 M polygons /
+74.23 Mha). This is **ours**, not one of the network's six subproducts, and it is the layer to hand to
+early users — read `docs/07-vector_to_raster.md` §13 before sharing it, because `calendar_year` here
+is the object's *modal* year and does not agree pixel-for-pixel with the rasters.
+
+```bash
+$PYTHON collection-01/workflow/07-burned_area_polygons.py --check                # counts + schema
+$PYTHON collection-01/workflow/07-burned_area_polygons.py --year 2012 --launch   # schema check
+$PYTHON collection-01/workflow/07-burned_area_polygons.py --launch               # the merged FC
+$PYTHON collection-01/workflow/07-burned_area_polygons.py --set-props            # after it lands
+# 1.26 M features in one table task: --per-year is the fallback if it dies. And because the GEE task
+# queue is PER USER, submit it as the second account when the first one has a full queue:
+$PYTHON collection-01/workflow/07-burned_area_polygons.py --launch \
+    --project mapbiomas-argentina --credentials ~/.config/earthengine/credentials.comahue
+```
+
 ### Scripts (R utilities) — step-06 label prep
 
 Downloads the per-collaborator fire/non-fire collections exported by the GEE
@@ -474,6 +492,6 @@ Export status across regions: `python collection-01/scripts/status.py`.
 | 04 — SNIC segmentation | Whole-country fire-year SNIC settled; Drive-COG handoff to R (`docs/04-snic.md`). |
 | 05 — object metrics (R/terra) | 2001–2025 measured and run; 1.69 M objects (`docs/05-object_metrics.md`). |
 | 06 — object model (R, BART) | **Done.** 20 predictors, fitted on 5255 labels, grid-blocked OOF AUC 0.891 (within-year 0.845); per-size-band cuts deployed; all 28 fire-years scored (1 689 419 objects, 36 unscored); 28 QGIS layers built and inspected (`docs/06-object_model.md`). |
-| 07 — calendar-year products | Object FCs ingested (28). **07a month-of-burn ImageCollection** done (27/27); **07b calendar-year scars** built locally, gated and ingested (27/27); **07c scar rasters** done (3/3, verified on the landed assets); **07d the nine derived subproducts** exporting (9 tasks) — `docs/07-vector_to_raster.md`. |
+| 07 — calendar-year products | **All 12 images + 27 scar FCs landed and verified on the exported assets** (2026-07-30): **07a** month-of-burn collection 27/27, **07b** calendar-year scars 27/27 built, gated and ingested, **07c** scar rasters 3/3, **07d** the nine derived subproducts 9/9. **07e** the fire-object polygon layer for early users is exporting. Delivery checklist: `docs/08-postprocessing.md` §7; detail and verification numbers: `docs/07-vector_to_raster.md`. Still owed: the whole-country month-histogram cross-check (its local half needs regenerating) and the network's visual validation pass. |
 | 08 — network post-processing & published subproducts | Not started; design notes only (`docs/08-postprocessing.md`). Assets due **31 Jul 2026** |
 | 09 — statistics, publication, launch | Not started; design notes only (`docs/09-statistics.md`). Launch **24 Sep 2026** |

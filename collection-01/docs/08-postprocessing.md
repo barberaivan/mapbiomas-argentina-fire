@@ -49,14 +49,14 @@ track live in **[`09-statistics.md`](09-statistics.md)**.
 
 ## 2. The launch process — six stages
 
-| # | Stage | Where |
-|---|---|---|
-| 1 | **Finalización de la colección anual** de la serie histórica | ours (steps 01–07) |
-| 2 | **Versión consolidada (sin máscaras)** — one ImageCollection, all years and regions | §5.2 |
-| 3 | **Versión final (con máscaras)** — LULC mask + solitary-pixel removal + month coding | §5.2 |
-| 4 | **Generación de subproductos** | §5.3–5.4 |
-| 5 | **Estadísticas preliminares** → Looker Studio | docs/09 §2 |
-| 6 | **Assets públicos + catastro en Workspace + enlaces directos** | docs/09 §3–4 |
+| # | Stage | Where | Argentina |
+|---|---|---|---|
+| 1 | **Finalización de la colección anual** de la serie histórica | ours (steps 01–07) | ✅ |
+| 2 | **Versión consolidada (sin máscaras)** — one ImageCollection, all years and regions | §5.2 | ✅ collapsed into stage 3 — we have no unmasked variant to consolidate (§6.8) |
+| 3 | **Versión final (con máscaras)** — LULC mask + solitary-pixel removal + month coding | §5.2 | ✅ `collection1_fire_mask_v1`, 27 images; mask + pixel filter are upstream (§6.2) |
+| 4 | **Generación de subproductos** | §5.3–5.4 | ✅ 12 images (9 derived + 3 scar) + 27 scar FCs (§7) |
+| 5 | **Estadísticas preliminares** → Looker Studio | docs/09 §2 | ⬜ needs the territorial layer first (§8.10) |
+| 6 | **Assets públicos + catastro en Workspace + enlaces directos** | docs/09 §3–4 | ⬜ IPAM's copy; naming decision §8.1 |
 
 > ⚠️ **Validation gate: "antes de avanzar a la siguiente etapa, cada producto debe ser validado por el
 > equipo del país correspondiente."** Expect a human check between stages, not one unattended run.
@@ -189,7 +189,8 @@ South America), exported to `FINAL_PRODUCTS/` with `pyramidingPolicy: mode`, `sc
 - **Don't copy the typo** in script 2: `outFileNameAccumulated` builds `…_accumulate1_burned_v1`
   where the publish list expects `…_accumulated_burned_v1`.
 - ⚠️ **The `*_coverage` products are easy to forget** and are exactly what the statistics read
-  (docs/09 §2). They need our LULC asset extended to 2025 (§8.3).
+  (docs/09 §2). ~~They need our LULC asset extended to 2025~~ — **not a blocker and now moot**: they
+  cross against LULC **col-3 v1**, which carries `classification_2025` natively (§8.3, docs/07 §12.1).
 
 ### 5.4 Stage 4, scripts 4–6 — the scar-size chain
 
@@ -245,10 +246,14 @@ across all eight, which is what the product is read for.
 
 The Workspace legend is also **two-level** (level-1 aggregates at pixel values 10/20/30/40/50: `<250`,
 `250–500`, `500–10 000`, `10 000–100 000`, `>100 000` ha), defined as *"annual burned area classified
-into scar size categories, based on sets of spatially connected pixels within the same year."*
-Brazil's ranges are tuned to Amazon-scale scars; ours are far smaller, so **the LatAm ranges are almost
-certainly right for us** — but confirm, because the registered legend must match the pixel values we
-write (§8.6).
+into scar size categories, based on sets of spatially connected pixels within the same year."* We write
+**level 2 only**; the platform derives level 1 itself.
+
+> A superseded paragraph used to sit here arguing that "Brazil's ranges are tuned to Amazon-scale
+> scars, ours are far smaller, so the LatAm reference ranges are almost certainly right for us". That
+> reasoning was **wrong on the measured data** — see the table above and its two independent
+> sources — and it contradicted this very section. It is recorded only so the argument is not made a
+> second time.
 
 ---
 
@@ -384,9 +389,14 @@ Not the mask and not the pixel filter (§6.2). What remains:
   set by `07-month_of_burn.py`;
 - **one ImageCollection covering all years** — done: one whole-country image per calendar year, so
   the cartas-vs-regions mismatch never arises;
-- `regiones_fuego_argentina_v1` as a **FeatureCollection** — still missing; only the 5-region raster
-  exists (`scripts/export_region_raster.py`). Step 07 uses `ARG_BUFFER_FC` for the export geometry
-  and sets `region = 'argentina'`.
+- `regiones_fuego_argentina_v1` as a **FeatureCollection** — missing *under that name*, and it does
+  not block anything: step 07 uses `ARG_BUFFER_FC` as the export geometry and sets
+  `region = 'argentina'`, because our products have no region dimension at all (docs/07 §12.1).
+  ⚠️ **The "only the 5-region raster exists" claim was wrong** (corrected 2026-07-29): a 5-feature
+  region VECTOR exists as `ANCILLARY_DATA/VECTOR/ARG/regiones_arg_col1_simplificada_num`, carrying
+  `Region` and an integer `Zona` 1-5. It is `simplificada` and its `Zona` numbering is unverified
+  against `REGION_RASTER.region_id`, so it is a candidate for the statistics stage's territorial
+  layer, not a drop-in — see §8.10, and do not build anything before that decision.
 
 ## 7. What Argentina delivers, and when
 
@@ -397,16 +407,32 @@ appear in the publish script's lists but **not** in the country table — Brazil
 
 ### By 31 July 2026 — the assets (this doc)
 
+**All of it is exported and verified on the landed assets** (2026-07-30). The per-item detail, the
+verification numbers and the run commands are in docs/07; this table is the delivery checklist.
+
 | # | Item | State |
 |---|---|---|
-| 1 | Object FCs `objects_raw_<fy>` (28) | **done** in step 06 — no separate `fires_<fy>` upload; step 07 filters at read time (§6.1) |
-| 2 | `collection1_fire_mask_v1` — the month-of-burn collection, 1-band uint8 per calendar year, properties set | **done** — `07-month_of_burn.py`; the LULC mask and pixel filter are upstream, not owed (§6.2) |
-| 3 | `scars_<Y>` (27) calendar-year scar FCs | **built locally** (`07-calendar_scars.R`); the 27 zips need the **manual GEE ingest** |
-| 4 | `annual_burned_id`, `annual_burned_area_ha`, `annual_burned_scar_size_range` | **coded** (`07-scar_rasters.py`), runs once item 3 is ingested |
-| 5 | `monthly_burned`, `annual_burned`, `monthly_burned_coverage`, `annual_burned_coverage`, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`), `year_last_fire` | **coded + launched** (`07-subproducts.py`, 9 tasks, 2026-07-29) — all nine derive from item 2; the LULC-to-2025 gap is closed by duplicating 2024 forward, as every reference country does (docs/07 §12.4) |
+| 1 | Object FCs `objects_raw_<fy>` (28) | ✅ step 06 — no separate `fires_<fy>` upload; step 07 filters at read time (§6.1) |
+| 2 | `collection1_fire_mask_v1` — the month-of-burn collection, 1-band uint8 per calendar year, properties set | ✅ **27/27** images (`07-month_of_burn.py`); the LULC mask and pixel filter are upstream, not owed (§6.2) |
+| 3 | `scars_<Y>` (27) calendar-year scar FCs | ✅ **27/27 built, gated and ingested** — `validate_scar_zips.py` passes both on the packages and `--ingested` on what landed (docs/07 §8.1) |
+| 4 | `annual_burned_id`, `annual_burned_area_ha`, `annual_burned_scar_size_range` | ✅ **3/3** (`07-scar_rasters.py`), verified on the exported assets: `month px == scar px == size px`, `month-only = scar-only = 0` (docs/07 §9.1) |
+| 5 | `monthly_burned`, `annual_burned`, `monthly_burned_coverage`, `annual_burned_coverage`, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`), `year_last_fire` | ✅ **9/9** (`07-subproducts.py`), re-verified on the landed assets — band counts, dtypes, pinned grid, every coverage code decoding exactly (docs/07 §12.8). The four coverage products cross **LULC col-3 v1**, so nothing is duplicated forward (§8.3) |
 
 ⚠️ The `*_coverage` products are the easiest to forget and are exactly what the statistics read
-(docs/09 §2).
+(docs/09 §2). All four exist.
+
+**Not part of the network delivery, but built and shared alongside it:** the fire-object polygon layer
+`FINAL_PRODUCTS/burned_area_polygons_v1` — every mapped fire, all 28 fire-years, ten properties,
+1,263,079 polygons / 74.23 Mha (docs/07 §13). It is **ours**, not one of the six subproducts, and
+whether it may ever be *published* is §8.8.
+
+**What is still owed on the asset side** — neither blocks the delivery, both belong to validation:
+
+- the whole-country **month-histogram cross-check** (`--stats` / `--stats-read`, docs/07 §7): the GEE
+  half is running, the local `scars_<Y>_months.csv` half has to be regenerated from
+  `scars-pixels-cache` first;
+- the network's **visual validation gate** (§2) — `1-Toolkit_Collection1/Visualize-Collections-Fire`
+  over a few years, by eye, before IPAM copies anything to `mapbiomas-public`.
 
 ### Between 1 August and 24 September 2026 — statistics, publication, launch
 
@@ -417,6 +443,12 @@ See **[`09-statistics.md`](09-statistics.md)**: the six area-statistics CSVs, th
 ---
 
 ## 8. Open decisions
+
+**Genuinely open, as of 2026-07-30:** #1 (the `COLLECTION-1` spelling, before the public copy), #8
+(may we publish the fire-year vectors), #9 (`frequency_burned`'s band name — the only one that needs
+an IPAM ruling before the platform reads the asset), #10 (the territorial layer, deferred to
+~20 Aug). Everything else below is struck through and kept for the reasoning, not the question —
+several were closed by *measuring* rather than deciding, and the notes say which.
 
 1. ~~Asset naming~~ — **decided (provisional): keep `COLLECTION-1`**, ours, and rename at publish time.
    The asset *names* inside already follow the network exactly (`C.product_name()`). Revisit before the
