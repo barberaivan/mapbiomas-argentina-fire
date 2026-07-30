@@ -138,16 +138,23 @@ Built 2026-07-29 (`docs/07-vector_to_raster.md`). What remains:
   what makes `M*100 + L` decodable and `mod 100` exact. docs/07 §12.1/§12.4.
   - If a **col-3 v2** lands, this is a one-line change to `C.PRODUCT_LULC` plus a re-export of the
     four coverage products (they will need deleting first, or `--overwrite` adding to the script).
-- [ ] **Drop `LEGACY_DESCRIPTIONS` from `07-subproducts.py`** once the nine tasks launched
-  2026-07-29 have all finished. The first batch used the BARE subproduct name as the task
-  description; the namespaced `arg07d_<subproduct>` (`TASK_PREFIX`) replaced it because
-  `listOperations()` is **project-scoped and cross-user** — the shared `mapbiomas-fire` project had
-  226 tasks from other countries' teams, and a bare `annual_burned` colliding with one of theirs
-  would make the in-flight check silently skip one of our products. The fallback only exists so a
-  re-run mid-batch could not double-submit; it reintroduces the very collision it replaced.
-  docs/07 §12.7. **Consider the same prefix for `07-scar_rasters.py`**, whose descriptions
-  (`annual_burned_id`, …) are equally generic — it has no in-flight check today, so it cannot
-  false-skip, but it is the same hazard if one is ever added (fold into that file's cleanup item).
+- [x] **`LEGACY_DESCRIPTIONS` dropped from `07-subproducts.py`** (2026-07-30), all nine tasks having
+  finished. The first batch used the BARE subproduct name as the task description; the namespaced
+  `arg07d_<subproduct>` (`TASK_PREFIX`) replaced it because `listOperations()` is **project-scoped and
+  cross-user** — the shared `mapbiomas-fire` project had 226 tasks from other countries' teams, and a
+  bare `annual_burned` colliding with one of theirs would make the in-flight check silently skip one
+  of our products. docs/07 §12.7. `07-scar_rasters.py` was checked at the same time and already
+  namespaces its descriptions `arg07c_` — nothing to do there.
+- [x] **The nine subproducts' property blocks repaired in place** (2026-07-30, docs/07 §12.8) —
+  `ee.data.updateAsset`, metadata only, no re-export; bands/dtypes/pyramiding re-read afterwards and
+  untouched. The five non-coverage products were advertising a `lulc_asset` they never cross in (and a
+  pre-col-3 one, since only the coverage products were re-exported against col-3), and
+  `monthly_burned` had inherited the **1999** month image's own `year` / `fire_years` / `name` /
+  `pixel_unit` / … through `ee.Image.cat`. Both fixed at the source too: the script now stamps
+  `lulc_asset` only on the four coverage products, and inserts an `.add(0)` — a band-wise op, which
+  drops input properties — before renaming `monthly_burned`, so a re-export comes out clean.
+  **`scripts/audit_product_properties.py`** is the standing drift check (dry run by default,
+  `--apply` to write); run it after any re-export or any move of `C.PRODUCT_LULC`.
 - [ ] **The territorial layer — NOT before ~20 August 2026** (Iván, 2026-07-29). Not needed for the
   31 July assets, and **which territories to cut by is undecided** — possibly a **vegetation-units
   map** rather than the 5 fire regions. That decision comes first; the layer is mechanical after it.

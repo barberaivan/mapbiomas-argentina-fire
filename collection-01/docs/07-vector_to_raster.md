@@ -817,10 +817,12 @@ fix, not a workaround for a nicer one.
 ⚠️ **Never cancel or touch a task you did not launch**, and never match one by a generic description:
 in this project the other tasks belong to other countries' teams.
 
-The first batch went out under the bare descriptions, so `LEGACY_DESCRIPTIONS` keeps them accepted by
-the in-flight test — otherwise a re-run before they landed would have double-submitted. **Delete that
-fallback once those nine tasks have finished**; it is the collision-prone form the prefix exists to
-retire. ⚠️ **They have all finished (§12.8), so that deletion is now due.**
+The first batch went out under the bare descriptions, so a `LEGACY_DESCRIPTIONS` fallback kept them
+accepted by the in-flight test — otherwise a re-run before they landed would have double-submitted.
+✅ **Deleted 2026-07-30**, once all nine had finished: it was the collision-prone form the prefix
+exists to retire, and keeping it any longer would have meant one of our products could be silently
+skipped because another country happened to be exporting an `annual_burned`. The in-flight test now
+matches the namespaced description only.
 
 ### 12.8 All nine landed — re-verified on the exported assets
 
@@ -840,11 +842,26 @@ question — it catches export-time grid, dtype and masking surprises:
 | Cross-product masks | `freq_1999_2025` = `accum` = `accum_cov` = `freq_cov` = `year_last_fire` = **241,281**; `freq_2025_2025` = `annual_2025` = **27,508** |
 | Scar chain vs month mask | `month_only = scar_only = 0` in 2003 / 2020 / 2025 |
 
-Every number is identical to the pre-launch graph audit. Two **metadata** leftovers are not (both
-cosmetic, both fixable with `ee.data.updateAsset` — no re-export):
+Every number is identical to the pre-launch graph audit. Two **metadata** leftovers were not, and
+both were repaired in place on 2026-07-30 with `ee.data.updateAsset` — metadata only, no re-export:
 
-- the five **non-coverage** products carry `lulc_asset = …collection1_integration_v8_buffer`, a
-  pre-switch value on products that contain no LULC at all;
-- `monthly_burned` inherited the 1999 month image's own properties through `ee.Image.cat` — it
-  claims `year: 1999`, `fire_years: 1998,1999`, `name: …fire_mask_v1_1999`. The other eight escaped
-  this because they are built by arithmetic, which drops properties.
+- the five **non-coverage** products carried `lulc_asset = …collection1_integration_v8_buffer` — a
+  land-cover collection they never touch, and a stale one at that, since only the four `*_coverage`
+  products were re-exported against col-3. They now say `lulc: "not used — this product encodes no
+  land cover"`, and `07-subproducts.py` only stamps `lulc_asset`/`lulc_year` on the four products
+  that actually cross one in;
+- `monthly_burned` had inherited the 1999 month image's own block through `ee.Image.cat` —
+  `year: 1999`, `fire_years: 1998,1999`, `name: …fire_mask_v1_1999`, plus `pixel_unit`,
+  `min_fire_ha`, `fire_call`, `lulc_mask`, `solitary_pixel_filter`. Every one of those is false or
+  meaningless on a 27-band product. The other eight escaped it because they are built by
+  arithmetic, which **drops** input properties; `monthly_burned` was the one built by `rename`
+  alone. There is no server-side "clear properties" and `.set()` only adds, so the script now
+  inserts an `.add(0)` — a band-wise op — before renaming, which is what makes a re-export come out
+  clean. The mask statements remain on the 07a month images, where they are true.
+
+All nine blocks are now uniform: `source`, `region`, `band_format`, `years`, `derived_from`, plus
+`lulc_asset` + `lulc_year` on the four coverage products or `lulc` on the other five.
+**`scripts/audit_product_properties.py`** is the standing drift check (dry run by default, `--apply`
+to write) — worth running after any re-export or any move of `C.PRODUCT_LULC`, because a silent drift
+here is how a published asset ends up advertising the wrong land-cover collection. Bands, dtypes and
+pyramiding were re-read afterwards and are untouched.

@@ -108,12 +108,10 @@ CHECK_ROI = "-61.6,-25.6,-61.1,-25.1"
 # `destinationUris` would disambiguate by asset path but is populated only on FINISHED operations,
 # so it cannot serve the in-flight test.
 TASK_PREFIX = "arg07d_"
-
-# LEGACY: the first launch (2026-07-29) used the bare subproduct name as the description. Accepted by
-# the in-flight test ONLY so that re-running --launch while that batch is still queued cannot
-# double-submit. Delete this the moment those nine tasks have all finished — it is the very
-# collision-prone form this prefix exists to retire.
-LEGACY_DESCRIPTIONS = True
+# (A `LEGACY_DESCRIPTIONS` fallback used to accept the BARE subproduct names the first launch went
+# out under, so that a re-run mid-batch could not double-submit. All nine of those tasks finished
+# 2026-07-29/30, so it was deleted — it reintroduced the very cross-country collision the prefix
+# exists to retire. docs/07 §12.7.)
 
 
 # ---------------------------------------------------------------------------
@@ -130,15 +128,13 @@ def asset_exists(asset_id):
 def task_in_flight(sub, suffix=""):
     """Is one of OUR exports of this subproduct already PENDING/RUNNING?
 
-    Matches the namespaced description, plus the legacy bare one while the first batch drains
-    (see TASK_PREFIX — this scan sees every user's tasks in the shared project).
+    Matches the NAMESPACED description only (see TASK_PREFIX — this scan sees every user's tasks in
+    the shared project, so a bare `annual_burned` would collide with another country's).
     """
-    wanted = {f"{TASK_PREFIX}{sub}{suffix}"}
-    if LEGACY_DESCRIPTIONS:
-        wanted.add(f"{sub}{suffix}")
+    wanted = f"{TASK_PREFIX}{sub}{suffix}"
     for op in ee.data.listOperations():
         meta = op.get("metadata", {})
-        if (meta.get("description") in wanted
+        if (meta.get("description") == wanted
                 and meta.get("state") in ("PENDING", "RUNNING")):
             return True
     return False
@@ -232,7 +228,15 @@ def build(years, verbose=True):
     lc = ee.Image.cat([lulc[y] for y in years])
 
     # 🟡 month of occurrence, 1-12.  Masked outside the burn, so no 0 is ever written.
-    monthly = month.rename([f"burned_monthly_{y}" for y in years]).toUint8()
+    #
+    # `.add(0)` is not dead code.  `ee.Image.cat` carries the FIRST input's properties onto the
+    # result, so `month` arrives holding the 1999 month image's own block — `year: 1999`,
+    # `fire_years: 1998,1999`, `name: …fire_mask_v1_1999` — which is FALSE on a 27-band product and
+    # was published that way in the first launch (docs/07 §12.8).  There is no server-side "clear
+    # properties", and `.set()` only adds; a band-wise op drops them, which is why the other eight
+    # products escaped this (they are all built by arithmetic).  Cheap, and it keeps the nine
+    # property blocks uniform.
+    monthly = month.add(0).rename([f"burned_monthly_{y}" for y in years]).toUint8()
 
     # 🟢 annual presence.  `gt(0)` keeps the mask, so the band is 1-or-masked, not 1/0 — which
     # is why everything that COUNTS it below has to `unmask(0)` first.
@@ -342,15 +346,23 @@ def export(specs, years, launch, roi=None):
         if task_in_flight(sub, suffix):
             print(f"[skip] {sub}{suffix} has a PENDING/RUNNING task")
             continue
-        img = img.set({
+        props = {
             "source": C.PRODUCT_SOURCE,
             "region": C.PRODUCT_REGION,
             "band_format": band_format,
             "years": f"{years[0]}-{years[-1]}",
-            "lulc_asset": C.PRODUCT_LULC,
-            "lulc_year": "same calendar year as the burn",
             "derived_from": C.MONTH_OF_BURN_COL,
-        })
+        }
+        # Only the four `*_coverage` products encode land cover. The first launch stamped
+        # `lulc_asset` on all nine, which left the five that contain no LULC at all advertising the
+        # collection they were exported alongside — and after the col-3 switch (§12.1) that value was
+        # not even current. Say which layer was crossed in, or say that none was.
+        if sub.endswith("_coverage"):
+            props["lulc_asset"] = C.PRODUCT_LULC
+            props["lulc_year"] = "same calendar year as the burn"
+        else:
+            props["lulc"] = "not used — this product encodes no land cover"
+        img = img.set(props)
         if not launch:
             print(f"[dry] would export {asset_id}\n"
                   f"      {len(img.bandNames().getInfo())} bands, band_format={band_format}")
