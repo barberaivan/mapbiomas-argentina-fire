@@ -268,18 +268,31 @@ def stats_year(cal_year, region, launch):
     else:
         print(f"[note] {cal_year} not exported yet — reducing the computed image instead")
         img = month_of_burn(cal_year)
-    hist = img.reduceRegion(ee.Reducer.frequencyHistogram(), region,
+    # ONE SCALAR PROPERTY PER MONTH, never a Dictionary. Two export-time failures are baked in
+    # here, both measured, both silent until the task died hours later:
+    #
+    #   1. `ee.Feature(None, …)` -> "Unable to export features with null geometry". A table ASSET
+    #      cannot hold a null-geometry feature (toDrive/CSV can, but then --stats-read cannot read
+    #      it back). The point below is a placeholder and carries no meaning.
+    #   2. A `frequencyHistogram` dictionary -> "Unable to encode value 'histogram' of feature 0:
+    #      invalid type Dictionary<Long>". A table asset's properties are SCALARS; there is no
+    #      dictionary column. All 27 tasks failed this way on 2026-07-29. So the histogram is
+    #      flattened into `m01`..`m12` before it ever reaches the feature.
+    #
+    # `img.eq(m)` keeps the image's mask, so summing it counts burned pixels of that month only —
+    # no unmask(0) and no dense pass over the 9.16 B-cell grid. And `.unweighted()` is not
+    # optional: reduceRegion weights partial pixels at the region boundary by default, which
+    # returns a FRACTIONAL pixel count and would put this check permanently a few pixels off the
+    # local build (the same artefact docs/07 §9 records for the scar check).
+    months = ee.Image.cat([img.eq(m).rename(f"m{m:02d}") for m in range(1, 13)])
+    d = months.reduceRegion(ee.Reducer.sum().unweighted(), region,
                             crs=C.SNIC_CRS, crsTransform=C.SNIC_TRANSFORM,
                             maxPixels=int(1e13))
-    # The feature needs a GEOMETRY: `ee.Feature(None, …)` fails the task outright with
-    # "Unable to export features with null geometry" (measured — mobstats_2000 FAILED that way).
-    # A table ASSET cannot hold a null-geometry feature; toDrive/CSV can, but then the result is
-    # not readable by --stats-read. The point is a placeholder and carries no meaning.
-    fc = ee.FeatureCollection([ee.Feature(ee.Geometry.Point([-64.0, -34.0]), {
-        "year": cal_year,
-        "histogram": ee.Dictionary(hist.get(C.MONTH_OF_BURN_BAND)).map(
-            lambda k, v: ee.Number(v).toInt64()),
-    })])
+    props = {f"m{m:02d}": ee.Number(d.get(f"m{m:02d}")).round() for m in range(1, 13)}
+    props["year"] = cal_year
+    props["n_px"] = ee.Number(ee.List(list(props[f"m{m:02d}"] for m in range(1, 13)))
+                              .reduce(ee.Reducer.sum()))
+    fc = ee.FeatureCollection([ee.Feature(ee.Geometry.Point([-64.0, -34.0]), props)])
     task = ee.batch.Export.table.toAsset(collection=fc, description=f"mobstats_{cal_year}",
                                          assetId=asset_id)
     if launch:
@@ -298,8 +311,9 @@ def stats_read(years):
         if not asset_exists(asset_id):
             print(f"[{y}] histogram task not finished ({asset_id})")
             continue
-        h = ee.FeatureCollection(asset_id).first().get("histogram").getInfo() or {}
-        gee = {int(float(k)): int(v) for k, v in h.items()}
+        f = ee.FeatureCollection(asset_id).first().toDictionary().getInfo() or {}
+        gee = {m: int(f.get(f"m{m:02d}", 0)) for m in range(1, 13)}
+        gee = {m: v for m, v in gee.items() if v}
         lpath = local_dir / f"scars_{y}_months.csv"
         loc = {}
         if lpath.exists():

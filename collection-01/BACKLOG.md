@@ -95,10 +95,31 @@ Built 2026-07-29 (`docs/07-vector_to_raster.md`). What remains:
   the per-month pixel histogram from the local build; `07-month_of_burn.py --check` gives the same
   histogram from the raster. They should match exactly — both derive from the same object pixel set,
   which was verified exact — so any divergence is a real bug, not tolerance.
-  **The whole-country half of this is still unrun**: `--stats` submits a batch histogram per year, and
-  the one task tried (`mobstats_2000`) FAILED with *"Unable to export features with null geometry"* —
-  a table **asset** cannot hold `ee.Feature(None, …)`. Fixed 2026-07-29; the 27 tasks still need
-  submitting, then `--stats-read`.
+  **The whole-country half has failed twice at export time and is on its third submission** — both
+  failures in how the result is WRITTEN, never in the reduce (docs/07 §7):
+  1. `ee.Feature(None, …)` cannot go into a table **asset** — *"Unable to export features with null
+     geometry"*. Fixed 2026-07-29 with a placeholder point.
+  2. all 27 then FAILED with *"invalid type `Dictionary<Long>`"* — a table asset's properties are
+     **scalars**, so a `frequencyHistogram` dict cannot be one. Fixed 2026-07-30: flattened to
+     `m01`…`m12` + `n_px`, counted with `img.eq(m)` and **`sum().unweighted()`** (the default weights
+     partial pixels at the region edge and would leave the check permanently a few pixels off).
+     Validated on the Chaco box first — integer scalars, `n_px = 32,559` for 2020, matching §9.1.
+     **27 tasks relaunched 2026-07-30 21:23.**
+  ⚠️ **The local half is missing from disk**: `data/objects-scars` is currently a 6.3 MB serialized
+  data.table, not the directory holding `scars_<Y>_months.csv`, and `data/scars-upload-cache` is empty
+  (the store was mid-Insync-sync on 2026-07-30). Regenerate the months CSVs — pass 2 only, from
+  `scars-pixels-cache` — before `--stats-read` can report anything but `no local months csv`.
+- [x] **Sub-step 07e — the merged fire-object polygon layer** (2026-07-30).
+  `FINAL_PRODUCTS/burned_area_polygons_v1`: all 28 fire-years of `objects_raw` filtered to
+  `fire == 1 & area_ha >= 1`, stripped to ten properties (`oid`, `fire_year`, `calendar_year`,
+  `area_ha`, `date_med/min/max`, `p_mean`, `p_width`, `seed_mean`), merged and flattened —
+  **1,263,079 polygons, 74.23 Mha**. For sharing with early users. `workflow/07-burned_area_polygons.py`,
+  docs/07 §13. FY2012 was exported first as a schema check (22,224 features, 3 m 09 s, schema and count
+  exact on the landed asset) and doubles as the first asset of the `--per-year` fallback, in case the
+  single 1.26 M-feature task hits `User memory limit exceeded`.
+  - [ ] `--set-props` once it lands, then share the path.
+  - ⚠️ This **overrides docs/08 open #8**, which parked the fire-year vectors outside `FINAL_PRODUCTS`
+    until IPAM rules on publishing them. If the ruling is no, the asset moves and the shared link dies.
 - [x] **Sub-step 07d built and launched** (2026-07-29) — `workflow/07-subproducts.py`, 9 export tasks.
   All nine derive from 07a's month collection plus the LULC; encodings copied verbatim from the
   reference (docs/07 §12), the `accumulate1` filename typo not copied. Verified before launch: band

@@ -18,7 +18,8 @@ Run in this order; each sub-step needs the one before it.
 | **07a** | **Month of burn** per calendar year → `CLASSIFICATION_COLLECTIONS/collection1_fire_mask_v1` (ImageCollection, one 1-band uint8 image per year, 1–12, masked elsewhere). The pivot everything else reads. | `workflow/07-month_of_burn.py` (GEE) | ✅ **done** — 27/27 exported |
 | **07b** | **Calendar-year scars**, 8-connected, labelled locally → `data/scars-upload-cache/scars_<Y>.zip`, then ingested by hand as `FINAL_PRODUCTS/annual_burned_vectors/scars_<Y>` | `workflow/07-calendar_scars.R` + `scripts/run_07_scars.sh` (local, two passes) | ✅ **done** — 27/27 built, gated and ingested, all verified against the local build |
 | **07c** | **Scar rasters** — `annual_burned_id`, `annual_burned_area_ha`, `annual_burned_scar_size_range`, painted from the ingested scars and masked to 07a | `workflow/07-scar_rasters.py` (GEE) | ✅ **done** — 3/3 exported and verified on the landed assets (§9.1) |
-| **07d** | **The nine derived subproducts** — `monthly_burned`, `annual_burned`, both `*_coverage`, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`), `year_last_fire` | `workflow/07-subproducts.py` (GEE) | 🔄 **exporting** (9 tasks, 2026-07-29; the 4 `*_coverage` ones re-launched against LULC col-3, §12.1) |
+| **07d** | **The nine derived subproducts** — `monthly_burned`, `annual_burned`, both `*_coverage`, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`), `year_last_fire` | `workflow/07-subproducts.py` (GEE) | ✅ **done** — 9/9 landed and verified on the exported assets (§12.8) |
+| **07e** | **The fire-object polygon layer** — every mapped fire, all 28 fire-years, merged into one FC with ten properties, for early users | `workflow/07-burned_area_polygons.py` (GEE) | 🔄 §13 |
 
 Commands, in order:
 
@@ -40,6 +41,14 @@ $PYTHON collection-01/workflow/07-scar_rasters.py --launch
 $PYTHON collection-01/workflow/07-subproducts.py --check     # band bookkeeping + ROI counts
 $PYTHON collection-01/workflow/07-subproducts.py --launch     # 9 tasks
 #   one product only:  --only frequency_burned
+
+# 07e  — the polygon layer for early users (§13). Independent of 07b-07d; needs only step 06.
+$PYTHON collection-01/workflow/07-burned_area_polygons.py --check
+$PYTHON collection-01/workflow/07-burned_area_polygons.py --year 2012 --launch  # schema check
+$PYTHON collection-01/workflow/07-burned_area_polygons.py --verify --year 2012  # on the ASSET
+$PYTHON collection-01/workflow/07-burned_area_polygons.py --launch              # the merged FC
+$PYTHON collection-01/workflow/07-burned_area_polygons.py --set-props           # after it lands
+#   if the merged task dies:  --per-year --launch      (28 assets, same folder as the 2012 one)
 ```
 
 `scripts/run_07_scars.sh` is the launcher for 07b (two modes, resumable, biggest-year first, one
@@ -265,10 +274,24 @@ The whole-country histogram cannot be taken interactively — `reduceRegion(...)
 74085 × 123601 grid returns *Computation timed out*. `--stats` submits it as a batch task instead and
 `--stats-read` prints it beside `scars_<Y>_months.csv`; that pair is the standing local↔GEE check.
 
-⚠️ **That check has not actually run yet.** The one task submitted (`mobstats_2000`) **FAILED** with
-*"Unable to export features with null geometry"* — `ee.Feature(None, …)` cannot be written to a table
-**asset**. Fixed 2026-07-29 (the feature now carries a placeholder point); the 27 tasks still need
-submitting.
+⚠️ **That check has failed twice at export time and is now on its third submission.** Both failures
+were in how the *result* is written, never in the reduce, and both were silent until the task died:
+
+| # | Symptom | Cause | Fix |
+|---|---|---|---|
+| 1 | `mobstats_2000`: *"Unable to export features with null geometry"* | `ee.Feature(None, …)` cannot be written to a table **asset** (toDrive/CSV can, but then `--stats-read` cannot read it back) | a placeholder point, 2026-07-29 |
+| 2 | all 27: *"Unable to encode value 'histogram' of feature 0: invalid type `Dictionary<Long>`"* | a table asset's properties are **scalars** — there is no dictionary column, so a `frequencyHistogram` dict cannot be a property | flatten to `m01`…`m12` + `n_px`, 2026-07-30 |
+
+The flattened form also fixes a correctness trap the dictionary had: the counts now come from
+`img.eq(m)` summed with **`sum().unweighted()`**, because `reduceRegion` weights partial pixels at the
+region boundary by default and would leave this check permanently a few pixels off the local build —
+the same artefact §9 records for the scar check. `img.eq(m)` keeps the image's mask, so it counts
+burned pixels only and needs no dense `unmask(0)` pass over 9.16 B cells.
+
+Validated on the Chaco box before resubmitting: `m01…m12` come back as **integer** scalars and
+`n_px = 32,559` for calendar 2020 — exactly the count §9.1 records there. **27 tasks relaunched
+2026-07-30 21:23.** The local half of the comparison (`scars_<Y>_months.csv`) is missing from disk
+and has to be regenerated before `--stats-read` can say `MATCH`.
 
 ---
 
@@ -641,6 +664,137 @@ The encodings are copied verbatim; what differs is how the graph is fed.
 
 The reference's `accumulated_burned` filename typo is not copied (§12.3.2).
 
+---
+
+## 13. Sub-step 07e — the fire-object polygon layer, for early users
+
+```
+FINAL_PRODUCTS/burned_area_polygons_v1
+```
+
+Every mapped fire, all 28 fire-years, in **one** FeatureCollection. Script:
+`workflow/07-burned_area_polygons.py`. Nothing is computed and no geometry is touched — it is the
+step-06 object set filtered to `fire == 1 & area_ha >= 1` (the same positive selection 07a paints,
+§1), stripped to ten properties, merged and flattened. **1,263,079 polygons, 74.23 Mha.**
+
+It depends only on step 06, not on 07a–07d, so it can be rebuilt at any time and in any order.
+
+### 13.1 The name, and the folder
+
+**A plain `burned_area_polygons_v1`, NOT `C.product_name()`.** Every raster subproduct is
+`mapbiomas_argentina_fire_collection1_<subproduct>_v1` because the platform's `band_format` lookup
+and the publish copy require that exact form. This layer is not one of those: it is ours, it is for
+people, and it is a name a user has to read out and type (Iván, 2026-07-30 — the first launch used
+the long form and was cancelled and re-run for this).
+
+**`polygons`, not `vectors`.** `FINAL_PRODUCTS/annual_burned_vectors/` is already taken by the
+**calendar-year scars** (07b/07c) — plain 8-connectivity, calendar-clipped, one scar per connected
+burn, a genuinely different layer from these fire-year objects. Reusing the network's word would put
+two unrelated layers one line apart under near-identical names. "polygons" also tells a user what
+they are getting, where a "vector" could be points or lines.
+
+⚠️ **Being in `FINAL_PRODUCTS` overrides docs/08 open #8**, which parked the fire-year vector
+database *outside* that folder until IPAM rules whether Argentina may publish it. Iván's call
+(2026-07-30): early users get a link that survives a yes, and Brazil's own col-5
+`annual_burned_vectors` is the precedent that the door is open. `ToPublish/2-toAsset-Public` copies
+an **explicit** subproduct list rather than the folder, so it cannot be swept into a published
+collection by accident — but if the ruling is no, the asset moves and the shared link dies.
+
+### 13.2 The ten properties
+
+| property | source | meaning |
+|---|---|---|
+| `oid` | `oid` | stable object id `<fy>_<n>` — the key that joins user feedback back to the object database and its 20 metrics |
+| `fire_year` | **the asset name** | the non-calendar mapping year, 1 May *fy* → 30 Apr *fy*+1 |
+| `calendar_year` | `year_cal` | the **mode** of the object's per-pixel calendar years |
+| `area_ha` | `area_ha` | pixel-count area — *not* a geodesic polygon area |
+| `date_med` / `date_min` / `date_max` | idem | burn dates, whole days since 1970-01-01 |
+| `p_mean` | `p_mean` | posterior mean fire probability (probit BART, docs/06) |
+| `p_width` | `p_width` | width of its credible interval, `p_q95 − p_q05` |
+| `seed_mean` | `seed_mean` | mean SNIC seed burn probability over the object |
+
+`fire_year` is **not** a property of the source FCs — it exists only in the asset name, so the
+script sets it per source collection. `year_cal` → `calendar_year` is the one rename; everything
+else keeps the object database's vocabulary. The classification **threshold is deliberately not
+included** (Iván, 2026-07-30) — it is a per-size-band constant from
+`config/object_model_thresholds.csv`, not a property of a fire, and `p_mean` is what a user actually
+wants to filter on.
+
+### 13.3 Two things users must be told — written into the asset properties
+
+1. **`calendar_year` is the object's majority year, and the rasters do not agree with it.** It is
+   `mode_int(cyear)` over the object's pixels (`05-objects_metrics.R:239`), while every published
+   raster assigns year and month **per pixel** (§1). A fire straddling 31 December is split across
+   two years in the rasters and lands whole in one year here. Neither is wrong — but a user who
+   cross-tabulates the two without knowing this finds "missing" area.
+2. **Fire-year 1998 is here and in no published raster.** 3,845 polygons, `calendar_year` 1998 or
+   1999; the calendar series starts at 1999, so FY1998's Nov–Dec 1998 tail (~76 kha) exists in this
+   layer only (§2).
+
+And a third for us: **74.23 Mha here does not reconcile with the scars' 69.02 Mha** (§8.1), and it
+should not be made to. Different partition (fire-year vs calendar), different minimum unit, calendar
+1998 included here and dropped there, and intra-year reburn deduplicated there but not here.
+
+### 13.4 Was one merged export feasible? — measured, then tried
+
+The honest answer beforehand was *probably, but this is the one export in step 07 not to bet on*:
+
+- the 28 source shapefiles hold **5.12 GB** of raw `.shp` geometry for 1.689 M objects (~190
+  vertices/polygon), so the fire-only subset is **~4–4.5 GB**. GEE already stores exactly that in the
+  28 source assets, so reading is not the question — one `Export.table.toAsset` shuffling 1.26 M
+  complex multipolygons is, and its failure mode (`User memory limit exceeded`) arrives *after* hours;
+- precedent is against it: Brazil ships `mbfogo_col5_<year>_v1` **per year**, our scars are 27
+  per-year assets, `objects_raw` is 28. Nobody in the network ships one merged all-years vector;
+- building it locally and ingesting is worse — >2 GB breaks the Shapefile limit and no GCS bucket is
+  reachable (docs/06 §12).
+
+So: **`--year 2012` first** (22,224 polygons — landed in **3 m 09 s**, schema and count exact on the
+asset), then the merged task, with `--per-year` as a fallback that wastes nothing because the 2012
+asset is already the first of its 28. If the fallback is ever needed, `--check` prints the one-liner
+that loads the folder as a single FC.
+
+The FY2012 timing is also the only scaling evidence there is: 57× the features, so a several-hour
+task if it scales gracefully at all.
+
+### 13.5 Which ACCOUNT submits it, and why that matters
+
+**The GEE task queue is per user.** Submitted by the primary account it would have waited behind the
+27 histogram tasks (§7) before starting at all, so the merged export runs as the **second account**
+(`ivanbarbera@comahue-conicet.gob.ar`) on the **`mapbiomas-argentina`** compute project, whose queue
+was empty. Only the *compute* project changes — the destination asset is
+`projects/mapbiomas-argentina/assets/…/FINAL_PRODUCTS/burned_area_polygons_v1` either way, so the
+link shared with early users does not depend on who submitted it.
+
+```bash
+$PYTHON collection-01/workflow/07-burned_area_polygons.py --launch \
+    --project mapbiomas-argentina \
+    --credentials ~/.config/earthengine/credentials.comahue
+```
+
+**`--credentials` instead of swapping the resident file.** `ee.oauth.get_credentials_path()`
+hardcodes `~/.config/earthengine/credentials` with no env override, so CLAUDE.md's rule is to `cp`
+the account you want into place. Passing the file explicitly is strictly better: nothing is
+clobbered, both accounts are usable in one session, and a half-finished swap cannot leave the wrong
+token resident. `initialize()` builds a `google.oauth2.credentials.Credentials` from the file and
+hands it to `ee.Initialize`.
+
+Two consequences worth knowing:
+
+- **The per-account backups had to be recreated** on this machine — only the resident `credentials`
+  existed, so `credentials.gmail` was saved first, then
+  `earthengine authenticate --force` (note the **space**; `authenticate--force` is a parse error)
+  produced the comahue token, which was copied to `credentials.comahue` before the gmail file was
+  restored as resident.
+- **Monitoring has to ask twice.** `ee.data.listOperations()` is project-scoped *and* cross-user, so
+  the resident account can see the comahue task — but only when initialized against
+  `mapbiomas-argentina`. A watcher that polls only `C.GEE_PROJECT` reports the 07e task as
+  `MISSING`, which looks exactly like a task that was never submitted.
+- **Write permission could not be pre-flighted.** `getAssetAcl` on `FINAL_PRODUCTS` returns empty
+  `writers`/`owners` because access comes from the cloud project's IAM, not a per-asset ACL. Reads
+  were verified; a missing write permission surfaces as an immediate task failure
+  (*"Insufficient permissions to create asset"*, the same error the step-03 backlog entry records),
+  not hours in — so launching was the cheaper test.
+
 ### 12.7 Namespace the task descriptions — the compute project is shared
 
 `mapbiomas-fire-485203` is used by **many people across the network**, and
@@ -666,4 +820,31 @@ in this project the other tasks belong to other countries' teams.
 The first batch went out under the bare descriptions, so `LEGACY_DESCRIPTIONS` keeps them accepted by
 the in-flight test — otherwise a re-run before they landed would have double-submitted. **Delete that
 fallback once those nine tasks have finished**; it is the collision-prone form the prefix exists to
-retire.
+retire. ⚠️ **They have all finished (§12.8), so that deletion is now due.**
+
+### 12.8 All nine landed — re-verified on the exported assets
+
+The nine tasks all reported SUCCEEDED by 2026-07-30 13:16 (the last was
+`accumulated_burned_coverage`, the final col-3 re-launch). §12.5 checked the *computed graph* before
+submitting; this re-runs the same audit against the **landed assets**, which is the different
+question — it catches export-time grid, dtype and masking surprises:
+
+| Check | Result on the assets |
+|---|---|
+| Band counts | 27 / 27 / 27 / 27 / **53** / 53 / 53 / 53 / 27, `year_last_fire` = `classification_2000 … classification_2026` |
+| dtypes | uint8 / uint8 / **uint16** / uint8 / **int16** / int16 / uint8 / uint8 / **uint16**, pyramiding `MODE` on every band |
+| Grid | all 12 step-07 images: `74085 × 123601`, EPSG:4326, `C.SNIC_TRANSFORM` exact — no `scale=30` drift |
+| `lulc_asset` on the four coverage products | `…collection3_integration_v1_buffer` — the col-3 re-launch is what landed, not the cancelled col-2 one |
+| Chaco box, 2003 / 2020 / 2025 | `month == monthly == annual == mcov == acov` = 15,492 / 32,559 / 27,508 |
+| Decodes | `max │mc//100 − month│ = 0`, `max │mc mod 100 − L│ = 0`, `max │ac − L│ = 0`, `max │fc//100 − freq│ = 0`, `max │acc_cov − L(2025)│ = 0` |
+| Cross-product masks | `freq_1999_2025` = `accum` = `accum_cov` = `freq_cov` = `year_last_fire` = **241,281**; `freq_2025_2025` = `annual_2025` = **27,508** |
+| Scar chain vs month mask | `month_only = scar_only = 0` in 2003 / 2020 / 2025 |
+
+Every number is identical to the pre-launch graph audit. Two **metadata** leftovers are not (both
+cosmetic, both fixable with `ee.data.updateAsset` — no re-export):
+
+- the five **non-coverage** products carry `lulc_asset = …collection1_integration_v8_buffer`, a
+  pre-switch value on products that contain no LULC at all;
+- `monthly_burned` inherited the 1999 month image's own properties through `ee.Image.cat` — it
+  claims `year: 1999`, `fire_years: 1998,1999`, `name: …fire_mask_v1_1999`. The other eight escaped
+  this because they are built by arithmetic, which drops properties.

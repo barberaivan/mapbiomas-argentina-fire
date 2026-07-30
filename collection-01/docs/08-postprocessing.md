@@ -447,6 +447,13 @@ See **[`09-statistics.md`](09-statistics.md)**: the six area-statistics CSVs, th
    year are disjoint in month (§6.5), so `max` only fires on genuine reburn. Confirm nobody downstream
    expects otherwise.
 8. **Our fire-year vector database** — ask whether Argentina may publish it as `annual_burned_vectors`.
+   ⚠️ **Partly overtaken by events (2026-07-30):** the merged fire-object layer now EXISTS in
+   `FINAL_PRODUCTS`, as `burned_area_polygons_v1` (1,263,079 polygons, 74.23 Mha, docs/07 §13), by
+   Iván's deliberate call — early users needed a link that survives a favourable ruling. It is named
+   `polygons`, not `vectors`, so it cannot be confused with the calendar-year scars, and
+   `ToPublish/2-toAsset-Public` copies an explicit subproduct list rather than the folder, so it
+   cannot leak into a published collection by itself. **The question below is still open**, and if
+   the answer is no the asset moves and the shared link dies with it.
    Precedent confirmed: Brazil publishes col-5 annual burned vectors publicly, one asset per year, at
    `projects/mapbiomas-public/assets/brazil/fire/collection5/mapbiomas_fire_collection5_annual_burned_vectors/mbfogo_col5_<year>_v1`,
    each polygon carrying a unique numeric `id` (Coleção 5 legend-code PDF §1.1). So the door is open.
