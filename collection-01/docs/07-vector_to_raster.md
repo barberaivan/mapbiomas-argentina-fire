@@ -769,6 +769,28 @@ that loads the folder as a single FC.
 The FY2012 timing is also the only scaling evidence there is: 57× the features, so a several-hour
 task if it scales gracefully at all.
 
+⚠️ **Do NOT read `batchEecuUsageSeconds` as progress on this task.** It sits at ~0.13 EECU-seconds
+for hours and looks exactly like a task doing nothing. It isn't: **EECU bills compute, and a table
+export of already-stored features is I/O-bound**. The evidence, all from this project:
+
+| Task | Result | EECU-s |
+|---|---|---|
+| `arg07e_burned_area_polygons_2012` (22,224 features) | ✅ landed, schema + count exact | **0.0087** |
+| `polygons_data_*`, `manual_edits_2015_ivan` (stored-FC exports) | ✅ | 0.002–0.005 |
+| `BA_final_area_ha_por_clase_*` (exports that *compute*) | ✅ | 11,835–32,339 |
+| the 27 `mobstats_*` histograms (whole-country `reduceRegion`) | ✅/running | 576–7,251 and climbing |
+
+FY2012 settles it: an identical graph that produced a *verified* asset spent its entire successful
+3-minute run accruing 0.0087 EECU-seconds. And the counter is genuinely live — Google's
+[near-real-time reporting announcement](https://medium.com/google-earth/making-progress-reporting-earth-engine-compute-usage-in-near-real-time-2cdfc6fcc1db)
+made `batchEecuUsageSeconds` update continuously for RUNNING tasks, which the histogram column above
+demonstrates in the same minutes — so a static ~0 is a real measurement of near-zero *compute*, not a
+reporting lag.
+
+What that leaves as the only usable signals for a big table export: **`state`, and `updateTime`
+advancing**. There are no `stages`/work-units for `EXPORT_FEATURES` either. The failure mode to watch
+for is a state change to FAILED with `User memory limit exceeded` — it does not present as a stall.
+
 ### 13.5 Which ACCOUNT submits it, and why that matters
 
 **The GEE task queue is per user.** Submitted by the primary account it would have waited behind the
