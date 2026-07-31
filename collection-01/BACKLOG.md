@@ -75,16 +75,22 @@ landed and verified on the exported assets** — docs/08 §7 is the delivery che
 
 **Next actions, in order** (everything else in this section is history, kept for the reasoning):
 
-1. **Re-export `burned_area_polygons_v1`, then `--verify`, then `--set-props`, then share the path.**
-   The first export landed **complete but with 1,249 duplicate FY2021 rows** (docs/07 §13.6), so the
-   asset in `FINAL_PRODUCTS` today overstates FY2021 by 71 kha and must not be shared as it stands.
-   The re-run (`--launch --overwrite`, same name — the path is already spoken for) also switches the
-   dates to ISO `YYYY-MM-DD` and stamps `system:time_start` from `date_med` so the layer answers
-   `filterDate()` (§13.2.1). Then `--verify` (rows **and** distinct `oid` per fire-year vs the
-   sources — the only check that catches a duplicated shard; expect 1,263,079 / 1,263,076 /
-   74,234,381 ha), then `--set-props`, then share, pointing users at §13.3 (`calendar_year` is the
-   object's *modal* year and will not cross-tabulate exactly against the rasters) and §13.7 (`oid`
-   identifies an object, not a row — one FY2000 fire is 4 features).
+1. **`--verify` the re-export, then `--set-props`, then share the path.** Third submission running
+   since 2026-07-31 05:37 (`--launch --overwrite`, same name — the path is already spoken for). The
+   first two landed **complete but with 1,249 duplicate FY2021 rows**, and the second reproducing the
+   *same* 1,249 is what identified the cause: **`objects_raw_2021` is duplicated in storage, and no
+   metadata-level count reveals it** — `size()` says 53,263, iterating says 54,514 (docs/07 §13.6).
+   Fixed with a `distinct('oid')` guard in `fires()`, skipped for FY2000 (its 4 rows are a real
+   vertex split). This run also switches the dates to ISO `YYYY-MM-DD` and stamps `system:time_start`
+   from `date_med` so the layer answers `filterDate()` (§13.2.1).
+   Expect **1,263,079 rows / 1,263,076 distinct `oid` / 69,115,868 ha per object**. Then
+   `--set-props`, then share, pointing users at §13.3 (`calendar_year` is the object's *modal* year
+   and will not cross-tabulate exactly against the rasters) and §13.7 (`oid` identifies an object,
+   not a row).
+   - [ ] **Re-ingest `objects_raw_2021` (step 06) — the root cause.** The guard in `fires()` protects
+     this one layer; the stored duplication is still there for anything else that reads that asset.
+     Note the audit that found it: any count over a *plain filtered stored* collection is answered
+     from metadata, so insert a `.map()` before trusting a feature count.
 2. **Regenerate `scars_<Y>_months.csv`** (`07-calendar_scars.R` pass 2, from `scars-pixels-cache`),
    then `07-month_of_burn.py --all --stats-read` — the last unrun verification of the month product.
 3. **The network's visual validation gate** (docs/08 §2): `1-Toolkit_Collection1/Visualize-Collections-Fire`
@@ -138,17 +144,20 @@ What remains, in detail:
   `FINAL_PRODUCTS/burned_area_polygons_v1`: all 28 fire-years of `objects_raw` filtered to
   `fire == 1 & area_ha >= 1`, stripped to ten properties (`oid`, `fire_year`, `calendar_year`,
   `area_ha`, `date_med/min/max`, `p_mean`, `p_width`, `seed_mean`), merged and flattened —
-  **1,263,079 polygons, 74.23 Mha**. For sharing with early users. `workflow/07-burned_area_polygons.py`,
+  **1,263,079 rows for 1,263,076 objects, 69.12 Mha** (a row-sum says 74.23 Mha — one FY2000 object is
+  4 rows, docs/07 §13.7). For sharing with early users. `workflow/07-burned_area_polygons.py`,
   docs/07 §13. FY2012 was exported first as a schema check (22,224 features, 3 m 09 s, schema and count
   exact on the landed asset) and doubles as the first asset of the `--per-year` fallback, in case the
   single 1.26 M-feature task hits `User memory limit exceeded`.
   - [ ] **Re-export in place, and only then share** — see next action 1 above. The landed asset has
     1,249 duplicate FY2021 rows (docs/07 §13.6).
   - [ ] **Delete the `--per-year` / `--year` machinery and the `burned_area_polygons_by_fire_year`
-    folder** — *after* a `--verify` on the re-export comes back clean. It is kept for now precisely
-    because the failure it insures against (a 1.26 M-feature task landing wrong) has now happened
-    once, and its 28 small tasks are each individually verifiable. The FY2012 asset in that folder is
-    also the schema check for the ISO-date change, so it earns its keep one more cycle.
+    folder** (now holding the FY2012 and FY2021 test assets) once the re-export verifies clean.
+    ⚠️ **It was kept for the wrong reason.** The insurance was against a 1.26 M-feature task landing
+    wrong — but FY2021 exported *alone* lands with the same 1,249 duplicates, so export size was never
+    the variable and `--per-year` never protected against anything. It did earn its keep as a test
+    vehicle: `--year 2012` proved the ISO dates and `system:time_start` survive a table export, and
+    `--year 2021` proved the duplication is in the stored source.
   - [x] **`oid` is unique per object, not per row** (2026-07-31, docs/07 §13.7). `objects_raw_2000`
     stores `2000_57529` (1,706,171 ha) as **4 features** with disjoint geometry parts — a vertex split
     inherited from the step-06 upload, and the only one in all 28 sources (1,263,079 rows / 1,263,076

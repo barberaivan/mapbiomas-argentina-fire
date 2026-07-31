@@ -19,7 +19,7 @@ Run in this order; each sub-step needs the one before it.
 | **07b** | **Calendar-year scars**, 8-connected, labelled locally → `data/scars-upload-cache/scars_<Y>.zip`, then ingested by hand as `FINAL_PRODUCTS/annual_burned_vectors/scars_<Y>` | `workflow/07-calendar_scars.R` + `scripts/run_07_scars.sh` (local, two passes) | ✅ **done** — 27/27 built, gated and ingested, all verified against the local build |
 | **07c** | **Scar rasters** — `annual_burned_id`, `annual_burned_area_ha`, `annual_burned_scar_size_range`, painted from the ingested scars and masked to 07a | `workflow/07-scar_rasters.py` (GEE) | ✅ **done** — 3/3 exported and verified on the landed assets (§9.1) |
 | **07d** | **The nine derived subproducts** — `monthly_burned`, `annual_burned`, both `*_coverage`, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`), `year_last_fire` | `workflow/07-subproducts.py` (GEE) | ✅ **done** — 9/9 landed and verified on the exported assets (§12.8) |
-| **07e** | **The fire-object polygon layer** — every mapped fire, all 28 fire-years, merged into one FC with ten properties, for early users → `FINAL_PRODUCTS/burned_area_polygons_v1` | `workflow/07-burned_area_polygons.py` (GEE) | 🔄 **re-exporting** — the first task landed complete but with **1,249 duplicate FY2021 rows** (§13.6), and the re-run also switches the dates to ISO strings + stamps `system:time_start` (§13.2.1). `--overwrite`, same name, submitted as the **comahue** account on `mapbiomas-argentina` (§13.5) |
+| **07e** | **The fire-object polygon layer** — every mapped fire, all 28 fire-years, merged into one FC with ten properties, for early users → `FINAL_PRODUCTS/burned_area_polygons_v1` | `workflow/07-burned_area_polygons.py` (GEE) | 🔄 **third submission running** (2026-07-31 05:37). The first two landed complete but carried **1,249 duplicate FY2021 rows** — cause found: `objects_raw_2021` is duplicated *in storage* and no metadata count shows it (§13.6), fixed with a `distinct('oid')` guard. Also switches the dates to ISO strings + stamps `system:time_start` (§13.2.1). `--overwrite`, same name, as the **comahue** account on `mapbiomas-argentina` (§13.5). **Do not share until `--verify` passes** |
 
 Commands, in order:
 
@@ -690,7 +690,8 @@ FINAL_PRODUCTS/burned_area_polygons_v1
 Every mapped fire, all 28 fire-years, in **one** FeatureCollection. Script:
 `workflow/07-burned_area_polygons.py`. Nothing is computed and no geometry is touched — it is the
 step-06 object set filtered to `fire == 1 & area_ha >= 1` (the same positive selection 07a paints,
-§1), stripped to ten properties, merged and flattened. **1,263,079 polygons, 74.23 Mha.**
+§1), stripped to ten properties, merged and flattened. **1,263,079 rows for 1,263,076 objects,
+69.12 Mha** (a naive row-sum says 74.23 Mha — §13.7).
 
 It depends only on step 06, not on 07a–07d, so it can be rebuilt at any time and in any order.
 
@@ -769,9 +770,17 @@ property, so the timestamp is set *after* the select. Set it before and it vanis
    1999; the calendar series starts at 1999, so FY1998's Nov–Dec 1998 tail (~76 kha) exists in this
    layer only (§2).
 
-And a third for us: **74.23 Mha here does not reconcile with the scars' 69.02 Mha** (§8.1), and it
-should not be made to. Different partition (fire-year vs calendar), different minimum unit, calendar
-1998 included here and dropped there, and intra-year reburn deduplicated there but not here.
+And a third for us, **corrected 2026-07-31**: the layer's area is **69.12 Mha per object**, not the
+74.23 Mha quoted everywhere before. The old figure summed `area_ha` over **rows**, and one FY2000
+object is stored as 4 rows each carrying the whole object's area (§13.7) — so it counted
+`2000_57529` four times and overstated the total by **5,118,513 ha**. FY2000 alone drops from
+12,835,474 to 7,716,961 ha.
+
+That also reframes the comparison against the scars: **69.12 Mha here vs 69.02 Mha there** (§8.1) — a
+0.14 % difference, where the old numbers looked 5.2 Mha apart. The remaining differences are still
+real and still should not be forced to zero (fire-year vs calendar partition, calendar 1998 included
+here and dropped there, intra-year reburn deduplicated there but not here, different minimum unit) —
+but they are evidently small and partly offsetting, not the 7 % chasm the arithmetic error implied.
 
 ### 13.4 Was one merged export feasible? — measured, then tried
 
@@ -857,41 +866,53 @@ Two consequences worth knowing:
   (*"Insufficient permissions to create asset"*, the same error the step-03 backlog entry records),
   not hours in — so launching was the cheaper test.
 
-### 13.6 ⚠️ The first merged export landed with 1,249 duplicate rows
+### 13.6 ⚠️ `objects_raw_2021` is duplicated in storage, and no count reveals it
 
-It **succeeded** — and it was still wrong. Audited on the landed asset (2026-07-31):
+The first merged export **succeeded** and was still wrong: **1,264,328 rows** where 1,263,079 were
+expected, the surplus being **1,249 FY2021 features present twice**, byte-identical in geometry (three
+sampled pairs hash equal) and in all ten properties. FY2021's area came out **71,478 ha** high
+(3,595,965 vs 3,524,487).
 
-| | landed | sources |
+The re-export reproduced **the same 1,249 `oid`s**. That killed the first diagnosis — a random
+shard-retry in the writer — because the same accident does not happen twice on a different graph. It
+is deterministic, and it is in the stored source. Where it hides, measured on `objects_raw_2021`:
+
+| stage | `.size()` | MATERIALISED (`aggregate_count`, `aggregate_array`) |
 |---|---|---|
-| rows | **1,264,328** | 1,263,079 |
-| distinct `oid` | 1,263,076 | 1,263,076 |
-| `area_ha` | 74,305,859 | 74,234,381 |
+| raw | 66,393 | 66,393 |
+| `+ .filter(fire_filter())` | 53,263 | 53,263 |
+| `+ .map(one)` | 53,263 | **54,514** |
 
-The whole surplus is **FY2021: 1,249 features written twice** — byte-identical geometry (three sampled
-pairs hash equal) and identical in all ten properties, against a source `objects_raw_2021` of 53,263
-rows with no repeats. Every other fire-year matched exactly. Nothing was lost and no feature was
-wrong; FY2021's area was inflated by **71,478 ha** (3,595,965 vs 3,524,487) and the layer total by the
-same.
+`size()`, and any aggregation over a *plain filtered stored* collection, is answered from the asset's
+**metadata**. Put a `.map()` in the chain and the aggregation can no longer be pushed down to storage,
+so GEE has to **iterate** the table — and iterating returns ~1,251 features the metadata denies. An
+export iterates, so it writes them.
 
-Three things follow, and the third is the one that matters:
+Two lessons outlast the bug:
 
-1. A 1.26 M-feature table export can **silently duplicate a shard**. This is not the documented
-   failure mode (§13.4 expected `User memory limit exceeded`), and it is invisible from the task: the
-   state is COMPLETED and the EECU counter is the same ~0 it is for a healthy stored-FC export.
-2. **A COMPLETED task is not evidence that each feature was written once.** The schema was right, the
-   feature count was plausible, a spot-checked feature was perfect, and the layer was still 1,249 rows
-   too long. The original `--verify` — size, schema, one feature — passed it.
-3. **The gate is rows AND distinct `oid`, per fire-year, against the sources.** That is what `--verify`
-   now does (28 filtered aggregations either side, a few minutes). Expected exactly:
-   **1,263,079 rows / 1,263,076 distinct `oid` / 74,234,381 ha**, with the 3-row surplus being
-   FY2000's split object (§13.7) and belonging there. Run it after **every** export, before the path
-   is shared with anyone.
+1. **A count that agrees with itself is not a clean bill of health.** `size()`,
+   `aggregate_count('oid')` and `len(aggregate_array('oid'))` all reported 53,263 on the filtered
+   source. Three numbers, one pushed-down answer, all three wrong about what a read returns — and
+   that is what made the source look innocent for two whole exports. The honest check materialises:
+   put a `.map()` in front, or count on the **landed asset**.
+2. **A COMPLETED task is not evidence that each feature was written once**, and the ~0 EECU of a table
+   export (§13.4) says nothing either way. The original `--verify` — size, schema, one feature —
+   passed the bad asset without a murmur.
 
-The fix is `--launch --overwrite`, which replaces the table under the same name — the path is already
-shared, so a `_v2` was never an option. If duplicates come back, the remedies are
-`distinct(['oid', '.geo'])` (**not** a blind `distinct('oid')` — §13.7) or the `--per-year` fallback,
-whose 28 small tasks are each individually verifiable. **That is why `--per-year` still exists**: it
-is the measured insurance against a failure that has now actually happened once.
+**`--per-year` would not have helped**, which is worth recording because it was explicitly kept as
+insurance against this symptom: FY2021 exported *alone* lands at the same 54,512 rows. The export's
+size was never the variable. It goes, as originally planned.
+
+**The fix** is `distinct('oid')` inside `fires()` — one row per object, the invariant actually wanted,
+hashing one short string. It is applied per fire-year and **skipped for FY2000**, whose 4 rows for
+`2000_57529` are a legitimate vertex split that `distinct('oid')` would collapse to 1, losing ~1.3 Mha
+of that fire (§13.7). `distinct(['oid', '.geo'])` is the alternative that needs no exception —
+measured to work, FY2021 54,512 → 53,263 — but it hashes the serialised geometry of every feature,
+~4 GB of multipolygon, to buy a distinction that matters in one year. Verified before relaunching:
+`fires(2021)` **materialised** is now 53,263, in 34 s.
+
+The root cause belongs upstream — `objects_raw_2021` should be re-ingested by step 06 (BACKLOG). Until
+it is, the guard in `fires()` is what stands between that asset and every product derived from it.
 
 ### 13.7 `oid` is unique per OBJECT, not per row — one FY2000 fire is 4 features
 
@@ -904,11 +925,18 @@ layer carries all 4 rows faithfully, which is why the expected row count is 3 ab
 
 Two consequences, both in the asset's `oid_uniqueness` property:
 
-- **dissolve by `oid`** to recover the object, and deduplicate before any `aggregate_sum('area_ha')`
-  grouped by `oid` — otherwise that one fire contributes 1.7 Mha four times;
-- **never repair a duplicate with a blind `distinct('oid')`.** It would keep one part of that fire and
-  silently drop ~1.3 Mha of it. `distinct(['oid', '.geo'])` removes only rows identical *including*
-  geometry, which is exactly the FY2021 defect and exactly not this.
+- **a naive `aggregate_sum('area_ha')` over-counts the layer by 5,118,513 ha** — 3 extra copies of
+  1,706,171 ha. This is not a footnote: it is what made the layer look like 74.23 Mha instead of
+  69.12 Mha (§13.3), and it is why `--verify` now prints both totals. Dissolve by `oid`, or subtract
+  the split, before quoting an area.
+- **never repair a duplicate with a blind `distinct('oid')` on this fire-year.** It would keep one
+  part and silently drop ~1.3 Mha of that fire — measured: `distinct(['oid', '.geo'])` leaves the 4
+  rows intact, `distinct('oid')` returns 1. That is exactly why the guard in `fires()` skips FY2000
+  and why `--verify` carries `KNOWN_VERTEX_SPLITS = {2000: 3}` rather than tolerating any surplus.
+
+Why the split cannot simply be undone: the 4 parts exist *because* the whole geometry exceeds the
+exporter's vertex limit, so re-merging them would only be split again on write. Four rows is the
+storable form; the caveat is the price.
 
 ### 12.7 Namespace the task descriptions — the compute project is shared
 

@@ -396,7 +396,7 @@ $PYTHON collection-01/workflow/07-subproducts.py --launch --only frequency_burne
 
 **7e — the fire-object polygon layer, for early users.** Every mapped fire, all 28 fire-years, in one
 FeatureCollection with ten properties (`FINAL_PRODUCTS/burned_area_polygons_v1`, 1.26 M polygons /
-74.23 Mha). This is **ours**, not one of the network's six subproducts, and it is the layer to hand to
+69.12 Mha per object). This is **ours**, not one of the network's six subproducts, and it is the layer to hand to
 early users — read `docs/07-vector_to_raster.md` §13 before sharing it, because `calendar_year` here
 is the object's *modal* year and does not agree pixel-for-pixel with the rasters. Dates are ISO
 `YYYY-MM-DD` strings and `system:time_start` is stamped from `date_med`, so the layer answers

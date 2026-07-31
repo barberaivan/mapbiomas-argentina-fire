@@ -9,7 +9,9 @@ FeatureCollection, for sharing with early users.
 
 Nothing is computed here and no geometry is touched: the layer is the step-06 object set
 (`objects_raw_<fy>`, 28 FCs) filtered to the accepted fires and stripped to ten properties,
-merged and flattened across fire-years.  Measured: **1,263,079 polygons, 74.23 Mha**.
+merged and flattened across fire-years.  Measured: **1,263,079 rows for 1,263,076 objects,
+69.12 Mha** — a row-sum reports 74.23 Mha because one FY2000 object is stored as 4 rows, each
+carrying the whole object's `area_ha` (see below).
 
     fire == 1  AND  area_ha >= C.MIN_FIRE_HA
 
@@ -97,25 +99,51 @@ split (`Export.table.toAsset(maxVertices=…)` cuts a geometry that exceeds the 
 and it happened UPSTREAM, in the step-06 upload: the sources total **1,263,079 rows / 1,263,076
 distinct `oid`**, and FY2000 is the only year affected (all 28 audited).  Two consequences:
 
-* this layer carries all 4 rows, faithfully — merge/dissolve by `oid` to recover the object, and
-  never `aggregate_sum('area_ha')` per `oid` without deduplicating first, or that one fire counts
-  1.7 Mha four times;
-* **never "fix" a duplicate with a blind `distinct('oid')`** — it would keep one part of that fire
-  and silently drop 1.3 Mha of it.  `distinct(['oid', '.geo'])` is the safe form: it removes rows
-  that are identical INCLUDING geometry, and leaves genuine split parts alone.
+* this layer carries all 4 rows, faithfully — so a naive `aggregate_sum('area_ha')` over-counts the
+  layer by **5,118,513 ha** (3 extra copies of 1,706,171 ha).  That is the whole difference between
+  the 74.23 Mha this layer was first reported at and the 69.12 Mha it actually maps.  Dissolve by
+  `oid`, or subtract the split, before quoting an area — `--verify` prints both totals;
+* **never "fix" a duplicate with a blind `distinct('oid')` on THIS fire-year** — it would keep one
+  part and silently drop ~1.3 Mha of that fire (measured: `distinct('oid')` returns 1 row,
+  `distinct(['oid', '.geo'])` leaves all 4).  It is why the guard in `fires()` skips FY2000 and why
+  `--verify` expects exactly `KNOWN_VERTEX_SPLITS` extra rows instead of tolerating a surplus.
 
-⚠️ THE FIRST MERGED EXPORT LANDED WITH 1,249 DUPLICATE ROWS (2026-07-30)
-------------------------------------------------------------------------
-It completed, and every object was present — but the landed asset held **1,264,328 rows** against
-the sources' 1,263,079, and the surplus was **1,249 FY2021 features written twice**, byte-identical
-in geometry and in all ten properties (checked: three sampled pairs hash equal; `objects_raw_2021`
-has 53,263 rows, all distinct).  Nothing was lost and nothing was wrong per feature; the FY2021
-`area_ha` total was inflated by 71,478 ha (3,595,965 vs 3,524,487) and the layer total by the same.
+The split cannot simply be undone: the 4 parts exist BECAUSE the whole geometry exceeds the
+exporter's vertex limit, so re-merging them would only be split again on write.
 
-So a 1.26 M-feature table export can silently duplicate a shard, and **a task reaching COMPLETED is
-not evidence that it wrote each feature once**.  `--verify` therefore audits row count AND distinct
-`oid` per fire-year against the sources — the only check that catches this — and it must be run on
-every re-export.  If duplicates come back, `distinct(['oid', '.geo'])` or `--per-year` is the fix.
+⚠️ `objects_raw_2021` IS DUPLICATED IN STORAGE, AND NO COUNT REVEALS IT
+----------------------------------------------------------------------
+Both merged exports landed with **1,264,328 rows** against an expected 1,263,079 — the surplus being
+**1,249 FY2021 features present twice**, byte-identical in geometry and in all ten properties.  The
+second run reproduced *the same 1,249 `oid`s*, so this is deterministic, and the cause is in the
+stored source, not in the export.  Where it hides (all measured on `objects_raw_2021`):
+
+| stage | `.size()` | MATERIALISED (`aggregate_count` / `aggregate_array`) |
+|---|---|---|
+| raw | 66,393 | 66,393 |
+| `+ .filter(fire_filter())` | 53,263 | 53,263 |
+| `+ .map(one)` | 53,263 | **54,514** |
+
+`size()`, and any aggregation over a *plain filtered stored* collection, is answered from the
+asset's metadata and cannot see this.  Insert a `.map()` and the aggregation can no longer be pushed
+down to storage, so GEE has to ITERATE the table — and iterating yields ~1,251 features that the
+metadata count denies.  An export iterates, so it writes them.
+
+Two lessons worth more than the bug:
+
+1. **A count that agrees with itself is not a clean bill of health.** `size()`,
+   `aggregate_count('oid')` and `len(aggregate_array('oid'))` all said 53,263 on the filtered
+   source — three numbers, one pushed-down answer, and all three wrong about what a read returns.
+   The honest check materialises: put a `.map()` in front, or count on the LANDED asset.
+2. **A COMPLETED task is not evidence that each feature was written once**, and the ~0 EECU of a
+   table export tells you nothing either way.
+
+The fix is `distinct(['oid', '.geo'])` inside `fires()` — see there for why the `.geo` matters.  The
+root cause belongs upstream: `objects_raw_2021` should be re-ingested by step 06 (BACKLOG).
+
+`--per-year` would NOT have helped, which is worth recording because it was kept as insurance
+against exactly this symptom: the FY2021 single-year export reads the same stored table and
+duplicates identically.  The size of the export was never the variable.
 
 IS ONE MERGED EXPORT FEASIBLE?  Measured, not assumed
 -----------------------------------------------------
@@ -191,6 +219,11 @@ DST = ["oid", "fire_year", "calendar_year", "area_ha",
        "date_med", "date_min", "date_max", "p_mean", "p_width", "seed_mean"]
 
 FIRE_YEARS = list(range(1998, 2026))          # 28, the object database's full span
+
+# EXTRA rows a fire-year legitimately has beyond one-row-per-object, from a vertex split: FY2000's
+# `2000_57529` (1,706,171 ha) is stored as 4 features.  Audited across all 28 sources — the only one.
+# `--verify` expects exactly these, so a NEW split shows up as a failure rather than passing quietly.
+KNOWN_VERTEX_SPLITS = {2000: 3}
 
 DAY_MS = 86_400_000   # the object database's `date_*` are WHOLE DAYS since 1970-01-01
 
@@ -313,7 +346,23 @@ def fires(fire_year):
                 .select(SRC, DST)
                 .set("system:time_start", med.multiply(DAY_MS)))
 
-    return fc.map(one)
+    mapped = fc.map(one)
+
+    # A CORRECTNESS GUARD, not tidying: `objects_raw_2021` yields 1,251 duplicate features when
+    # ITERATED while every metadata-level count reports it clean, so both merged exports AND the
+    # FY2021 single-year export landed with them (docstring).
+    #
+    # `distinct('oid')` — one row per object — is the invariant we actually want, and it hashes one
+    # short string.  `distinct(['oid', '.geo'])` also works (measured: FY2021 54,512 -> 53,263) but
+    # hashes the SERIALISED GEOMETRY of every feature, ~4 GB of multipolygon across the layer, to
+    # buy a distinction that matters in exactly one fire-year.
+    #
+    # That one fire-year is why this is conditional.  FY2000 legitimately holds 4 rows for
+    # `2000_57529` (a vertex split, §13.7), all sharing the oid, and `distinct('oid')` would keep
+    # one part and silently drop ~1.3 Mha of that fire.  FY2000 is left alone — it materialises
+    # clean (54,069 rows for 54,066 objects, exactly the 3 split parts) so it needs no guard, and
+    # `--verify` is what would catch it if that ever changed.
+    return mapped if fire_year in KNOWN_VERTEX_SPLITS else mapped.distinct("oid")
 
 
 def merged(years=FIRE_YEARS):
@@ -351,8 +400,10 @@ def properties(years, n_features=None):
         "oid_uniqueness": (
             "oid identifies an OBJECT, not a row: one FY2000 object (2000_57529, 1,706,171 ha) is "
             "stored as 4 features with disjoint geometry parts, each repeating the whole object's "
-            "area_ha and dates — a vertex split inherited from the source upload. Dissolve by oid "
-            "to recover the object, and deduplicate before summing area_ha per oid"),
+            "area_ha and dates — a vertex split inherited from the source upload. Every other "
+            "object is exactly one row. Consequence: summing area_ha over ROWS over-counts the "
+            "layer by 5,118,513 ha (74,234,381 instead of 69,115,868) — dissolve by oid, or "
+            "subtract the split, before quoting an area"),
         "p_mean": "posterior mean fire probability (probit BART, docs/06)",
         "p_width": "width of the probability's credible interval (p_q95 - p_q05)",
         "seed_mean": "mean SNIC seed burn probability over the object",
@@ -408,13 +459,17 @@ def check(years):
 def verify(asset_id, years):
     """Audit a LANDED asset against the SOURCES — the gate a re-export has to pass.
 
-    The count that matters is **rows AND distinct `oid`, per fire-year**.  The first merged export
-    reached COMPLETED while writing 1,249 FY2021 features twice (docstring), and no other check
-    noticed: the schema was right, every object was present, and a spot-checked feature was perfect.
-    Only counting caught it.  Expected, measured on the sources 2026-07-30:
+    The count that matters is **rows AND distinct `oid`, per fire-year**.  Two exports reached
+    COMPLETED carrying 1,249 duplicate FY2021 features (docstring) and no other check noticed: the
+    schema was right, every object was present, and a spot-checked feature was perfect.  Expected:
 
-        1,263,079 rows / 1,263,076 distinct oid / 74,234,381 ha
+        1,263,079 rows / 1,263,076 distinct oid
+        69,115,868 ha per OBJECT  (74,234,381 ha if summed over rows — see below)
         the 3-row surplus is FY2000's vertex-split object, and belongs there.
+
+    The expectation for rows is built from the source's DISTINCT oid plus `KNOWN_VERTEX_SPLITS`,
+    NEVER from the source's row count: a stored table can hold duplicate features that every
+    metadata-level count denies, and the source's `size()` is precisely the number that hid this.
 
     Runs 28 filtered aggregations on the asset plus 28 on the sources — a few minutes, not free, and
     worth it before a path is shared with anyone.
@@ -441,31 +496,52 @@ def verify(asset_id, years):
               s.size(), s.aggregate_count_distinct("oid"), s.aggregate_sum("area_ha")]
     r = ee.List(q).getInfo()
 
+    # The expectation is built from the source's DISTINCT oid, never its row count: a stored table
+    # can hold duplicate features that every metadata-level count denies (docstring), and the
+    # source's `size()` is exactly the number that hid this for two whole exports.  Distinct `oid`
+    # is unaffected by such duplication — the copies share the oid — so it is the trustworthy side.
     print(f"\n{'fy':>5} {'rows':>9} {'oid':>9} {'area_ha':>12} | "
-          f"{'src rows':>9} {'src oid':>9} {'src ha':>12}  verdict")
+          f"{'src oid':>9} {'want rows':>9}  verdict")
     tot = [0, 0, 0.0, 0, 0, 0.0]
     bad = []
     for i, fy in enumerate(years):
         v = r[6 * i:6 * i + 6]
         tot = [t + x for t, x in zip(tot, v)]
-        ok = v[0] == v[3] and v[1] == v[4] and abs(v[2] - v[5]) < 1.0
+        want_rows = v[4] + KNOWN_VERTEX_SPLITS.get(fy, 0)
+        ok = v[0] == want_rows and v[1] == v[4] and abs(v[2] - v[5]) < 1.0
         if not ok:
-            bad.append((fy, v))
-        note = "ok" if ok else (f"⚠️ {v[0] - v[3]:+,} rows, {v[1] - v[4]:+,} oid, "
+            bad.append(fy)
+        note = "ok" if ok else (f"⚠️ {v[0] - want_rows:+,} rows, {v[1] - v[4]:+,} oid, "
                                 f"{v[2] - v[5]:+,.0f} ha")
         print(f"{fy:>5} {v[0]:>9,} {v[1]:>9,} {v[2]:>12,.0f} | "
-              f"{v[3]:>9,} {v[4]:>9,} {v[5]:>12,.0f}  {note}")
+              f"{v[4]:>9,} {want_rows:>9,}  {note}")
+    want_tot = tot[4] + sum(n for fy, n in KNOWN_VERTEX_SPLITS.items() if fy in years)
     print(f"{'TOT':>5} {tot[0]:>9,} {tot[1]:>9,} {tot[2]:>12,.0f} | "
-          f"{tot[3]:>9,} {tot[4]:>9,} {tot[5]:>12,.0f}")
-    # The only legitimate surplus is FY2000's vertex-split object: 4 rows, one oid (§13.7).
-    dup, want = tot[0] - tot[1], 3 if 2000 in years else 0
-    print(f"\n[verify] {dup:,} row(s) share an oid with another row — expected {want}"
-          f"{' (FY2000 vertex split)' if want else ''}"
-          f"{'  ✅' if dup == want else '  ⚠️ DUPLICATED ROWS'}")
+          f"{tot[4]:>9,} {want_tot:>9,}")
+
+    # `area_ha` is the OBJECT's area repeated on every split part, so a row-sum over-counts a split
+    # object once per extra part.  Both numbers are reported because the row-sum is what a user gets
+    # from a naive `aggregate_sum`, and the per-object figure is the one that means anything.
+    over = 0.0
+    for fy in KNOWN_VERTEX_SPLITS:
+        if fy in years:
+            g = fc.filter(ee.Filter.eq("fire_year", fy))
+            oids = g.aggregate_array("oid").getInfo()
+            for oid in {o for o in oids if oids.count(o) > 1}:
+                part = g.filter(ee.Filter.eq("oid", oid))
+                a, n = ee.List([part.first().get("area_ha"), part.size()]).getInfo()
+                over += a * (n - 1)
+                print(f"\n[verify] {oid}: {n} vertex-split parts x {a:,.0f} ha "
+                      f"-> a row-sum over-counts it by {a * (n - 1):,.0f} ha")
+    print(f"[verify] area summed over ROWS    {tot[2]:>14,.0f} ha")
+    print(f"[verify] area per OBJECT          {tot[2] - over:>14,.0f} ha  "
+          + ("<- the meaningful total" if not bad else
+             "<- NOT trustworthy: it only discounts known vertex splits, and this asset has "
+             "unexplained duplicate rows"))
     print("[verify] " + ("✅ every fire-year matches its source, rows and distinct oid"
                          if not bad else
-                         f"❌ {len(bad)} fire-year(s) disagree with the source: "
-                         f"{[b[0] for b in bad]} — do NOT share this asset"))
+                         f"❌ {len(bad)} fire-year(s) disagree with the source: {bad} "
+                         f"— do NOT share this asset"))
 
     stored = ee.data.getAsset(asset_id).get("properties") or {}
     print(f"[verify] {len(stored)} asset properties set" if stored

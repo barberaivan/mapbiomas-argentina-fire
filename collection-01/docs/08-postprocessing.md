@@ -423,7 +423,7 @@ verification numbers and the run commands are in docs/07; this table is the deli
 
 **Not part of the network delivery, but built and shared alongside it:** the fire-object polygon layer
 `FINAL_PRODUCTS/burned_area_polygons_v1` — every mapped fire, all 28 fire-years, ten properties,
-1,263,079 polygons / 74.23 Mha (docs/07 §13). It is **ours**, not one of the six subproducts, and
+1,263,079 rows for 1,263,076 objects / 69.12 Mha (docs/07 §13). It is **ours**, not one of the six subproducts, and
 whether it may ever be *published* is §8.8. ⚠️ **Being re-exported, and not shareable until it
 verifies**: the first task landed complete but wrote 1,249 FY2021 features twice (docs/07 §13.6).
 
@@ -481,7 +481,7 @@ several were closed by *measuring* rather than deciding, and the notes say which
    expects otherwise.
 8. **Our fire-year vector database** — ask whether Argentina may publish it as `annual_burned_vectors`.
    ⚠️ **Partly overtaken by events (2026-07-30):** the merged fire-object layer now EXISTS in
-   `FINAL_PRODUCTS`, as `burned_area_polygons_v1` (1,263,079 polygons, 74.23 Mha, docs/07 §13), by
+   `FINAL_PRODUCTS`, as `burned_area_polygons_v1` (1,263,079 rows for 1,263,076 objects, 69.12 Mha, docs/07 §13), by
    Iván's deliberate call — early users needed a link that survives a favourable ruling. It is named
    `polygons`, not `vectors`, so it cannot be confused with the calendar-year scars, and
    `ToPublish/2-toAsset-Public` copies an explicit subproduct list rather than the folder, so it
