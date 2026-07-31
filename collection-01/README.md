@@ -404,21 +404,21 @@ is the object's *modal* year and does not agree pixel-for-pixel with the rasters
 
 ```bash
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --check                # counts + schema
-$PYTHON collection-01/workflow/07-burned_area_polygons.py --year 2012 --launch   # schema check
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --launch               # the merged FC
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --launch --overwrite   # re-export in place
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --verify              # THE gate — §13.6
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --set-props            # after it lands
-# 1.26 M features in one table task: --per-year is the fallback if it dies. And because the GEE task
-# queue is PER USER, submit it as the second account when the first one has a full queue:
+# One table task at 1.26 M features works — three have completed, 2.6-3.7 h each. Because the GEE
+# task queue is PER USER, submit it as the second account when the first one has a full queue:
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --launch \
     --project mapbiomas-argentina --credentials ~/.config/earthengine/credentials.comahue
 ```
 
-⚠️ **Always `--verify` before sharing the path.** The first merged export reached COMPLETED having
-written 1,249 FY2021 features **twice** (docs/07 §13.6) — schema right, every object present, area
-inflated by 71 kha. `--verify` audits rows *and* distinct `oid` per fire-year against the sources,
-which is the only check that catches it.
+⚠️ **Always `--verify` before sharing the path.** Two merged exports reached COMPLETED carrying 1,249
+FY2021 features **twice** — schema right, every object present, area inflated by 71 kha. The cause was
+`objects_raw_2021` being duplicated *in storage*, which **no metadata-level count reveals**: `size()`
+says 53,263, iterating the table says 54,514 (docs/07 §13.6). `--verify` audits rows *and* distinct
+`oid` per fire-year, which is the only check that catches it.
 
 ### Scripts (R utilities) — step-06 label prep
 

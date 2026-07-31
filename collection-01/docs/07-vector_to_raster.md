@@ -19,7 +19,7 @@ Run in this order; each sub-step needs the one before it.
 | **07b** | **Calendar-year scars**, 8-connected, labelled locally → `data/scars-upload-cache/scars_<Y>.zip`, then ingested by hand as `FINAL_PRODUCTS/annual_burned_vectors/scars_<Y>` | `workflow/07-calendar_scars.R` + `scripts/run_07_scars.sh` (local, two passes) | ✅ **done** — 27/27 built, gated and ingested, all verified against the local build |
 | **07c** | **Scar rasters** — `annual_burned_id`, `annual_burned_area_ha`, `annual_burned_scar_size_range`, painted from the ingested scars and masked to 07a | `workflow/07-scar_rasters.py` (GEE) | ✅ **done** — 3/3 exported and verified on the landed assets (§9.1) |
 | **07d** | **The nine derived subproducts** — `monthly_burned`, `annual_burned`, both `*_coverage`, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`), `year_last_fire` | `workflow/07-subproducts.py` (GEE) | ✅ **done** — 9/9 landed and verified on the exported assets (§12.8) |
-| **07e** | **The fire-object polygon layer** — every mapped fire, all 28 fire-years, merged into one FC with ten properties, for early users → `FINAL_PRODUCTS/burned_area_polygons_v1` | `workflow/07-burned_area_polygons.py` (GEE) | 🔄 **third submission running** (2026-07-31 05:37). The first two landed complete but carried **1,249 duplicate FY2021 rows** — cause found: `objects_raw_2021` is duplicated *in storage* and no metadata count shows it (§13.6), fixed with a `distinct('oid')` guard. Also switches the dates to ISO strings + stamps `system:time_start` (§13.2.1). `--overwrite`, same name, as the **comahue** account on `mapbiomas-argentina` (§13.5). **Do not share until `--verify` passes** |
+| **07e** | **The fire-object polygon layer** — every mapped fire, all 28 fire-years, merged into one FC with ten properties, for early users → `FINAL_PRODUCTS/burned_area_polygons_v1` | `workflow/07-burned_area_polygons.py` (GEE) | ✅ **done** (2026-07-31, third submission, 3.27 h) — **1,263,079 rows / 1,263,076 objects / 69.12 Mha**, `--verify` clean on all 28 fire-years, 19 asset properties set, `filterDate()` working. Took three goes: the first two carried 1,249 duplicate FY2021 rows because `objects_raw_2021` is duplicated *in storage* where no metadata count reveals it (§13.6) |
 
 Commands, in order:
 
@@ -44,13 +44,10 @@ $PYTHON collection-01/workflow/07-subproducts.py --launch     # 9 tasks
 
 # 07e  — the polygon layer for early users (§13). Independent of 07b-07d; needs only step 06.
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --check
-$PYTHON collection-01/workflow/07-burned_area_polygons.py --year 2012 --launch  # schema check
-$PYTHON collection-01/workflow/07-burned_area_polygons.py --verify --year 2012  # on the ASSET
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --launch              # the merged FC
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --launch --overwrite  # re-export in place
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --verify              # THE gate (§13.6)
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --set-props           # after it lands
-#   if the merged task dies:  --per-year --launch      (28 assets, same folder as the 2012 one)
 ```
 
 `scripts/run_07_scars.sh` is the launcher for 07b (two modes, resumable, biggest-year first, one

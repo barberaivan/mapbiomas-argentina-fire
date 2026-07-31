@@ -157,23 +157,18 @@ against it — Brazil ships `mbfogo_col5_<year>_v1` per year, our scars are 27 p
 and ingesting instead is worse: >2 GB breaks the Shapefile limit and no GCS bucket is reachable
 (docs/06 §12).
 
-So it is worth ONE task to find out, with a fallback that wastes nothing:
-
-    --year 2012     one fire-year (22 k polygons, minutes) -> validates the schema on a LANDED
-                    asset, and is simultaneously the first asset of the fallback
-    --launch        the single merged layer.  If it lands, that is the shareable FC.
-    --per-year      the fallback: 28 assets in FINAL_PRODUCTS/burned_area_polygons_by_fire_year/,
-                    which users load as one FC in a line (printed by --check)
+SETTLED: it works.  Three tasks have now completed at 1.26 M features, in 2.6-3.7 h each, and the
+predicted `User memory limit exceeded` never appeared.  The per-fire-year fallback that guarded this
+(`--per-year`, `--year`, `burned_area_polygons_by_fire_year/`) is gone — it protected nothing.  What
+actually went wrong twice had nothing to do with export size: FY2021 exported ALONE duplicated
+identically, because the duplication is in the stored source (above).
 
 Usage (from the repo ROOT)
 --------------------------
   $PYTHON collection-01/workflow/07-burned_area_polygons.py --check
-  $PYTHON collection-01/workflow/07-burned_area_polygons.py --year 2012 --launch   # validate
-  $PYTHON collection-01/workflow/07-burned_area_polygons.py --verify --year 2012   # on the asset
-  $PYTHON collection-01/workflow/07-burned_area_polygons.py --launch               # the merged one
+  $PYTHON collection-01/workflow/07-burned_area_polygons.py --launch               # the merged layer
   $PYTHON collection-01/workflow/07-burned_area_polygons.py --launch --overwrite   # replace it
   $PYTHON collection-01/workflow/07-burned_area_polygons.py --verify               # THE gate
-  $PYTHON collection-01/workflow/07-burned_area_polygons.py --per-year --launch    # the fallback
   $PYTHON collection-01/workflow/07-burned_area_polygons.py --set-props            # after landing
 
 `--overwrite` replaces the asset IN PLACE, keeping the name — which is the point: the path is
@@ -205,10 +200,6 @@ import utils.constants as C  # noqa: E402
 
 TASK_PREFIX = "arg07e_"
 SUBPRODUCT = "burned_area_polygons"
-
-# The fallback's folder.  Distinct from the merged asset's name so the two can coexist while we
-# find out whether the single task survives.
-BY_YEAR_DIR = f"{C.FINAL_PRODUCTS}/{SUBPRODUCT}_by_fire_year"
 
 # The ten properties, in order.  `fire_year` is set here (it is only implicit in the asset name);
 # `year_cal` -> `calendar_year` is the one rename.  Everything else is carried through verbatim so
@@ -274,14 +265,6 @@ def asset_exists(asset_id):
         return False
 
 
-def ensure_container(asset_id, kind):
-    if asset_exists(asset_id):
-        return False
-    ee.data.createAsset({"type": kind}, asset_id)
-    print(f"[created] {kind:16s} {asset_id}")
-    return True
-
-
 def task_in_flight(description):
     for op in ee.data.listOperations():
         meta = op.get("metadata", {})
@@ -301,10 +284,6 @@ def merged_asset():
     read and type (Iván, 2026-07-30).
     """
     return f"{C.FINAL_PRODUCTS}/{SUBPRODUCT}_v1"
-
-
-def year_asset(fire_year):
-    return f"{BY_YEAR_DIR}/{SUBPRODUCT}_{fire_year}"
 
 
 # ---------------------------------------------------------------------------
@@ -448,12 +427,6 @@ def check(years):
     for k_, v in sorted(fires(years[-1]).first().toDictionary().getInfo().items()):
         print(f"   {k_:16s} {v}")
 
-    print(f"\nIf the merged export fails, the fallback loads as one FC:\n"
-          f"  var fc = ee.FeatureCollection(\n"
-          f"      ee.List.sequence({years[0]}, {years[-1]}).map(function (y) {{\n"
-          f"        return ee.FeatureCollection(ee.String('{BY_YEAR_DIR}/{SUBPRODUCT}_')\n"
-          f"                                   .cat(ee.Number(y).format('%d')));\n"
-          f"      }})).flatten();")
 
 
 def verify(asset_id, years):
@@ -586,18 +559,13 @@ def main():
                     help="per-fire-year counts + the property schema, without exporting")
     ap.add_argument("--verify", action="store_true",
                     help="audit the LANDED asset against the sources — rows AND distinct oid per "
-                         "fire-year, the only check that catches a duplicated shard. Run it after "
-                         "every export (with --year, that fire-year's asset)")
+                         "fire-year, the only check that catches duplicated rows. Run it after "
+                         "every export, before sharing the path")
     ap.add_argument("--overwrite", action="store_true",
                     help="replace the destination asset in place, keeping its name — for "
                          "re-exporting a layer whose path is already shared")
-    ap.add_argument("--year", type=int,
-                    help="export ONE fire-year into the by_fire_year folder — the schema "
-                         "validation run, and simultaneously the first asset of the fallback")
-    ap.add_argument("--per-year", action="store_true",
-                    help="the fallback: one asset per fire-year instead of the merged layer")
     ap.add_argument("--set-props", action="store_true",
-                    help="write the asset property block onto the landed asset(s)")
+                    help="write the asset property block onto the landed asset")
     ap.add_argument("--project", default=C.GEE_PROJECT,
                     help="compute project (default %(default)s). Use `mapbiomas-argentina` with "
                          "the comahue credentials — the destination asset path does not change")
@@ -611,49 +579,27 @@ def main():
     initialize(args.project, args.credentials)
 
     years = FIRE_YEARS
-    if args.year is not None:
-        if args.year not in FIRE_YEARS:
-            ap.error(f"fire year {args.year} outside {FIRE_YEARS[0]}-{FIRE_YEARS[-1]}")
 
     if args.check:
         check(years)
         return
 
     if args.verify:
-        if args.year is not None:
-            verify(year_asset(args.year), [args.year])
-        else:
-            verify(merged_asset(), years)
+        verify(merged_asset(), years)
         return
 
     if args.set_props:
-        targets = ([year_asset(args.year)] if args.year is not None
-                   else [year_asset(fy) for fy in years] if args.per_year
-                   else [merged_asset()])
-        for asset_id in targets:
-            if not asset_exists(asset_id):
-                print(f"[skip] {asset_id} does not exist")
-                continue
-            yrs = [args.year] if args.year is not None else years
-            n = ee.FeatureCollection(asset_id).size().getInfo()
-            ee.data.updateAsset(asset_id, {"properties": properties(yrs, n)}, ["properties"])
-            print(f"[props] {asset_id}  ({n:,} features)")
+        asset_id = merged_asset()
+        if not asset_exists(asset_id):
+            print(f"[skip] {asset_id} does not exist")
+            return
+        n = ee.FeatureCollection(asset_id).size().getInfo()
+        ee.data.updateAsset(asset_id, {"properties": properties(years, n)}, ["properties"])
+        print(f"[props] {asset_id}  ({n:,} features)")
         return
 
-    if args.year is not None:
-        if args.launch:
-            ensure_container(BY_YEAR_DIR, "FOLDER")
-        export_one(fires(args.year), year_asset(args.year),
-                   f"{TASK_PREFIX}{SUBPRODUCT}_{args.year}", args.launch, args.overwrite)
-    elif args.per_year:
-        if args.launch:
-            ensure_container(BY_YEAR_DIR, "FOLDER")
-        for fy in years:
-            export_one(fires(fy), year_asset(fy),
-                       f"{TASK_PREFIX}{SUBPRODUCT}_{fy}", args.launch, args.overwrite)
-    else:
-        export_one(merged(years), merged_asset(), f"{TASK_PREFIX}{SUBPRODUCT}",
-                   args.launch, args.overwrite)
+    export_one(merged(years), merged_asset(), f"{TASK_PREFIX}{SUBPRODUCT}",
+               args.launch, args.overwrite)
 
     if not args.launch:
         print("\nDry run only. Re-run with --launch to submit.")
