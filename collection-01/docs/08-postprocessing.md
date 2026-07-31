@@ -424,7 +424,8 @@ verification numbers and the run commands are in docs/07; this table is the deli
 **Not part of the network delivery, but built and shared alongside it:** the fire-object polygon layer
 `FINAL_PRODUCTS/burned_area_polygons_v1` — every mapped fire, all 28 fire-years, ten properties,
 1,263,079 polygons / 74.23 Mha (docs/07 §13). It is **ours**, not one of the six subproducts, and
-whether it may ever be *published* is §8.8.
+whether it may ever be *published* is §8.8. ⚠️ **Being re-exported, and not shareable until it
+verifies**: the first task landed complete but wrote 1,249 FY2021 features twice (docs/07 §13.6).
 
 **What is still owed on the asset side** — neither blocks the delivery, both belong to validation:
 

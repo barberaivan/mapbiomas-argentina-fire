@@ -75,10 +75,16 @@ landed and verified on the exported assets** — docs/08 §7 is the delivery che
 
 **Next actions, in order** (everything else in this section is history, kept for the reasoning):
 
-1. **`--set-props` on `burned_area_polygons_v1`** once its export lands, then share the path with
-   early users — pointing them at docs/07 §13.3, because `calendar_year` is the object's *modal* year
-   and will not cross-tabulate exactly against the rasters. If the single task died, run `--per-year`
-   (FY2012 is already there) and share the folder one-liner that `--check` prints.
+1. **Re-export `burned_area_polygons_v1`, then `--verify`, then `--set-props`, then share the path.**
+   The first export landed **complete but with 1,249 duplicate FY2021 rows** (docs/07 §13.6), so the
+   asset in `FINAL_PRODUCTS` today overstates FY2021 by 71 kha and must not be shared as it stands.
+   The re-run (`--launch --overwrite`, same name — the path is already spoken for) also switches the
+   dates to ISO `YYYY-MM-DD` and stamps `system:time_start` from `date_med` so the layer answers
+   `filterDate()` (§13.2.1). Then `--verify` (rows **and** distinct `oid` per fire-year vs the
+   sources — the only check that catches a duplicated shard; expect 1,263,079 / 1,263,076 /
+   74,234,381 ha), then `--set-props`, then share, pointing users at §13.3 (`calendar_year` is the
+   object's *modal* year and will not cross-tabulate exactly against the rasters) and §13.7 (`oid`
+   identifies an object, not a row — one FY2000 fire is 4 features).
 2. **Regenerate `scars_<Y>_months.csv`** (`07-calendar_scars.R` pass 2, from `scars-pixels-cache`),
    then `07-month_of_burn.py --all --stats-read` — the last unrun verification of the month product.
 3. **The network's visual validation gate** (docs/08 §2): `1-Toolkit_Collection1/Visualize-Collections-Fire`
@@ -136,7 +142,18 @@ What remains, in detail:
   docs/07 §13. FY2012 was exported first as a schema check (22,224 features, 3 m 09 s, schema and count
   exact on the landed asset) and doubles as the first asset of the `--per-year` fallback, in case the
   single 1.26 M-feature task hits `User memory limit exceeded`.
-  - [ ] `--set-props` once it lands, then share the path.
+  - [ ] **Re-export in place, and only then share** — see next action 1 above. The landed asset has
+    1,249 duplicate FY2021 rows (docs/07 §13.6).
+  - [ ] **Delete the `--per-year` / `--year` machinery and the `burned_area_polygons_by_fire_year`
+    folder** — *after* a `--verify` on the re-export comes back clean. It is kept for now precisely
+    because the failure it insures against (a 1.26 M-feature task landing wrong) has now happened
+    once, and its 28 small tasks are each individually verifiable. The FY2012 asset in that folder is
+    also the schema check for the ISO-date change, so it earns its keep one more cycle.
+  - [x] **`oid` is unique per object, not per row** (2026-07-31, docs/07 §13.7). `objects_raw_2000`
+    stores `2000_57529` (1,706,171 ha) as **4 features** with disjoint geometry parts — a vertex split
+    inherited from the step-06 upload, and the only one in all 28 sources (1,263,079 rows / 1,263,076
+    distinct `oid`). Documented in the asset's `oid_uniqueness` property. **Never repair a duplicate
+    with a blind `distinct('oid')`** — it would drop ~1.3 Mha of that one fire.
   - ⚠️ This **overrides docs/08 open #8**, which parked the fire-year vectors outside `FINAL_PRODUCTS`
     until IPAM rules on publishing them. If the ruling is no, the asset moves and the shared link dies.
 - [x] **Sub-step 07d built and launched** (2026-07-29) — `workflow/07-subproducts.py`, 9 export tasks.

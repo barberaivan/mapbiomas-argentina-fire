@@ -398,18 +398,27 @@ $PYTHON collection-01/workflow/07-subproducts.py --launch --only frequency_burne
 FeatureCollection with ten properties (`FINAL_PRODUCTS/burned_area_polygons_v1`, 1.26 M polygons /
 74.23 Mha). This is **ours**, not one of the network's six subproducts, and it is the layer to hand to
 early users — read `docs/07-vector_to_raster.md` §13 before sharing it, because `calendar_year` here
-is the object's *modal* year and does not agree pixel-for-pixel with the rasters.
+is the object's *modal* year and does not agree pixel-for-pixel with the rasters. Dates are ISO
+`YYYY-MM-DD` strings and `system:time_start` is stamped from `date_med`, so the layer answers
+`filterDate()` (§13.2.1).
 
 ```bash
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --check                # counts + schema
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --year 2012 --launch   # schema check
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --launch               # the merged FC
+$PYTHON collection-01/workflow/07-burned_area_polygons.py --launch --overwrite   # re-export in place
+$PYTHON collection-01/workflow/07-burned_area_polygons.py --verify              # THE gate — §13.6
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --set-props            # after it lands
 # 1.26 M features in one table task: --per-year is the fallback if it dies. And because the GEE task
 # queue is PER USER, submit it as the second account when the first one has a full queue:
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --launch \
     --project mapbiomas-argentina --credentials ~/.config/earthengine/credentials.comahue
 ```
+
+⚠️ **Always `--verify` before sharing the path.** The first merged export reached COMPLETED having
+written 1,249 FY2021 features **twice** (docs/07 §13.6) — schema right, every object present, area
+inflated by 71 kha. `--verify` audits rows *and* distinct `oid` per fire-year against the sources,
+which is the only check that catches it.
 
 ### Scripts (R utilities) — step-06 label prep
 

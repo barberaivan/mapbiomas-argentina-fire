@@ -19,7 +19,7 @@ Run in this order; each sub-step needs the one before it.
 | **07b** | **Calendar-year scars**, 8-connected, labelled locally → `data/scars-upload-cache/scars_<Y>.zip`, then ingested by hand as `FINAL_PRODUCTS/annual_burned_vectors/scars_<Y>` | `workflow/07-calendar_scars.R` + `scripts/run_07_scars.sh` (local, two passes) | ✅ **done** — 27/27 built, gated and ingested, all verified against the local build |
 | **07c** | **Scar rasters** — `annual_burned_id`, `annual_burned_area_ha`, `annual_burned_scar_size_range`, painted from the ingested scars and masked to 07a | `workflow/07-scar_rasters.py` (GEE) | ✅ **done** — 3/3 exported and verified on the landed assets (§9.1) |
 | **07d** | **The nine derived subproducts** — `monthly_burned`, `annual_burned`, both `*_coverage`, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`), `year_last_fire` | `workflow/07-subproducts.py` (GEE) | ✅ **done** — 9/9 landed and verified on the exported assets (§12.8) |
-| **07e** | **The fire-object polygon layer** — every mapped fire, all 28 fire-years, merged into one FC with ten properties, for early users → `FINAL_PRODUCTS/burned_area_polygons_v1` | `workflow/07-burned_area_polygons.py` (GEE) | 🔄 **exporting** (1 task, 2026-07-30, submitted as the **comahue** account on `mapbiomas-argentina` — §13.5); FY2012 already landed as the schema check |
+| **07e** | **The fire-object polygon layer** — every mapped fire, all 28 fire-years, merged into one FC with ten properties, for early users → `FINAL_PRODUCTS/burned_area_polygons_v1` | `workflow/07-burned_area_polygons.py` (GEE) | 🔄 **re-exporting** — the first task landed complete but with **1,249 duplicate FY2021 rows** (§13.6), and the re-run also switches the dates to ISO strings + stamps `system:time_start` (§13.2.1). `--overwrite`, same name, submitted as the **comahue** account on `mapbiomas-argentina` (§13.5) |
 
 Commands, in order:
 
@@ -47,6 +47,8 @@ $PYTHON collection-01/workflow/07-burned_area_polygons.py --check
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --year 2012 --launch  # schema check
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --verify --year 2012  # on the ASSET
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --launch              # the merged FC
+$PYTHON collection-01/workflow/07-burned_area_polygons.py --launch --overwrite  # re-export in place
+$PYTHON collection-01/workflow/07-burned_area_polygons.py --verify              # THE gate (§13.6)
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --set-props           # after it lands
 #   if the merged task dies:  --per-year --launch      (28 assets, same folder as the 2012 one)
 ```
@@ -721,7 +723,7 @@ collection by accident — but if the ruling is no, the asset moves and the shar
 | `fire_year` | **the asset name** | the non-calendar mapping year, 1 May *fy* → 30 Apr *fy*+1 |
 | `calendar_year` | `year_cal` | the **mode** of the object's per-pixel calendar years |
 | `area_ha` | `area_ha` | pixel-count area — *not* a geodesic polygon area |
-| `date_med` / `date_min` / `date_max` | idem | burn dates, whole days since 1970-01-01 |
+| `date_med` / `date_min` / `date_max` | idem | burn dates, ISO 8601 `YYYY-MM-DD` (§13.2.1) |
 | `p_mean` | `p_mean` | posterior mean fire probability (probit BART, docs/06) |
 | `p_width` | `p_width` | width of its credible interval, `p_q95 − p_q05` |
 | `seed_mean` | `seed_mean` | mean SNIC seed burn probability over the object |
@@ -732,6 +734,29 @@ else keeps the object database's vocabulary. The classification **threshold is d
 included** (Iván, 2026-07-30) — it is a per-size-band constant from
 `config/object_model_thresholds.csv`, not a property of a fire, and `p_mean` is what a user actually
 wants to filter on.
+
+#### 13.2.1 Dates readable, and the layer `filterDate`-able
+
+The object database stores the three dates as **whole days since 1970-01-01** — an integer `19018`
+that nobody can read in the Inspector or a QGIS attribute table. In this layer they are
+**`YYYY-MM-DD` strings** instead (Iván, 2026-07-30). Nothing is lost: the integers stay in the object
+database, `oid` joins back to them, and ISO-8601 still range-filters correctly because it sorts
+lexicographically — `ee.Filter.gte('date_med', '2021-01-01')` does what it looks like.
+
+Each feature also carries **`system:time_start`, stamped from `date_med`**, so the collection answers
+`filterDate()`. Two decisions inside that:
+
+- **`date_med`, not `date_min`** — one fire, one instant, matching what `calendar_year` already does
+  (the modal year, §13.3).
+- **`system:time_end` deliberately NOT set.** With both timestamps the date filter passes on interval
+  *intersection*, so a fire burning 28 Dec → 4 Jan would come back from a December query *and* a
+  January one, and summing `area_ha` per month would double-count it. One timestamp keeps one fire in
+  one bucket, so `filterDate` results stay summable. The true span is still right there and readable:
+  `date_min`…`date_max`.
+
+Implementation trap: **`Feature.select()` drops `system:time_*`** along with every other unlisted
+property, so the timestamp is set *after* the select. Set it before and it vanishes — and a
+`filterDate` that silently matches nothing is indistinguishable from a window with no fires in it.
 
 ### 13.3 Two things users must be told — written into the asset properties
 
@@ -823,12 +848,67 @@ Two consequences worth knowing:
 - **Monitoring has to ask twice.** `ee.data.listOperations()` is project-scoped *and* cross-user, so
   the resident account can see the comahue task — but only when initialized against
   `mapbiomas-argentina`. A watcher that polls only `C.GEE_PROJECT` reports the 07e task as
-  `MISSING`, which looks exactly like a task that was never submitted.
+  `MISSING`, which looks exactly like a task that was never submitted. The same asymmetry applies to
+  the **re-export**: `--overwrite` on an asset the comahue account created is submitted by that
+  account too, so the whole cycle stays on `mapbiomas-argentina`.
 - **Write permission could not be pre-flighted.** `getAssetAcl` on `FINAL_PRODUCTS` returns empty
   `writers`/`owners` because access comes from the cloud project's IAM, not a per-asset ACL. Reads
   were verified; a missing write permission surfaces as an immediate task failure
   (*"Insufficient permissions to create asset"*, the same error the step-03 backlog entry records),
   not hours in — so launching was the cheaper test.
+
+### 13.6 ⚠️ The first merged export landed with 1,249 duplicate rows
+
+It **succeeded** — and it was still wrong. Audited on the landed asset (2026-07-31):
+
+| | landed | sources |
+|---|---|---|
+| rows | **1,264,328** | 1,263,079 |
+| distinct `oid` | 1,263,076 | 1,263,076 |
+| `area_ha` | 74,305,859 | 74,234,381 |
+
+The whole surplus is **FY2021: 1,249 features written twice** — byte-identical geometry (three sampled
+pairs hash equal) and identical in all ten properties, against a source `objects_raw_2021` of 53,263
+rows with no repeats. Every other fire-year matched exactly. Nothing was lost and no feature was
+wrong; FY2021's area was inflated by **71,478 ha** (3,595,965 vs 3,524,487) and the layer total by the
+same.
+
+Three things follow, and the third is the one that matters:
+
+1. A 1.26 M-feature table export can **silently duplicate a shard**. This is not the documented
+   failure mode (§13.4 expected `User memory limit exceeded`), and it is invisible from the task: the
+   state is COMPLETED and the EECU counter is the same ~0 it is for a healthy stored-FC export.
+2. **A COMPLETED task is not evidence that each feature was written once.** The schema was right, the
+   feature count was plausible, a spot-checked feature was perfect, and the layer was still 1,249 rows
+   too long. The original `--verify` — size, schema, one feature — passed it.
+3. **The gate is rows AND distinct `oid`, per fire-year, against the sources.** That is what `--verify`
+   now does (28 filtered aggregations either side, a few minutes). Expected exactly:
+   **1,263,079 rows / 1,263,076 distinct `oid` / 74,234,381 ha**, with the 3-row surplus being
+   FY2000's split object (§13.7) and belonging there. Run it after **every** export, before the path
+   is shared with anyone.
+
+The fix is `--launch --overwrite`, which replaces the table under the same name — the path is already
+shared, so a `_v2` was never an option. If duplicates come back, the remedies are
+`distinct(['oid', '.geo'])` (**not** a blind `distinct('oid')` — §13.7) or the `--per-year` fallback,
+whose 28 small tasks are each individually verifiable. **That is why `--per-year` still exists**: it
+is the measured insurance against a failure that has now actually happened once.
+
+### 13.7 `oid` is unique per OBJECT, not per row — one FY2000 fire is 4 features
+
+`objects_raw_2000` stores `2000_57529`, a **1,706,171 ha** object, as **4 features** with disjoint
+geometry parts, each repeating the whole object's `area_ha`, dates and probabilities. It is a vertex
+split — `Export.table.toAsset(maxVertices=…)` cuts a geometry that exceeds the limit into pieces —
+and it happened **upstream, in the step-06 upload**, not here: audited across all 28 sources, the
+totals are **1,263,079 rows / 1,263,076 distinct `oid`** and FY2000 is the only year affected. This
+layer carries all 4 rows faithfully, which is why the expected row count is 3 above the object count.
+
+Two consequences, both in the asset's `oid_uniqueness` property:
+
+- **dissolve by `oid`** to recover the object, and deduplicate before any `aggregate_sum('area_ha')`
+  grouped by `oid` — otherwise that one fire contributes 1.7 Mha four times;
+- **never repair a duplicate with a blind `distinct('oid')`.** It would keep one part of that fire and
+  silently drop ~1.3 Mha of it. `distinct(['oid', '.geo'])` removes only rows identical *including*
+  geometry, which is exactly the FY2021 defect and exactly not this.
 
 ### 12.7 Namespace the task descriptions — the compute project is shared
 

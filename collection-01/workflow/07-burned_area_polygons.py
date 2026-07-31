@@ -42,7 +42,7 @@ THE TEN PROPERTIES
 | `fire_year`     | asset name    | the NON-calendar mapping year: 1 May *fy* → 30 Apr *fy*+1   |
 | `calendar_year` | `year_cal`    | the MODE of the object's per-pixel calendar years           |
 | `area_ha`       | `area_ha`     | pixel-count area (NOT a geodesic polygon area)              |
-| `date_med`      | `date_med`    | median burn date, whole days since 1970-01-01               |
+| `date_med`      | `date_med`    | median burn date, ISO 8601 `YYYY-MM-DD`                     |
 | `date_min/max`  | `date_min/max`| first / last burn date, same encoding                       |
 | `p_mean`        | `p_mean`      | posterior mean fire probability (probit BART)               |
 | `p_width`       | `p_width`     | width of its credible interval, `p_q95 - p_q05`             |
@@ -51,6 +51,31 @@ THE TEN PROPERTIES
 `fire_year` is NOT a property of the source FCs — it is only implicit in the asset name, so it is
 set per source collection here.  Every other name is carried through unchanged except `year_cal`,
 which is renamed for people who have never read docs/06.
+
+DATES ARE ISO STRINGS, AND THE FC IS `filterDate`-ABLE
+------------------------------------------------------
+The object database stores `date_med/min/max` as WHOLE DAYS since 1970-01-01 — an integer 19018
+that no user can read in the Inspector or in a QGIS attribute table.  Here they are written as
+`YYYY-MM-DD` strings instead (Iván, 2026-07-30).  Nothing is lost: the integers stay in the object
+database, `oid` joins back to them, and ISO-8601 still sorts and range-filters correctly because
+it sorts lexicographically (`ee.Filter.gte('date_med', '2021-01-01')`).
+
+On top of that each feature carries a GEE timestamp, so the collection answers `filterDate()` —
+the first thing a user reaches for:
+
+    system:time_start = date_med   (midnight UTC of the MEDIAN burn day)
+
+**`date_med`, and time_start ONLY — deliberately not the `date_min`..`date_max` interval** (Iván,
+2026-07-30).  With `system:time_end` also set, the date filter passes on interval INTERSECTION, so a
+fire burning 28 Dec → 4 Jan would be returned by a December query AND a January one, and summing
+`area_ha` across months would double-count it.  One timestamp keeps one fire in exactly one bucket,
+which is the same choice `calendar_year` already makes (the modal year, §13.3) — so `filterDate`
+results stay summable.  The true span is not hidden: `date_min` and `date_max` are right there, and
+readable.
+
+`select()` DROPS unlisted properties, `system:time_*` included, so the timestamps are set AFTER
+it — setting them first silently loses them (and a `filterDate` that quietly matches nothing looks
+exactly like a collection with no fires in that window).
 
 TWO THINGS TO TELL USERS, both recorded in the asset properties
 ---------------------------------------------------------------
@@ -63,6 +88,34 @@ TWO THINGS TO TELL USERS, both recorded in the asset properties
 2. **Fire-year 1998 is in this layer and in no published raster.**  3,845 polygons carry
    `calendar_year` 1998 or 1999; the calendar series starts at 1999, so FY1998's Nov–Dec 1998 tail
    (1,058,206 px, ~76 kha) appears here only (docs/07 §2).
+
+`oid` IS UNIQUE PER OBJECT, NOT PER FEATURE — one FY2000 object is 4 rows
+-------------------------------------------------------------------------
+`objects_raw_2000` itself stores `2000_57529` — a **1,706,171 ha** object — as **4 features** with
+disjoint geometry parts, each repeating the whole object's `area_ha` and dates.  That is a vertex
+split (`Export.table.toAsset(maxVertices=…)` cuts a geometry that exceeds the limit into pieces),
+and it happened UPSTREAM, in the step-06 upload: the sources total **1,263,079 rows / 1,263,076
+distinct `oid`**, and FY2000 is the only year affected (all 28 audited).  Two consequences:
+
+* this layer carries all 4 rows, faithfully — merge/dissolve by `oid` to recover the object, and
+  never `aggregate_sum('area_ha')` per `oid` without deduplicating first, or that one fire counts
+  1.7 Mha four times;
+* **never "fix" a duplicate with a blind `distinct('oid')`** — it would keep one part of that fire
+  and silently drop 1.3 Mha of it.  `distinct(['oid', '.geo'])` is the safe form: it removes rows
+  that are identical INCLUDING geometry, and leaves genuine split parts alone.
+
+⚠️ THE FIRST MERGED EXPORT LANDED WITH 1,249 DUPLICATE ROWS (2026-07-30)
+------------------------------------------------------------------------
+It completed, and every object was present — but the landed asset held **1,264,328 rows** against
+the sources' 1,263,079, and the surplus was **1,249 FY2021 features written twice**, byte-identical
+in geometry and in all ten properties (checked: three sampled pairs hash equal; `objects_raw_2021`
+has 53,263 rows, all distinct).  Nothing was lost and nothing was wrong per feature; the FY2021
+`area_ha` total was inflated by 71,478 ha (3,595,965 vs 3,524,487) and the layer total by the same.
+
+So a 1.26 M-feature table export can silently duplicate a shard, and **a task reaching COMPLETED is
+not evidence that it wrote each feature once**.  `--verify` therefore audits row count AND distinct
+`oid` per fire-year against the sources — the only check that catches this — and it must be run on
+every re-export.  If duplicates come back, `distinct(['oid', '.geo'])` or `--per-year` is the fix.
 
 IS ONE MERGED EXPORT FEASIBLE?  Measured, not assumed
 -----------------------------------------------------
@@ -90,8 +143,14 @@ Usage (from the repo ROOT)
   $PYTHON collection-01/workflow/07-burned_area_polygons.py --year 2012 --launch   # validate
   $PYTHON collection-01/workflow/07-burned_area_polygons.py --verify --year 2012   # on the asset
   $PYTHON collection-01/workflow/07-burned_area_polygons.py --launch               # the merged one
+  $PYTHON collection-01/workflow/07-burned_area_polygons.py --launch --overwrite   # replace it
+  $PYTHON collection-01/workflow/07-burned_area_polygons.py --verify               # THE gate
   $PYTHON collection-01/workflow/07-burned_area_polygons.py --per-year --launch    # the fallback
   $PYTHON collection-01/workflow/07-burned_area_polygons.py --set-props            # after landing
+
+`--overwrite` replaces the asset IN PLACE, keeping the name — which is the point: the path is
+already shared with early users, so a re-export must not become `_v2`.  GEE writes the new table and
+swaps it at completion, so the old one stays readable for the hours in between.
 
   # as the SECOND account, so this does not queue behind the first account's tasks (the GEE task
   # queue is per user). Only the compute project changes; the destination asset is the same:
@@ -132,6 +191,8 @@ DST = ["oid", "fire_year", "calendar_year", "area_ha",
        "date_med", "date_min", "date_max", "p_mean", "p_width", "seed_mean"]
 
 FIRE_YEARS = list(range(1998, 2026))          # 28, the object database's full span
+
+DAY_MS = 86_400_000   # the object database's `date_*` are WHOLE DAYS since 1970-01-01
 
 
 # ---------------------------------------------------------------------------
@@ -223,15 +284,36 @@ def fire_filter():
                          ee.Filter.gte("area_ha", C.MIN_FIRE_HA))
 
 
+def iso(days):
+    """A `date_*` day number -> an ISO-8601 `YYYY-MM-DD` string, server-side."""
+    return ee.Date(ee.Number(days).multiply(DAY_MS)).format("YYYY-MM-dd")
+
+
 def fires(fire_year):
     """One fire-year's accepted fires, stripped to the ten properties.
 
     `Feature.select(SRC, DST)` keeps the geometry (retainGeometry defaults True) and DROPS every
     property not listed — which is the point: the source FCs carry all 20 predictors plus the
     three call columns, and this layer is not the object database.
+
+    The three dates become ISO strings, and `system:time_start` is stamped from `date_med` so the
+    collection answers `filterDate()`.  Both are set AFTER `select()`, which drops anything unlisted
+    — `system:time_*` included.  No accepted object has a null date (all 28 fire-years audited
+    2026-07-30), so `ee.Number` on them cannot fail mid-export.
     """
     fc = ee.FeatureCollection(f"{C.OBJECTS_RAW_COL}/objects_raw_{fire_year}").filter(fire_filter())
-    return fc.map(lambda f: ee.Feature(f.set("fire_year", fire_year)).select(SRC, DST))
+
+    def one(f):
+        med = ee.Number(f.get("date_med"))
+        return (ee.Feature(f)
+                .set({"fire_year": fire_year,
+                      "date_med": iso(med),
+                      "date_min": iso(f.get("date_min")),
+                      "date_max": iso(f.get("date_max"))})
+                .select(SRC, DST)
+                .set("system:time_start", med.multiply(DAY_MS)))
+
+    return fc.map(one)
 
 
 def merged(years=FIRE_YEARS):
@@ -261,8 +343,16 @@ def properties(years, n_features=None):
             "the calendar year per PIXEL, so a fire straddling 31 December is split between two "
             "years there and lands whole in one year here — the two layers answer different "
             "questions and will not cross-tabulate exactly (docs/07 §1)"),
-        "date_encoding": "date_med / date_min / date_max: whole days since 1970-01-01",
+        "date_encoding": "date_med / date_min / date_max: ISO 8601 YYYY-MM-DD (UTC calendar days)",
+        "time_start": ("system:time_start is set from date_med — one fire, one instant, so "
+                       "filterDate() results can be summed without double-counting a fire that "
+                       "straddles the window edge. The real span is date_min..date_max"),
         "area_encoding": "area_ha: pixel-count area, not a geodesic polygon area",
+        "oid_uniqueness": (
+            "oid identifies an OBJECT, not a row: one FY2000 object (2000_57529, 1,706,171 ha) is "
+            "stored as 4 features with disjoint geometry parts, each repeating the whole object's "
+            "area_ha and dates — a vertex split inherited from the source upload. Dissolve by oid "
+            "to recover the object, and deduplicate before summing area_ha per oid"),
         "p_mean": "posterior mean fire probability (probit BART, docs/06)",
         "p_width": "width of the probability's credible interval (p_q95 - p_q05)",
         "seed_mean": "mean SNIC seed burn probability over the object",
@@ -294,12 +384,14 @@ def check(years):
     print(f"{'TOTAL':>10} {sum(n):>10,} {sum(ha):>14,.0f}")
 
     got = sorted(fires(years[-1]).first().propertyNames().getInfo())
-    want = sorted(DST + ["system:index"])
+    user = [p for p in got if not p.startswith("system:")]
     print(f"\n[schema] {got}")
-    if got != want:
-        print(f"[schema] ⚠️ MISMATCH — expected {want}")
+    if user != sorted(DST):
+        print(f"[schema] ⚠️ MISMATCH — expected {sorted(DST)}")
     else:
-        print("[schema] exactly the ten properties (+ system:index)")
+        print("[schema] exactly the ten properties")
+    print(f"[schema] system:time_start {'present' if 'system:time_start' in got else '⚠️ MISSING'}"
+          " — what makes filterDate() work")
 
     print(f"\nOne feature of FY{years[-1]}:")
     for k_, v in sorted(fires(years[-1]).first().toDictionary().getInfo().items()):
@@ -313,38 +405,98 @@ def check(years):
           f"      }})).flatten();")
 
 
-def verify(asset_id):
-    """Check a LANDED asset — size, schema, and a feature — not the graph that built it."""
+def verify(asset_id, years):
+    """Audit a LANDED asset against the SOURCES — the gate a re-export has to pass.
+
+    The count that matters is **rows AND distinct `oid`, per fire-year**.  The first merged export
+    reached COMPLETED while writing 1,249 FY2021 features twice (docstring), and no other check
+    noticed: the schema was right, every object was present, and a spot-checked feature was perfect.
+    Only counting caught it.  Expected, measured on the sources 2026-07-30:
+
+        1,263,079 rows / 1,263,076 distinct oid / 74,234,381 ha
+        the 3-row surplus is FY2000's vertex-split object, and belongs there.
+
+    Runs 28 filtered aggregations on the asset plus 28 on the sources — a few minutes, not free, and
+    worth it before a path is shared with anyone.
+    """
     if not asset_exists(asset_id):
         print(f"[verify] {asset_id} does not exist yet")
         return
     fc = ee.FeatureCollection(asset_id)
-    n, props, first = ee.List([fc.size(), fc.first().propertyNames(),
-                               fc.first().toDictionary()]).getInfo()
-    print(f"[verify] {asset_id}\n         {n:,} features")
-    got = sorted(p for p in props if p != "system:index")
+    props, first, t0 = ee.List([fc.first().propertyNames(), fc.first().toDictionary(),
+                                fc.first().get("system:time_start")]).getInfo()
+    print(f"[verify] {asset_id}")
+    got = sorted(p for p in props if not p.startswith("system:"))
     print(f"         schema {'OK' if got == sorted(DST) else 'MISMATCH: ' + str(got)}")
+    stamp = f"set: {t0}" if t0 else "⚠️ MISSING — filterDate() will match nothing"
+    print(f"         system:time_start {stamp}")
     for k_, v in sorted(first.items()):
         print(f"         {k_:16s} {v}")
+
+    q = []
+    for fy in years:
+        a = fc.filter(ee.Filter.eq("fire_year", fy))
+        s = ee.FeatureCollection(f"{C.OBJECTS_RAW_COL}/objects_raw_{fy}").filter(fire_filter())
+        q += [a.size(), a.aggregate_count_distinct("oid"), a.aggregate_sum("area_ha"),
+              s.size(), s.aggregate_count_distinct("oid"), s.aggregate_sum("area_ha")]
+    r = ee.List(q).getInfo()
+
+    print(f"\n{'fy':>5} {'rows':>9} {'oid':>9} {'area_ha':>12} | "
+          f"{'src rows':>9} {'src oid':>9} {'src ha':>12}  verdict")
+    tot = [0, 0, 0.0, 0, 0, 0.0]
+    bad = []
+    for i, fy in enumerate(years):
+        v = r[6 * i:6 * i + 6]
+        tot = [t + x for t, x in zip(tot, v)]
+        ok = v[0] == v[3] and v[1] == v[4] and abs(v[2] - v[5]) < 1.0
+        if not ok:
+            bad.append((fy, v))
+        note = "ok" if ok else (f"⚠️ {v[0] - v[3]:+,} rows, {v[1] - v[4]:+,} oid, "
+                                f"{v[2] - v[5]:+,.0f} ha")
+        print(f"{fy:>5} {v[0]:>9,} {v[1]:>9,} {v[2]:>12,.0f} | "
+              f"{v[3]:>9,} {v[4]:>9,} {v[5]:>12,.0f}  {note}")
+    print(f"{'TOT':>5} {tot[0]:>9,} {tot[1]:>9,} {tot[2]:>12,.0f} | "
+          f"{tot[3]:>9,} {tot[4]:>9,} {tot[5]:>12,.0f}")
+    # The only legitimate surplus is FY2000's vertex-split object: 4 rows, one oid (§13.7).
+    dup, want = tot[0] - tot[1], 3 if 2000 in years else 0
+    print(f"\n[verify] {dup:,} row(s) share an oid with another row — expected {want}"
+          f"{' (FY2000 vertex split)' if want else ''}"
+          f"{'  ✅' if dup == want else '  ⚠️ DUPLICATED ROWS'}")
+    print("[verify] " + ("✅ every fire-year matches its source, rows and distinct oid"
+                         if not bad else
+                         f"❌ {len(bad)} fire-year(s) disagree with the source: "
+                         f"{[b[0] for b in bad]} — do NOT share this asset"))
+
     stored = ee.data.getAsset(asset_id).get("properties") or {}
-    print(f"         {len(stored)} asset properties set" if stored
-          else "         no asset properties yet — run --set-props")
+    print(f"[verify] {len(stored)} asset properties set" if stored
+          else "[verify] no asset properties yet — run --set-props")
 
 
 # ---------------------------------------------------------------------------
 # export
 # ---------------------------------------------------------------------------
-def export_one(fc, asset_id, description, launch):
+def export_one(fc, asset_id, description, launch, overwrite=False):
+    """One `Export.table.toAsset`, resumable — and with `--overwrite`, re-runnable IN PLACE.
+
+    Without `overwrite` an existing asset is skipped, because a re-`--launch` would otherwise grind
+    for hours and die on "cannot overwrite".  With it, `Export.table.toAsset(overwrite=True)` (API
+    ≥ 1.7) replaces the table under the SAME name — which is the only acceptable way to fix a layer
+    whose path has already been handed to users.
+    """
     if asset_exists(asset_id):
-        print(f"[skip] {asset_id} already exists")
-        return
+        if not overwrite:
+            print(f"[skip] {asset_id} already exists  (--overwrite to replace it in place)")
+            return
+        print(f"[overwrite] {asset_id} exists and will be REPLACED when the task completes")
     if task_in_flight(description):
         print(f"[skip] {description} has a PENDING/RUNNING task")
         return
     if not launch:
-        print(f"[dry] would export {asset_id}  (description {description})")
+        print(f"[dry] would export {asset_id}  (description {description}"
+              f"{', overwrite' if overwrite else ''})")
         return
-    task = ee.batch.Export.table.toAsset(collection=fc, description=description, assetId=asset_id)
+    task = ee.batch.Export.table.toAsset(collection=fc, description=description, assetId=asset_id,
+                                         overwrite=overwrite)
     task.start()
     print(f"[launched] {task.id}  ->  {asset_id}")
 
@@ -357,7 +509,12 @@ def main():
     ap.add_argument("--check", action="store_true",
                     help="per-fire-year counts + the property schema, without exporting")
     ap.add_argument("--verify", action="store_true",
-                    help="inspect the LANDED asset (with --year, that fire-year's asset)")
+                    help="audit the LANDED asset against the sources — rows AND distinct oid per "
+                         "fire-year, the only check that catches a duplicated shard. Run it after "
+                         "every export (with --year, that fire-year's asset)")
+    ap.add_argument("--overwrite", action="store_true",
+                    help="replace the destination asset in place, keeping its name — for "
+                         "re-exporting a layer whose path is already shared")
     ap.add_argument("--year", type=int,
                     help="export ONE fire-year into the by_fire_year folder — the schema "
                          "validation run, and simultaneously the first asset of the fallback")
@@ -387,7 +544,10 @@ def main():
         return
 
     if args.verify:
-        verify(year_asset(args.year) if args.year is not None else merged_asset())
+        if args.year is not None:
+            verify(year_asset(args.year), [args.year])
+        else:
+            verify(merged_asset(), years)
         return
 
     if args.set_props:
@@ -408,15 +568,16 @@ def main():
         if args.launch:
             ensure_container(BY_YEAR_DIR, "FOLDER")
         export_one(fires(args.year), year_asset(args.year),
-                   f"{TASK_PREFIX}{SUBPRODUCT}_{args.year}", args.launch)
+                   f"{TASK_PREFIX}{SUBPRODUCT}_{args.year}", args.launch, args.overwrite)
     elif args.per_year:
         if args.launch:
             ensure_container(BY_YEAR_DIR, "FOLDER")
         for fy in years:
             export_one(fires(fy), year_asset(fy),
-                       f"{TASK_PREFIX}{SUBPRODUCT}_{fy}", args.launch)
+                       f"{TASK_PREFIX}{SUBPRODUCT}_{fy}", args.launch, args.overwrite)
     else:
-        export_one(merged(years), merged_asset(), f"{TASK_PREFIX}{SUBPRODUCT}", args.launch)
+        export_one(merged(years), merged_asset(), f"{TASK_PREFIX}{SUBPRODUCT}",
+                   args.launch, args.overwrite)
 
     if not args.launch:
         print("\nDry run only. Re-run with --launch to submit.")
