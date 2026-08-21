@@ -1,0 +1,193 @@
+---
+title: "Which fire-years to validate"
+subtitle: "Step 10 · whole-country burned area per fire-year · collection-01"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    embed-resources: true
+    fig-width: 10
+    fig-height: 5.5
+---
+
+Three fire-years have to be chosen for the validation campaign (`docs/10-validation.md` §8).
+This notebook supplies the fire-regime half of that decision: **whole-country burned area per
+fire-year**, from every independent burned-area product available, so a year can be placed as
+low / moderate / extreme before it is committed to.
+
+Our own 30 m product is **not** in this pass. Measuring it costs ~210 s per fire-year (its
+`burned_monthly` band has a MODE pyramid, so the area has to be read at native resolution — see
+the script's docstring), and the independent products are the right basis for the choice anyway:
+picking validation years by our own map's extremes would let the product select the years it is
+judged on. The series is added by flipping `SHOWN` in the next chunk once it exists.
+
+Everything here is **fire-year** — 1 May Y → 30 Apr Y+1, named by the start year. Never a
+calendar year. The table comes from `collection-01/scripts/10_burned_area_by_fire_year.py`.
+
+```{r setup}
+#| message: false
+#| warning: false
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, dev = "png", dpi = 120)
+knitr::opts_knit$set(root.dir = normalizePath(if (dir.exists("collection-01")) "." else "../.."))
+library(data.table)
+library(ggplot2)
+```
+
+```{r load}
+CSV <- "collection-01/validation/burned_area_by_fire_year.csv"
+stopifnot(file.exists(CSV))
+
+# Which products to show. Our own 30 m series is NOT here: it costs ~210 s per fire-year
+# to measure, so it is computed separately. Add "ours" to SHOWN (and it becomes the
+# natural REF) once collection-01/validation/ holds its full FY1999-2024 series.
+SHOWN <- c("mcd64", "vnp64", "firecci")
+REF   <- "mcd64"          # the reference series: the only one spanning the whole record
+
+LABEL <- c(ours = "MapBiomas ARG col-1 (30 m)", mcd64 = "MCD64A1 (MODIS, 463 m)",
+           vnp64 = "VNP64A1 (VIIRS, 463 m)",    firecci = "FireCCI51 (250 m)")
+
+ba <- fread(CSV)[product %in% SHOWN]
+ba[, mha := area_ha / 1e6]
+ba[, partial := as.logical(partial)]
+ba[, product := factor(product, levels = intersect(names(LABEL), SHOWN),
+                       labels = LABEL[intersect(names(LABEL), SHOWN)])]
+setorder(ba, product, fire_year)
+ba[, .(years = .N, full = sum(!partial), from = min(fire_year), to = max(fire_year)),
+   by = product]
+```
+
+A **partial** year is one whose 1 May → 30 Apr window is only half-covered by that product's
+archive. Its area is an undercount and must never be read as a quiet fire year, so partial points
+are drawn hollow below and excluded from every statistic.
+
+## Burned area per fire-year, all products
+
+```{r series}
+#| fig-height: 5.5
+full <- ba[!is.na(mha)]
+ggplot(full, aes(fire_year, mha, colour = product)) +
+  geom_line(data = full[!(partial)], linewidth = 0.7) +
+  geom_point(aes(shape = partial), size = 2.1, fill = "white") +
+  scale_shape_manual(values = c(`FALSE` = 19, `TRUE` = 21), guide = "none") +
+  scale_x_continuous(breaks = seq(1998, 2026, 2)) +
+  labs(x = "fire year (1 May Y – 30 Apr Y+1)", y = "burned area (Mha)",
+       colour = NULL,
+       title = "Whole-country burned area per fire-year",
+       subtitle = "hollow points = archive covers only part of the fire-year window") +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom", panel.grid.minor = element_blank())
+```
+
+The products disagree in level — coarse sensors miss small fires and over-call at scar edges, and
+our 30 m map resolves scars they cannot see — so the useful signal here is **the shape**: which
+years stand out, and whether they stand out in every product or only one. A year that is extreme
+in all of them is an extreme year; a year extreme in one is a disagreement worth understanding
+before validating it.
+
+## Ranked by the reference series
+
+`MCD64A1` is the reference for ranking because it is the **only product covering the whole
+record** — VNP64A1 starts at FY2012 and FireCCI51 ends at FY2019, so neither can rank a year
+against the full series. Terciles of the MCD64A1 series define low / moderate / extreme.
+
+```{r ranked}
+#| fig-height: 6.5
+ref <- ba[product == LABEL[REF] & !(partial) & !is.na(mha)]
+qs  <- quantile(ref$mha, c(1/3, 2/3))
+ref[, regime := factor(fifelse(mha <= qs[1], "low",
+                        fifelse(mha <= qs[2], "moderate", "extreme")),
+                       levels = c("low", "moderate", "extreme"))]
+
+ggplot(ref, aes(reorder(factor(fire_year), mha), mha, fill = regime)) +
+  geom_col(width = 0.75) +
+  coord_flip() +
+  scale_fill_manual(values = c(low = "#8ecae6", moderate = "#ffb703", extreme = "#c1121f")) +
+  labs(x = "fire year", y = "burned area (Mha)", fill = "regime (terciles)",
+       title = paste0("Fire-years ranked by burned area — ", LABEL[REF]),
+       subtitle = sprintf("tercile cuts at %.2f and %.2f Mha", qs[1], qs[2])) +
+  theme_minimal(base_size = 12) +
+  theme(panel.grid.major.y = element_blank())
+```
+
+## Do the products agree on which years stand out?
+
+A year that is extreme in every product is an extreme year. A year extreme in only one is a
+disagreement to understand *before* committing interpretation effort to it. Each series is
+standardised to its own mean and SD over the years it covers, so the comparison is of shape,
+not level.
+
+```{r agreement}
+#| fig-height: 4.6
+z <- ba[!(partial) & !is.na(mha)][, .(fire_year, product, z = (mha - mean(mha)) / sd(mha)),
+                                 by = product][, -1]
+ggplot(z, aes(fire_year, z, colour = product)) +
+  geom_hline(yintercept = 0, linewidth = 0.3, colour = "grey60") +
+  geom_line(linewidth = 0.7) + geom_point(size = 1.8) +
+  scale_x_continuous(breaks = seq(1998, 2026, 2)) +
+  labs(x = "fire year", y = "z-score within each product", colour = NULL,
+       title = "Standardised series — agreement on shape",
+       subtitle = "above 0 = a big year for that product; complete fire-years only") +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "bottom", panel.grid.minor = element_blank())
+```
+
+## The decision table
+
+Fire regime is only one of the three constraints in `docs/10` §8. The other two are the **Landsat
+sensor era** the year sits in, and **how many independent burned-area products** exist to build the
+S2 omission-catcher stratum — a year with fewer gets a weaker S2 and a wider interval for the same
+interpretation effort (no bias, just less precision).
+
+```{r decision}
+era <- function(fy) fifelse(fy <= 2002, "L5 + L7 SLC-on",
+                     fifelse(fy <= 2012, "L7 SLC-off (FY2012 = L7 only)",
+                                         "L8 + L9"))
+# Count of independent BURNED-AREA products (docs/10 §4.5): MCD64A1 from FY2001,
+# FireCCI51 FY2001-2019, VNP64A1 FY2012 on. FIRMS active fire is present in every year
+# and so is not counted -- it shifts no year relative to another.
+n_aux <- function(fy) (fy >= 2001) + (fy >= 2001 & fy <= 2019) + (fy >= 2012)
+
+dec <- ref[, .(fire_year, ref_mha = round(mha, 2), regime)]
+dec[, `:=`(sensor_era = era(fire_year), aux_products = n_aux(fire_year))]
+dec[, s2_strength := fifelse(aux_products >= 3, "strongest",
+                      fifelse(aux_products == 2, "good", "weak"))]
+
+# how many products call the year above their own mean -- a crude concordance count
+zc <- dcast(z, fire_year ~ product, value.var = "z")
+dec <- merge(dec, z[, .(n_products = .N, n_above = sum(z > 0)), by = fire_year],
+             by = "fire_year", all.x = TRUE)
+setorder(dec, -ref_mha)
+knitr::kable(dec, align = "rrlllrrr", col.names = c(
+  "fire year", paste0(REF, " (Mha)"), "regime", "sensor era", "S2 strength",
+  "burned-area products", "products with data", "products above own mean"),
+  caption = "Fire-years by burned area, with the constraints and the concordance count")
+```
+
+```{r spread}
+#| fig-height: 4.2
+ggplot(dec, aes(fire_year, ref_mha, colour = regime, shape = s2_strength)) +
+  geom_point(size = 3.2) +
+  scale_colour_manual(values = c(low = "#8ecae6", moderate = "#ffb703", extreme = "#c1121f")) +
+  facet_grid(. ~ sensor_era, scales = "free_x", space = "free_x") +
+  scale_x_continuous(breaks = seq(1998, 2026, 3)) +
+  labs(x = "fire year", y = "burned area (Mha)", colour = "regime",
+       shape = "S2 strength",
+       title = "The three constraints at once",
+       subtitle = "pick years that spread across the facets, not only across the y axis") +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "bottom", panel.grid.minor = element_blank())
+```
+
+### One trap in reading this table
+
+The famous seasons are **not** where their calendar names put them. The Corrientes mega-fires of
+January–February 2022 fall in **FY2021** (1 May 2021 → 30 Apr 2022), which is why FY2021 reads
+4.23 Mha while FY2022 is an unremarkable 2.93. The Delta del Paraná and Córdoba fires of
+August–October 2020 do land in FY2020, the second-largest year in the record. Any year picked by
+its reputation must be converted to a fire-year first.
+
+Read the last figure as the actual choice: three years that sit in **different sensor-era facets**
+and at **different heights** characterise the collection far better than three years that happen to
+be convenient. Where a tie remains, prefer the year with the stronger S2 — it is free precision.
