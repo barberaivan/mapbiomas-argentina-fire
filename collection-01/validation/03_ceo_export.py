@@ -30,16 +30,25 @@ no los recalcula. El shape/size del plot en CEO (cuadrado de 30 m, para que la u
 intérprete sea el píxel y no un punto) se configura al crear el proyecto en CEO, fuera del alcance
 de este CSV.
 
-COLUMNAS EXTRA — por qué van igual en el CSV
------------------------------------------------
-`stratum`/`burned` viajan en el CSV (después de LON/LAT/PLOTID, como exige CEO). Investigado
-2026-08-24 contra el código fuente de CEO (`openforis/collect-earth-online`, `main`): no aparece
-ningún camino de UI que las muestre al intérprete durante la colección (se grepeó
-`collection.jsx`, `simpleCollection.jsx`, `CollectionSidebar.jsx` y los widgets de Geo-Dash — cero
-matches), aunque la documentación de CEO dice que "pueden mostrarse" en el panel de colección.
-Doc y código no coinciden — antes de confiar en esto para el blind labelling de §7, vale un chequeo
-empírico: subir un proyecto de prueba con una columna obvia y confirmar que no aparece en la
-pantalla de colección.
+DOS ARCHIVOS DE SALIDA, NO UNO — corregido 2026-08-25
+--------------------------------------------------------
+La primera versión de este paso subía `stratum`/`burned` en el mismo CSV que se sube a CEO,
+razonando que CEO no las muestra al intérprete (no se encontró ningún camino de UI que lo haga,
+grepeando `openforis/collect-earth-online`). Pero la nota de diseño de Iván en el repo `fuego`
+(`collection-01/validacion/CLAUDE.md`, §"Higiene de CEO") es más estricta y ya documenta un
+precedente real: **"En v1 el CSV exponía `stratum` y `burned_frac` — error real."** — la regla no
+es "que CEO no la muestre", es "que la columna no exista en lo que se sube". Así que ahora:
+
+  1. `ceo_upload_fy<FY>.csv`  → **SOLO** `LON, LAT, PLOTID`. Esto y nada más se sube a CEO.
+  2. `ceo_crosswalk_fy<FY>.csv` → la tabla llave completa (`PLOTID` + todo lo demás: `stratum`,
+     `burned`, `mb_class_raw`, `region_id`, `frozen_rank`, `col`, `row`), **queda local, nunca se
+     sube a ningún lado** — ni a CEO ni como asset de GEE. Sirve para reunir la etiqueta del
+     intérprete con la respuesta del mapa después de la interpretación, uniendo por `PLOTID`
+     (único dentro de cada año — el join siempre es por año-fuego).
+
+El mismo `ceo_upload_fy<FY>.csv` es también la fuente del "Modo B" (buscar por PLOTID) del
+inspector GEE `ceo_val_inspector` — al no llevar `stratum`/`burned`, subirlo como asset de tabla
+para ese lookup no reabre el mismo agujero.
 
 USO
 ---
@@ -70,8 +79,11 @@ task_name = _s2.task_name
 N_INITIAL = 100          # por estrato, por año (docs/10 §1 — "muestra inicial")
 CEO_SHUFFLE_SEED = 43    # fija y se registra para siempre — distinta de SEED=42 del sorteo en GEE
 
-CEO_COLUMNS = ["LON", "LAT", "PLOTID", "fire_year", "stratum", "burned",
-               "mb_class_raw", "region_id", "frozen_rank", "col", "row"]
+# lo único que sube a CEO (y lo único que sube como asset de puntos para el inspector)
+CEO_UPLOAD_COLUMNS = ["LON", "LAT", "PLOTID"]
+# tabla llave completa — SOLO local, nunca se sube a ningún lado
+CROSSWALK_COLUMNS = ["PLOTID", "LON", "LAT", "fire_year", "stratum", "burned",
+                      "mb_class_raw", "region_id", "frozen_rank", "col", "row"]
 
 OUT_DIR = Path(__file__).resolve().parent / "outputs" / "ceo"
 
@@ -89,6 +101,7 @@ def load_stratum(fy, h):
 
 
 def build(fy):
+    """Todas las columnas juntas — el split en archivo limpio / crosswalk pasa en `export()`."""
     df = pd.concat([load_stratum(fy, h) for h in STRATA], ignore_index=True)
 
     rng = np.random.default_rng(CEO_SHUFFLE_SEED)
@@ -96,7 +109,7 @@ def build(fy):
     df["PLOTID"] = df.index + 1
 
     df = df.rename(columns={"lon": "LON", "lat": "LAT", "rank": "frozen_rank"})
-    return df[CEO_COLUMNS]
+    return df[CROSSWALK_COLUMNS]
 
 
 # ---------------------------------------------------------------------------
@@ -108,12 +121,16 @@ def check(fy):
         src = FROZEN_DIR / f"{task_name(fy, h)}_frozen.csv"
         print(f"        estrato {h}: {'✓' if src.exists() else '✗ FALTA — correr 02 --freeze'} "
               f"({src.name})")
-    print(f"        salida: {OUT_DIR / f'ceo_upload_fy{fy}.csv'}  "
-          f"({N_INITIAL * len(STRATA)} filas: {N_INITIAL}/estrato, barajadas)")
+    n = N_INITIAL * len(STRATA)
+    print(f"        sube a CEO:  {OUT_DIR / f'ceo_upload_fy{fy}.csv'}  "
+          f"({n} filas — SOLO LON,LAT,PLOTID)")
+    print(f"        local only:  {OUT_DIR / f'ceo_crosswalk_fy{fy}.csv'}  "
+          f"({n} filas — PLOTID + stratum/burned/etc., nunca se sube)")
 
 
 def export(fy, overwrite=False):
     out_csv = OUT_DIR / f"ceo_upload_fy{fy}.csv"
+    crosswalk_csv = OUT_DIR / f"ceo_crosswalk_fy{fy}.csv"
     if out_csv.exists() and not overwrite:
         print(f"[skip] {out_csv} ya existe (usar --overwrite para reemplazarlo)")
         return
@@ -121,19 +138,23 @@ def export(fy, overwrite=False):
     df = build(fy)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    df.to_csv(out_csv, index=False)
+    df[CEO_UPLOAD_COLUMNS].to_csv(out_csv, index=False)
+    df.to_csv(crosswalk_csv, index=False)
 
     meta = {
         "fire_year": fy,
         "n_rows": len(df),
         "n_per_stratum": N_INITIAL,
         "shuffle_seed": CEO_SHUFFLE_SEED,
+        "ceo_upload_columns": CEO_UPLOAD_COLUMNS,
+        "crosswalk_csv": str(crosswalk_csv),
         "source_csv": [str(FROZEN_DIR / f"{task_name(fy, h)}_frozen.csv") for h in STRATA],
     }
     out_meta = OUT_DIR / f"ceo_upload_fy{fy}_meta.json"
     out_meta.write_text(json.dumps(meta, indent=2))
 
-    print(f"[export] {out_csv}  ({len(df):,} filas)")
+    print(f"[export] {out_csv}  ({len(df):,} filas, sólo LON/LAT/PLOTID — esto es lo que sube a CEO)")
+    print(f"[export] {crosswalk_csv}  (tabla llave completa, local, NO subir a ningún lado)")
     print(f"          por estrato: {df['stratum'].value_counts().sort_index().to_dict()}")
     print(f"[export] metadata: {out_meta}")
 
