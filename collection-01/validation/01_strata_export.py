@@ -70,14 +70,19 @@ Autenticarse con la cuenta que tiene acceso a `mapbiomas-argentina` (ramonpagis@
 
     ~/.venvs/gee/bin/earthengine authenticate
 
-    $PYTHON collection-01/validation/01_strata_export.py --check   --year 2022
-    $PYTHON collection-01/validation/01_strata_export.py --launch  --year 2022
-    $PYTHON collection-01/validation/01_strata_export.py --weights --year 2022
+    $PYTHON collection-01/validation/01_strata_export.py --check          --year 2022
+    $PYTHON collection-01/validation/01_strata_export.py --launch         --year 2022
+    $PYTHON collection-01/validation/01_strata_export.py --weights-launch --year 2022
+    $PYTHON collection-01/validation/01_strata_export.py --weights        --year 2022
 
-`--weights` corre sobre el ASSET YA ATERRIZADO, no sobre la cadena de pintado (§4.4: `Nh` es a
-la vez el peso `Wh = Nh/ΣNh` y el fingerprint de reproducibilidad, ya que un asset de GEE no se
-puede checksumear). Avisa si `W2 = N2/ΣNh` sale <2% o >15% (§4.6) — hay que revisar el radio de
-dilatación ANTES de congelar si eso pasa; después de sortear las listas ya no se puede.
+`--weights-launch`/`--weights` corren sobre el ASSET YA ATERRIZADO, no sobre la cadena de pintado
+(§4.4: `Nh` es a la vez el peso `Wh = Nh/ΣNh` y el fingerprint de reproducibilidad, ya que un
+asset de GEE no se puede checksumear). Van en dos pasos, no uno — un `reduceRegion` país-completo
+como llamada interactiva (`getInfo()` directo) pega contra el límite de TIEMPO de los cómputos
+interactivos de GEE (unos minutos, sin importar `maxPixels`/`tileScale`); `--weights-launch` lo
+manda como export batch (sin ese techo) y `--weights` lo lee una vez que termina. `--weights`
+avisa si `W2 = N2/ΣNh` sale <2% o >15% (§4.6) — hay que revisar el radio de dilatación ANTES de
+congelar si eso pasa; después de sortear las listas ya no se puede.
 """
 from __future__ import annotations
 
@@ -96,6 +101,7 @@ import utils.constants as C  # noqa: E402
 # constantes de este paso
 # ---------------------------------------------------------------------------
 STRATA_COL = "projects/mapbiomas-argentina/assets/FIRE/VALIDATION/sampling_strata"
+WEIGHTS_COL = "projects/mapbiomas-argentina/assets/FIRE/VALIDATION/sampling_strata_weights"
 
 # El frame de POBLACIÓN es el país SIN buffer — no es C.ARG_BUFFER_FC, que es un superset usado
 # para exportar los productos (§4.4). Hardcodeado tal cual el Appendix A, no vive en C.*.
@@ -345,19 +351,54 @@ def launch(fy, overwrite=False):
     print("         seguir con `earthengine task list` o la pestaña Tasks")
 
 
-def weights(fy):
-    """`Wh = Nh/ΣNh` desde el asset ya aterrizado (§4.4). También el fingerprint de
-    reproducibilidad, ya que un asset de GEE no se puede checksumear."""
+def weights_asset(fy):
+    return f"{WEIGHTS_COL}/sampling_strata_weights_fy{fy}"
+
+
+def weights_launch(fy, overwrite=False):
+    """Lanza el `reduceRegion` país-completo como EXPORT BATCH, no como llamada interactiva.
+
+    `getInfo()` directo sobre un `reduceRegion` de todo el país pega contra el límite de tiempo
+    de los cómputos INTERACTIVOS de GEE (unos pocos minutos) — no importa cuán alto pongas
+    `maxPixels`/`tileScale`, ese límite es de tiempo de reloj, no de memoria. Los exports batch
+    (lo que usa todo el resto de este pipeline) no tienen ese techo. Así que el histograma se
+    envuelve en un `ee.Feature` y se exporta como un asset de tabla de una fila — se lee después
+    con `weights()`, mismo patrón launch→collect que el resto del repo."""
     asset_id = strata_asset(fy)
     if not asset_exists(asset_id):
         sys.exit(f"[error] {asset_id} no existe todavía — correr --launch y esperar la tarea")
 
+    out_asset = weights_asset(fy)
+    description = f"val10_weights_fy{fy}"
+    if asset_exists(out_asset) and not overwrite:
+        print(f"[skip] {out_asset} ya existe (usar --overwrite para reemplazarlo)")
+        return
+    if task_in_flight(description):
+        print(f"[skip] {description} tiene una tarea PENDING/RUNNING")
+        return
+
     img = ee.Image(asset_id).select("stratum")
-    hist = img.reduceRegion(
+    hist = ee.Dictionary(img.reduceRegion(
         reducer=ee.Reducer.frequencyHistogram(),
         geometry=ee.FeatureCollection(FRAME_FC).geometry(),
         crs=C.SNIC_CRS, crsTransform=C.SNIC_TRANSFORM,
-        maxPixels=1e13, tileScale=4).getInfo()["stratum"]
+        maxPixels=1e13, tileScale=4).get("stratum"))
+    fc = ee.FeatureCollection([ee.Feature(None, hist)])
+    task = ee.batch.Export.table.toAsset(
+        collection=fc, description=description, assetId=out_asset)
+    task.start()
+    print(f"[weights-launch] {description} → {out_asset}  (task {task.id})")
+    print("                  correr --weights una vez que termine, para leerlo y escribir el CSV")
+
+
+def weights(fy):
+    """`Wh = Nh/ΣNh` desde el histograma YA EXPORTADO por `weights_launch()` (§4.4). También el
+    fingerprint de reproducibilidad, ya que un asset de GEE no se puede checksumear."""
+    out_asset = weights_asset(fy)
+    if not asset_exists(out_asset):
+        sys.exit(f"[error] {out_asset} no existe todavía — correr --weights-launch y esperar la tarea")
+
+    hist = ee.FeatureCollection(out_asset).first().getInfo()["properties"]
 
     counts = {h: int(hist.get(str(h), 0)) for h in (1, 2, 3)}
     total = sum(counts.values())
@@ -390,8 +431,11 @@ def main():
     ap.add_argument("--year", type=int, required=True, help="año-fuego (1 may Y → 30 abr Y+1)")
     ap.add_argument("--check", action="store_true", help="conteos, sin exportar")
     ap.add_argument("--launch", action="store_true", help="exportar el asset de estratos")
+    ap.add_argument("--weights-launch", action="store_true",
+                    help="lanzar el histograma país-completo como export batch (evita el timeout "
+                         "de cómputo interactivo)")
     ap.add_argument("--weights", action="store_true",
-                    help="calcular Wh desde el asset ya aterrizado → outputs/")
+                    help="leer el histograma ya exportado por --weights-launch → outputs/")
     ap.add_argument("--overwrite", action="store_true", help="reemplazar el asset si ya existe")
     ap.add_argument("--project", default=VAL_PROJECT,
                     help="compute project (default %(default)s — NO es C.GEE_PROJECT, "
@@ -412,10 +456,12 @@ def main():
         check(args.year)
     elif args.launch:
         launch(args.year, args.overwrite)
+    elif args.weights_launch:
+        weights_launch(args.year, args.overwrite)
     elif args.weights:
         weights(args.year)
     else:
-        ap.error("elegir uno: --check, --launch o --weights")
+        ap.error("elegir uno: --check, --launch, --weights-launch o --weights")
 
 
 if __name__ == "__main__":
