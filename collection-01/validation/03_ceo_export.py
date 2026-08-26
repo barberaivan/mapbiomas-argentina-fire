@@ -47,7 +47,7 @@ es "que CEO no la muestre", es "que la columna no exista en lo que se sube". As�
      (único dentro de cada año — el join siempre es por año-fuego).
 
 El mismo `ceo_upload_fy<FY>.csv` es también la fuente del lookup por PLOTID del inspector GEE
-(plantilla `ceo_val_template`, cada validador corre su propia copia `ceo_val_<NOMBRE>`) — al no
+(plantilla `ceo_val_00_template`, cada validador corre su propia copia `ceo_val_<NOMBRE>`) — al no
 llevar `stratum`/`burned`, subirlo como asset de tabla para ese lookup no reabre el mismo agujero.
 
 USO
