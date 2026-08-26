@@ -46,9 +46,9 @@ es "que CEO no la muestre", es "que la columna no exista en lo que se sube". As�
      intérprete con la respuesta del mapa después de la interpretación, uniendo por `PLOTID`
      (único dentro de cada año — el join siempre es por año-fuego).
 
-El mismo `ceo_upload_fy<FY>.csv` es también la fuente del "Modo B" (buscar por PLOTID) del
-inspector GEE `ceo_val_inspector` — al no llevar `stratum`/`burned`, subirlo como asset de tabla
-para ese lookup no reabre el mismo agujero.
+El mismo `ceo_upload_fy<FY>.csv` es también la fuente del lookup por PLOTID del inspector GEE
+(plantilla `ceo_val_template`, cada validador corre su propia copia `ceo_val_<NOMBRE>`) — al no
+llevar `stratum`/`burned`, subirlo como asset de tabla para ese lookup no reabre el mismo agujero.
 
 USO
 ---
