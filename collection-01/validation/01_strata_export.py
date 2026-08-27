@@ -361,9 +361,18 @@ def weights_launch(fy, overwrite=False):
     `getInfo()` directo sobre un `reduceRegion` de todo el país pega contra el límite de tiempo
     de los cómputos INTERACTIVOS de GEE (unos pocos minutos) — no importa cuán alto pongas
     `maxPixels`/`tileScale`, ese límite es de tiempo de reloj, no de memoria. Los exports batch
-    (lo que usa todo el resto de este pipeline) no tienen ese techo. Así que el histograma se
-    envuelve en un `ee.Feature` y se exporta como un asset de tabla de una fila — se lee después
-    con `weights()`, mismo patrón launch→collect que el resto del repo."""
+    (lo que usa todo el resto de este pipeline) no tienen ese techo.
+
+    `frequencyHistogram()` sobre `stratum` murió por OOM (Error code 8) tras 5 reintentos / 7h en
+    fy2003: la banda no tiene máscara (todo el país cae en 1/2/3), así que es un reduce DENSO de
+    ~3.1e9 píxeles, y el reductor de diccionario es más caro que uno escalar. Mismo arreglo que
+    `07-month_of_burn.py::stats_year()` ya aplicó al mismo problema: tres bandas booleanas
+    (`stratum.eq(h)`) sumadas con `.unweighted()` (evita conteos fraccionarios de píxel de borde)
+    en vez de un diccionario, aplanadas en propiedades escalares `n1/n2/n3` — y una geometría de
+    placeholder, porque `ee.Feature(None, …)` falla al exportar a un asset de tabla ("Unable to
+    export features with null geometry"). `tileScale=8` (no el `tileScale=1` de `mobstats`,
+    porque ese reduce es sobre una banda enmascarada/rala y este no): shards más chicos por
+    worker es la palanca directa contra un reduce denso limitado por memoria."""
     asset_id = strata_asset(fy)
     if not asset_exists(asset_id):
         sys.exit(f"[error] {asset_id} no existe todavía — correr --launch y esperar la tarea")
@@ -378,12 +387,14 @@ def weights_launch(fy, overwrite=False):
         return
 
     img = ee.Image(asset_id).select("stratum")
-    hist = ee.Dictionary(img.reduceRegion(
-        reducer=ee.Reducer.frequencyHistogram(),
+    bands = ee.Image.cat([img.eq(h).rename(f"n{h}") for h in (1, 2, 3)])
+    d = bands.reduceRegion(
+        reducer=ee.Reducer.sum().unweighted(),
         geometry=ee.FeatureCollection(FRAME_FC).geometry(),
         crs=C.SNIC_CRS, crsTransform=C.SNIC_TRANSFORM,
-        maxPixels=1e13, tileScale=4).get("stratum"))
-    fc = ee.FeatureCollection([ee.Feature(None, hist)])
+        maxPixels=1e13, tileScale=8)
+    props = {f"n{h}": ee.Number(d.get(f"n{h}")).round() for h in (1, 2, 3)}
+    fc = ee.FeatureCollection([ee.Feature(ee.Geometry.Point([-64.0, -34.0]), props)])
     task = ee.batch.Export.table.toAsset(
         collection=fc, description=description, assetId=out_asset)
     task.start()
@@ -398,9 +409,9 @@ def weights(fy):
     if not asset_exists(out_asset):
         sys.exit(f"[error] {out_asset} no existe todavía — correr --weights-launch y esperar la tarea")
 
-    hist = ee.FeatureCollection(out_asset).first().getInfo()["properties"]
+    props = ee.FeatureCollection(out_asset).first().getInfo()["properties"]
 
-    counts = {h: int(hist.get(str(h), 0)) for h in (1, 2, 3)}
+    counts = {h: int(props.get(f"n{h}", 0)) for h in (1, 2, 3)}
     total = sum(counts.values())
     if total == 0:
         sys.exit("[error] el histograma dio 0 píxeles — revisar la máscara del asset")
