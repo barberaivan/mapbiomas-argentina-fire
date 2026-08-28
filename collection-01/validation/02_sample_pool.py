@@ -9,14 +9,14 @@ que pidió Iván (ver más abajo). Se corre DESPUÉS de que el paso 01 esté ate
 
 DOS MODOS, DOS MOMENTOS
 ------------------------
-    --launch   en GEE: sortea 40.000 píxeles por estrato por año (sobre-muestreo, §5 regla 2),
+    --launch   en GEE: sortea 6.000 píxeles por estrato por año (sobre-muestreo, §5 regla 2),
                ordenados por una clave aleatoria, exporta a Drive como CSV. UNA tarea por
                estrato por año — 9 tareas para 3 años — para que un faltante se vea en vez de
                redistribuirse solo (§5 regla 2). NUNCA se pide un `stratifiedSample` de las tres
                clases juntas: eso es lo que hacía el borrador v2 y es exactamente lo que el
                diseño prohíbe.
     --freeze   LOCAL, una vez el CSV ya bajó de Drive: verifica el conteo de filas, la
-               consistencia `burned == (stratum==1)`, trunca a los primeros 30.000 por orden,
+               consistencia `burned == (stratum==1)`, trunca a los primeros 5.000 por orden,
                deriva `col`/`row` desde `lon`/`lat` con la retícula pinneada, y archiva.
                Nunca se vuelve a correr sobre la misma lista — regenerarla, resortearla o
                descartar una fila ya sorteada invalida el diseño (§5 regla 6).
@@ -81,8 +81,10 @@ FIRE_YEARS = _s1.FIRE_YEARS
 VAL_PROJECT = _s1.VAL_PROJECT
 
 # ---------------------------------------------------------------------------
-N_DRAW = 40_000       # sobre-muestreo por estrato por año (§5 regla 2)
-N_KEEP = 30_000        # tamaño final de la lista congelada
+N_DRAW = 6_000        # sobre-muestreo por estrato por año (§5 regla 2) — 20% de colchón sobre
+                       # N_KEEP, misma lógica proporcional que el diseño original (40k/30k = 33%)
+N_KEEP = 5_000         # tamaño final de la lista congelada — bajado de 30.000 (docs/10 §5),
+                       # ver justificación en el doc mismo
 SEED = 42              # fija y se registra para siempre (§5 regla 5) — la misma para todo el diseño
 TILE_SCALE = 8
 STRATA = (1, 2, 3)
@@ -118,33 +120,54 @@ def region_band():
     return ee.Image(C.REGION_RASTER).select(C.REGION_RASTER_BAND).rename("region_id")
 
 
-def pool_image(fy, h):
-    """Un estrato, con todo lo que va a viajar al CSV: stratum/burned/mb_class_raw/region_id/
-    order_key/lon/lat. `sel` es la máscara de un solo estrato — la banda que sortea
-    `stratifiedSample`, no una columna del CSV final."""
+def attrs_image(fy):
+    """Todo lo que va a viajar al CSV, salvo la ubicación: stratum/burned/mb_class_raw/
+    region_id/order_key. Separada de `sel` a propósito — ver `draw()`."""
     strata_img = strata_by_year(fy)
-    sel = strata_img.select("stratum").eq(h).selfMask().rename("sel")
-    ll = ee.Image.pixelLonLat()
-    return (sel
-            .addBands(strata_img.select("stratum"))
+    return (strata_img.select("stratum")
             .addBands(strata_img.select("burned"))
             .addBands(mb_class_raw_band(fy))
             .addBands(region_band())
-            .addBands(ee.Image.random(SEED).rename("order_key"))
-            .addBands(ll))
+            .addBands(ee.Image.random(SEED).rename("order_key")))
 
 
 def draw(fy, h):
-    img = pool_image(fy, h)
-    return (img.stratifiedSample(
+    """DOS llamadas GEE, no una — mismo sorteo, mucho más barato.
+
+    El `stratifiedSample` original pedía las 8 bandas (`sel` + stratum/burned/mb_class_raw/
+    region_id/order_key/lon/lat) en una sola pasada país-completo, y murió por OOM (Error code 8)
+    en los tres estratos de fy2003 tras >1 día — S3 (~94% del país) es la máscara más grande y
+    fue la que más EECU quemó (42.114 EECU-s, contra 311/26 de S1/S2): es volumen de datos
+    arrastrado por `stratifiedSample`, no falta de turno en la cola.
+
+    `stratifiedSample` elige QUÉ píxeles entran solo a partir de `classBand` + `seed` + `region` +
+    `projection` — qué otras bandas viajen con él no cambia la selección. Separar en (1) sortear
+    SOLO las `N_DRAW` ubicaciones sobre una imagen de una banda (`sel`), y (2) pegarles los
+    atributos con `sampleRegions()` sobre esos puntos ya elegidos (no sobre el país entero) da el
+    mismo resultado exacto — verificado fila por fila contra el método viejo, mismo seed, en S1 y
+    S3, sobre el asset chico `sampling_strata_demo`."""
+    strata_img = strata_by_year(fy)
+    sel = strata_img.select("stratum").eq(h).selfMask().rename("sel")
+    proj = ee.Projection(C.SNIC_CRS, C.SNIC_TRANSFORM)
+    region = ee.FeatureCollection(FRAME_FC).geometry()
+
+    locations = sel.stratifiedSample(
         numPoints=N_DRAW,
         classBand="sel",
-        region=ee.FeatureCollection(FRAME_FC).geometry(),
-        projection=ee.Projection(C.SNIC_CRS, C.SNIC_TRANSFORM),
+        region=region,
+        projection=proj,
         seed=SEED,
-        geometries=False,          # ya van longitude/latitude como bandas — ver docstring
+        geometries=True,
         tileScale=TILE_SCALE,
-    ).sort("order_key"))
+    )
+    ll = ee.Image.pixelLonLat()
+    sampled = (attrs_image(fy).addBands(ll)).sampleRegions(
+        collection=locations,
+        projection=proj,
+        tileScale=TILE_SCALE,
+        geometries=False,          # ya van longitude/latitude como bandas — ver docstring
+    )
+    return sampled.sort("order_key")
 
 
 def task_name(fy, h):

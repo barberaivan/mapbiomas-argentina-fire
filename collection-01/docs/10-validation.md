@@ -23,7 +23,7 @@ lists** (§5).
 | Strata asset | `projects/mapbiomas-argentina/assets/FIRE/VALIDATION/sampling_strata` — one 2-band image (`stratum`, `burned`) per fire year, keyed by the `year` + `collection` properties |
 | Years | **Three, to be defined** — see §8 for the constraints |
 | Initial sample | **100 units per stratum per year** (n = 300/year) |
-| Pre-drawn reserve | **30,000 units per stratum per year**, ordered, fixed seed — the sample can be extended later without redesign |
+| Pre-drawn reserve | **5,000 units per stratum per year**, ordered, fixed seed — the sample can be extended later without redesign |
 | Regionalization | None. Per-ecoregion figures, if ever wanted, come from the same sample as subpopulation estimates |
 | Scope | Annual burned / not burned only. Month-of-burn accuracy is **not** assessed |
 
@@ -244,7 +244,7 @@ samples cannot be merged.
 This is the mechanism that makes every later extension legitimate, and it must be done once, before
 any interpretation.
 
-For each stratum of each year, draw **30,000 pixels** by simple random sampling in **random order**,
+For each stratum of each year, draw **5,000 pixels** by simple random sampling in **random order**,
 and store the list with its row order fixed. Interpretation proceeds strictly down the list;
 extending the sample means continuing further down the same list. That is mathematically identical
 to having drawn the larger sample from the outset, which is why no later phase needs any statistical
@@ -257,7 +257,7 @@ Rules:
    It costs nothing to avoid.
 2. **One export per stratum per year** (9 exports for three years), so a shortfall is visible
    instead of being silently redistributed. `stratifiedSample` can return fewer points than
-   requested over a region this large — so **draw 40,000 and keep the first 30,000 by rank**.
+   requested over a region this large — so **draw 6,000 and keep the first 5,000 by rank**.
    Truncating a randomly ordered simple random sample is itself a simple random sample, so this is
    valid and robust. Verify the row count of every export before freezing.
 3. **Pass `projection`, not `scale`**, to `stratifiedSample`, built from the pinned crs +
@@ -276,10 +276,14 @@ Rules:
    looks bad, let us check further" makes the sample size a function of the observed data, which is
    the one thing that biases the estimator.
 
-30,000 per stratum per year covers any plausible extension with an order of magnitude to spare, and
-absorbs units discarded as uninterpretable. All three strata hold far more than 30,000 pixels — even
-S1 holds on the order of ten million in a typical year — so drawing without replacement is
-unconstrained.
+5,000 per stratum per year still covers every scenario in §6's table with room to spare — the most
+demanding one shown (±9% on area) asks for 3,100 in S3, the stratum that needs the most — and
+absorbs units discarded as uninterpretable. This is a smaller cushion than the original 30,000
+(which had a full order of magnitude to spare over any scenario in §6); 5,000 was chosen instead to
+keep the GEE draw itself cheap at country scale (`stratifiedSample` over the whole country was
+hitting GEE memory limits at 40,000), not for a statistical reason. All three strata hold far more
+than 5,000 pixels — even S1 holds on the order of ten million in a typical year — so drawing
+without replacement is unconstrained.
 
 **What is frozen is the lists and their order, not the allocation.** The estimator is unbiased for
 any `nh` (Stehman et al. 2012 is precisely about extending a stratified sample after collection has
@@ -539,7 +543,7 @@ MapBiomas Fuego network and `ee.data.listOperations()` returns every user's task
 
 ## Appendix B — the frozen ordered lists (GEE)
 
-One export per stratum per year. Draw 40,000, keep the first 30,000 by rank (§5 rule 2).
+One export per stratum per year. Draw 6,000, keep the first 5,000 by rank (§5 rule 2).
 
 ```javascript
 var FY = 2015, H = 1, SEED = 42;      // stratum H in {1,2,3}; SEED fixed and recorded forever
@@ -555,7 +559,7 @@ var pool = img.select('stratum').eq(H).selfMask().rename('sel')
              .addBands(ee.Image.random(SEED).rename('order_key'));
 
 var pts = pool.stratifiedSample({
-  numPoints: 40000,                   // over-draw; truncate to 30000 after sorting
+  numPoints: 6000,                    // over-draw; truncate to 5000 after sorting
   classBand:  'sel',
   region:     ee.FeatureCollection('projects/mapbiomas-argentina/assets/ANCILLARY_DATA/' +
                 'VECTOR/ARG/ARG-Political_Level_1-Pais').geometry(),
@@ -571,7 +575,7 @@ Export.table.toDrive({
 ```
 
 Each row comes out with `stratum`, `burned`, `order_key` and a point geometry. Then, locally and
-once: verify the row count, assert `burned == (stratum == 1)` (§4), keep the first 30,000 rows, add
+once: verify the row count, assert `burned == (stratum == 1)` (§4), keep the first 5,000 rows, add
 `rank` as the row index, derive `col` / `row` from the pixel-centre lon/lat (§5 rule 4), drop `sel`
 and `order_key`, and archive the CSV together with the seed, `Nh`, the strata asset id and the date.
 **Never regenerate or re-sort it.**
