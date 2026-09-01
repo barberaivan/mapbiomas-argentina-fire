@@ -4,6 +4,48 @@ Pending work items not yet scheduled. Add new items at the top of each section.
 
 ---
 
+## Validation (step 10)
+
+The point-drawing recipe in `docs/10-validation.md` Appendix B (`stratifiedSample` per stratum)
+does not scale — OOMs at country scale in every variant (direct, tuned, by-carta partitioned,
+even plain `reduceRegion`). Root cause found 2026-08-31: not `stratum`, not the algorithm — the
+**region geometry** (`ARG-Political_Level_1-Pais`, 2M+ edges) makes any op that receives it as
+`region=` pay to evaluate containment against it. Fixed by swapping it for a plain
+`ee.Geometry.Rectangle` bounding box everywhere it's used as a sampling/reduction region (5/5
+failures → 3/3 successes in a controlled test). Full post-mortem in `docs/10-validation.md` §0
+and `collection-01/validation/02_sample_pool.py`'s module docstring.
+
+Working implementation pivoted to an **unstratified pool** (`Image.sample()`, no `classBand`,
+split by stratum locally in pandas) instead of Appendix B's per-stratum `stratifiedSample` — see
+`02_sample_pool.py`. Two-stage: "pool 1" sized only for the initial 100/stratum/year, cheap
+(~100-150k pts/year); "pool 2" (below) extends to the 5,000/stratum reserve later.
+
+- [x] **Pool 1 + frozen lists for all 3 fire-years** (2026-08-31). 2003/2013/2022, 9 lists total
+  in `outputs/frozen/`, all comfortably above the initial-100 floor (worst case S1/fy2022: 506).
+- [x] **`03_ceo_export.py --export --all-years`** run, 3 `ceo_upload_fy<FY>.csv` (300 rows each,
+  100/stratum, shuffled) produced and manually uploaded as GEE table assets (no automated
+  path — `osgeo`/GDAL isn't installed in this repo's venv, and CSV-direct upload via the Code
+  Editor's Assets → NEW → CSV file worked fine, no need for the shapefile-zip route
+  `objects_upload.py` uses elsewhere): `projects/mapbiomas-argentina/assets/FIRE/VALIDATION/
+  ceo_points/ceo_points_fy<2003|2013|2022>`.
+- [ ] **Update `ceo_val_00_template`** (repo `fuego`, not this repo) — `POINTS_ASSET_PREFIX`
+  still points at the `ceo_points_demo_sierras_cordoba_fy` demo asset from testing. Needs to
+  point at `ceo_points_fy` before real interpretation starts. Iván's side (GEE JS repo).
+- [ ] **Pool 2 — extend to the 5,000/stratum reserve.** Mechanism decided, not built: reuse
+  `draw_pool()` with a bigger N (sized the same way as pool 1, via `size_full_draw()` against
+  each year's own pilot counts), de-duplicate against pool 1's frozen `(col, row)` (collision
+  rate negligible at these scales, ~0.03% — no need for an exclusion mask), append ranked after
+  pool 1's existing rows. Pool 1's frozen rows/ranks must never be touched (design §5 rule 6).
+- [ ] **Exact-`Nh` pixel census (docs §4.4).** `01_strata_export.py --weights-launch` (country-wide
+  `reduceRegion`) was never re-tested with the geometry fix — don't assume it's still broken,
+  verify first; it very plausibly works now given the same fix applied cleanly to `sample()` and
+  `reduceRegions`-by-carta both use the same region-geometry mechanism. If it still fails, the
+  pool's own realized per-stratum proportions are already a usable `Wh` estimate (tight — see
+  `docs/10-validation.md` §0/§7) as a fallback, pending the team's sign-off on using an estimate
+  vs. an exact census as the frozen fingerprint.
+
+---
+
 ## Data preparation
 
 This is probably for collection 2.
