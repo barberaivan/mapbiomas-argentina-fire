@@ -20,6 +20,11 @@ split by stratum locally in pandas) instead of Appendix B's per-stratum `stratif
 `02_sample_pool.py`. Two-stage: "pool 1" sized only for the initial 100/stratum/year, cheap
 (~100-150k pts/year); "pool 2" (below) extends to the 5,000/stratum reserve later.
 
+- [ ] **CEO Geo-Dash: add an NBR chart + a delta-NBR image, for 2003/2013/2022.** Goal: let the
+  validator resolve obvious burn/no-burn calls fast without leaving the point-review UI. Needs an
+  NBR time-series chart (pre-/post-fire window per point) and a delta-NBR image panel, wired for
+  the three sampled fire-years only. Lives in Geo-Dash / `ceo_val_00_template` config (repo
+  `fuego`), not this repo — scope and exact config approach not yet worked out.
 - [x] **Pool 1 + frozen lists for all 3 fire-years** (2026-08-31). 2003/2013/2022, 9 lists total
   in `outputs/frozen/`, all comfortably above the initial-100 floor (worst case S1/fy2022: 506).
 - [x] **`03_ceo_export.py --export --all-years`** run, 3 `ceo_upload_fy<FY>.csv` (300 rows each,
