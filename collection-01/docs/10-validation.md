@@ -85,8 +85,8 @@ logic, no vectorization anywhere. Export once as a GEE asset, record the fingerp
 regenerate**.
 
 ```
-S2 = dilate( our_burn OR mcd64 OR vnp64 OR firecci OR firms )  AND NOT our_burn
 S1 = our_burn
+S2 = dilate( our_burn OR mcd64 OR vnp64 OR firecci OR firms )  AND NOT our_burn
 S3 = NOT S1 AND NOT S2
 ```
 
@@ -127,7 +127,7 @@ FIRMS, and **`max`, never `mode`, as the aggregation reducer** (§4.3).
 ### 4.2 The coarse grid must be nested in the product grid
 
 The dilation runs at ~500 m so the kernel stays a 3 × 3 instead of a 33 × 33. But the coarse
-lattice must be **the product grid decimated by an integer**, not an independent 500 m grid and not
+lattice must be **our product grid decimated by an integer**, not an independent 500 m grid and not
 the MODIS sinusoidal grid. If it is not nested, the final coarse → 30 m reprojection resamples,
 S2's boundary lands mid-pixel, it shifts between years, and the raster cannot be reproduced.
 
