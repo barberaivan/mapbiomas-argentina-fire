@@ -1,0 +1,9 @@
+# Reference inputs for the migration — kept LOCAL, not in git (18 MB + 3 MB of
+# Google Slides export). Anyone porting a slide needs them on disk: see
+# CONTEXT-typst.md for how the exact colours, sizes and positions are read out
+# of the pptx XML, and how to rasterize the PDF page to compare against.
+#
+# Anchored with a leading "/" on purpose: a bare filename matches at ANY depth,
+# which would also hide the built out/taller_mayo_2026_col_01.pdf.
+/taller_mayo_2026_col_01.pptx
+/taller_mayo_2026_col_01.pdf
