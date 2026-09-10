@@ -50,6 +50,14 @@ Usage (from the repo ROOT)
   $PYTHON collection-01/workflow/07-month_of_burn.py --year 2015 --launch
   $PYTHON collection-01/workflow/07-month_of_burn.py --all   --launch       # 27 tasks — tmux!
 
+  # timing benchmark into TESTS/, nothing production touched (docs/11 §4)
+  $PYTHON collection-01/workflow/07-month_of_burn.py --year 2020 --launch \
+      --out-collection projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/TESTS/month_of_burn_benchmark \
+      --suffix _benchmark
+
+  # deploy the agriculture filter once the threshold is chosen (docs/11 §2, §6)
+  $PYTHON collection-01/workflow/07-month_of_burn.py --all --launch --overwrite --agri-max 0.4
+
   # the local<->GEE cross-check (docs/07 §8). A year selector is always required, so use --all:
   $PYTHON collection-01/workflow/07-month_of_burn.py --all --stats --launch   # submit the batch jobs
   $PYTHON collection-01/workflow/07-month_of_burn.py --all --stats-read       # compare vs local
@@ -64,6 +72,7 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
+import json
 import sys
 from pathlib import Path
 
@@ -76,6 +85,32 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 EPOCH = dt.date(1970, 1, 1)
 # Per-year validation histograms (batch tasks; see stats_year).
 STATS_COL = f"{C.CLASSIFICATION_COLLECTIONS}/mob_month_stats"
+
+
+def initialize(project, credentials_path=None):
+    """`ee.Initialize`, optionally with a credentials file that is NOT the resident one.
+
+    Copied verbatim from `07-burned_area_polygons.py::initialize` (CLAUDE.md: prefer passing the
+    file explicitly over `cp`-ing it into place).  The reason to bother here is the 27-task
+    launch: the GEE task queue is PER USER, so half the years submitted as the second account
+    start immediately instead of queueing behind the first account's. Only the COMPUTE project
+    changes; the destination asset path is unaffected.
+    """
+    if not credentials_path:
+        ee.Initialize(project=project)
+        return
+    from google.oauth2.credentials import Credentials
+    stored = json.loads(Path(credentials_path).expanduser().read_text())
+    ee.Initialize(Credentials(
+        None,
+        refresh_token=stored["refresh_token"],
+        token_uri=ee.oauth.TOKEN_URI,
+        client_id=stored.get("client_id", ee.oauth.CLIENT_ID),
+        client_secret=stored.get("client_secret", ee.oauth.CLIENT_SECRET),
+        scopes=stored.get("scopes", ee.oauth.SCOPES),
+        quota_project_id=stored.get("project"),
+    ), project=project)
+    print(f"[auth] {credentials_path}  |  compute project {project}")
 
 
 def _day(year, month=1, day=1):
@@ -115,7 +150,7 @@ def task_in_flight(description):
 # ---------------------------------------------------------------------------
 # one fire-year's contribution to one calendar year
 # ---------------------------------------------------------------------------
-def accepted_objects(fire_year):
+def accepted_objects(fire_year, agri_max=None):
     """The objects that contribute pixels: called fire AND at least the minimum size.
 
     `fire` is the DEPLOYED call — the collected label where there is one, else the model
@@ -130,18 +165,26 @@ def accepted_objects(fire_year):
     # thing to publish either way, and a null would paint NaN and poison the max. It also lets
     # _contribution() derive the object footprint from the painted date band's mask, halving the
     # rasterization work (see there).
-    return fc.filter(ee.Filter.And(ee.Filter.eq("fire", 1),
-                                   ee.Filter.gte("area_ha", C.MIN_FIRE_HA),
-                                   ee.Filter.notNull(["date_med"])))
+    keep = [ee.Filter.eq("fire", 1),
+            ee.Filter.gte("area_ha", C.MIN_FIRE_HA),
+            ee.Filter.notNull(["date_med"])]
+    # AGRICULTURE FILTER (docs/11 §2) — optional, OFF by default. `frac_agri` is the object's
+    # abundance of veg_fire 1-3 (agriculture_{chaco,cuyo-pat,pampa}), EXCLUDING class 4
+    # agriculture-per. It is already a property of every objects_raw_<fy> FC, so this costs
+    # nothing to evaluate. Deliberately NOT wired to a constant yet: the threshold is chosen
+    # visually (docs/11 §6) and until it is, the products stay unfiltered.
+    if agri_max is not None:
+        keep.append(ee.Filter.lt("frac_agri", agri_max))
+    return fc.filter(ee.Filter.And(*keep))
 
 
-def _contribution(fire_year, cal_year):
+def _contribution(fire_year, cal_year, agri_max=None):
     """Month-of-burn (1-12) for the part of `cal_year` that fire-year `fire_year` covers.
 
     Masked everywhere else.  Returns None-free: an empty contribution is simply a
     fully-masked image, which `max()` ignores.
     """
-    fc = accepted_objects(fire_year)
+    fc = accepted_objects(fire_year, agri_max)
     cs = ee.Image(f"{C.SNIC_COL}/snic_{fire_year}").select("candseed")
     date = ee.Image(f"{C.SNIC_METRICS_COL}/snic_metrics_{fire_year}").select("abs_date")
 
@@ -178,9 +221,9 @@ def _contribution(fire_year, cal_year):
     return month.updateMask(keep).rename(C.MONTH_OF_BURN_BAND).toUint8()
 
 
-def month_of_burn(cal_year):
+def month_of_burn(cal_year, agri_max=None):
     """The published month-of-burn image for one calendar year."""
-    parts = [_contribution(fy, cal_year) for fy in (cal_year - 1, cal_year)]
+    parts = [_contribution(fy, cal_year, agri_max) for fy in (cal_year - 1, cal_year)]
     img = (ee.ImageCollection(parts).max()          # union; later date wins on reburn
            .rename(C.MONTH_OF_BURN_BAND).toUint8())
     return img.set({
@@ -196,6 +239,9 @@ def month_of_burn(cal_year):
         "lulc_mask": "embedded-upstream (veg_fire non-burnable classes are unreachable "
                      "as SNIC candidates; stricter than the reference water-only rule)",
         "solitary_pixel_filter": f"embedded-upstream (object >= {C.MIN_FIRE_HA} ha)",
+        "agriculture_filter": ("none" if agri_max is None
+                               else f"object dropped when frac_agri >= {agri_max} "
+                                    f"(veg_fire 1-3, excl. agriculture-per; docs/11 §2)"),
         "system:time_start": ee.Date.fromYMD(cal_year, 1, 1).millis(),
         "system:time_end": ee.Date.fromYMD(cal_year + 1, 1, 1).millis(),
     })
@@ -204,14 +250,14 @@ def month_of_burn(cal_year):
 # ---------------------------------------------------------------------------
 # audit — small region only, so it stays cheap
 # ---------------------------------------------------------------------------
-def check(cal_year, roi):
+def check(cal_year, roi, agri_max=None):
     """Per-month pixel histogram + the footprint/candseed disagreement, over a small ROI.
 
     The histogram is the number to compare against `07-calendar_scars.R`'s per-year
     validation CSV: if the local mask and this raster agree, the scar layer's mask is the
     month raster's mask, which is what docs/07 §5.6 requires.
     """
-    img = month_of_burn(cal_year)
+    img = month_of_burn(cal_year, agri_max)
     hist = img.reduceRegion(ee.Reducer.frequencyHistogram(), roi,
                             crs=C.SNIC_CRS, crsTransform=C.SNIC_TRANSFORM,
                             maxPixels=int(1e10)).getInfo()
@@ -331,9 +377,18 @@ def stats_read(years):
               "object pixel set (docs/07 §6).")
 
 
-def export_year(cal_year, region, launch, overwrite=False):
-    asset_id = f"{C.MONTH_OF_BURN_COL}/{C.product_name('fire_mask')}_{cal_year}"
-    description = f"mob_{cal_year}"
+def export_year(cal_year, region, launch, overwrite=False,
+                out_col=None, suffix="", agri_max=None):
+    """Export one calendar year.
+
+    `out_col` + `suffix` exist so a timing/benchmark run lands in TESTS/ instead of next to a
+    published product (docs/11 §4.4). The task description carries the same suffix, because the
+    in-flight check matches on description and the compute project is shared with the whole
+    network (CLAUDE.md): a bare `mob_2012` could collide with another country's task.
+    """
+    out_col = out_col or C.MONTH_OF_BURN_COL
+    asset_id = f"{out_col}/{C.product_name('fire_mask')}_{cal_year}{suffix}"
+    description = f"mob_{cal_year}{suffix}"
 
     exists = asset_exists(asset_id)
     if exists and not overwrite:
@@ -343,7 +398,7 @@ def export_year(cal_year, region, launch, overwrite=False):
         print(f"[skip] {description} has a PENDING/RUNNING task")
         return
 
-    img = month_of_burn(cal_year)
+    img = month_of_burn(cal_year, agri_max)
     task = ee.batch.Export.image.toAsset(
         image=img,
         description=description,
@@ -360,7 +415,7 @@ def export_year(cal_year, region, launch, overwrite=False):
         print(f"[launched] {task.id}  ->  {asset_id}")
     else:
         print(f"[dry] would export {asset_id}  bands={img.bandNames().getInfo()}  "
-              f"fire_years={cal_year - 1},{cal_year}")
+              f"fire_years={cal_year - 1},{cal_year}  agri_max={agri_max}")
 
 
 def main():
@@ -388,11 +443,24 @@ def main():
                          "disagreement")
     ap.add_argument("--overwrite", action="store_true",
                     help="re-export a year whose asset exists, replacing it in place")
+    ap.add_argument("--agri-max", type=float, default=None, metavar="T",
+                    help="AGRICULTURE FILTER (docs/11 §2): drop objects with frac_agri >= T "
+                         "before painting. Default: no filter. The threshold is chosen visually "
+                         "(docs/11 §6); this flag is what deploys it.")
+    ap.add_argument("--out-collection", default=None, metavar="ASSET",
+                    help="write to this ImageCollection instead of the published one — for "
+                         "benchmark/timing runs (docs/11 §4.4). Created if missing.")
+    ap.add_argument("--suffix", default="", metavar="STR",
+                    help="appended to the asset name AND the task description, e.g. '_benchmark'")
     ap.add_argument("--project", default=C.GEE_PROJECT,
                     help="GEE compute project to initialize under (default: %(default)s)")
+    ap.add_argument("--credentials", default=None, metavar="FILE",
+                    help="submit as another account (the task queue is PER USER) — e.g. "
+                         "~/.config/earthengine/credentials.comahue, which needs "
+                         "--project mapbiomas-argentina")
     args = ap.parse_args()
 
-    ee.Initialize(project=args.project)
+    initialize(args.project, args.credentials)
 
     years = C.CALENDAR_YEARS if args.all else [args.year]
     bad = [y for y in years if y not in C.CALENDAR_YEARS]
@@ -417,16 +485,23 @@ def main():
         roi = (ee.Geometry.Polygon(C.TEST_ROI_COORDS, None, False) if args.roi == "test"
                else ee.Geometry.Rectangle([float(v) for v in args.roi.split(",")], None, False))
         for y in years:
-            check(y, roi)
+            check(y, roi, args.agri_max)
         return
 
+    out_col = args.out_collection or C.MONTH_OF_BURN_COL
     if args.launch:                # ditto — creating assets is not a dry-run side effect
-        ensure_container(C.CLASSIFICATION_COLLECTIONS, "FOLDER")
-        ensure_container(C.MONTH_OF_BURN_COL, "IMAGE_COLLECTION")
+        if args.out_collection:
+            parent = out_col.rsplit("/", 1)[0]
+            ensure_container(parent, "FOLDER")
+            ensure_container(out_col, "IMAGE_COLLECTION")
+        else:
+            ensure_container(C.CLASSIFICATION_COLLECTIONS, "FOLDER")
+            ensure_container(C.MONTH_OF_BURN_COL, "IMAGE_COLLECTION")
 
     region = ee.FeatureCollection(C.ARG_BUFFER_FC).geometry()
     for y in years:
-        export_year(y, region, args.launch, args.overwrite)
+        export_year(y, region, args.launch, args.overwrite,
+                    out_col=out_col, suffix=args.suffix, agri_max=args.agri_max)
 
     if not args.launch:
         print("\nDry run only. Re-run with --launch to submit the task(s).")
