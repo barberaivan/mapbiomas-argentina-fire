@@ -18,6 +18,40 @@ launch-preparation track. Two things to keep in mind throughout:
 
 ---
 
+## 0. ⭐ READ THIS FIRST — we do not build the statistics. The toolkit does.
+
+**Confirmed by Iván, 11 Sep 2026.** The statistics stage is **not** a reduction we write, benchmark
+and pay for. The Brazil team's **`2-Statistics/toolkit/v03/`** in the reference repo is a GEE **API**
+in which this computation is *absurdly fast*, it **exports the CSVs straight to Google Cloud
+Storage**, and it **creates the folder structure automatically**. Brazil will help us wire it up.
+
+**All we have to supply is a clear specification of the territories** — ecoregions, provinces,
+departments — in the toolkit's own `territories/` and `datasets/` files, following the per-country
+folders that already exist there (`bolivia/`, `brasil/`, `colombia/`, `paraguay/`, `peru/`; Argentina
+has none yet).
+
+**What this cancels:**
+
+- Do **not** write, optimise or benchmark our own grouped `reduceRegion` for stage 5. The cost
+  analysis in §2.1.1 and in docs/11 §4.3 is now history, not a plan. The six `toDrive-area-*` scripts
+  of §2.1 are the *specification of what the numbers are*, not the code we run.
+- The 8 h/year measurements of 10-11 Sep (docs/11 §4.3) were measuring the wrong thing. They stay on
+  record because they are true of *our* scripts, and because one of their findings survives
+  independently — the masked numerator is not cheaper than the space-filling denominator.
+
+**What this does NOT cancel — the one thing still ours:**
+
+> **Nobody in the network computes a burnable denominator** (§2.1.1, point 4). The toolkit produces
+> absolute areas, like every other network statistic. **`% burned` is Argentina's own metric**, so
+> the burnable layer — and the fixed modal-`veg_fire` design in docs/11 §4.3 — is still ours to
+> build, once. The toolkit gives us the numerator cheaply; it will never give us the denominator.
+
+Everything below §1 is still current on *what* the statistics must contain, the territorial layer
+(§2.2), Looker (§2.3), publication (§3) and the launch track. Only the question of *who computes the
+areas and at what cost* is settled here.
+
+---
+
 ## 1. The critical path
 
 | Order | Item | Owner | Blocks |
@@ -111,31 +145,34 @@ denominator in them to deviate from.
 > whether the six are adaptations of the reference or of our step-11 code. docs/11 §5.1 holds the
 > factsheet-side requirements.
 
-### 2.1.2 ⏸️ The Brazil team has a tool for this, and it is cheap — ASK BEFORE BUILDING
+### 2.1.2 ✅ The toolkit — confirmed, and what it needs from us
 
-**Iván, 11 Sep 2026:** *"brazil team has a tool for these stats, not expensive at all."* Details to
-follow; he will explain.
+See **§0** for what this settles. Confirmed 11 Sep 2026: the tool is
+**`2-Statistics/toolkit/v03/`**, a GEE API; the computation is fast, the CSVs go to **GCS**, and the
+folder structure is created automatically. Brazil will help.
 
-**This is a stop sign for §2.1.1's cost analysis and for anything in docs/11 §4.3 that assumes the
-statistics must be paid for at 8 h per year per product.** Do not optimise, re-benchmark, or rebuild
-our own reducer until that tool is understood — the cheapest version of this stage may be one we do
-not write at all.
+Its shape, from the repo:
 
-When the explanation arrives, the first thing to check is whether it is
-`2-Statistics/toolkit/v03/` — the Looker/App engine, with `core/calculate.js`, `core/export.js` and
-per-country `datasets/` + `territories/` folders (Bolivia, Brasil, Colombia, Paraguay, Perú; no
-Argentina folder yet). That is the only thing in the reference repo shaped like a reusable tool
-rather than a copy-per-country script. **This is a guess, not a confirmation** — the version of
-`calculate.js` in that toolkit runs the same grouped `reduceRegion` at `scale: 30` as the six
-scripts, so if the tool really is cheap, either it is something else, or the cost difference lives
-somewhere we have not looked (a precomputed input, a coarser accepted scale, a service outside GEE).
+| Path | What it is |
+|---|---|
+| `core/calculate.js`, `core/export.js`, `core/ui.js` | the engine — shared by every country |
+| `<country>/datasets/fuego_col1.js` | which product assets and bands to read |
+| `<country>/territories/*.js` | **the file we must write** — one per territorial cut |
+| `<country>/_shared/legends.js`, `lulc_base.js` | legend and LULC decode |
+| `<country>/apps/fuego_col1.js` | the app entry point that wires the above together |
 
-Questions to put to them (adds to §10.2 of docs/11):
+**Our deliverable is `argentina/territories/` + `argentina/datasets/`.** Look at `peru/` and
+`colombia/` as the closest models (`regiones.js`); Brazil's is the elaborate case
+(`bioma_estado.js`, `estado.js`, `tis.js`, `ucs.js`, `fundiario.js`).
 
-- What is the tool, where does it run, and can a country outside Brazil use it?
-- What does it read — our `FINAL_PRODUCTS` assets directly, or something they prepare first?
-- Does it need the intersected territorial layer (§2.2), or does it build its own?
-- Does it produce the six CSVs in the required schema, or something we would still have to reshape?
+The territorial cuts to specify — **ecoregions, provinces, departments** — and the intersected-layer
+constraints that still apply to them are in §2.2. That section is now the *only* blocking item in
+stage 5, and it was always ours.
+
+> Note the toolkit's `calculate.js` runs the same grouped `reduceRegion` at `scale: 30` as the six
+> scripts of §2.1. Whatever makes it fast is therefore not visible in that file alone — worth asking
+> Brazil, since the answer may apply to our own burnable denominator, which the toolkit will not
+> compute for us.
 
 ### 2.2 The territorial layer — ours to build, and the real constraint
 

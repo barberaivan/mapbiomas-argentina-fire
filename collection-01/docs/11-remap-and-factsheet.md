@@ -29,6 +29,16 @@ three burnable benchmarks all **failed on a null-geometry export**; the bug is f
 scripts (§4.3) and everything was relaunched at 04:20. Eight hours later **the benchmark has already
 answered its question, and the answer is bad.**
 
+**⭐ Superseded on the statistics side, same day: the stage-5 statistics are computed by the Brazil
+team's `2-Statistics/toolkit/v03/`, not by us — see docs/09 §0.** The benchmark below was costing a
+reduction we will not run. What survives it: the masked numerator is not cheaper than the
+space-filling denominator, and the **burnable denominator is still ours alone** (no country in the
+network computes one), so the fixed modal-`veg_fire` layer is now the only heavy compute left in
+this chain.
+
+**Next up (Iván, 11 Sep): the agriculture threshold is decided with Camilo, and then the whole
+recompute is relaunched.** Everything downstream of that decision is in §3's dependency graph.
+
 **The finding: there is no cheap half.** At 8 h in, the *masked* burned reduction had consumed
 slightly MORE compute than the *space-filling* burnable one at the same 30 m (19 083 vs 18 633
 EECU·s), and **neither had finished**. §5.1's assumption — "the half that cannot be decimated
@@ -55,9 +65,10 @@ we will get, and the compute cache means a restart cannot re-measure honestly.
    asset *landed*, never how long its task ran. **Check `attempt` first: if it is > 1, `startTime`
    has been overwritten and there is no duration to record** — that is exactly how the first round's
    30 m number was lost (§4.3).
-2. **⏸️ Ask Iván about the Brazil team's stats tool FIRST** (docs/09 §2.1.2) — he says it exists and
-   is cheap, and it may make steps 3-4 below unnecessary. Do not re-benchmark or rewrite the reducer
-   before that conversation.
+2. **✅ Answered — the statistics stage is the toolkit's, not ours.** `2-Statistics/toolkit/v03/`,
+   confirmed 11 Sep; docs/09 §0. Our only deliverable there is `argentina/territories/` +
+   `datasets/`, and the blocking input is the territorial layer of docs/09 §2.2. Do not re-benchmark
+   or rewrite the reducer.
 3. **Act on the dead assumption, do not re-litigate it.** The numerator's only remaining lever is
    `--from-objects` (paint in one pass; §5.1 shows it is decimation-safe). Decide whether the
    factsheet numbers come from that route, and say out loud in the footnote if they no longer come
@@ -424,16 +435,22 @@ not runnable.**
 > we will get, cancelling forfeits them a second time, and the compute cache means a restart would
 > not re-measure honestly. The cost is one slot on each account until they land.
 
-> ### ⏸️ STOP before optimising any of this — Brazil has a tool
+> ### ✅ RESOLVED — the statistics are not ours to compute. Read docs/09 §0.
 >
-> **Iván, 11 Sep 2026:** *"brazil team has a tool for these stats, not expensive at all."* Details
-> pending; he will explain. Recorded in docs/09 §2.1.2 with the questions to ask and the one
-> candidate in the reference repo (`2-Statistics/toolkit/v03/`, unconfirmed).
+> **Iván, 11 Sep 2026, confirmed:** the tool is `2-Statistics/toolkit/v03/` — a GEE API where this
+> computation is *absurdly fast*, exporting CSVs to GCS and creating the folders itself. All we
+> supply is the territories (ecoregions, provinces, departments) in its `territories/` +
+> `datasets/` files; Brazil will help. **docs/09 §0 and §2.1.2 are the live reference.**
 >
-> **Everything below about how much the reduction costs may be moot.** Do not re-benchmark, do not
-> rewrite the reducer, and do not commit to the vector route on cost grounds until that tool is
-> understood. The measurements stand as measurements; the *conclusions drawn from them about what we
-> must build* are on hold.
+> **So everything below is history, not a plan.** It stays on record because the measurements are
+> true of *our* scripts and one finding survives independently — the masked numerator is not cheaper
+> than the space-filling denominator. But do not re-benchmark, do not rewrite the reducer, and do
+> not choose the vector route on cost grounds: the cost it was avoiding is gone.
+>
+> **The one thing still ours: the burnable denominator.** Nobody in the network computes one
+> (docs/09 §2.1.1), so the toolkit gives us the numerator and never the denominator. The fixed
+> modal-`veg_fire` layer below is still the right design, and now it is the *only* heavy compute in
+> the statistics chain.
 
 #### Three self-inflicted costs, if we do end up paying for our own reducer
 
