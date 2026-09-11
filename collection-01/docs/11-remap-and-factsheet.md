@@ -19,9 +19,14 @@ publishes, or we have to say out loud that it doesn't.
 > records what we re-run in September 2026, why, and in what order. If the two disagree about
 > mechanics, docs/07 wins; if they disagree about what was run, this file wins.
 
+**Status, 10 Sep 2026.** All three filter points are wired and verified (§2.3); the threshold
+explorers are in the Earth Engine repo (§6); the territory tags and every fire-count table are
+built (§8); the burnable and burned-area scripts are written and checked (§5.1). What is left is
+one decision — the threshold — and then the exports.
+
 ---
 
-## 1. Some products must be re-exported anyway — the LULC was preliminary
+## 1. Some products must be re-exported anyway — the land cover was preliminary
 
 `C.PRODUCT_LULC` was pinned on 2026-07-29 to
 
@@ -51,7 +56,7 @@ _pb  origin  -73.566631877684,   -21.780821873347
 So: **change one line in `utils/constants.py` and re-export.** Which products that touches depends
 on the second decision, so the full dependency table is in §3.
 
-> **Only the four `*_coverage` products read LULC.** `07-subproducts.py:360` already stamps
+> **Only the four `*_coverage` products read land cover.** `07-subproducts.py:360` already stamps
 > `lulc_asset` on those four and `"lulc": "not used"` on the other five. If the agriculture filter
 > is declined, the mandatory re-export is **4 tasks**, not 9.
 
@@ -99,8 +104,8 @@ leaves **1.37 Mha of cropland pixels still in the map**, inside mixed objects:
 | `frac_agri < 0.5` | 67.45 Mha | 1.68 Mha |
 
 So the object filter fixes **what the map looks like** (whole spurious crop-field "fires"
-disappear) but does **not** make a per-LULC-class pixel statistic clean. That is the tension §5.3
-and §8 have to resolve, not something the threshold can fix.
+disappear) but does **not** make a per-land-cover-class pixel statistic clean. That is the tension §5.3
+and §9 have to resolve, not something the threshold can fix.
 
 **(b) It is mostly Chaco — and, in proportion, Yungas.** Now measured against the **Burkart
 ecoregions** rather than the `veg_fire` class suffix (which is regionalised by the 5 MapBiomas
@@ -151,7 +156,7 @@ for it.
 where "what we mapped" is defined.
 
 The filter is genuinely three lines, and `frac_agri` is already present on **both** sides — it is a
-property of the uploaded `objects_raw_<fy>` FeatureCollections in GEE (verified on FY2020) and a
+property of the uploaded `objects_raw_<fy>` FeatureCollections in Earth Engine (verified on FY2020) and a
 column of the local `objects_<fy>_derived.csv`:
 
 | file | line | what to change |
@@ -170,21 +175,21 @@ properties so the layer says what it excluded.
 ```
 objects_raw_<fy>  (step 06, unchanged — the WHOLE object set stays uploaded)
       │  filter: fire==1 & area_ha>=1  [ & frac_agri < T ]
-      ├──────────────► 07a  month_of_burn   (27 GEE tasks)  ── the pivot
+      ├──────────────► 07a  month_of_burn   (27 Earth Engine tasks)  ── the pivot
       │                        │
       │                        ├── 07d  9 subproducts   (4 of them × PRODUCT_LULC)
       │                        └── 07c  3 scar rasters  (masked to 07a)
       │
       ├──────────────► 07b  local calendar scars (28 + 27 local passes, 27 manual ingests)
       │                        └── feeds 07c
-      └──────────────► 07e  burned_area_polygons_v1  (1 GEE task, 3.27 h measured)
+      └──────────────► 07e  burned_area_polygons_v1  (1 Earth Engine task, 3.27 h measured)
 ```
 
 | decision | must re-run | tasks |
 |---|---|---|
-| **LULC only** (mandatory, §1) | the four `*_coverage` products | 4 GEE |
-| **+ agriculture filter** | 07a, then all 9 of 07d, then 07e | 27 + 9 + 1 GEE |
-| **+ keep the size chain exact** | 07b (local + ingest) then 07c | 55 local + 3 GEE |
+| **land cover only** (mandatory, §1) | the four `*_coverage` products | 4 Earth Engine |
+| **+ agriculture filter** | 07a, then all 9 of 07d, then 07e | 27 + 9 + 1 Earth Engine |
+| **+ keep the size chain exact** | 07b (local + ingest) then 07c | 55 local + 3 Earth Engine |
 
 **The size chain is optional and it is the one to defer** (Iván: not mandatory). Nothing in the
 reduced factsheet uses scar size. And because **07c masks the scar rasters to 07a**, re-running
@@ -205,38 +210,16 @@ Order of priority:
 
 ## 4. Feasibility and the critical path
 
-### 4.1 The unknown that gates everything
-
-**07a's per-year runtime is recorded nowhere.** It is the dominant cost (painting up to ~72 k
-polygons over the whole country at 30 m, twice per calendar year) and it is 27 of them. Until it is
-measured, every schedule below is a guess.
-
-**Benchmark, launched 2026-09-10:** two calendar years spanning the range, exported to a **TESTS
-folder** so nothing production is touched:
-
-```
-FIRE/COLLECTION-1/TESTS/month_of_burn_benchmark/…_{2012,2020}_benchmark
-```
-
-| benchmark year | objects painted (approx., both contributing fire-years) | burned area |
-|---|---|---|
-| **2012** — low | 26,930 | 0.92 Mha |
-| **2020** — high | 71,753 | 4.68 Mha |
-
-2.7× in object count, 5× in area — enough to tell whether the cost scales with objects or is
-dominated by the fixed country-wide sweep. Run **unfiltered**, deliberately: we do not have a
-threshold yet, and an unfiltered run is the conservative upper bound on cost.
-
 ### 4.2 The parallelism ceiling — this is the real constraint
 
-**GEE runs ~2 export tasks at a time per user.** We have two accounts
+**Earth Engine runs ~2 export tasks at a time per user.** We have two accounts
 (`ivanbarbera93@gmail.com`, `ivanbarbera@comahue-conicet.gob.ar`); at the very most we could
 borrow a third. So the realistic ceiling is **~4–6 concurrent exports, not 9+**.
 
 27 tasks at 2-per-account therefore means roughly `27 / (2 × accounts)` × per-task-time in serial
 rounds. At 4 concurrent: 7 rounds.
 
-**Measured (2026-09-10): a year takes ~58 min** (§10.2), so **7 rounds ≈ 6.5 h at 4 concurrent**,
+**Measured (2026-09-10): a year takes ~58 min** (§4.3), so **7 rounds ≈ 6.5 h at 4 concurrent**,
 ~13 h at 2. **07a fits comfortably** — launch it in the morning and it lands the same day. The
 agriculture filter is therefore affordable, and §2.3's "mask only for the factsheet" fallback is
 not needed.
@@ -250,19 +233,25 @@ queueing behind the first — see CLAUDE.md on passing `--credentials` explicitl
 swapping `~/.config/earthengine/credentials`. And `ee.data.listOperations()` is **project-scoped**,
 so a watcher must poll both projects or it will report the other account's task as missing.
 
-### 4.3 Timings we do know
+### 4.3 Timings — all measured
 
-| step | measured | source |
+| step | per unit | total |
 |---|---|---|
-| 07e merged polygon export | **3.27 h** | docs/07 §13, 2026-07-31 |
-| 07b pass 1 (pixels, 28 fire-years, `-j 5`) | **41 min** | docs/07, run 2026-07-29 |
-| 07b pass 2 (scars, 27 calendar years, `-j 2`) | **96 min** | idem |
-| 07b manual ingest of the 27 scar zips | **≤ 30 min** (Iván) | — |
-| 07a per year | **unknown — being measured** | §4.1 |
-| burnable-area reduction per year (§5.1) | **unknown — being measured** | §5.1 |
+| **07a month of burn** | **~58 min per calendar year** | 27 years ≈ 26 h serial, **~6.5 h at four concurrent** |
+| 07e polygon layer | 3.27 h, one task | 3.27 h |
+| 07b scars, pass 1 (pixels) | 28 fire-years, 5 workers | 41 min |
+| 07b scars, pass 2 | 27 calendar years, 2 workers | 96 min |
+| 07b manual upload of the 27 scar files | — | ≤ 30 min |
+| territory tagging (local) | ~10 ms per object, 6 cores | ~50 min |
 
-So the whole size chain is ~2.5 h of compute plus half an hour of clicking. It is not the expensive
-part; 07a is.
+**07a does not depend on fire load.** Calendar 2012 (26,930 objects, 0.92 Mha) took 57.8 min;
+calendar 2020 (71,753 objects, 4.68 Mha) took 58.8 min — 2.7× the objects for 1.7 % more time.
+The cost is the whole-country sweep at 30 m, not the painting, so the big years will not blow up.
+
+**So the remap fits.** Launch 07a in the morning and it lands the same day.
+
+> Earth Engine's `progress` field sat at 0.33–0.37 for most of an hour and then finished. It is
+> not linear; never extrapolate from it. Take `startTime → endTime` off the finished task.
 
 ### 4.4 Test exports go to `TESTS/`
 
@@ -291,9 +280,9 @@ parallel factsheet pipeline — build the stage-5 exports with the ecoregion lay
 territorial cuts and read the factsheet off them. That also unblocks docs/09 open item #1
 (the territorial layer), which is listed as blocking everything.
 
-**Numerator** — burned area per calendar year × territory (and × LULC class, from
+**Numerator** — burned area per calendar year × territory (and × land-cover class, from
 `annual_burned_coverage` / `monthly_burned_coverage`). One export gives analyses 1, 2 *and* the
-LULC panel at once.
+land-cover panel at once.
 
 > **`workflow/11-burned_area_stats.py --from-objects` takes 07a off the factsheet's critical
 > path.** Instead of reading the exported month-of-burn asset, it calls 07a's *own*
@@ -309,7 +298,7 @@ LULC panel at once.
 >
 > The honest trade: every year repaints, so there is no reusable intermediate and this does not
 > make 07a cheaper — it removes an ordering constraint, not work. And a number produced this way
-> is **of a map that is not yet published**; label it (§8).
+> is **of a map that is not yet published**; label it (§9).
 
 **Denominator — burnable area, per year, per territory.** This is the expensive one: a full-country
 30 m reduction × 27 years, and it has no burned-pixel mask to shrink it.
@@ -333,7 +322,7 @@ the denominator is previous-year land cover**, matching how the map itself was b
 > |---|---|---|---|
 > | burned, reading the **exported asset** | 22,228.3 ha | 25,353.5 ha **(+14.1 %)** | **(+36.2 %)** |
 > | burned, **painted on the fly** (`--from-objects`) | 22,228.3 ha | 22,185.2 ha (−0.19 %) | (−0.37 %) |
-> | burnable (space-filling LULC) | — | +0.003 % | +0.015 % |
+> | burnable (space-filling land cover) | — | +0.003 % | +0.015 % |
 >
 > The month-of-burn asset is stored with `pyramidingPolicy={burned_monthly: "mode"}` (07a), and
 > **mode ignores masked pixels** — so at a coarse pyramid level a block containing a single
@@ -346,7 +335,7 @@ the denominator is previous-year land cover**, matching how the map itself was b
 >
 > The caution generalises: **any** coarse read of our published burned-area rasters over-reports
 > — a quick whole-country `reduceRegion` at 500 m as a sanity check, a Looker cross-check, or
-> anything else that lands on a pyramid level. Worth raising with the network (§9.2), and worth
+> anything else that lands on a pyramid level. Worth raising with the network (§10.2), and worth
 > checking what the platform's own displayed statistics do. `11-burned_area_stats.py` now
 > **refuses** `--decimate > 1` without `--from-objects`.
 
@@ -358,7 +347,7 @@ interpolate (it changes slowly) — **flagging it**, since the user asked for na
 
 ### 5.2 Family B — fire counts (n fires ≥ 10 ha by month and region)
 
-**This needs no GEE and no re-export at all.** It is the local object CSVs
+**This needs no Earth Engine and no re-export at all.** It is the local object CSVs
 (`objects-pred/` + `objects-raw/*_raster_metrics.csv`) plus the `objects-raw/*.gpkg` geometries,
 spatially joined **once** to the ecoregion layer in R/`sf`.
 
@@ -373,15 +362,7 @@ spatially joined **once** to the ecoregion layer in R/`sf`.
 That is the schedule's slack: the expensive half is work we owe the network anyway, and the cheap
 half is available immediately.
 
-### 5.3 The one place the two families collide
-
-Analysis 1's **per-LULC-class** panel is Family A (pixels) but the agriculture problem is
-object-level (§2.2a). After a 0.4 filter, ~1.37 Mha of cropland pixels remain in the map, so a
-class table will still show agriculture burning. Options in §8.
-
----
-
-## 6. Choosing the threshold — the GEE explorer
+## 6. Choosing the threshold — the Earth Engine explorer
 
 **Decision (Iván): the threshold is chosen by eye, with Camilo, from a Code Editor script.** Built
 in the `fuego` repo (`mapbiomas-arg-fire-gee`, `collection-01/visualization-misc/`), pushed to
@@ -416,16 +397,18 @@ in the explorer as an option, but the prior is agriculture only.
 | # | decision | who / when |
 |---|---|---|
 | 1 | Fix agriculture by **filtering objects**, not by masking rasters (§2.3) | Iván, 2026-09-10 |
-| 2 | **`_coverage` re-export is mandatory** regardless (new LULC, §1) | 2026-09-10 |
+| 2 | **`_coverage` re-export is mandatory** regardless (new land cover, §1) | 2026-09-10 |
 | 3 | The **size chain (07b/07c) is not mandatory** for the factsheet; defer it (§3) | Iván, 2026-09-10 |
-| 4 | Threshold chosen **visually**, with Camilo, from a GEE explorer; region-specific and multi-year options included (§6) | Iván, 2026-09-10 |
+| 4 | Threshold chosen **visually**, with Camilo, from a Earth Engine explorer; region-specific and multi-year options included (§6) | Iván, 2026-09-10 |
 | 5 | **Burnable = col-2 v8 (`MAPBIOMAS_LULC`) reclassed to `veg_fire`, previous year** (§5.1) | Iván, 2026-09-10 |
 | 6 | Benchmarks and timing tests go to a **`TESTS/` asset folder** (§4.4) | Iván, 2026-09-10 |
 | 7 | Manual ingest of the 27 annual scar assets costs **≤ 30 min**, not half a day | Iván, 2026-09-10 |
 
 ---
 
-## 7.1 Already available with no compute: the national series and pirogram
+## 8. What is already computed
+
+### The national series and the month curve — no compute needed
 
 `CLASSIFICATION_COLLECTIONS/mob_month_stats` already holds **27 assets** — the whole-country
 per-month burned **pixel count** for 1999–2025, exported as 07b's cross-check. So the national
@@ -459,7 +442,7 @@ plotting the x-axis May→April so neither peak is cut.
    structure only; hectares come from `11-burned_area_stats.py`, which sums `pixelArea()`.
 2. **They describe the current, unfiltered map** — no agriculture filter.
 
-### 7.2 The 269,043-pixel question — answered, and it was already in docs/07
+### A pixel count that looked wrong, and was not
 
 Summing the 27 histograms gives **910,290,670 px**, where docs/07 **§2** says **910,559,713**.
 I flagged that as an open discrepancy. **It is not one, and the mistake was mine**: §2's figure
@@ -482,13 +465,13 @@ Two useful by-products of having checked:
 
 - **Per-year, the local union equals the published raster's count exactly** — calendar 1999,
   33,456,607 px; calendar 2020, 59,759,246 px; both identical to `mob_month_stats`. The local
-  pixel set and the GEE product agree year by year, not just in total.
+  pixel set and the Earth Engine product agree year by year, not just in total.
 - The right national pixel total for anything quoted from the products is **910,290,670**, and
   the reason a pixel can be "mapped twice but published once" — reburn across two fire-years
   inside one calendar year, where `max` keeps the later month — is worth one sentence in the
-  ATBD.
+  methods document.
 
-### 7.3 Family B, built — what the fire counts say
+### Fire counts per region
 
 `factsheet_region_summary_min10ha.csv`, fires ≥ 10 ha, 28 fire-years, `_multi` tags:
 
@@ -514,9 +497,9 @@ question was reaching for.
 `factsheet_counts_by_month_min10ha.csv` (5,377 rows: layer × region × fire-year × month) is the
 pirogram's count axis, ready to plot.
 
-## 8. Open — the Pampa problem
+## 9. Open — the Pampa problem
 
-The easy move for analysis 1's LULC panel is **simply not to show agriculture**. But that leaves a
+The easy move for analysis 1's land-cover panel is **simply not to show agriculture**. But that leaves a
 worse question unanswered: **what do we say about burned area in the Pampa?**
 
 The Pampa is largely cropland. If we do not correct it, the honest caption is close to *"here is our
@@ -544,9 +527,9 @@ maps"*) — we just have to be explicit. **This needs a decision before the 16th
 
 ---
 
-## 9. What to ask the Brazil / platform team — tomorrow
+## 10. What to ask the Brazil / platform team — tomorrow
 
-### 9.1 How the asset → platform route actually works, and why they must copy
+### 10.1 How the asset → platform route actually works, and why they must copy
 
 Updating our assets **does not update the platform.** There are two distinct asset trees:
 
@@ -561,7 +544,7 @@ projects/mapbiomas-argentina/assets/FIRE/           projects/mapbiomas-public/as
 
 The copy is `ToPublish/2-toAsset-Public` in the network's reference repo, and **Brazil owns that
 step** ("para garantizar parámetros necesarios", docs/09 §3). The platform then reads the *public*
-copy: the Workspace subtheme form's key field is a **`GEE Asset ID` pointing at
+copy: the Workspace subtheme form's key field is a **`Earth Engine Asset ID` pointing at
 `projects/mapbiomas-public/...`**, and the `data_type` / `band_format` / `version` properties tell
 it how to interpret the bands (docs/09 §4).
 
@@ -574,7 +557,7 @@ Consequences:
 - Workspace registration points at an asset **ID**. If the ID changes, the registration has to
   change with it.
 
-### 9.2 The questions
+### 10.2 The questions
 
 1. **What is the last date we can hand you updated assets** and still have them on the platform for
    24 September? (This, not the 24th, is our real deadline — §4 hangs off it.)
@@ -582,12 +565,12 @@ Consequences:
    anything in Workspace / the legends / the subtheme registration have to be redone?
 3. **Should we bump the version — `…_v2` instead of `…_v1` — from now on?** A new ID is cleaner
    (the old one stays readable, nothing is overwritten mid-flight, and the `version` asset property
-   stops lying), but it changes the `GEE Asset ID` registered in Workspace and every download link.
+   stops lying), but it changes the `Earth Engine Asset ID` registered in Workspace and every download link.
    Ask which they prefer; **do not decide this unilaterally**, because `C.product_name()`'s
    `version=1` default and the platform's `band_format` lookup both encode it.
 4. **The statistics CSVs / tables** (docs/09 §2.1, the six `toDrive-area-*` exports): have any been
    produced or loaded into Looker Studio yet for Argentina? If yes, **they were computed on the
-   preliminary LULC and on the unfiltered map and must be recomputed** — who runs them, and by
+   preliminary land cover and on the unfiltered map and must be recomputed** — who runs them, and by
    when? Is there anything else already generated downstream of our assets that a re-export
    silently invalidates?
 5. **The COGs / downloads page** — do they need regenerating alongside the asset copy, and who does
@@ -601,37 +584,3 @@ Consequences:
    the network rather than only fixing on our side.
 
 ---
-
-## 10. Log
-
-| date | what |
-|---|---|
-| 2026-09-10 | Doc created. Measured the agriculture numbers (§2); verified the `_pb` LULC lattice (§1). |
-| 2026-09-10 | **Built and committed** — see the table below. Benchmarks launched to `TESTS/`; territory tagging launched locally. |
-
-### 10.1 What exists now
-
-| what | where | state |
-|---|---|---|
-| Threshold explorers (single-year + multi-year) | `fuego` repo, `collection-01/visualization-misc/explore_agri_filter_*` | ✅ pushed — **this is the thing to open with Camilo** |
-| The agriculture filter itself | `07-month_of_burn.py --agri-max T`, `07-burned_area_polygons.py --agri-max T`, `AGRI_MAX=T … 07-calendar_scars.R` | ✅ **all three filter points of §2.3 wired**, default OFF. Deploying a threshold is now a flag, not an edit. 07a stamps it into the asset's `agriculture_filter` property; in the polygon script it is a module-level value so the build, `--verify` and both stats paths cannot disagree; in the scar script it is an env var so the two passes cannot end up filtered differently |
-| Benchmark plumbing | `07-month_of_burn.py --out-collection/--suffix/--credentials` | ✅ — timing runs land in `TESTS/`, never next to a product |
-| **Burnable area** (the denominator) | `workflow/11-burnable_area.py` | ✅ written, ROI-checked. Whole-country timing pending |
-| **Burned area** (the numerator) | `workflow/11-burned_area_stats.py` | ✅ written, ROI-checked (Chaco 2020: 22,228 ha, Aug–Sep peak). Reduces the **month-of-burn collection**, so it is indifferent to which subproducts have been re-exported — and `--from-objects` reads no asset at all, taking 07a off the factsheet's critical path (§5.1) |
-| Object → territory tags | `scripts/objects_region_tag.R` | ✅ **done** — all 28 fire-years, ~50 min on 6 cores. 22 objects (227 ha) fall outside every ecoregion |
-| **Family B tables** (fires × territory × month) | `scripts/factsheet_object_stats.R` | ✅ **built** — `factsheet_counts_by_month_min10ha.csv` (5,377 rows), `factsheet_region_summary_min10ha.csv`, `factsheet_agriculture_by_region.csv` |
-
-### 10.2 Measurements taken today
-
-| thing | result |
-|---|---|
-| `--decimate` on the burnable denominator | On a fragmented Chaco box, total burnable moves **+0.003 % at K=3 (90 m)**, **+0.015 % at K=4 (120 m)** — but small fragmented classes break at K=4 (`forest-inund` −36 %, `grassland-inund` −26 %; at K=3, −5 % and −1 %). **K=3 is a usable fallback for aggregates; K=4 is not safe per class.** |
-| Territory tagging cost | ~10–15 ms per object, ~1–1.5 h for all 1.69 M on 6 cores. `st_intersects`, **not** `st_within`, on the centroids: identical answer for a point, 2.4 s vs 23.4 s per 2,000 objects (34 min vs 5.5 h over the collection) |
-| GEE concurrency, observed | With one export running per account, a second submission sat **PENDING**. The shared `mapbiomas-fire-485203` project is congested with the rest of the network, so the comahue / `mapbiomas-argentina` project is the better lane for our batch — §4.2's ceiling is real |
-| **The filter, end to end in GEE, against the local numbers** | Ran `07-burned_area_polygons.py --check --agri-max 0.4` against the uploaded `objects_raw_<fy>` FCs and compared with the local object tables. Dropped area **2,355,925 ha both sides — agreement to the hectare**; kept 1,208,965 GEE rows vs 1,208,962 local objects, the +3 being exactly the known FY2000 storage duplicate (docs/07 §13.7). So the GEE-side predicate and the numbers in §2.1 are the same filter, and a threshold chosen in the explorer will do to the products what the table says |
-| **07a per-year runtime — MEASURED** | **~58 min per calendar year, and essentially independent of fire load.** 2012 (26,930 objects, 0.92 Mha) took **57.8 min**; 2020 (71,753 objects, 4.68 Mha) took **58.8 min** — 2.7× the objects for +1.7 % time. So the cost is the whole-country 30 m sweep, **not** the polygon paint, and it will not blow up on the big years. 27 years ≈ **26 h serial**, so ~**6.5 h at 4 concurrent**, ~13 h at 2. (GEE's `progress` field sat at 0.33–0.37 for most of the run and then finished — it is not linear and must never be extrapolated.) |
-
-### 10.3 Two traps caught (both would have been silent)
-
-1. **GEE's geojson export writes some territories as `GEOMETRYCOLLECTION`**, and casting them to polygons **splits the feature into one row per polygon** — ecoregion 9 (Pampa) came back as 2 rows. Every Pampa fire would have been listed twice in the `_multi` tags and every per-region count inflated, with nothing in the output saying so. `objects_region_tag.R` now dissolves back and asserts one row per `region_id`.
-2. **A partial tag set silently rescales every regional number.** `merge()` just drops the untagged fire-years, so running the Family B tables while tagging is still going returns numbers scaled down by the fraction of years present. `factsheet_object_stats.R` now refuses to write instead.
