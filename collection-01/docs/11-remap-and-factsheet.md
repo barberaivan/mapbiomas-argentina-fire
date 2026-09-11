@@ -701,58 +701,6 @@ in the `fuego` repo (`mapbiomas-arg-fire-gee`, `collection-01/visualization-misc
 > If one script becomes a blob, split it in two — `…_single_year` and `…_multi_year`. Prefer two
 > readable scripts over one with a mode switch nobody remembers.
 
-### 6.1 What it actually does (11 Sep 2026)
-
-Three files, all in the `fuego` repo:
-
-| file | role |
-|---|---|
-| `collection-01/visualization-misc/explore_agri_filter_single_year` | one fire year, KEPT vs DROPPED over the col-2 v8 agriculture/pasture land cover |
-| `collection-01/visualization-misc/explore_agri_filter_multi_year` | all 28 fire-years: the published month-of-burn raster as background, the merged DROPPED set on top |
-| `collection-01/utils/agri_filter.js` | **the filter itself**, `require`d by both — the object set, the modes, the territories, the expression compiler |
-
-The shared module exists so that "dropped" cannot come to mean two different things in the two
-views. Everything in it reduces to one comparison, **`score >= 1` = DROP**, so no layer, stats
-button or breakdown ever branches on the active mode.
-
-**By region (requirement 1, done two ways).** A territory selector (MapBiomas 5 / Burkart 13)
-restricts the objects, the zoom and the stats to one region; a `breakdown by territory` button
-ranks every region of the active cut by the area the filter removes in the current view. Two
-things to know when reading it:
-
-- The objects carry **no region property**, so selecting a region is a `filterBounds` — a true
-  intersects test, not a bbox. An object on a boundary is therefore visible, and counted, under
-  **both** of its regions. The MapBiomas layer is the **2 km-buffered** one (the same FC the
-  scripts draw), which adds up to 2 km of genuine overlap on top of that.
-- That makes the panel right for *looking* and wrong for *adding up*. The honest per-region
-  totals are `scripts/objects_region_tag.R` (§5.2), which assigns each object a single region by
-  centroid as well as the every-region-it-touches list.
-- Selection is by the numeric id (`Zona`, `GEOCODE`), never by the name, so an accent or a
-  respelling in the asset cannot silently stop matching. The labels are only what the dropdown
-  shows.
-
-**A fourth mode: a custom expression.** The three fixed modes are one comparison against one
-number, and the cropland signature is not always that simple — "nearly all crops" and "half crops
-against a forest edge" are different objects. Mode 4 takes a condition and drops what it is true
-for:
-
-```
-agri > 0.8 || (agri > 0.4 && forest > 0.2)
-agri + past > 0.6 && area_ha < 50
-agri > 0.4 && mbr_fill > 0.75          # rectangles on field boundaries
-```
-
-Grammar: C precedence over `|| && ! > >= < <= == != + - * / ( )` (`|` and `&` are accepted as
-aliases). The vocabulary is every property of `objects_raw_<fy>` (all 20 predictors, the 23 raw
-`frac_c*`, the shape metrics, `p_mean`/`p_width`) plus named vegetation groups — `agri`, `past`,
-`grass`, `grass_temp`, `grass_inund`, `forest`, `shrub`, `woody`, `agri_per`, `burnable`, and the
-region-split `agri_chaco` / `agri_cuyopat` / `agri_pampa`. Note `forest` (c5–c11) **includes**
-c10 forest-inund while the model's `woody` excludes it; `agri` never includes c4 agriculture-per.
-
-It compiles **client-side**, once per redraw, into a chain of `ee.Number` calls — no
-`ee.Filter.expression`, no string sent to the server. A typo is a message in the panel and the
-previous map is left alone, rather than an empty map from a variable that silently read as zero.
-
 Note for the reading: **pasture is a separate question.** `frac_agri + frac_past ≥ 0.4` would drop
 5.78 Mha (8.4 %) instead of 2.36 Mha, and pasture fire is largely genuine management burning. It is
 in the explorer as an option, but the prior is agriculture only.
