@@ -24,36 +24,44 @@ explorers are in the Earth Engine repo (§6); the territory tags and every fire-
 built (§8); the burnable and burned-area scripts are written and checked (§5.1). What is left is
 one decision — the threshold — and then the exports.
 
-**Status, 11 Sep 2026, 04:30 UTC — read this first if you are the next session.** Overnight the
-three burnable benchmarks all **failed on a null-geometry export** (§4.3); the bug is fixed in both
-step-11 scripts and everything is relaunched. Four tasks are in flight, all in `TESTS/`, nothing
-production:
+**Status, 11 Sep 2026, 12:30 UTC — read this first if you are the next session.** Overnight the
+three burnable benchmarks all **failed on a null-geometry export**; the bug is fixed in both step-11
+scripts (§4.3) and everything was relaunched at 04:20. Eight hours later **the benchmark has already
+answered its question, and the answer is bad.**
 
-| task | account | submitted (UTC) | what to do with it |
-|---|---|---|---|
-| `arg11_burnable_ecoregions13_2020_benchmark` (k=1, 30 m) | gmail | 11 Sep 04:20:21, **RUNNING from 04:23:53** | **the 30 m arm has never been measured** — check `attempt` is still 1, then take `startTime → endTime` into the §4.3 table. May run ~15 h |
-| `…_benchmark_k3` (90 m) | comahue | 11 Sep 04:20:51 | ✅ landed in 37 s — **a compute-cache hit, not a timing** |
-| `…_benchmark_k4` (120 m) | comahue | 11 Sep 04:21:24 | ✅ landed in 41 s — same caveat |
-| `arg11_burned_ecoregions13_2020_benchmark` (burned area by region, 2020) | **comahue** | 11 Sep 04:27:49, **RUNNING from 04:27:54** | **the open question** — is the masked numerator actually cheap? |
+**The finding: there is no cheap half.** At 8 h in, the *masked* burned reduction had consumed
+slightly MORE compute than the *space-filling* burnable one at the same 30 m (19 083 vs 18 633
+EECU·s), and **neither had finished**. §5.1's assumption — "the half that cannot be decimated
+(burned) is the cheap one, because its mask already restricts the sweep" — is struck; a mask
+restricts what is accumulated, not what is visited. So the numerator cannot be decimated *and* is
+not cheap, and a per-year 30 m denominator across 27 years is not runnable. Details and the revised
+30-36 h/year estimate in §4.3.
+
+| task | account | started (UTC) | state at 12:21 | what to do with it |
+|---|---|---|---|---|
+| `arg11_burnable_…_benchmark` (k=1, 30 m) | gmail | 11 Sep 04:23:54 | **RUNNING, 477 min**, `attempt=1`, 18 633 EECU·s | let it land; record `startTime → endTime` in §4.3 |
+| `…_benchmark_k3` (90 m) | comahue | 11 Sep 04:20:54 | ✅ 37 s | **a compute-cache hit, not a timing** — the real number is 98.4 min from the failed first round |
+| `…_benchmark_k4` (120 m) | comahue | 11 Sep 04:21:36 | ✅ 41 s | same caveat — real number 49.7 min |
+| `arg11_burned_…_benchmark` (burned by region, 2020) | comahue | 11 Sep 04:27:54 | **RUNNING, 473 min**, `attempt=1`, 19 083 EECU·s | let it land; this is the one that falsified §5.1 |
+
+Both running tasks were left alive on purpose: they are the only clean (`attempt=1`) measurements
+we will get, and the compute cache means a restart cannot re-measure honestly.
 
 **The next session's job, in order:**
 
-1. **Poll the four tasks and record the durations in §4.3** — `ee.data.listOperations()` is
-   project-scoped, so poll **both** `mapbiomas-fire-485203` (gmail) and `mapbiomas-argentina`
+1. **Poll the two running tasks and record their durations in §4.3** — `ee.data.listOperations()`
+   is project-scoped, so poll **both** `mapbiomas-fire-485203` (gmail) and `mapbiomas-argentina`
    (comahue), and do it before the operations age out (a few weeks). Earth Engine stores when an
    asset *landed*, never how long its task ran. **Check `attempt` first: if it is > 1, `startTime`
-   has been overwritten and there is no duration to record** — that is exactly how last night's
+   has been overwritten and there is no duration to record** — that is exactly how the first round's
    30 m number was lost (§4.3).
-2. **Answer the burned-area question.** If `arg11_burned_…` comes back in minutes, the §5.1
-   assumption holds and the numerator is free. If it comes back in hours, that is a real problem:
-   the burned half **cannot** be decimated (§5.1), so there is no lever — say so loudly and rethink
-   the numerator's route (`--from-objects` in one pass is the fallback).
+2. **Act on the dead assumption, do not re-litigate it.** The numerator's only remaining lever is
+   `--from-objects` (paint in one pass; §5.1 shows it is decimation-safe). Decide whether the
+   factsheet numbers come from that route, and say out loud in the footnote if they no longer come
+   from the published asset.
 3. **Decide on the fixed burnable layer** (§4.3, "the idea that makes this benchmark moot") — the
-   mode of `veg_fire` across years as a single frozen denominator. That is the structural fix; the
-   benchmark only tells us how much pain we avoid. **The k=3/k=4 pair says the denominator is
-   pixel-sweep-bound and one year at 30 m extrapolates to ~15 h**, so if the running k=1 confirms
-   it, a per-year 30 m denominator is not merely expensive — it is off the table, and the fixed
-   layer stops being an optimisation and becomes the only route.
+   mode of `veg_fire` across years as a single frozen denominator. With the per-year 30 m route now
+   measured as unrunnable, this is no longer an optimisation: it is the route.
 4. Then the threshold decision and the exports, as before.
 
 Do **not** re-run an identical benchmark expression to get a timing — Earth Engine will serve it
@@ -370,31 +378,47 @@ Consequences to think through before adopting it (**next session**):
 **For the test, keep it simple: the benchmark stays the single year it was already running (2020).**
 The fixed-layer idea is a design change, not a benchmark variant.
 
-#### Burned-area-by-region benchmark — launched 11 Sep 04:23 UTC, result pending
+#### Burned-area-by-region benchmark — ❌ the masked numerator is NOT cheap
 
-*Iván, 11 Sep:* the assumption baked into this file's header (§ "the half that cannot be decimated
-— burned, masked — is the cheap one, because its mask already restricts the sweep") **has never
-been measured.** If it is wrong, it is a large problem: the burned numerator is the half that
-*cannot* be decimated (`--decimate` is refused without `--from-objects`, because the exported asset
-is read off a pyramid level and dilates — §5.1), so there is no lever to pull if it turns out to be
-slow.
+*Iván, 11 Sep:* the assumption baked into §5.1 ("the half that cannot be decimated — burned,
+masked — is the cheap one, because its mask already restricts the sweep") **had never been
+measured.** If it is wrong, it is a large problem: the burned numerator is the half that *cannot*
+be decimated (`--decimate` is refused without `--from-objects`, because the exported asset is read
+off a pyramid level and dilates — §5.1), so there is no lever to pull.
 
-| task | account | started (UTC) | duration |
-|---|---|---|---|
-| `arg11_burned_ecoregions13_2020_benchmark` (k=1, 30 m, from the published 07a asset) | comahue | started **2026-09-11 04:27:54** | *fill in* |
+**It is wrong.** Both 30 m tasks were still RUNNING at 12:21 UTC, ~8 h in, `attempt=1`:
 
-First submitted on gmail at 04:23:33 and **cancelled and re-submitted on comahue at 04:27:49**: the gmail queue was already serving the k=1 burnable task and, as §4.2 records, each account gets very few concurrent slots — it would have sat PENDING all night instead of answering the question by morning. Lands in `TESTS/burned_benchmark/`. Read the duration off `startTime → endTime` in
-`ee.data.listOperations()` **before it ages out** (a few weeks), and write it into the row above.
+| task | account | started (UTC) | at 12:21 UTC | EECU·s | EECU·s / min |
+|---|---|---|---|---|---|
+| `arg11_burnable_…_benchmark` (k=1, 30 m, space-filling) | gmail | 04:23:54 | **477 min, RUNNING** | 18 633 | 39.1 |
+| `arg11_burned_…_benchmark` (30 m, sparse masked) | comahue | 04:27:54 | **473 min, RUNNING** | 19 083 | 40.3 |
 
-**07a does not depend on fire load.** Calendar 2012 (26,930 objects, 0.92 Mha) took 57.8 min;
-calendar 2020 (71,753 objects, 4.68 Mha) took 58.8 min — 2.7× the objects for 1.7 % more time.
-The cost is the whole-country sweep at 30 m, not the painting, so the big years will not blow up.
+The two are **indistinguishable in cost.** The masked numerator is not cheaper than the
+space-filling denominator — it is very slightly more expensive. A mask restricts what is
+*accumulated*, not what is *visited*: the grouped `reduceRegion` still sweeps the whole country to
+find the unmasked pixels, and decoding the 07a asset costs the same per pixel whether or not the
+pixel turns out to be burned.
 
-**So the remap fits.** Launch 07a in the morning and it lands the same day.
+Two consequences, and they point the same way:
 
-> Earth Engine's `progress` field sat at 0.33–0.37 for most of an hour and then finished. It is
-> not linear; never extrapolate from it. Take `startTime → endTime` off the finished task — **after
-> checking `attempt == 1`**, because a retry silently overwrites `startTime` (§4.3).
+1. **There is no cheap half.** §5.1's "it falls the right way" is struck. The numerator cannot be
+   decimated *and* is not cheap, so its only lever is `--from-objects` (paint in one pass, which
+   §5.1 already shows is decimation-safe) — that is now the fallback of record, not a convenience.
+2. **The denominator must stop being per-year.** See the fixed-burnable-layer section above.
+
+**On the ~15 h extrapolation for k=1.** It is looking optimistic. If cost were strictly
+pixel-proportional, k=1 should total ~9× k=3's 9 292 = **~83 600 EECU·s**; at 8 h it has burned
+18 633, i.e. **~22 %**. And it is accruing EECU at 39/min against k=3's 94/min — less than half the
+parallelism — so wall time scales worse than pixel count alone. Taking both at face value points at
+**30-36 h for one year at 30 m**, not 15. Treat that as an order-of-magnitude, not a number: EECU
+rate is not guaranteed steady, and the true figure lands when the task does.
+
+Either way the conclusion is unchanged and firmer: **a per-year 30 m denominator across 27 years is
+not runnable.**
+
+> **Both tasks were left running deliberately.** They are the only clean (`attempt=1`) measurements
+> we will get, cancelling forfeits them a second time, and the compute cache means a restart would
+> not re-measure honestly. The cost is one slot on each account until they land.
 
 ### 4.4 Running it unattended over a weekend
 
@@ -517,9 +541,17 @@ the denominator is previous-year land cover**, matching how the map itself was b
 > burned pixel comes back burned and the sparse burn mask **dilates**. Land cover does not
 > suffer it because every pixel has a class, so mode is a real majority.
 >
-> **The rule: decimation is safe on a SPACE-FILLING layer, unsafe on a SPARSE MASKED one.** That
-> falls the right way — the expensive half (burnable) can be decimated, and the half that cannot
-> (burned) is the cheap one, because its mask already restricts the sweep.
+> **The rule: decimation is safe on a SPACE-FILLING layer, unsafe on a SPARSE MASKED one.**
+>
+> ~~That falls the right way — the expensive half (burnable) can be decimated, and the half that
+> cannot (burned) is the cheap one, because its mask already restricts the sweep.~~
+> **❌ MEASURED FALSE, 11 Sep 2026 (§4.3).** At 8 h in, the masked burned reduction had consumed
+> *more* EECU than the space-filling burnable one at the same 30 m (19 083 vs 18 633 EECU·s) and
+> neither had finished. **A mask restricts what is ACCUMULATED, not what is VISITED** — the sweep
+> still walks the whole country to find the unmasked pixels, and reading the 07a asset costs the
+> same per pixel either way. So the rule does NOT fall the right way: the half that cannot be
+> decimated is *also* expensive, and it has no lever. This is the single worst finding of the
+> September planning and it is what forces the fixed-denominator decision in §4.3.
 >
 > The caution generalises: **any** coarse read of our published burned-area rasters over-reports
 > — a quick whole-country `reduceRegion` at 500 m as a sanity check, a Looker cross-check, or
