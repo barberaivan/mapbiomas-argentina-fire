@@ -21,10 +21,18 @@ Run in this order; each sub-step needs the one before it.
 | **07d** | **The nine derived subproducts** — `monthly_burned`, `annual_burned`, both `*_coverage`, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`), `year_last_fire` | `workflow/07-subproducts.py` (GEE) | ✅ **done** — 9/9 landed and verified on the exported assets (§12.8) |
 | **07e** | **The fire-object polygon layer** — every mapped fire, all 28 fire-years, merged into one FC with ten properties, for early users → `FINAL_PRODUCTS/burned_area_polygons_v1` | `workflow/07-burned_area_polygons.py` (GEE) | ✅ **done** (2026-07-31, third submission, 3.27 h) — **1,263,079 rows / 1,263,076 objects / 69.12 Mha**, `--verify` clean on all 28 fire-years, 19 asset properties set, `filterDate()` working. Took three goes: the first two carried 1,249 duplicate FY2021 rows because `objects_raw_2021` is duplicated *in storage* where no metadata count reveals it (§13.6) |
 
+> ⚠️ **Every "done" above is the FIRST build (v1), and all of it is being rebuilt as `_v2` in
+> September 2026.** Two things changed underneath: the object selection gains the two exclusion
+> rules of **§1.1**, and the land cover the `*_coverage` products cross against was a preliminary
+> col-3 (`…_integration_v1_buffer`; the published one is `mapbiomas_argentina_collection3_pb`).
+> Asset names and the one constant that drives them: **§1.2**. The order of the re-run is
+> [`ROADMAP.md`](../../ROADMAP.md) — not this table.
+
 Commands, in order:
 
 ```bash
-# 07a  (done; re-runnable, skips existing assets)
+# 07a  (re-runnable, skips existing assets).  The exclusion rules of §1.1 are ON BY DEFAULT and
+# v2 is a NEW collection (§1.2), so no flags and no --overwrite are needed.
 $PYTHON collection-01/workflow/07-month_of_burn.py --all --launch
 
 # 07b  (done) — pass 1 must finish before pass 2: a calendar year needs BOTH its fire-years
@@ -58,7 +66,7 @@ process per year — same pattern as `run_05_years.sh` / `run_06_predict.sh`).
 ## 1. The decisions this step rests on
 
 **The fire layer is the object-level classification.** Only objects with **`fire == 1` and
-`area_ha >= 1`** contribute a pixel. `fire` is the deployed call — the collected label where there
+`area_ha >= 1`**, and which survive the two exclusion rules of §1.1**, contribute a pixel. `fire` is the deployed call — the collected label where there
 is one, else the model (docs/06 §5); `fire_tag == -1` means *unlabelled*, never *not fire*. The
 filter is a **positive** selection, not "everything not rejected": 36 objects in the collection are
 entirely `candseed==3` dieback, so they have a null `date_median` and a null `fire`, and
@@ -80,6 +88,200 @@ straddles 31 December is split into two calendar years**, and therefore into two
 
 **Minimum mapped fire: 1 ha**, applied to the *object* before the calendar split — so a
 calendar-year part of a qualifying object may itself be smaller.
+
+### 1.1 The two exclusion rules — what we deliberately do not map
+
+The selection is **positive and complete**: an object contributes pixels only if
+
+```
+fire == 1  &  area_ha >= 1  &  not(rule A)  &  not(rule B)
+```
+
+The rules exist because the per-observation spectral model cannot separate two kinds of
+agricultural signal from fire. Harvest, tillage and stubble burning all look like a burn scar, and
+the `veg_fire` remap keeps agriculture *burnable*, so cropland pixels were never excluded from the
+SNIC candidate set. Fixing it at the **object** level — rather than masking the rasters — is what
+keeps the vector layer and every raster identical by construction: it is a statement about *fires we
+do not map*, which is the only thing our method is defined in terms of. Masking the rasters instead
+would leave area that is in one product and not another.
+
+Each rule names a *set of objects*. The selection above is what excludes them.
+
+#### Rule A — Pampa grassland burning in the winter–spring window
+
+Objects that are almost entirely `grassland_pampa` **and** burned in the winter–spring window.
+
+```
+frac_c15 > T_GRASS   AND   T_DATE_FROM <= date_med <= T_DATE_TO
+```
+
+`T_GRASS = 0.70`, window **1 Jul → 15 Nov**.
+
+`frac_c15` is one single `veg_fire` class — class 15, `grassland_pampa`, checked against
+`config/veg_fire_remap.csv`. It deliberately does **not** use the `frac_gr_tp` predictor, which
+lumps `grassland_ba + grassland_chaco + grassland_pampa`: the rule is about the Pampa alone.
+
+**The date test is what makes this rule.** It is a composition threshold *and* a season: an object
+that is almost entirely Pampa grassland is excluded if it burned inside the window and mapped if it
+burned outside it. Without the season it would delete real Pampa fire; with it, it targets the
+period when what the model sees on Pampa grassland is overwhelmingly agricultural.
+
+#### Rule B — agriculture, anywhere in the country
+
+Objects with a high agriculture fraction.
+
+```
+frac_agri > T_AGRI
+```
+
+`T_AGRI = 0.40`, and `frac_agri = frac_c1 + frac_c2 + frac_c3` — the `veg_fire` agriculture classes
+`agriculture_{chaco, cuyo-pat, pampa}`, **excluding** class 4 `agriculture-per` (perennials and
+orchards, which burn for different reasons and are not the confusion this rule addresses).
+
+Unlike rule A this is unconditional on season and applies everywhere.
+
+#### The thresholds are final
+
+`T_GRASS = 0.70`, window 1 Jul → 15 Nov, `T_AGRI = 0.40`. **FINAL — confirmed with the team,
+2026-09-11.** These are the values collection 1 is published with. Changing one means re-running
+07a, 07b, 07c, 07d and 07e and then every statistic, so treat a proposal to change them as a new
+collection, not a tweak.
+
+They live in `utils/constants.py` as `C.T_GRASS`, `C.GRASS_WINDOW` and `C.T_AGRI`, and they are the
+**default**: a run with no flags produces the published selection. Every script keeps an override
+(`--t-grass` / `--t-agri`, or the `T_GRASS` / `T_AGRI` env vars in R) for the explorers and `TESTS/`
+exports, and a `--no-exclusions` / `RULES=0` escape for reproducing the pre-rule numbers — and both
+are recorded in the asset properties, so an unfiltered run can never be mistaken for a published one.
+
+#### What they remove
+
+| | rule | measured, FY2020, whole country |
+|---|---|---|
+| **A** | Pampa grassland in the window | 15,092 obj / 746,603 ha — **17.5 %** of the year's burned area |
+| **B** | agriculture | 2,389 obj / 162,168 ha — **3.8 %** |
+| | **A or B** | 17,481 obj / 908,771 ha — **21.3 %** |
+| | the accepted set before them (`fire == 1 & area_ha >= 1`) | 62,605 obj / 4,268,189 ha |
+
+Rule A is therefore five times more aggressive than any national `frac_agri` threshold, which is why
+it is a headline decision rather than a QC tweak. Its **window is the single biggest lever in the
+ruleset**: moving the lower bound from 15 Aug to 1 Jul took rule A from 10,156 objects / 443,070 ha
+(10.4 %) to 15,092 / 746,603 ha (17.5 %), while rule B did not move at all.
+
+Over all 28 fire-years, rule B alone (`frac_agri >= 0.4`) drops 54,114 objects / 2.36 Mha — 4.3 % of
+objects, 3.4 % of area, with **no trend across years**, so the national time series and its slope
+are essentially unaffected by the choice of threshold. It is **not** a small-object filter in
+disguise: the objects it drops have median 14.2 ha, p90 87 ha, max 10,704 ha.
+
+**At these thresholds the two rules cannot both fire**, and that is arithmetic, not luck:
+`frac_c15 > 0.70` leaves under 0.30 for every other class, so `frac_agri` cannot reach 0.40.
+Measured on FY2020, the largest `frac_agri` among `frac_c15 > 0.7` objects is **0.299** and the
+overlap is **empty** — confirmed independently in both implementations (below). They can overlap
+only if the thresholds are moved far apart.
+
+Where rule B bites, measured against the Burkart ecoregions: **Chaco carries 70 %** of the
+burned-on-cropland area (2,056 kha, 7.0 % of its burned area) — and there, post-deforestation
+burning of cleared plots is partly *real*, so dropping it is a scientific choice. **Yungas is the
+worst in proportion** (15.0 % of its burned area on cropland, 14.2 % dropped at 0.4) and never
+showed up in the national numbers because it is small. **Espinal and Monte are clean** (1.3 % and
+0.6 %), so the rule costs almost nothing over most of the burned area of the country.
+
+> **What an object rule cannot fix.** Pixel-weighted, burned area falling on annual cropland is
+> 2.95 Mha (4.3 % of the total). Rule B at 0.4 leaves **1.37 Mha of cropland pixels still in the
+> map**, inside mixed objects. So the rules fix *what the map looks like* — whole spurious
+> crop-field "fires" disappear — but do not make a per-land-cover-class pixel statistic clean.
+> That is a caption problem for the factsheet, not something a threshold can solve.
+
+#### Implementation — three application points, one definition
+
+The rules are applied at read time, in the three places that read the object set. They must be given
+**identical** thresholds or the products stop describing the same map.
+
+| file | where | mechanism |
+|---|---|---|
+| `workflow/07-month_of_burn.py` | `accepted_objects(fire_year, rules=True, …)` | `ee.Filter` on the `objects_raw_<fy>` FC properties |
+| `workflow/07-calendar_scars.R` | `accepted_oids(fy)` | `data.table` predicate on the local metrics CSV |
+| `workflow/07-burned_area_polygons.py` | `fire_filter(fire_year)` | `ee.Filter`, identical to 07a's |
+
+**Both implementations were cross-checked against the explorer, 2026-09-11, and agree to the
+object**: FY2020, rule A 15,092, rule B 2,389, union 17,481 objects / 908,771 ha, overlap 0 — the
+same six numbers from GEE and from R.
+
+⚠️ **07c cannot be brought up to date on its own.** It paints the *ingested* scar FCs and masks them
+to 07a, so re-running it against scars built from an unfiltered object set does not just leave an
+attribute stale — it paints the **wrong** one. A scar's `area_ha` would still count the cropland
+pixels that 07a no longer contains, and a scar that was 8-connected *through* an excluded object
+keeps its merged identity instead of splitting in two. Both `annual_burned_id` and
+`annual_burned_area_ha` would then disagree with the extent they are painted on. **07b must be
+re-run whenever the thresholds change, and 07c after it.**
+
+Details that have already cost time:
+
+- **Column names differ by side.** The GEE FeatureCollection property is **`date_med`**; the local
+  metrics CSV column is **`date_median`**. `frac_c15` and `frac_c1..c3` carry the same name on both.
+- **`date_med` is a NUMBER of days since 1970-01-01** (18,383 = 2020-05-01) — `objects_upload.py`
+  maps `date_median` → `date_med`, and the ISO string is the separate `date_medd`. So the window is
+  resolved to day numbers client-side (`C.grass_window_days`), never with an `ee.Date` per feature.
+- **The window is anchored inside the fire year.** The fire year runs 1 May *fy* → 30 Apr *fy+1*, so
+  a window month ≥ 5 belongs to *fy* and Jan–Apr to *fy+1*. Both bounds inclusive.
+- **Both rules exclude on `>`, so the *keep* predicate is `<=`**, not `<`. This is why the FY2020
+  count is 2,389 and not the 2,407 an `>=` rule gives.
+- **An impossible date must fail loudly.** `Date.UTC` (and R's `as.Date`) would quietly roll `02-30`
+  into 2 March; `C.grass_window_days` builds a `datetime.date` and raises instead.
+- `07-calendar_scars.R` takes its thresholds from **environment variables**, not arguments, because
+  both passes and the launcher call the same function and an env var reaches all of them identically.
+  A run cannot end up with one pass filtered and the other not.
+- **Every asset records both rules in its properties** — `exclusion_rule_a` and `exclusion_rule_b`,
+  built once by `C.exclusion_rules()` so all four products word them identically. An asset that does
+  not state its own selection cannot be told apart from one built before the rules existed.
+
+#### Choosing the thresholds
+
+They were chosen by eye, with Camilo, from the Earth Engine explorers in the `fuego` repo
+(`collection-01/visualization-misc/`): `explore_agri_filter_rules_single_year` draws both rules with
+sliders and colours which rule fired (orange A, red B, violet both, yellow kept), and the click
+readout spells out the comparison that excluded the object including the date and the window.
+`explore_agri_filter_{single,multi}_year` carry the single-threshold view, both regionalisations
+(13 Burkart ecoregions and the 5 MapBiomas regions) and the LULC/`veg_fire` basemaps with legends.
+Clicking filters the source asset **by a point**, which rides the asset's spatial index — 0.6 s for
+one fire-year, 4.0 s for all 28 — so it is zoom-independent.
+
+Pasture is a separate question and is **not** in the ruleset: `frac_agri + frac_past >= 0.4` would
+drop 5.78 Mha (8.4 %) instead of 2.36 Mha, and pasture fire is largely genuine management burning.
+It is available as an option in the explorer; the prior is agriculture only.
+
+### 1.2 The September 2026 re-export is `_v2`
+
+Two things changed under the products after the first launch: the exclusion rules above, and the
+land cover the four `*_coverage` products cross against (`C.PRODUCT_LULC` moves from the
+preliminary `…_integration_v1_buffer` to the published `mapbiomas_argentina_collection3_pb`). So
+**everything step 07 exports is rebuilt, and it is rebuilt as version 2**:
+
+| | v1 | v2 |
+|---|---|---|
+| month of burn (07a) | `CLASSIFICATION_COLLECTIONS/collection1_fire_mask_v1` | `…_fire_mask_v2` |
+| the nine subproducts (07d) | `FINAL_PRODUCTS/mapbiomas_argentina_fire_collection1_<sub>_v1` | `…_<sub>_v2` |
+| the three scar rasters (07c) | idem | idem |
+| the scar vectors (07b, hand-ingested) | `FINAL_PRODUCTS/annual_burned_vectors` | `…_annual_burned_vectors_v2` |
+| the polygon layer (07e) | `FINAL_PRODUCTS/burned_area_polygons_v1` | `…_v2` |
+
+One constant drives all of it: **`C.PRODUCT_VERSION = 2`**, which `C.product_name()` defaults to and
+which `MONTH_OF_BURN_COL` and `ANNUAL_BURNED_VECTORS` interpolate. Pass `version=1` explicitly to
+address an old product deliberately (a v1-vs-v2 comparison).
+
+**Why version rather than overwrite in place.** Agreed with the Brazil team: we write `_v2` on our
+side and **they copy it over the public asset**, so the public id — and therefore the Workspace
+registration, the `band_format` lookup and every download link — does not change (docs/09 §11).
+Versioning on our side then buys three things overwriting would not:
+
+1. the v1 products stay readable while v2 is built, so a number can be traced to the layer it came
+   from;
+2. nothing is ever half-replaced — a failed re-export leaves a complete v1, not a mixture;
+3. **the gate on 07d becomes meaningful.** 07d must not start until all 27 month assets exist
+   (§12.7); against an overwritten collection that count is already 27 before anything has run.
+
+The scar vectors are versioned for the same reason and one more: they are ingested by hand, and a
+folder holding a mix of v1 and v2 scars would silently produce a scar raster from the wrong
+selection.
 
 ---
 

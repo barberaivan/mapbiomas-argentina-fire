@@ -19,11 +19,12 @@ En este documento se detallan enlaces/datos relevantes, e ideas para
 el factsheet. Puede también servir como hoja de ruta/bitácora, para estar al
 tanto de qué se hizo y qué falta.
 
-> **Plan de producción: [`../docs/11-remap-and-factsheet.md`](../docs/11-remap-and-factsheet.md).**
-> Este archivo tiene el *contenido* del factsheet (qué gráficos, qué mensaje). El otro tiene la
-> *producción*: qué asset hay que re-exportar y por qué, el filtro de agricultura a nivel de
-> polígono (con los números medidos), el camino crítico hasta el 24/09, y qué preguntarle al equipo
-> de plataforma de Brasil.
+> **Plan de producción: [`../docs/09-statistics.md`](../docs/09-statistics.md)** (de dónde sale cada
+> número: las tablas de área, el toolkit de la red, el denominador quemable) y
+> **[`../docs/07-vector_to_raster.md` §1.1](../docs/07-vector_to_raster.md)** (los filtros de
+> polígonos que resuelven la sobre-estimación en agricultura y en el pastizal pampeano).
+> **El orden de trabajo está en [`../../ROADMAP.md`](../../ROADMAP.md).**
+> Este archivo tiene el *contenido* del factsheet: qué gráficos, qué mensaje.
 
 ## Enlaces/archivos relevantes
 

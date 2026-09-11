@@ -55,7 +55,7 @@ track live in **[`09-statistics.md`](09-statistics.md)**.
 | 2 | **Versión consolidada (sin máscaras)** — one ImageCollection, all years and regions | §5.2 | ✅ collapsed into stage 3 — we have no unmasked variant to consolidate (§6.8) |
 | 3 | **Versión final (con máscaras)** — LULC mask + solitary-pixel removal + month coding | §5.2 | ✅ `collection1_fire_mask_v1`, 27 images; mask + pixel filter are upstream (§6.2) |
 | 4 | **Generación de subproductos** | §5.3–5.4 | ✅ 12 images (9 derived + 3 scar) + 27 scar FCs (§7) |
-| 5 | **Estadísticas preliminares** → Looker Studio | docs/09 §2 | ⬜ needs the territorial layer first (§8.10) |
+| 5 | **Estadísticas preliminares** → Looker Studio *(the network's tool; we analyse in R)* | docs/09 | ⬜ needs the territorial layer first (§8.10) |
 | 6 | **Assets públicos + catastro en Workspace + enlaces directos** | docs/09 §3–4 | ⬜ IPAM's copy; naming decision §8.1 |
 
 > ⚠️ **Validation gate: "antes de avanzar a la siguiente etapa, cada producto debe ser validado por el
@@ -204,7 +204,7 @@ South America), exported to `FINAL_PRODUCTS/` with `pyramidingPolicy: mode`, `sc
   | `annual_burned_area_ha` | script 5 | ✅ | — | ✅ |
 
   We have built all four. Whether they are meant to be published, or are deliberately
-  internal, is a question for the network (docs/11 §10.2) — do not infer an answer from the lists,
+  internal, is a question for the network (docs/09 §17) — do not infer an answer from the lists,
   since they are inconsistent with each other.
 
 ### 5.4 Stage 4, scripts 4–6 — the scar-size chain
@@ -453,8 +453,9 @@ three exports — the first two carried 1,249 duplicate FY2021 rows (docs/07 §1
 
 ### Between 1 August and 24 September 2026 — statistics, publication, launch
 
-See **[`09-statistics.md`](09-statistics.md)**: the six area-statistics CSVs, the territorial layer
-(**ours to build**), Looker Studio, the public-asset copy, the Workspace catastro, and the launch track
+See **[`09-statistics.md`](09-statistics.md)**: the area-statistics CSVs (computed by the network's
+`2-Statistics/toolkit/v03/`, analysed by us in R — not in Looker), the territorial layer
+(**ours to build**), the public-asset copy, the Workspace catastro, and the launch track
 (ATBD, methodology page, downloads page, materials, event).
 
 ---

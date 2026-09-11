@@ -1,6 +1,14 @@
-# Backlog — collection-01
+# Backlog
 
-Pending work items not yet scheduled. Add new items at the top of each section.
+**Pending work items that are not yet scheduled.** Ordered by topic, not by priority — nothing here
+is a commitment to do it, and nothing here is next. What is next is [`ROADMAP.md`](ROADMAP.md); an
+item moves BACKLOG → ROADMAP when it gets scheduled, never the other way.
+
+Add new items at the top of their section. This file spans the whole repo: tag a section or an item
+with its collection when it is not collection-01 (everything currently listed is **collection-01**).
+
+**Note on 2026-09-11**: it seems this file has a lot of outdated comments. Check for completed tasks
+before taking on them.
 
 ---
 
