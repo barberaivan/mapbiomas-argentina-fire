@@ -31,7 +31,7 @@ production:
 
 | task | account | submitted (UTC) | what to do with it |
 |---|---|---|---|
-| `arg11_burnable_ecoregions13_2020_benchmark` (k=1, 30 m) | gmail | 11 Sep 04:20:21, **RUNNING from 04:23:53** | read `startTime → endTime`, fill the §4.3 table |
+| `arg11_burnable_ecoregions13_2020_benchmark` (k=1, 30 m) | gmail | 11 Sep 04:20:21, **RUNNING from 04:23:53** | **the 30 m arm has never been measured** — check `attempt` is still 1, then take `startTime → endTime` into the §4.3 table. May run ~15 h |
 | `…_benchmark_k3` (90 m) | comahue | 11 Sep 04:20:51 | ✅ landed in 37 s — **a compute-cache hit, not a timing** |
 | `…_benchmark_k4` (120 m) | comahue | 11 Sep 04:21:24 | ✅ landed in 41 s — same caveat |
 | `arg11_burned_ecoregions13_2020_benchmark` (burned area by region, 2020) | **comahue** | 11 Sep 04:27:49, **RUNNING from 04:27:54** | **the open question** — is the masked numerator actually cheap? |
@@ -41,14 +41,19 @@ production:
 1. **Poll the four tasks and record the durations in §4.3** — `ee.data.listOperations()` is
    project-scoped, so poll **both** `mapbiomas-fire-485203` (gmail) and `mapbiomas-argentina`
    (comahue), and do it before the operations age out (a few weeks). Earth Engine stores when an
-   asset *landed*, never how long its task ran.
+   asset *landed*, never how long its task ran. **Check `attempt` first: if it is > 1, `startTime`
+   has been overwritten and there is no duration to record** — that is exactly how last night's
+   30 m number was lost (§4.3).
 2. **Answer the burned-area question.** If `arg11_burned_…` comes back in minutes, the §5.1
    assumption holds and the numerator is free. If it comes back in hours, that is a real problem:
    the burned half **cannot** be decimated (§5.1), so there is no lever — say so loudly and rethink
    the numerator's route (`--from-objects` in one pass is the fallback).
 3. **Decide on the fixed burnable layer** (§4.3, "the idea that makes this benchmark moot") — the
    mode of `veg_fire` across years as a single frozen denominator. That is the structural fix; the
-   benchmark only tells us how much pain we avoid.
+   benchmark only tells us how much pain we avoid. **The k=3/k=4 pair says the denominator is
+   pixel-sweep-bound and one year at 30 m extrapolates to ~15 h**, so if the running k=1 confirms
+   it, a per-year 30 m denominator is not merely expensive — it is off the table, and the fixed
+   layer stops being an optimisation and becomes the only route.
 4. Then the threshold decision and the exports, as before.
 
 Do **not** re-run an identical benchmark expression to get a timing — Earth Engine will serve it
@@ -288,28 +293,53 @@ in `validation/01_strata_export.py` — both step-11 scripts reintroduced it. Fi
 same placeholder point `[-64, -34]` those two use; it carries no meaning.
 
 **The error fires at WRITE time, i.e. after the entire reduction has run.** So the failed tasks
-still measured the compute, and the first round is the only clean timing we will ever get:
+still measured the compute — but only the two that never got retried:
 
-| task | account | started (UTC) | ran | EECU·s | outcome |
-|---|---|---|---|---|---|
-| `arg11_burnable_ecoregions13_2020_benchmark` (k=1, 30 m) | gmail | 2026-09-11 00:40:13 (attempt 1) | ~141 min, then GEE retried | — | killed by us at 03:01 → attempt 2, cancelled 04:20 |
-| `…_benchmark_k3` (90 m) | comahue | 2026-09-11 00:41:55 | **98.4 min** | 9 292 | FAILED (null geometry) |
-| `…_benchmark_k4` (120 m) | comahue | 2026-09-11 02:20:24 | **49.7 min** | 5 183 | FAILED (null geometry) |
+| task | account | attempt | started (UTC) | ran | EECU·s | outcome |
+|---|---|---|---|---|---|---|
+| `arg11_burnable_ecoregions13_2020_benchmark` (k=1, 30 m) | gmail | **2** | att. 1 at 00:40:13, att. 2 at 03:01:20 | **not recoverable** | unusable | FAILED, retried, we cancelled att. 2 |
+| `…_benchmark_k3` (90 m) | comahue | 1 | 2026-09-11 00:41:55 | **98.4 min** | 9 292 | FAILED (null geometry) |
+| `…_benchmark_k4` (120 m) | comahue | 1 | 2026-09-11 02:20:24 | **49.7 min** | 5 183 | FAILED (null geometry) |
 
-> ⚠️ **The re-run is NOT a timing.** Relaunched at 04:20 on 11 Sep, k=3 landed in **37 s** and k=4
-> in **41 s** — Earth Engine served the reduction from its **compute cache**, since the identical
-> computation had already been evaluated hours earlier and only the write had failed. Any rerun of
-> an identical expression within the cache window measures the cache, not the work. To time this
-> honestly again you must perturb the expression (a different year, a different territory).
-> The cache hit is itself the proof that the first round's failure was purely at write.
+> ⚠️ **How Earth Engine reports time when a task is retried — this invalidated our first reading.**
+> An operation carries exactly ONE `startTime`, ONE `endTime` and an `attempt` counter; there is no
+> per-attempt history anywhere in the metadata (the whole surface is `createTime`, `updateTime`,
+> `startTime`, `endTime`, `attempt`, `state`, `batchEecuUsageSeconds`, `priority`, `progress`,
+> `stages`, `destinationUris` — `_cloud_api_utils.py::convert_operation_to_task`). **`startTime` is
+> OVERWRITTEN on each retry**, so `startTime → endTime` measures the LAST attempt only. Proven here:
+> the 10 Sep session recorded k=1's `startTime` as 00:40:13; the same operation
+> (`4UMQV52X6UUIK2YXSADEZ27T`, same `createTime`) later read `attempt=2, startTime=03:01:20`.
+>
+> **Therefore: always check `attempt` before quoting a duration. `attempt > 1` means there is no
+> duration to quote.** The 141 min between k=1's two starts is attempt-1 runtime *plus* requeue
+> delay — an UPPER bound on the run, not a lower one. Whether `batchEecuUsageSeconds` resets per
+> attempt or accumulates is undocumented, so it is unusable on a retried operation too.
+>
+> An earlier version of this section claimed k=1 ran "≥141 min" and concluded that k=3 beat it.
+> That was the bound pointing the wrong way. **The 30 m arm has no measurement.**
 
-**So the earlier "k=3 is not running faster than k=1" note was wrong** — it was read ~55 min in,
-before either finished. k=3 (98 min) beat k=1 (≥141 min), and k=4 halved k=3 again. Decimation
-*does* buy time on the denominator. Note also that the comahue account ran k=3 and k=4 strictly
-serially (k=4 started 5 s after k=3 ended), i.e. **one concurrent slot, not the two §4.2 assumes.**
+**So what is actually known is the k=3 / k=4 pair**, both single-attempt and therefore clean:
+
+| | pixels swept | wall time | EECU·s |
+|---|---|---|---|
+| k=3 (90 m) → k=4 (120 m) | ÷ 1.78 | ÷ 1.98 | ÷ 1.79 |
+
+Time and EECU both track the pixel ratio. **The reduction is pixel-sweep-bound** — the EECU ratio
+landing on 1.79 against a pixel ratio of 1.78 rules out a scheduling artefact. Extrapolated to
+k=1 that is ~9× the k=3 time, **≈ 15 h for ONE year at 30 m**, and ~27× that for the series. If the
+extrapolation holds, a per-year 30 m denominator is not something we can run at all. The relaunched
+k=1 is the test of it — *and if it returns fast, suspect the cache before believing it*, since it is
+the same expression the cancelled attempts were evaluating.
 
 The k=3 asset reads back sensibly: 184 rows, **250,377,516 ha burnable** for 2020 against a
 279.27 Mha country.
+
+> ⚠️ **The re-run of k=3/k=4 is NOT a timing.** Relaunched at 04:20 on 11 Sep, k=3 landed in **37 s**
+> and k=4 in **41 s** — Earth Engine served the reduction from its **compute cache**, since the
+> identical computation had already been evaluated hours earlier and only the write had failed. Any
+> rerun of an identical expression within the cache window measures the cache, not the work. To time
+> it honestly again you must perturb the expression (a different year, a different territory). The
+> cache hit is itself the proof that the first round's failure was purely at write.
 
 #### The idea that makes this whole benchmark moot: ONE fixed burnable layer
 
@@ -363,7 +393,8 @@ The cost is the whole-country sweep at 30 m, not the painting, so the big years 
 **So the remap fits.** Launch 07a in the morning and it lands the same day.
 
 > Earth Engine's `progress` field sat at 0.33–0.37 for most of an hour and then finished. It is
-> not linear; never extrapolate from it. Take `startTime → endTime` off the finished task.
+> not linear; never extrapolate from it. Take `startTime → endTime` off the finished task — **after
+> checking `attempt == 1`**, because a retry silently overwrites `startTime` (§4.3).
 
 ### 4.4 Running it unattended over a weekend
 
