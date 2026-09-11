@@ -76,7 +76,7 @@ import utils.constants as C          # noqa: E402
 import utils.functions as F          # noqa: E402
 
 TASK_PREFIX = "arg11_burnable_"      # namespaced: the compute project is shared (CLAUDE.md)
-DEFAULT_COL = f"{C.FINAL_PRODUCTS}/../STATISTICS/burnable_area".replace("/../", "/")
+DEFAULT_COL = f"{C._FIRE_ROOT}/COLLECTION-1/STATISTICS/burnable_area"
 
 # ---------------------------------------------------------------------------
 # territories
