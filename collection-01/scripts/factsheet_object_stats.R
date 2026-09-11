@@ -153,6 +153,7 @@ agri_table <- function(d, tags_one) {
   x <- rbind(x[, .(oid, area_ha, frac_agri, layer, region_id, region_name)],
              nat[, .(oid, area_ha, frac_agri, layer, region_id, region_name)])
   thr <- c(0.2, 0.3, 0.4, 0.5, 0.6)
+  x[is.na(region_name), region_name := "(outside every territory)"]
   out <- x[, {
     tot <- sum(area_ha)
     r <- list(n_fires = .N, burned_ha = tot,

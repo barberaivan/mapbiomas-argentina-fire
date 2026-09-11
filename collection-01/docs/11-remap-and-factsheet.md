@@ -102,20 +102,38 @@ So the object filter fixes **what the map looks like** (whole spurious crop-fiel
 disappear) but does **not** make a per-LULC-class pixel statistic clean. That is the tension §5.3
 and §8 have to resolve, not something the threshold can fix.
 
-**(b) It is mostly Chaco, not Pampa.** Of the ~1.58 Mha of cropland pixels inside the objects a
-0.4 filter would drop:
+**(b) It is mostly Chaco — and, in proportion, Yungas.** Now measured against the **Burkart
+ecoregions** rather than the `veg_fire` class suffix (which is regionalised by the 5 MapBiomas
+regions, so `agriculture_chaco` spans more than the Chaco ecoregion — an earlier note here said
+"85 % Chaco" on that basis; **the right figure is 70 %**):
 
-| | area |
-|---|---|
-| `agriculture_chaco` | **1,337 kha** |
-| `agriculture_pampa` | 216 kha |
-| `agriculture_cuyo-pat` | 26 kha |
+| ecoregion | burned | cropland px | % of its burned area | dropped at 0.4 |
+|---|---|---|---|---|
+| **Chaco** | 29.21 Mha | **2,056 kha** | 7.0 % | 5.9 % |
+| **Pampa** | 6.36 Mha | 420 kha | 6.6 % | 5.0 % |
+| Espinal | 16.31 Mha | 216 kha | **1.3 %** | 0.7 % |
+| **Yungas** | 1.17 Mha | 176 kha | **15.0 %** | 14.2 % |
+| Monte | 9.19 Mha | 54 kha | 0.6 % | 0.2 % |
+| Delta e Islas del Paraná | 2.69 Mha | 13 kha | 0.5 % | 0.4 % |
 
-This matters. In Chaco, **fire on recently converted land is often real** — post-deforestation
-burning of cleared plots is a genuine, reportable phenomenon, and deleting it is a scientific
-choice, not a QC fix. In Pampa the same filter is much closer to pure commission-error removal.
-That asymmetry is the argument for (i) a permissive threshold and (ii) trying a **region-specific**
-filter (§6).
+Three things follow.
+
+**Chaco carries 70 % of it**, and there **fire on recently converted land is often real** —
+post-deforestation burning of cleared plots is a genuine, reportable phenomenon, so deleting it is
+a scientific choice, not a QC fix.
+
+**Yungas is the worst in proportion — 15 % of its burned area on cropland**, more than double
+Chaco's rate, and a 0.4 filter takes out 14.2 % of it. It is small in absolute terms (1.17 Mha over
+28 years) so it never showed up in the national numbers, but any Yungas panel in the factsheet is
+materially affected. This was not on the radar before tonight.
+
+**Espinal and Monte are clean** — 16.31 and 9.19 Mha burned, the 2nd and 3rd largest, at 1.3 % and
+0.6 % cropland. So the filter costs almost nothing over most of the burned area of the country.
+
+Together this is the argument for (i) a permissive threshold and (ii) a **region-specific** filter
+(§6) — the right threshold in Espinal and in Yungas are plainly not the same number.
+
+*(22 objects / 227 ha fall outside every ecoregion — coastal centroids, negligible.)*
 
 **(c) The dropped objects are small but not tiny.** Median 14.2 ha, p90 87 ha, max 10,704 ha —
 i.e. this is not a "small-object" filter in disguise, and a size threshold would not substitute
@@ -470,6 +488,32 @@ Two useful by-products of having checked:
   inside one calendar year, where `max` keeps the later month — is worth one sentence in the
   ATBD.
 
+### 7.3 Family B, built — what the fire counts say
+
+`factsheet_region_summary_min10ha.csv`, fires ≥ 10 ha, 28 fire-years, `_multi` tags:
+
+| ecoregion | fires/yr | ha/yr | fires/yr per 10,000 km² | median fire |
+|---|---|---|---|---|
+| Chaco | 8,556 | 1,049,323 | 131.7 | 30.3 ha |
+| Espinal | 3,877 | 676,975 | 129.8 | 25.7 ha |
+| Pampa | 5,768 | 207,882 | **145.6** | 21.6 ha |
+| Monte | 562 | 415,620 | 12.0 | 26.5 ha |
+| Campos y Malezales | 1,429 | 98,925 | **533.1** | 25.7 ha |
+| Delta e Islas del Paraná | 871 | 110,967 | 155.2 | 25.7 ha |
+| Yungas | 403 | 48,079 | 84.6 | 26.0 ha |
+| Estepa Patagónica | 96 | 51,209 | 1.8 | 28.9 ha |
+
+Two things worth a panel. **Campos y Malezales has by far the highest fire *density*** — 533
+fires/yr per 10,000 km², four times Pampa's — while contributing under 100 kha/yr: many small
+fires, a completely different regime from Monte, which burns four times the area with a
+fifteenth of the density. And **Monte is the clearest "few but large" case** (12 fires/yr per
+10,000 km², 415 kha/yr). That contrast — density vs area — is a better regional story than
+either variable alone, and it is exactly what factsheet-notes.md's "relativizar por área"
+question was reaching for.
+
+`factsheet_counts_by_month_min10ha.csv` (5,377 rows: layer × region × fire-year × month) is the
+pirogram's count axis, ready to plot.
+
 ## 8. Open — the Pampa problem
 
 The easy move for analysis 1's LULC panel is **simply not to show agriculture**. But that leaves a
@@ -574,8 +618,8 @@ Consequences:
 | Benchmark plumbing | `07-month_of_burn.py --out-collection/--suffix/--credentials` | ✅ — timing runs land in `TESTS/`, never next to a product |
 | **Burnable area** (the denominator) | `workflow/11-burnable_area.py` | ✅ written, ROI-checked. Whole-country timing pending |
 | **Burned area** (the numerator) | `workflow/11-burned_area_stats.py` | ✅ written, ROI-checked (Chaco 2020: 22,228 ha, Aug–Sep peak). Reduces the **month-of-burn collection**, so it is indifferent to which subproducts have been re-exported — and `--from-objects` reads no asset at all, taking 07a off the factsheet's critical path (§5.1) |
-| Object → territory tags | `scripts/objects_region_tag.R` | 🔄 running, ~1–1.5 h for 28 fire-years on 6 cores |
-| **Family B tables** (fires × territory × month) | `scripts/factsheet_object_stats.R` | ✅ written, smoke-tested; blocked only on the tags |
+| Object → territory tags | `scripts/objects_region_tag.R` | ✅ **done** — all 28 fire-years, ~50 min on 6 cores. 22 objects (227 ha) fall outside every ecoregion |
+| **Family B tables** (fires × territory × month) | `scripts/factsheet_object_stats.R` | ✅ **built** — `factsheet_counts_by_month_min10ha.csv` (5,377 rows), `factsheet_region_summary_min10ha.csv`, `factsheet_agriculture_by_region.csv` |
 
 ### 10.2 Measurements taken today
 
