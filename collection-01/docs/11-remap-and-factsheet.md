@@ -723,6 +723,21 @@ Both are zoom-independent, which is the point: the region-scoped aggregations th
 previous attempt unusable were slow because they intersected object geometries against region
 polygons, and nothing here does that.
 
+**The land cover is on the map, with a legend.** A selector draws either `veg_fire` (25 classes,
+`{min: 1, max: 25, palette: VEG_FIRE_PALETTE}`) or the raw MapBiomas classes it is remapped from,
+under every polygon layer, with a matching multi-column legend bottom-left. It is always the
+**previous year** — fire year fy against LULC fy-1, capped at `MB_LIMIT_YEAR` — which is the part
+of the panel easiest to misread, so the LULC year is written into the layer name *and* the legend
+title instead of being implied by the fire year. `veg_fire` is the default because it is the layer
+the object fractions speak: the click readout says "0.86 agriculture_chaco" and this is where that
+is on the map.
+
+Both come from `collection-01/utils/` in the `fuego` repo (`f.vegFireImage`, `f.mbClassImage`,
+and the legends `f.vegFireLegend` / the new `f.mbLulcLegend`), not from constants re-inlined in the
+explorer — so the script cannot drift from the layer the fractions were measured on. Replacing the
+explorer's hand-listed `region_class` codes with a remap off `vegFireImage` was verified
+pixel-identical (0 differing pixels of ~2 M in a 44 × 44 km Chaco box, agriculture and pasture).
+
 **The survivors are inspectable too**, as a vector layer added *turned off* — off because it is the
 big half (FY2020: **60,198 kept against 2,407 dropped**), and a layer that size must not re-render
 on every slider move. Only in-view features are tiled, so at a landscape zoom it is light (1,851
