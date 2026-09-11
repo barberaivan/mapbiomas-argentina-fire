@@ -78,16 +78,26 @@ MAPBIOMAS_LULC = (
 # whatever LULC collection Argentina publishes, while `veg_fire` stays frozen on the collection
 # the model was fitted against.  The two being different assets is not an inconsistency to fix.
 #
-# Set to LULC collection 3 (v1) on 2026-07-29, at Iván's call — it is the collection that will be
-# published alongside this fire collection.  VERIFIED against col-2 v8, which 07d was first
-# launched with: 41 bands 1985-2025 (so 2025 is NATIVE — no forward duplication needed, unlike
-# col-2 which ended at 2024), and byte-identical grid (same pixel size, same origin
-# -76.26696762174738 / -14.999260130472063, same 89361 x 155938 dimensions), so the
-# integer-offset lattice proof in docs/07 §12.4 carries over unchanged.
+# Set to LULC collection 3 (v1) on 2026-07-29, then REPOINTED to the collection that actually
+# publishes on 2026-09-11: `..._collection3_pb`.  The v1 value was a PRELIMINARY integration
+# (`..._integration_v1_buffer`, with v4/v7/v8_buffer in between), so the four `*_coverage`
+# products built against it encode a land cover that was never published — which is why they are
+# re-exported in September regardless of anything else (docs/07 §1.2).
+#
+# VERIFIED 2026-09-11 against the asset itself:
+#   * 41 bands classification_1985..2025 — 2025 is NATIVE, so no forward duplication is needed
+#     (col-2 ended at 2024 and did need it);
+#   * pixel step 0.00026949458523585647, i.e. SNIC_TRANSFORM's step to 12 significant figures;
+#   * origin -73.5666318776841 / -21.780821873347158 against the SNIC lattice's
+#     -73.58468801489491 / -21.764113209062533 — an offset of EXACTLY +67 columns and -62 rows.
+# An integer offset at the same step means the two grids share a phase: pinned to SNIC_TRANSFORM
+# nothing is resampled, so the docs/07 §12.4 lattice proof carries over unchanged.  (The _pb
+# footprint is 144332 x 123501, different from v1_buffer's 89361 x 155938 — the footprint changed,
+# the lattice did not.)
 # If a col-3 v2 supersedes this, change this ONE line and re-export the four coverage products.
 PRODUCT_LULC = (
     "projects/mapbiomas-argentina/assets/LAND-COVER/COLLECTION-3/INTEGRATION/"
-    "mapbiomas_argentina_collection3_integration_v1_buffer"
+    "mapbiomas_argentina_collection3_pb"
 )
 
 # MapBiomas annual mosaic: ImageCollection, filter by 'year' integer property

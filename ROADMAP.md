@@ -51,9 +51,11 @@ Start at the next section.
       (the polygon layer), and checked by `scripts/audit_product_properties.py`. The old
       `agriculture_filter` property is gone. ⚠️ **The scar FCs are hand-ingested, so their properties
       must be set at ingest** — the rasters painted from them carry the rules, the vectors do not yet.
-- [ ] **Repoint `C.PRODUCT_LULC` to the published land cover.** *(edit, one line)* Set it to `…/COLLECTION-3/INTEGRATION/mapbiomas_argentina_collection3_pb`. The
-      current value is the *preliminary* col-3 (`…_integration_v1_buffer`). Verified same 41 bands,
-      same footprint as `v8_buffer`, integer offset from our lattice (+67 px lon, −62 px lat).
+- [x] ~~**Repoint `C.PRODUCT_LULC` to the published land cover.**~~ **Done 2026-09-11.** Now
+      `…/COLLECTION-3/INTEGRATION/mapbiomas_argentina_collection3_pb`; the old value was the
+      *preliminary* `…_integration_v1_buffer`. Re-verified against the asset: 41 bands
+      `classification_1985..2025` (2025 native), same pixel step as `SNIC_TRANSFORM`, and an offset
+      of exactly **+67 columns / −62 rows** from our lattice — integer, so nothing resamples.
 - [x] ~~**Find out whether a department layer exists.**~~ **It does, and so does everything else.**
       Verified in the asset browser 2026-09-11: the `Stats-Arg_*` family in `ANCILLARY_DATA/` has
       departments (528, INDEC `GEOCODE`, carrying the province name), provinces (24) and ecoregions
