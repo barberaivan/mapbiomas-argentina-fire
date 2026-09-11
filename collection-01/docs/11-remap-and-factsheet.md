@@ -216,9 +216,16 @@ threshold yet, and an unfiltered run is the conservative upper bound on cost.
 borrow a third. So the realistic ceiling is **~4–6 concurrent exports, not 9+**.
 
 27 tasks at 2-per-account therefore means roughly `27 / (2 × accounts)` × per-task-time in serial
-rounds. At 4 concurrent: 7 rounds. If a year takes 1 h → 7 h (fine). If a year takes 4 h → over a
-day (tight, but survivable if launched Friday). If a year takes 8 h+ → the agriculture filter does
-not fit before the 16th and we fall back to §2.3's third option for the factsheet.
+rounds. At 4 concurrent: 7 rounds.
+
+**Measured (2026-09-10): a year takes ~58 min** (§10.2), so **7 rounds ≈ 6.5 h at 4 concurrent**,
+~13 h at 2. **07a fits comfortably** — launch it in the morning and it lands the same day. The
+agriculture filter is therefore affordable, and §2.3's "mask only for the factsheet" fallback is
+not needed.
+
+Observed caveat: with one export already running per account, a second submission sat **PENDING**
+rather than starting, so treat 2-per-account as an upper bound and the comahue /
+`mapbiomas-argentina` project as the less congested lane.
 
 The queue is **per user**, so submitting under the second account starts immediately instead of
 queueing behind the first — see CLAUDE.md on passing `--credentials` explicitly rather than
@@ -434,26 +441,34 @@ plotting the x-axis May→April so neither peak is cut.
    structure only; hectares come from `11-burned_area_stats.py`, which sums `pixelArea()`.
 2. **They describe the current, unfiltered map** — no agriculture filter.
 
-### 7.2 Open cross-check: a 269,043-pixel gap against docs/07 §2
+### 7.2 The 269,043-pixel question — answered, and it was already in docs/07
 
-Summing the 27 histograms gives **910,290,670 px**. docs/07 §2 states the published series holds
-**910,559,713 px** ("the pixel accounting closes exactly", 911,617,919 accepted − 1,058,206 for
-calendar 1998). The gap is **269,043 px (~20 kha, 0.03 %)**.
+Summing the 27 histograms gives **910,290,670 px**, where docs/07 **§2** says **910,559,713**.
+I flagged that as an open discrepancy. **It is not one, and the mistake was mine**: §2's figure
+is an *intermediate* line — accepted pixels minus calendar 1998 — and docs/07 **§8** already
+carries the full reconciliation, including the step I thought was missing:
 
-The histograms are internally consistent — `n_px` equals the sum of `m01..m12` in **all 27
-years** — and every year still matches the local scar month counts. So this is not a corrupted
-asset.
+```
+  accepted object px (28 fire-years)     911,617,919
+  − calendar 1998, not published           1,058,206
+  = inside the published series          910,559,713     <- §2 quotes THIS line
+  − intra-year reburn, deduped               269,043
+  = expected calendar px                 910,290,670     <- what the asset contains
+```
 
-**Most likely explanation: intra-calendar-year reburn.** docs/07 §2's figure is built by summing
-each fire-year's two calendar halves, where a pixel that burned twice *within one calendar year*
-is counted once per fire-year contribution; the published raster collapses it to one pixel
-(`max` keeps the later month). If so, docs/07's "published series" total is an accounting sum
-rather than a reduction of the actual raster, and **910,290,670 is the right number for what the
-asset contains**.
+Re-derived independently tonight from the local pixel cache, as the overlap between the two
+fire-year contributions to each calendar year: **269,043 px — exact to the pixel.** Big fire
+years dominate it (calendar 2000 alone contributes 40,300); quiet years give a few hundred.
 
-Worth resolving before any national total goes in the factsheet or the ATBD — it is small, but
-docs/07 claims exactness, and a claim of exactness that is off by 269 k pixels should either be
-corrected or explained.
+Two useful by-products of having checked:
+
+- **Per-year, the local union equals the published raster's count exactly** — calendar 1999,
+  33,456,607 px; calendar 2020, 59,759,246 px; both identical to `mob_month_stats`. The local
+  pixel set and the GEE product agree year by year, not just in total.
+- The right national pixel total for anything quoted from the products is **910,290,670**, and
+  the reason a pixel can be "mapped twice but published once" — reburn across two fire-years
+  inside one calendar year, where `max` keeps the later month — is worth one sentence in the
+  ATBD.
 
 ## 8. Open — the Pampa problem
 
@@ -570,7 +585,7 @@ Consequences:
 | Territory tagging cost | ~10–15 ms per object, ~1–1.5 h for all 1.69 M on 6 cores. `st_intersects`, **not** `st_within`, on the centroids: identical answer for a point, 2.4 s vs 23.4 s per 2,000 objects (34 min vs 5.5 h over the collection) |
 | GEE concurrency, observed | With one export running per account, a second submission sat **PENDING**. The shared `mapbiomas-fire-485203` project is congested with the rest of the network, so the comahue / `mapbiomas-argentina` project is the better lane for our batch — §4.2's ceiling is real |
 | **The filter, end to end in GEE, against the local numbers** | Ran `07-burned_area_polygons.py --check --agri-max 0.4` against the uploaded `objects_raw_<fy>` FCs and compared with the local object tables. Dropped area **2,355,925 ha both sides — agreement to the hectare**; kept 1,208,965 GEE rows vs 1,208,962 local objects, the +3 being exactly the known FY2000 storage duplicate (docs/07 §13.7). So the GEE-side predicate and the numbers in §2.1 are the same filter, and a threshold chosen in the explorer will do to the products what the table says |
-| 07a per-year runtime | **still unmeasured.** GEE's `progress` field sat at 0.33–0.35 between minute 17 and minute 36; it is not linear and must not be extrapolated. Take `startTime → endTime` off the finished task |
+| **07a per-year runtime — MEASURED** | **~58 min per calendar year, and essentially independent of fire load.** 2012 (26,930 objects, 0.92 Mha) took **57.8 min**; 2020 (71,753 objects, 4.68 Mha) took **58.8 min** — 2.7× the objects for +1.7 % time. So the cost is the whole-country 30 m sweep, **not** the polygon paint, and it will not blow up on the big years. 27 years ≈ **26 h serial**, so ~**6.5 h at 4 concurrent**, ~13 h at 2. (GEE's `progress` field sat at 0.33–0.37 for most of the run and then finished — it is not linear and must never be extrapolated.) |
 
 ### 10.3 Two traps caught (both would have been silent)
 
