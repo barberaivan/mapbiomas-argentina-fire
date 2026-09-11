@@ -723,6 +723,12 @@ Both are zoom-independent, which is the point: the region-scoped aggregations th
 previous attempt unusable were slow because they intersected object geometries against region
 polygons, and nothing here does that.
 
+**The survivors are inspectable too**, as a vector layer added *turned off* — off because it is the
+big half (FY2020: **60,198 kept against 2,407 dropped**), and a layer that size must not re-render
+on every slider move. Only in-view features are tiled, so at a landscape zoom it is light (1,851
+kept polygons in a 2×2° Chaco view) and at a country zoom it will time out; in the multi-year
+script it is the whole 1.26 M set, so zoom in before switching it on.
+
 The single-year readout names an object's composition by `veg_fire` class instead of printing
 `frac_c9`, and answers for **kept** objects too — "why did this one survive" is the other half of
 choosing a threshold. The multi-year readout lists every fire-year that burned at the clicked
