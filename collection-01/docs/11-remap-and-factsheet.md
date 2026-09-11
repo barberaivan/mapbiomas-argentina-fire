@@ -779,13 +779,25 @@ specified by Iván, that do different things in different parts of the country:
 | | rule | measured FY2020, whole country |
 |---|---|---|
 | **A** | drop `frac_c15` > 0.70 **and** 15 Aug ≤ `date_med` ≤ 15 Nov | 10,156 obj / 443,070 ha — **10.4 %** of the year's burned area |
-| **B** | drop `frac_c1` > 0.40 | 1,838 obj / 154,351 ha — **3.6 %** |
+| **B** | drop `frac_agri` > 0.40 | 2,389 obj / 162,168 ha — **3.8 %** |
 | | accepted set (`fire == 1 & area_ha >= 1`) | 62,605 obj / 4,268,189 ha |
 
-Both codes are `veg_fire`, checked against `config/veg_fire_remap.csv`: **15 = `grassland_pampa`**,
-**1 = `agriculture_chaco`**. Rule A deliberately uses `frac_c15` and not the `frac_gr_tp` predictor,
-which lumps `grassland_ba` + `grassland_chaco` + `grassland_pampa` — the rule is about the Pampa
-alone.
+The two rules read different *kinds* of column, which is the thing to keep straight:
+
+- **`frac_c15`** is one `veg_fire` class — `grassland_pampa`, checked against
+  `config/veg_fire_remap.csv`. Rule A deliberately does **not** use the `frac_gr_tp` predictor,
+  which lumps `grassland_ba` + `grassland_chaco` + `grassland_pampa`; the rule is about the Pampa
+  alone.
+- **`frac_agri`** is the **merged** agriculture aggregate — `frac_c1 + frac_c2 + frac_c3`
+  (`agriculture_{chaco, cuyo-pat, pampa}`), excluding class 4 `agriculture-per`. It is the same
+  column §2.1 is tabulated on, so rule B is exactly that table's `frac_agri ≥ 0.4` row (2,389 vs
+  2,407 objects in FY2020 — the difference is `>` against `≥`).
+
+**At the defaults the two rules cannot both fire**, and that is arithmetic rather than luck:
+`frac_c15 > 0.70` leaves under 0.30 for every other class, so `frac_agri` cannot reach 0.40.
+Measured: the largest `frac_agri` among FY2020's `frac_c15 > 0.7` objects is **0.299**, and the
+overlap is empty. The "both rules" layer exists for thresholds moved far enough to make an overlap
+possible.
 
 **What is new here is the date test.** Rule A is a composition threshold *and* a season: an object
 that is almost entirely Pampa grassland is dropped if it burned in the late-winter/spring window and
