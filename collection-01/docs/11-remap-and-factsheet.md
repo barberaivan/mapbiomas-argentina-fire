@@ -778,9 +778,15 @@ specified by Iván, that do different things in different parts of the country:
 
 | | rule | measured FY2020, whole country |
 |---|---|---|
-| **A** | drop `frac_c15` > 0.70 **and** 15 Aug ≤ `date_med` ≤ 15 Nov | 10,156 obj / 443,070 ha — **10.4 %** of the year's burned area |
+| **A** | drop `frac_c15` > 0.70 **and** 1 Jul ≤ `date_med` ≤ 15 Nov | 15,092 obj / 746,603 ha — **17.5 %** of the year's burned area |
 | **B** | drop `frac_agri` > 0.40 | 2,389 obj / 162,168 ha — **3.8 %** |
+| | **A or B** | 17,481 obj / 908,771 ha — **21.3 %** |
 | | accepted set (`fire == 1 & area_ha >= 1`) | 62,605 obj / 4,268,189 ha |
+
+> **The window's lower bound moved from 15 Aug to 1 Jul on 11 Sep 2026.** Those six weeks are the
+> single biggest lever in this ruleset: rule A goes from 10,156 objects / 443,070 ha (10.4 %) to
+> 15,092 / 746,603 ha (17.5 %) — it roughly doubles what the ruleset removes, while rule B does not
+> move at all. A and B still add up exactly to the union, i.e. they remain disjoint (below).
 
 The two rules read different *kinds* of column, which is the thing to keep straight:
 
@@ -800,10 +806,11 @@ overlap is empty. The "both rules" layer exists for thresholds moved far enough 
 possible.
 
 **What is new here is the date test.** Rule A is a composition threshold *and* a season: an object
-that is almost entirely Pampa grassland is dropped if it burned in the late-winter/spring window and
-kept if it burned outside it. Rule A is therefore much more aggressive than anything in §2.1 — 10.4 %
-of a year against 3.4 % for a national `frac_agri ≥ 0.4` — and it lands squarely on the open question
-in §9.
+that is almost entirely Pampa grassland is dropped if it burned in the winter-spring window and kept
+if it burned outside it. Rule A is therefore far more aggressive than anything in §2.1 — **17.5 % of
+a year against 3.4 %** for a national `frac_agri ≥ 0.4`, five times as much — and the whole ruleset
+removes 21.3 % of FY2020's burned area. That is a large enough number to be a headline decision, not
+a QC tweak, and it lands squarely on the open question in §9.
 
 Implementation notes worth keeping:
 
