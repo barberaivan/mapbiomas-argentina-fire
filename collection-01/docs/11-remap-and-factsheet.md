@@ -270,6 +270,22 @@ territorial cuts and read the factsheet off them. That also unblocks docs/09 ope
 `annual_burned_coverage` / `monthly_burned_coverage`). One export gives analyses 1, 2 *and* the
 LULC panel at once.
 
+> **`workflow/11-burned_area_stats.py --from-objects` takes 07a off the factsheet's critical
+> path.** Instead of reading the exported month-of-burn asset, it calls 07a's *own*
+> `month_of_burn()` to paint the objects on the fly — applying `--agri-max` itself — and reduces
+> in the same task. So the factsheet's numbers can come from a **filtered** map in one pass while
+> the products are re-exported on their own schedule, instead of waiting for 27 exports to land.
+> It is the same function 07a exports, not a re-implementation, so the two cannot drift.
+>
+> **Verified 2026-09-10**: with no filter it reproduces the published asset *month for month*
+> over a Chaco box in 2020 — 22,228.3 ha both ways, every month identical. With `--agri-max 0.4`
+> the same box falls to **15,524.1 ha, −30 %** — against 3.4 % nationally (§2.1), which is the
+> §2.2b concentration made concrete.
+>
+> The honest trade: every year repaints, so there is no reusable intermediate and this does not
+> make 07a cheaper — it removes an ordering constraint, not work. And a number produced this way
+> is **of a map that is not yet published**; label it (§8).
+
 **Denominator — burnable area, per year, per territory.** This is the expensive one: a full-country
 30 m reduction × 27 years, and it has no burned-pixel mask to shrink it.
 
@@ -458,7 +474,7 @@ Consequences:
 | The agriculture filter itself | `07-month_of_burn.py --agri-max T`, `07-burned_area_polygons.py --agri-max T`, `AGRI_MAX=T … 07-calendar_scars.R` | ✅ **all three filter points of §2.3 wired**, default OFF. Deploying a threshold is now a flag, not an edit. 07a stamps it into the asset's `agriculture_filter` property; in the polygon script it is a module-level value so the build, `--verify` and both stats paths cannot disagree; in the scar script it is an env var so the two passes cannot end up filtered differently |
 | Benchmark plumbing | `07-month_of_burn.py --out-collection/--suffix/--credentials` | ✅ — timing runs land in `TESTS/`, never next to a product |
 | **Burnable area** (the denominator) | `workflow/11-burnable_area.py` | ✅ written, ROI-checked. Whole-country timing pending |
-| **Burned area** (the numerator) | `workflow/11-burned_area_stats.py` | ✅ written, ROI-checked (Chaco 2020: 22,228 ha, Aug–Sep peak). Reduces the **month-of-burn collection**, so it is indifferent to which subproducts have been re-exported |
+| **Burned area** (the numerator) | `workflow/11-burned_area_stats.py` | ✅ written, ROI-checked (Chaco 2020: 22,228 ha, Aug–Sep peak). Reduces the **month-of-burn collection**, so it is indifferent to which subproducts have been re-exported — and `--from-objects` reads no asset at all, taking 07a off the factsheet's critical path (§5.1) |
 | Object → territory tags | `scripts/objects_region_tag.R` | 🔄 running, ~1–1.5 h for 28 fire-years on 6 cores |
 | **Family B tables** (fires × territory × month) | `scripts/factsheet_object_stats.R` | ✅ written, smoke-tested; blocked only on the tags |
 

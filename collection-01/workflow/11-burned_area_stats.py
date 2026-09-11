@@ -58,10 +58,18 @@ import utils.constants as C                                    # noqa: E402
 # a territory is and which grid they count on, or the ratio is between two different maps.
 import importlib.util as _ilu                                  # noqa: E402
 
-_spec = _ilu.spec_from_file_location(
-    "burnable_area", Path(__file__).resolve().parent / "11-burnable_area.py")
-_burnable = _ilu.module_from_spec(_spec)
-_spec.loader.exec_module(_burnable)
+def _load(modname, filename):
+    spec = _ilu.spec_from_file_location(
+        modname, Path(__file__).resolve().parent / filename)
+    mod = _ilu.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_burnable = _load("burnable_area", "11-burnable_area.py")
+# 07a's own builder, so `--from-objects` paints EXACTLY what the published raster would
+# contain rather than a re-implementation of it (see month_image()).
+_mob = _load("month_of_burn", "07-month_of_burn.py")
 
 TERRITORIES = _burnable.TERRITORIES
 territory_image = _burnable.territory_image
@@ -84,21 +92,45 @@ def task_in_flight(description):
     return False
 
 
-def month_image(cal_year, collection):
-    """The month-of-burn image for one calendar year: uint8 1-12, masked elsewhere."""
+def month_image(cal_year, collection, from_objects=False, agri_max=None):
+    """The month-of-burn image for one calendar year: uint8 1-12, masked elsewhere.
+
+    TWO SOURCES, and the choice decides what this step depends on.
+
+    `collection` (default) reads the EXPORTED 07a asset — the published product, so the
+    statistic is a statistic OF the published map.
+
+    `from_objects` builds the same image on the fly with 07a's own `month_of_burn()`, from the
+    object FCs and the SNIC assets, applying `agri_max` itself. This exists because 07a is the
+    expensive step and the whole 27-year re-export sits on the critical path of everything
+    (docs/11 §3): with `--from-objects` the factsheet's numbers can be produced from a FILTERED
+    map in ONE pass, while the products are re-exported on their own schedule, instead of
+    waiting for them.
+
+    It is the same function 07a exports, not a copy, so the two cannot drift. What differs is
+    only that nothing is written: paint and reduce happen in one task. The trade is that every
+    year repaints (no reusable intermediate), so prefer reading the asset once it exists.
+
+    A number produced this way is of a map that is not yet published — say so wherever it is
+    used, per docs/11 §8.
+    """
+    if from_objects:
+        return _mob.month_of_burn(cal_year, agri_max).select(C.MONTH_OF_BURN_BAND)
     ic = ee.ImageCollection(collection).filter(ee.Filter.eq("year", cal_year))
     return ee.Image(ic.first()).select(C.MONTH_OF_BURN_BAND)
 
 
-def zone_image(cal_year, territory, collection):
+def zone_image(cal_year, territory, collection, from_objects=False, agri_max=None):
     """zone = territory_id * 100 + month, masked to the burned pixels."""
-    month = month_image(cal_year, collection)
+    month = month_image(cal_year, collection, from_objects, agri_max)
     terr = territory_image(territory)
     return terr.multiply(100).add(month).rename("zone").toInt32()
 
 
-def grouped_area(cal_year, territory, geometry, collection, decimate=1):
-    img = ee.Image.pixelArea().addBands(zone_image(cal_year, territory, collection))
+def grouped_area(cal_year, territory, geometry, collection, decimate=1,
+                 from_objects=False, agri_max=None):
+    img = ee.Image.pixelArea().addBands(
+        zone_image(cal_year, territory, collection, from_objects, agri_max))
     return ee.Image(img).reduceRegion(
         reducer=ee.Reducer.sum().group(groupField=1, groupName="zone"),
         geometry=geometry,
@@ -110,8 +142,10 @@ def grouped_area(cal_year, territory, geometry, collection, decimate=1):
     ).get("groups")
 
 
-def year_table(cal_year, territory, geometry, collection, decimate=1):
-    groups = ee.List(grouped_area(cal_year, territory, geometry, collection, decimate))
+def year_table(cal_year, territory, geometry, collection, decimate=1,
+               from_objects=False, agri_max=None):
+    groups = ee.List(grouped_area(cal_year, territory, geometry, collection, decimate,
+                                  from_objects, agri_max))
 
     def to_feature(g):
         g = ee.Dictionary(g)
@@ -126,11 +160,14 @@ def year_table(cal_year, territory, geometry, collection, decimate=1):
     return ee.FeatureCollection(groups.map(to_feature))
 
 
-def check(cal_year, territory, roi, collection, decimate=1):
+def check(cal_year, territory, roi, collection, decimate=1,
+          from_objects=False, agri_max=None):
     names = territory_names(territory)
-    groups = ee.List(grouped_area(cal_year, territory, roi, collection, decimate)).getInfo()
+    groups = ee.List(grouped_area(cal_year, territory, roi, collection, decimate,
+                                  from_objects, agri_max)).getInfo()
+    src = f"objects (agri_max={agri_max})" if from_objects else "published 07a asset"
     print(f"[check] year={cal_year}  territory={territory}  decimate={decimate}  "
-          f"groups={len(groups)}")
+          f"source={src}  groups={len(groups)}")
     tot = 0.0
     for g in sorted(groups, key=lambda d: d["zone"]):
         tid, month = divmod(int(g["zone"]), 100)
@@ -141,7 +178,7 @@ def check(cal_year, territory, roi, collection, decimate=1):
 
 
 def export_year(cal_year, territory, geometry, launch, out_col, collection,
-                suffix="", decimate=1):
+                suffix="", decimate=1, from_objects=False, agri_max=None):
     asset_id = f"{out_col}/burned_{territory}_{cal_year}{suffix}"
     description = f"{TASK_PREFIX}{territory}_{cal_year}{suffix}"
 
@@ -152,11 +189,16 @@ def export_year(cal_year, territory, geometry, launch, out_col, collection,
         print(f"[skip] {description} has a PENDING/RUNNING task")
         return
 
-    fc = year_table(cal_year, territory, geometry, collection, decimate).set({
+    fc = year_table(cal_year, territory, geometry, collection, decimate,
+                    from_objects, agri_max).set({
         "year": cal_year,
         "territory": territory,
         "territory_asset": TERRITORIES[territory][0],
-        "month_of_burn_collection": collection,
+        "month_of_burn_collection": ("(none — painted from objects on the fly)"
+                                     if from_objects else collection),
+        "agriculture_filter": ("none" if agri_max is None
+                               else f"object dropped when frac_agri >= {agri_max}"),
+        "published_map": int(not from_objects),
         "grid": "C.SNIC_CRS + C.SNIC_TRANSFORM",
         "decimate": decimate,
         "partition": "calendar year and month assigned PER PIXEL from abs_date (docs/07 §1)",
@@ -214,6 +256,16 @@ def main():
     ap.add_argument("--csv", default=None)
     ap.add_argument("--out-collection", default=DEFAULT_COL)
     ap.add_argument("--suffix", default="")
+    ap.add_argument("--from-objects", action="store_true",
+                    help="paint the month image from the OBJECTS on the fly (07a's own "
+                         "month_of_burn) instead of reading the exported asset, so the "
+                         "factsheet's numbers do not wait for the 27-year 07a re-export "
+                         "(docs/11 §3). Pair with --agri-max. A number produced this way is "
+                         "of a map that is NOT yet published — label it as such.")
+    ap.add_argument("--agri-max", type=float, default=None, metavar="T",
+                    help="with --from-objects: drop objects with frac_agri >= T (docs/11 §2). "
+                         "Ignored when reading an exported asset, whose filter is already baked "
+                         "in — use --collection to pick which one.")
     ap.add_argument("--decimate", type=int, default=1, metavar="K",
                     help="sample every K-th pixel of our 30 m lattice. Use with more care "
                          "than on the denominator: burned scars are smaller and more "
@@ -221,6 +273,10 @@ def main():
     ap.add_argument("--project", default=C.GEE_PROJECT)
     ap.add_argument("--credentials", default=None, metavar="FILE")
     args = ap.parse_args()
+    if args.agri_max is not None and not args.from_objects:
+        ap.error("--agri-max only applies with --from-objects; an exported asset already "
+                 "carries whatever filter it was painted with (see its `agriculture_filter` "
+                 "property). Use --collection to choose which asset to read.")
 
     initialize(args.project, args.credentials)
 
@@ -233,7 +289,8 @@ def main():
         roi = (ee.Geometry.Polygon(C.TEST_ROI_COORDS, None, False) if args.roi == "test"
                else ee.Geometry.Rectangle([float(v) for v in args.roi.split(",")], None, False))
         for y in years:
-            check(y, args.territory, roi, args.collection, args.decimate)
+            check(y, args.territory, roi, args.collection, args.decimate,
+                  args.from_objects, args.agri_max)
         return
 
     if args.read:
@@ -247,7 +304,8 @@ def main():
     geometry = ee.FeatureCollection(C.ARG_BUFFER_FC).geometry()
     for y in years:
         export_year(y, args.territory, geometry, args.launch, args.out_collection,
-                    args.collection, args.suffix, args.decimate)
+                    args.collection, args.suffix, args.decimate,
+                    args.from_objects, args.agri_max)
 
     if not args.launch:
         print("\nDry run only. Re-run with --launch to submit the task(s).")
