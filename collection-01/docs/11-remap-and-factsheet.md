@@ -455,7 +455,7 @@ Consequences:
 | what | where | state |
 |---|---|---|
 | Threshold explorers (single-year + multi-year) | `fuego` repo, `collection-01/visualization-misc/explore_agri_filter_*` | ✅ pushed — **this is the thing to open with Camilo** |
-| The agriculture filter itself | `07-month_of_burn.py --agri-max T` | ✅ wired, default OFF, stamped into the asset's `agriculture_filter` property. Still to add at the other two filter points (§2.3) once the threshold is fixed |
+| The agriculture filter itself | `07-month_of_burn.py --agri-max T`, `07-burned_area_polygons.py --agri-max T`, `AGRI_MAX=T … 07-calendar_scars.R` | ✅ **all three filter points of §2.3 wired**, default OFF. Deploying a threshold is now a flag, not an edit. 07a stamps it into the asset's `agriculture_filter` property; in the polygon script it is a module-level value so the build, `--verify` and both stats paths cannot disagree; in the scar script it is an env var so the two passes cannot end up filtered differently |
 | Benchmark plumbing | `07-month_of_burn.py --out-collection/--suffix/--credentials` | ✅ — timing runs land in `TESTS/`, never next to a product |
 | **Burnable area** (the denominator) | `workflow/11-burnable_area.py` | ✅ written, ROI-checked. Whole-country timing pending |
 | **Burned area** (the numerator) | `workflow/11-burned_area_stats.py` | ✅ written, ROI-checked (Chaco 2020: 22,228 ha, Aug–Sep peak). Reduces the **month-of-burn collection**, so it is indifferent to which subproducts have been re-exported |
@@ -469,6 +469,7 @@ Consequences:
 | `--decimate` on the burnable denominator | On a fragmented Chaco box, total burnable moves **+0.003 % at K=3 (90 m)**, **+0.015 % at K=4 (120 m)** — but small fragmented classes break at K=4 (`forest-inund` −36 %, `grassland-inund` −26 %; at K=3, −5 % and −1 %). **K=3 is a usable fallback for aggregates; K=4 is not safe per class.** |
 | Territory tagging cost | ~10–15 ms per object, ~1–1.5 h for all 1.69 M on 6 cores. `st_intersects`, **not** `st_within`, on the centroids: identical answer for a point, 2.4 s vs 23.4 s per 2,000 objects (34 min vs 5.5 h over the collection) |
 | GEE concurrency, observed | With one export running per account, a second submission sat **PENDING**. The shared `mapbiomas-fire-485203` project is congested with the rest of the network, so the comahue / `mapbiomas-argentina` project is the better lane for our batch — §4.2's ceiling is real |
+| **The filter, end to end in GEE, against the local numbers** | Ran `07-burned_area_polygons.py --check --agri-max 0.4` against the uploaded `objects_raw_<fy>` FCs and compared with the local object tables. Dropped area **2,355,925 ha both sides — agreement to the hectare**; kept 1,208,965 GEE rows vs 1,208,962 local objects, the +3 being exactly the known FY2000 storage duplicate (docs/07 §13.7). So the GEE-side predicate and the numbers in §2.1 are the same filter, and a threshold chosen in the explorer will do to the products what the table says |
 | 07a per-year runtime | **still unmeasured.** GEE's `progress` field sat at 0.33–0.35 between minute 17 and minute 36; it is not linear and must not be extrapolated. Take `startTime → endTime` off the finished task |
 
 ### 10.3 Two traps caught (both would have been silent)

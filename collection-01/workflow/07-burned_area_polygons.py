@@ -289,11 +289,20 @@ def merged_asset():
 # ---------------------------------------------------------------------------
 # the layer
 # ---------------------------------------------------------------------------
+# Set once in main() from --agri-max (docs/11 §2). A MODULE-LEVEL value rather than a
+# parameter because fire_filter() has four call sites -- the build, --verify and two stats
+# paths -- and a verify that used a different filter from the build would report a mismatch
+# that is not there, or hide one that is.
+AGRI_MAX = None
+
+
 def fire_filter():
     """The accepted-fire filter.  A function, not a module constant: building an `ee.Filter` at
     import time runs before `ee.Initialize()` and dies with "client library not initialized"."""
-    return ee.Filter.And(ee.Filter.eq("fire", 1),
-                         ee.Filter.gte("area_ha", C.MIN_FIRE_HA))
+    keep = [ee.Filter.eq("fire", 1), ee.Filter.gte("area_ha", C.MIN_FIRE_HA)]
+    if AGRI_MAX is not None:
+        keep.append(ee.Filter.lt("frac_agri", AGRI_MAX))
+    return ee.Filter.And(*keep)
 
 
 def iso(days):
@@ -566,6 +575,10 @@ def main():
                          "re-exporting a layer whose path is already shared")
     ap.add_argument("--set-props", action="store_true",
                     help="write the asset property block onto the landed asset")
+    ap.add_argument("--agri-max", type=float, default=None, metavar="T",
+                    help="AGRICULTURE FILTER (docs/11 §2): drop objects with frac_agri >= T. "
+                         "MUST match what 07a was painted with, or this layer and the rasters "
+                         "disagree about what a fire is.")
     ap.add_argument("--project", default=C.GEE_PROJECT,
                     help="compute project (default %(default)s). Use `mapbiomas-argentina` with "
                          "the comahue credentials — the destination asset path does not change")
@@ -575,6 +588,11 @@ def main():
                          "export run as the second account so it does not queue behind the first "
                          "account's tasks, without swapping any file")
     args = ap.parse_args()
+
+    global AGRI_MAX
+    AGRI_MAX = args.agri_max
+    if AGRI_MAX is not None:
+        print(f"[filter] agriculture: dropping objects with frac_agri >= {AGRI_MAX}")
 
     initialize(args.project, args.credentials)
 

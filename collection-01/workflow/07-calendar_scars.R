@@ -152,11 +152,23 @@ row_cell_area <- function(g) {
 }
 
 # ── pass 1 — accepted burned pixels of one fire-year, split by calendar year ───
+# AGRI_MAX is an environment variable, not an argument, because this function is called from
+# both passes and from the launcher: an env var reaches all of them identically and a run
+# cannot end up with one pass filtered and the other not. It MUST match what 07a was painted
+# with (`--agri-max`) or the scar layer stops being the month raster's mask (docs/11 §2.3).
+AGRI_MAX <- suppressWarnings(as.numeric(Sys.getenv("AGRI_MAX", NA)))
+
 accepted_oids <- function(fy) {
   pr <- fread(file.path(PRED_DIR, sprintf("objects_%d_pred.csv", fy)), select = c("oid", "fire"))
-  mt <- fread(file.path(OBJ_DIR, sprintf("objects_%d_raster_metrics.csv", fy)),
-              select = c("oid", "area_ha", "date_median", "n_pixels"))
+  cols <- c("oid", "area_ha", "date_median", "n_pixels")
+  if (!is.na(AGRI_MAX)) cols <- c(cols, "frac_c1", "frac_c2", "frac_c3")
+  mt <- fread(file.path(OBJ_DIR, sprintf("objects_%d_raster_metrics.csv", fy)), select = cols)
   a <- merge(pr, mt, by = "oid")[fire == 1 & area_ha >= MIN_FIRE_HA & !is.na(date_median)]
+  if (!is.na(AGRI_MAX)) {
+    before <- nrow(a)
+    a <- a[frac_c1 + frac_c2 + frac_c3 < AGRI_MAX]
+    msg("  [agri] frac_agri < %g: %d of %d objects kept", AGRI_MAX, nrow(a), before)
+  }
   a[, date_eff := as.integer(round(date_median))]
   a[, .(oid, date_eff, n_pixels)]
 }
