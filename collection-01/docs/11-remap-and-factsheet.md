@@ -770,6 +770,40 @@ Note for the reading: **pasture is a separate question.** `frac_agri + frac_past
 5.78 Mha (8.4 %) instead of 2.36 Mha, and pasture fire is largely genuine management burning. It is
 in the explorer as an option, but the prior is agriculture only.
 
+
+### 6.2 The candidate ruleset — `explore_agri_filter_rules_single_year`
+
+A third script (11 Sep 2026), for a filter that is **not one threshold on one fraction**. Two rules,
+specified by Iván, that do different things in different parts of the country:
+
+| | rule | measured FY2020, whole country |
+|---|---|---|
+| **A** | drop `frac_c15` > 0.70 **and** 15 Aug ≤ `date_med` ≤ 15 Nov | 10,156 obj / 443,070 ha — **10.4 %** of the year's burned area |
+| **B** | drop `frac_c1` > 0.40 | 1,838 obj / 154,351 ha — **3.6 %** |
+| | accepted set (`fire == 1 & area_ha >= 1`) | 62,605 obj / 4,268,189 ha |
+
+Both codes are `veg_fire`, checked against `config/veg_fire_remap.csv`: **15 = `grassland_pampa`**,
+**1 = `agriculture_chaco`**. Rule A deliberately uses `frac_c15` and not the `frac_gr_tp` predictor,
+which lumps `grassland_ba` + `grassland_chaco` + `grassland_pampa` — the rule is about the Pampa
+alone.
+
+**What is new here is the date test.** Rule A is a composition threshold *and* a season: an object
+that is almost entirely Pampa grassland is dropped if it burned in the late-winter/spring window and
+kept if it burned outside it. Rule A is therefore much more aggressive than anything in §2.1 — 10.4 %
+of a year against 3.4 % for a national `frac_agri ≥ 0.4` — and it lands squarely on the open question
+in §9.
+
+Implementation notes worth keeping:
+
+- `date_med` is **days since 1970-01-01** (18,383 = 2020-05-01), so the window is compared as day
+  numbers computed client-side; no `ee.Date` round trip per feature.
+- The window is anchored **inside the fire year**: a month ≥ 5 belongs to fy, Jan–Apr to fy+1,
+  because the fire year runs 1 May fy → 30 Apr fy+1. Both bounds inclusive.
+- `Date.UTC` rolls over instead of failing, so `02-30` would quietly become 2 March; the parser reads
+  the date back and rejects it if it is not the one asked for.
+- The map shows **which rule fired** — orange A, red B, violet both, yellow kept — and the click
+  readout spells out the comparison that dropped the object, including the date and the window.
+
 ---
 
 ## 7. Decisions on record
