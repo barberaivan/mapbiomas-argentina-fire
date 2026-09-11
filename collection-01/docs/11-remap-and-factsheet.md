@@ -701,6 +701,34 @@ in the `fuego` repo (`mapbiomas-arg-fire-gee`, `collection-01/visualization-misc
 > If one script becomes a blob, split it in two — `…_single_year` and `…_multi_year`. Prefer two
 > readable scripts over one with a mode switch nobody remembers.
 
+### 6.1 Reading one polygon — why DROPPED is a vector layer
+
+`fc.style()` returns an **Image**. A styled collection therefore has no properties to give: the
+Inspector can only report the RGB it rendered, which is why the first version of the explorers
+could show *that* a polygon was dropped and never *why*. DROPPED is now added as a plain
+FeatureCollection, so the Inspector's "Objects" section carries all 54 properties. This is
+affordable only because dropping is the small set — ~1,900 objects per fire-year (§2.1) against
+1.26 M kept, which stays a styled image.
+
+Clicking the map is the faster read, and the cheap one. It filters the **source asset by a
+point** — which rides the asset's spatial index rather than touching the drawn collection — and
+scores only what comes back:
+
+| query | measured |
+|---|---|
+| one fire year (single-year script) | **0.6 s** |
+| all 28 fire-years (multi-year script) | **4.0 s** |
+
+Both are zoom-independent, which is the point: the region-scoped aggregations that made the
+previous attempt unusable were slow because they intersected object geometries against region
+polygons, and nothing here does that.
+
+The single-year readout names an object's composition by `veg_fire` class instead of printing
+`frac_c9`, and answers for **kept** objects too — "why did this one survive" is the other half of
+choosing a threshold. The multi-year readout lists every fire-year that burned at the clicked
+point with its own `frac_agri` and verdict, which turns "the same plot burns most years" from a
+visual impression into a list.
+
 Note for the reading: **pasture is a separate question.** `frac_agri + frac_past ≥ 0.4` would drop
 5.78 Mha (8.4 %) instead of 2.36 Mha, and pasture fire is largely genuine management burning. It is
 in the explorer as an option, but the prior is agriculture only.
