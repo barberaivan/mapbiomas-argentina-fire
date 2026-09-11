@@ -122,6 +122,64 @@ d <- load_objects()
 msg("mapped fires (fire==1, >=1 ha): %s  |  %.2f Mha",
     format(nrow(d), big.mark = ","), sum(d$area_ha) / 1e6)
 
+# A PARTIAL tag set is the dangerous failure here: merge() just drops the untagged
+# years, every regional number comes out scaled down by the fraction of years present,
+# and nothing in the output says so. objects_region_tag.R takes ~an hour, so running
+# this while it is still going is an easy mistake to make.
+tagged <- sort(unique(as.integer(substr(
+  list.files(ANA_DIR, pattern = "^regions_\\d{4}_multi\\.csv$"), 9, 12))))
+missing <- setdiff(sort(unique(d$fire_year)), tagged)
+if (length(missing))
+  stop(sprintf("region tags missing for fire-year(s) %s — objects_region_tag.R has %d of %d. %s",
+               paste(missing, collapse = ", "), length(tagged),
+               length(unique(d$fire_year)),
+               "Every regional number would be silently scaled down; refusing to write."))
+
+tags <- load_tags("multi")
+# ── the agriculture table, per territory ─────────────────────────────────────
+# Computed on the UNFILTERED object set, before AGRI_MAX is applied, because its whole
+# purpose is to show what each threshold WOULD do — including the one currently chosen.
+# This is the table to read when picking the threshold (docs/11 §6) and the one §8's
+# Pampa question depends on.
+#
+# `agri_px_ha` is PIXEL-weighted: sum(area_ha * frac_agri), i.e. the cropland area inside
+# mapped fires. `drop_pct_@T` is OBJECT-level: the share of burned area in objects the
+# filter removes whole. The gap between them is the point — an object filter removes whole
+# spurious crop fires but leaves the cropland inside mixed objects (docs/11 §2.2a), so
+# `resid_agri_px_ha@T` says how much cropland is still in the map after filtering at T.
+agri_table <- function(d, tags_one) {
+  x <- merge(d[, .(oid, area_ha, frac_agri)], tags_one, by = "oid")
+  nat <- copy(d)[, `:=`(layer = "national", region_id = 0L, region_name = "Argentina")]
+  x <- rbind(x[, .(oid, area_ha, frac_agri, layer, region_id, region_name)],
+             nat[, .(oid, area_ha, frac_agri, layer, region_id, region_name)])
+  thr <- c(0.2, 0.3, 0.4, 0.5, 0.6)
+  out <- x[, {
+    tot <- sum(area_ha)
+    r <- list(n_fires = .N, burned_ha = tot,
+              agri_px_ha = sum(area_ha * frac_agri),
+              pct_agri_px = 100 * sum(area_ha * frac_agri) / tot)
+    for (t in thr) {
+      r[[sprintf("drop_pct_%g", t)]] <- 100 * sum(area_ha[frac_agri >= t]) / tot
+      r[[sprintf("resid_agri_px_ha_%g", t)]] <-
+        sum(area_ha[frac_agri < t] * frac_agri[frac_agri < t])
+    }
+    r
+  }, by = .(layer, region_id, region_name)]
+  setorder(out, layer, -burned_ha)
+  out[]
+}
+
+tags_one <- load_tags("one")
+agri <- agri_table(d, tags_one)
+f0 <- file.path(ANA_DIR, "factsheet_agriculture_by_region.csv")
+fwrite(agri, f0)
+msg("[out] %s  (%d rows)", f0, nrow(agri))
+print(agri[layer == "ecoregions13",
+           .(region_name, burned_Mha = round(burned_ha / 1e6, 3),
+             pct_agri_px = round(pct_agri_px, 1),
+             drop_0.3 = round(drop_pct_0.3, 1), drop_0.4 = round(drop_pct_0.4, 1),
+             drop_0.6 = round(drop_pct_0.6, 1))])
+
 if (!is.na(AGRI_MAX)) {
   before <- nrow(d); before_ha <- sum(d$area_ha)
   d <- d[frac_agri < AGRI_MAX]
@@ -135,21 +193,6 @@ if (!is.na(AGRI_MAX)) {
 d <- d[area_ha >= MIN_HA]
 msg("counted fires (>= %g ha): %s  |  %.2f Mha",
     MIN_HA, format(nrow(d), big.mark = ","), sum(d$area_ha) / 1e6)
-
-tags <- load_tags("multi")
-
-# A PARTIAL tag set is the dangerous failure here: merge() just drops the untagged
-# years, every regional number comes out scaled down by the fraction of years present,
-# and nothing in the output says so. objects_region_tag.R takes ~an hour, so running
-# this while it is still going is an easy mistake to make.
-tagged <- sort(unique(as.integer(substr(
-  list.files(ANA_DIR, pattern = "^regions_\\d{4}_multi\\.csv$"), 9, 12))))
-missing <- setdiff(sort(unique(d$fire_year)), tagged)
-if (length(missing))
-  stop(sprintf("region tags missing for fire-year(s) %s — objects_region_tag.R has %d of %d. %s",
-               paste(missing, collapse = ", "), length(tagged),
-               length(unique(d$fire_year)),
-               "Every regional number would be silently scaled down; refusing to write."))
 
 dt <- merge(d[, .(oid, fire_year, month, area_ha)], tags, by = "oid",
             allow.cartesian = TRUE)
