@@ -22,6 +22,28 @@ re-exported — it reads the thing they all come from.
 Pinned to `C.SNIC_CRS` / `C.SNIC_TRANSFORM` — the SAME lattice `11-burnable_area.py` uses, so
 the ratio is computed on identical pixels.  Never `scale=30` in EPSG:4326 (docs/07 §3).
 
+⚠️ NEVER REDUCE THE EXPORTED ASSET AT A COARSER SCALE.  `--decimate` is what makes the
+DENOMINATOR affordable (docs/11 §5.1), and the symmetry is tempting — but it is wrong here and
+wrong silently.  Measured over a Chaco box, calendar 2020:
+
+    reading the exported asset      k=1  22,228.3 ha   k=3  25,353.5 ha (+14.1 %)   k=4  +36.2 %
+    painted on the fly (--from-objects)  22,228.3 ha        22,185.2 ha (-0.19 %)        -0.37 %
+
+The asset is stored with `pyramidingPolicy={burned_monthly: "mode"}` (07a), and mode IGNORES
+masked pixels — so at a coarse pyramid level a block containing one burned pixel comes back
+burned.  The sparse burn mask DILATES.  Land cover does not suffer this because it is
+space-filling: every pixel has a class, so mode is a real majority.
+
+  **The rule: decimation is safe on a SPACE-FILLING layer and unsafe on a SPARSE MASKED one.**
+  Happily that falls the right way — the expensive half (burnable, space-filling) can be
+  decimated, and the half that cannot (burned, masked) is the cheap one, because its mask
+  already restricts the sweep.
+
+The same caution applies to ANY coarse read of our published burned-area rasters — a quick
+whole-country `reduceRegion` at 500 m for a sanity check will over-report, and so will anything
+else that lands on a pyramid level.  `--decimate > 1` is therefore REFUSED unless
+`--from-objects` is given.
+
 CALENDAR YEAR AND MONTH ARE PER PIXEL, and that is a real difference from the object-based
 tables in `scripts/factsheet_object_stats.R`: a fire straddling 31 December contributes to two
 calendar years here and to one fire-year there.  Right for area, wrong for counting events —
@@ -267,12 +289,23 @@ def main():
                          "Ignored when reading an exported asset, whose filter is already baked "
                          "in — use --collection to pick which one.")
     ap.add_argument("--decimate", type=int, default=1, metavar="K",
-                    help="sample every K-th pixel of our 30 m lattice. Use with more care "
-                         "than on the denominator: burned scars are smaller and more "
-                         "fragmented than land-cover blocks, so the sampling error is larger.")
+                    help="sample every K-th pixel of our 30 m lattice. ONLY VALID WITH "
+                         "--from-objects: decimating a read of the EXPORTED asset inflates "
+                         "burned area by 14-36 %% (see the module docstring).")
     ap.add_argument("--project", default=C.GEE_PROJECT)
     ap.add_argument("--credentials", default=None, metavar="FILE")
     args = ap.parse_args()
+    # See the module docstring. Measured, not suspected: reading the exported asset at k=3
+    # over a Chaco box in 2020 gives 25,353 ha against the true 22,228 -- +14.1 %, and +36.2 %
+    # at k=4. The same reduction computed on the fly is -0.19 % and -0.37 %. A silent 14 %
+    # inflation of the headline burned-area number is not something to leave behind a flag.
+    if args.decimate > 1 and not args.from_objects:
+        ap.error("--decimate > 1 reads the exported asset's OVERVIEW PYRAMID, which was built "
+                 "with pyramidingPolicy 'mode'. Mode ignores masked pixels, so a coarse block "
+                 "holding a single burned pixel comes back burned: the sparse burn mask "
+                 "DILATES and burned area is inflated 14-36 %. Either drop --decimate, or add "
+                 "--from-objects (painted on the fly, no pyramid, error < 0.4 %).")
+
     if args.agri_max is not None and not args.from_objects:
         ap.error("--agri-max only applies with --from-objects; an exported asset already "
                  "carries whatever filter it was painted with (see its `agriculture_filter` "

@@ -301,6 +301,30 @@ LULC panel at once.
 Note the consequence and state it in the factsheet footnote: **the numerator is calendar-year and
 the denominator is previous-year land cover**, matching how the map itself was built.
 
+> ⚠️ **Decimation is safe on the denominator and WRONG on the numerator — and wrong silently.**
+> The symmetry is tempting and it does not hold. Measured over a Chaco box, calendar 2020:
+>
+> | | k=1 (truth) | k=3 (~90 m) | k=4 (~120 m) |
+> |---|---|---|---|
+> | burned, reading the **exported asset** | 22,228.3 ha | 25,353.5 ha **(+14.1 %)** | **(+36.2 %)** |
+> | burned, **painted on the fly** (`--from-objects`) | 22,228.3 ha | 22,185.2 ha (−0.19 %) | (−0.37 %) |
+> | burnable (space-filling LULC) | — | +0.003 % | +0.015 % |
+>
+> The month-of-burn asset is stored with `pyramidingPolicy={burned_monthly: "mode"}` (07a), and
+> **mode ignores masked pixels** — so at a coarse pyramid level a block containing a single
+> burned pixel comes back burned and the sparse burn mask **dilates**. Land cover does not
+> suffer it because every pixel has a class, so mode is a real majority.
+>
+> **The rule: decimation is safe on a SPACE-FILLING layer, unsafe on a SPARSE MASKED one.** That
+> falls the right way — the expensive half (burnable) can be decimated, and the half that cannot
+> (burned) is the cheap one, because its mask already restricts the sweep.
+>
+> The caution generalises: **any** coarse read of our published burned-area rasters over-reports
+> — a quick whole-country `reduceRegion` at 500 m as a sanity check, a Looker cross-check, or
+> anything else that lands on a pyramid level. Worth raising with the network (§9.2), and worth
+> checking what the platform's own displayed statistics do. `11-burned_area_stats.py` now
+> **refuses** `--decimate > 1` without `--from-objects`.
+
 Cost is unmeasured — a timing test on one year is running alongside the 07a benchmark. If it is
 too slow at 27 years × 13 ecoregions, the fallbacks in order are: (i) reduce over the ecoregion
 raster in one pass instead of per-feature, (ii) accept a 2-3 year subsample for the *map* panel
@@ -456,6 +480,11 @@ Consequences:
    that?
 6. **The territorial layer** (docs/09 §2.2, still ours to build and listed as blocking everything):
    confirm the format they need and whether the 13 Burkart ecoregions can be one of the cuts.
+7. **Do any platform-side or Looker statistics read our burned-area rasters at a coarser scale
+   than 30 m?** If so they are over-reporting — the `mode` pyramid dilates a sparse burn mask,
+   measured at **+14 % at 90 m and +36 % at 120 m** (§5.1). This affects every country whose
+   burned-area products are sparse masked rasters, not just ours, so it is worth raising with
+   the network rather than only fixing on our side.
 
 ---
 
