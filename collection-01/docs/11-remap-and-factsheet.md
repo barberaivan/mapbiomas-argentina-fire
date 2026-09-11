@@ -244,6 +244,27 @@ so a watcher must poll both projects or it will report the other account's task 
 | 07b manual upload of the 27 scar files | — | ≤ 30 min |
 | territory tagging (local) | ~10 ms per object, 6 cores | ~50 min |
 
+#### Burnable-area benchmark — started, result pending
+
+Launched 10 Sep to time the denominator (whole country, 13 ecoregions × `veg_fire`, calendar
+2020), into `TESTS/burnable_benchmark`. **Start times recorded here so the duration can be
+recovered later** — Earth Engine stores when an asset *landed*, not how long its task ran, and
+`ee.data.listOperations()` drops old operations after a few weeks.
+
+| task | account | started (UTC) | duration |
+|---|---|---|---|
+| `arg11_burnable_ecoregions13_2020_benchmark` (k=1, 30 m) | gmail | **2026-09-11 00:40:13** | *fill in* |
+| `…_benchmark_k3` (90 m) | comahue | **2026-09-11 00:41:55** | *fill in* |
+| `…_benchmark_k4` (120 m) | comahue | queued at 23:49:50 | *fill in* |
+
+To finish this row: subtract the start time above from the asset's creation time
+(`ee.data.getAsset(<id>)['updateTime']`), or read `startTime`/`endTime` straight off
+`listOperations()` while the task is still listed.
+
+**Early observation at ~55 min in: k=3 was not running faster than k=1.** If that holds, the
+denominator is not pixel-sweep-bound and `--decimate` buys little — in which case leave the scale
+at 30 m, which is where Iván wanted it anyway.
+
 **07a does not depend on fire load.** Calendar 2012 (26,930 objects, 0.92 Mha) took 57.8 min;
 calendar 2020 (71,753 objects, 4.68 Mha) took 58.8 min — 2.7× the objects for 1.7 % more time.
 The cost is the whole-country sweep at 30 m, not the painting, so the big years will not blow up.
