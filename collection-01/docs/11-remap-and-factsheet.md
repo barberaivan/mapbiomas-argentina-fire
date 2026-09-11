@@ -447,4 +447,31 @@ Consequences:
 
 | date | what |
 |---|---|
-| 2026-09-10 | Doc created. Measured the agriculture numbers (§2); verified `_pb` LULC lattice (§1); benchmark exports of 07a for 2012 + 2020 launched to `TESTS/`; burnable-area timing test launched; threshold explorer written into the `fuego` repo (§6). |
+| 2026-09-10 | Doc created. Measured the agriculture numbers (§2); verified the `_pb` LULC lattice (§1). |
+| 2026-09-10 | **Built and committed** — see the table below. Benchmarks launched to `TESTS/`; territory tagging launched locally. |
+
+### 10.1 What exists now
+
+| what | where | state |
+|---|---|---|
+| Threshold explorers (single-year + multi-year) | `fuego` repo, `collection-01/visualization-misc/explore_agri_filter_*` | ✅ pushed — **this is the thing to open with Camilo** |
+| The agriculture filter itself | `07-month_of_burn.py --agri-max T` | ✅ wired, default OFF, stamped into the asset's `agriculture_filter` property. Still to add at the other two filter points (§2.3) once the threshold is fixed |
+| Benchmark plumbing | `07-month_of_burn.py --out-collection/--suffix/--credentials` | ✅ — timing runs land in `TESTS/`, never next to a product |
+| **Burnable area** (the denominator) | `workflow/11-burnable_area.py` | ✅ written, ROI-checked. Whole-country timing pending |
+| **Burned area** (the numerator) | `workflow/11-burned_area_stats.py` | ✅ written, ROI-checked (Chaco 2020: 22,228 ha, Aug–Sep peak). Reduces the **month-of-burn collection**, so it is indifferent to which subproducts have been re-exported |
+| Object → territory tags | `scripts/objects_region_tag.R` | 🔄 running, ~1–1.5 h for 28 fire-years on 6 cores |
+| **Family B tables** (fires × territory × month) | `scripts/factsheet_object_stats.R` | ✅ written, smoke-tested; blocked only on the tags |
+
+### 10.2 Measurements taken today
+
+| thing | result |
+|---|---|
+| `--decimate` on the burnable denominator | On a fragmented Chaco box, total burnable moves **+0.003 % at K=3 (90 m)**, **+0.015 % at K=4 (120 m)** — but small fragmented classes break at K=4 (`forest-inund` −36 %, `grassland-inund` −26 %; at K=3, −5 % and −1 %). **K=3 is a usable fallback for aggregates; K=4 is not safe per class.** |
+| Territory tagging cost | ~10–15 ms per object, ~1–1.5 h for all 1.69 M on 6 cores. `st_intersects`, **not** `st_within`, on the centroids: identical answer for a point, 2.4 s vs 23.4 s per 2,000 objects (34 min vs 5.5 h over the collection) |
+| GEE concurrency, observed | With one export running per account, a second submission sat **PENDING**. The shared `mapbiomas-fire-485203` project is congested with the rest of the network, so the comahue / `mapbiomas-argentina` project is the better lane for our batch — §4.2's ceiling is real |
+| 07a per-year runtime | **still unmeasured.** GEE's `progress` field sat at 0.33–0.35 between minute 17 and minute 36; it is not linear and must not be extrapolated. Take `startTime → endTime` off the finished task |
+
+### 10.3 Two traps caught (both would have been silent)
+
+1. **GEE's geojson export writes some territories as `GEOMETRYCOLLECTION`**, and casting them to polygons **splits the feature into one row per polygon** — ecoregion 9 (Pampa) came back as 2 rows. Every Pampa fire would have been listed twice in the `_multi` tags and every per-region count inflated, with nothing in the output saying so. `objects_region_tag.R` now dissolves back and asserts one row per `region_id`.
+2. **A partial tag set silently rescales every regional number.** `merge()` just drops the untagged fire-years, so running the Family B tables while tagging is still going returns numbers scaled down by the fraction of years present. `factsheet_object_stats.R` now refuses to write instead.
