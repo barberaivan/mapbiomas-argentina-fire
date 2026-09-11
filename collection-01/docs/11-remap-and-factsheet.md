@@ -253,7 +253,52 @@ The cost is the whole-country sweep at 30 m, not the painting, so the big years 
 > Earth Engine's `progress` field sat at 0.33–0.37 for most of an hour and then finished. It is
 > not linear; never extrapolate from it. Take `startTime → endTime` off the finished task.
 
-### 4.4 Test exports go to `TESTS/`
+### 4.4 Running it unattended over a weekend
+
+The failure mode to design for is **the power going off**, not a disconnection. That kills a tmux
+session and this assistant equally, so neither can be part of the plan.
+
+**Earth Engine tasks are not affected.** Once submitted they run on Google's servers and queue
+there — observed 10 Sep: tasks sat `PENDING` for 40 minutes while others ran, then started on
+their own. So **submit all 27 of 07a up front** and nothing local needs to survive.
+
+**Submit the bulk as the second account.** Measured the same evening:
+
+```
+mapbiomas-fire-485203 (shared with the network)   RUNNING 1   PENDING 9
+mapbiomas-argentina   (the comahue account)       RUNNING 2   PENDING 1
+```
+
+Those 9 pending are mostly other countries'. The shared project is the congested lane. At ~2–3
+concurrent overall, 27 years at ~58 min each is **10–13 h** — launched in the morning, 07a lands
+that night or early the next day.
+
+**The one real dependency: 07d must not start until all 27 month-of-burn assets exist**, or it
+silently builds a partial product from an incomplete collection.
+
+That dependency is a test for an asset's existence, not a judgement, so **cron can do it** — no
+assistant, no tmux:
+
+- an entry every 30 min that counts the assets in `C.MONTH_OF_BURN_COL`;
+- when the count reaches 27, run `07-subproducts.py --launch` **once**, then remove its own
+  trigger (a marker file next to the log is enough);
+- log to a file so the outcome is readable on return.
+
+**Why cron and not something else:** it is restarted by the machine at boot, so it survives the
+power cut that ends every other option here. It needs only the machine to come back up, the
+network, and the credentials file already on disk.
+
+Two things to get right when it is written:
+
+- **Count assets, not tasks.** A task list is per-project and shows the whole network's work
+  (docs/07 §12.7); an asset count is unambiguous, and it is also the thing 07d actually depends on.
+- **Make it fire once.** The launcher already skips existing and in-flight products, so a double
+  trigger is harmless — but a marker file makes that a guarantee rather than a reliance.
+
+07e is independent of 07a and can go in the same first submission. 07b/07c are priority C (§3) and
+need a person for the manual upload anyway, so they are not part of the unattended path.
+
+### 4.5 Test exports go to `TESTS/`
 
 A new folder `FIRE/COLLECTION-1/TESTS/` holds every timing/benchmark asset, so nothing lands next
 to a published product and nothing can be mistaken for one. Delete it wholesale when the September
