@@ -420,6 +420,45 @@ not runnable.**
 > we will get, cancelling forfeits them a second time, and the compute cache means a restart would
 > not re-measure honestly. The cost is one slot on each account until they land.
 
+#### The way out for the numerator: clip the polygons once, locally
+
+*Iván, 11 Sep.* If the pixel route costs 8 h+ per year per product, do the **area side** on vectors
+in R instead. Not an approximation: docs/07 proved that painting/rasterizing our objects reproduces
+the object pixel set **exactly**, so the polygon boundary *is* the pixel boundary and
+`area(polygon ∩ region) == area(pixels ∩ region)`.
+
+**The primitive is the clipped piece, and it is computed ONCE:** one row per `(oid, region)` with its
+own `area_ha`. Everything the factsheet needs is then a group-by on that table with no geometry at
+all — by year, by month, by region, by size band — and the agriculture threshold becomes a
+`filter()` on it rather than a re-run. That is the whole point: the expensive step happens once.
+
+- **Use a `terra::relate`/`intersects` prefilter, then clip only the hits.** The "hours" estimate in
+  `scripts/objects_region_tag.R`'s header was for a full `sf::st_intersection` of 1.69 M polygons
+  against 13 ecoregions — a prefilter plus terra's indexed GEOS path is a different cost class.
+- **`objects_region_tag.R` already gives a cheaper answer if the exact clip is not needed**:
+  `regions_<fy>_one.csv` (centroid region) joined to the per-object `area_ha` from step 05/06 is a
+  region × year burned-area table available *right now*, with error only on boundary-straddling
+  objects. Try that first; clip exactly only if that error proves to matter.
+
+**Two divergences to state in the factsheet footnote, not discover later.** Both come from the same
+place — step 07 assigns calendar year and month **per pixel** from `abs_date`, while a vector route
+assigns **per object** from `date_median`:
+
+1. a fire straddling 31 December lands wholly in one year;
+2. the "area burned in month M" sum puts each object wholly in one month.
+
+So these numbers will not match the published annual/monthly rasters pixel-for-pixel. Acceptable for
+a factsheet; it must be said out loud.
+
+**What this does NOT solve: the denominator.** Burnable area is a land-cover raster quantity and has
+no vector route. The fixed modal-`veg_fire` layer above is still required — one long GEE run, and
+Iván's call is that one long run is not a problem. The two ideas are complementary: vectors kill the
+per-year numerator cost, the frozen layer kills the per-year denominator cost.
+
+**And it costs us the LULC cross.** A vector route cannot say *which land cover* burned. That comes
+only from the `*_coverage` products (docs/09 §2.1.1) and is a pixel computation by construction. If
+the factsheet needs a burned-by-class panel, it does not come from here.
+
 ### 4.4 Running it unattended over a weekend
 
 The failure mode to design for is **the power going off**, not a disconnection. That kills a tmux

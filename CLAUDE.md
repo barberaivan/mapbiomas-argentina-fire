@@ -197,9 +197,19 @@ scripts (annual quality mosaics) which we do *not* use.
 - **Local**: `/home/ivan/dev/MapBiomas/mapbiomas-latam-fire-gee/`
 - **Remote**: `https://earthengine.googlesource.com/users/mapbiomasworkspace1/mapbiomas-fire` (branch `master`)
 - **Start at** `4-Collection_anual_final_products/Reference/` — the country folders are adaptations of it.
+- **`2-Statistics/`** is the other half people forget: the six `toDrive-area-*` CSV scripts that are
+  stage 5 (docs/09 §2.1), the comparison series against MCD64A1/FireCCI/GABAM, and the Looker toolkit.
 
 It is **not ours**: pull to stay current, never commit or push. See
 `collection-01/docs/08-postprocessing.md` for a map of the repo and what each script does.
+
+**It is not always cloned** — it was missing on this machine on 11 Sep 2026, and the path above then
+looks like any other stale reference. Clone it before reading:
+
+```bash
+git clone https://earthengine.googlesource.com/users/mapbiomasworkspace1/mapbiomas-fire \
+  /home/ivan/dev/MapBiomas/mapbiomas-latam-fire-gee
+```
 
 ## Running long scripts
 

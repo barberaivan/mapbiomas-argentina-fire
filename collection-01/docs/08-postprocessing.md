@@ -191,6 +191,21 @@ South America), exported to `FINAL_PRODUCTS/` with `pyramidingPolicy: mode`, `sc
 - ⚠️ **The `*_coverage` products are easy to forget** and are exactly what the statistics read
   (docs/09 §2). ~~They need our LULC asset extended to 2025~~ — **not a blocker and now moot**: they
   cross against LULC **col-3 v1**, which carries `classification_2025` natively (§8.3, docs/07 §12.1).
+- ⚠️ **Not every built subproduct appears in a publish list, and the three lists disagree**
+  (read 11 Sep 2026). `ToPublish/` now holds **three** scripts, renumbered since this doc was
+  written: `1-products-Public` (ACLs only — new), `2-toBucket-subproducts` (COGs),
+  `3-toAsset-Public` (`copyAsset` to `mapbiomas-public`). Comparing their product lists:
+
+  | subproduct | built by | ACL list | bucket list | public-asset list |
+  |---|---|---|---|---|
+  | `monthly_burned_coverage` | script 1 | — | — | — |
+  | `frequency_burned_coverage` | script 2 | — | ✅ | — |
+  | `annual_burned_id` | script 5 | — | — | — |
+  | `annual_burned_area_ha` | script 5 | ✅ | — | ✅ |
+
+  We have built all four. Whether they are meant to be published, or are deliberately
+  internal, is a question for the network (docs/11 §10.2) — do not infer an answer from the lists,
+  since they are inconsistent with each other.
 
 ### 5.4 Stage 4, scripts 4–6 — the scar-size chain
 

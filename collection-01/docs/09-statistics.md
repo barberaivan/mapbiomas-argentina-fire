@@ -64,6 +64,53 @@ so it is worth doing.
 > **Fire regions are not the statistics unit.** `regiones_fuego_*` is only used for masking and export
 > geometry (docs/08 §5.2). Statistics are always per *territory* (§2.2).
 
+### 2.1.1 What reading the reference code added (11 Sep 2026)
+
+Four things the table above does not say, all verified by reading
+`2-Statistics/2-ColAnual-Products-Reference/` line by line.
+
+**1. All six are the identical reducer, and it is the same pixel sweep we measured at 8 h/year.**
+
+```js
+pixelAreaKm2.addBands(territory).addBands(image)
+  .reduceRegion({ reducer: ee.Reducer.sum().group(1,'Clase').group(1,'territory'),
+                  geometry: geometry, scale: 30, maxPixels: 1e12 })
+```
+
+So the network's statistics are **not** a cheaper route than ours — they are the same grouped
+`reduceRegion` at 30 m, and every country absorbs the cost. Nothing to copy for speed. (Note they
+use `scale: 30`, which for *our* products would be the wrong lattice — docs/07 §3. Pin
+`crsTransform` when we adapt these.)
+
+**2. The year loop is per-year reductions inside ONE task, not a multi-band reduce.** `years.map()`
+selects one band, reduces it, and the 27 results are flattened into a single `Export.table.toDrive`.
+Year cannot be a group field — it lives in the band dimension, and a grouped reducer takes one group
+field. The saving is therefore **one queue slot and one CSV**, not less compute; whether EE fans the
+27 reductions across the task's workers is unverified, and if it serialises, one task is *worse*
+than our per-year design. Our per-year split (resumable, partial results) is a real trade, not an
+oversight — but it is what puts us behind the 2-slot ceiling (docs/11 §4.2).
+
+**3. The territory dimension is free, and that is worth copying.** `ee.Image().paint(regions, 'id')`
+turns the *intersected* territorial FC into one raster, so a single grouped reduce returns every
+biome × department × municipality combination at once; names are joined back client-side from
+`ee.Dictionary.fromLists`. They never loop regions. We already use this shape
+(`zone = territory_id * 100 + class`); what we lack is the intersected layer of §2.2.
+
+**4. There is no burnable denominator anywhere in the network.** Grepped the whole reference repo:
+no `burnable`, no `quemable`, no percentage-of-burnable concept. Every network statistic is an
+absolute area — "area of class X, in territory Y, in year Z", in km² and ha. **The `% burned` metric
+is entirely Argentina's own addition**, which is why the expensive denominator exists only in our
+pipeline. Consequence: we are free to define it however we like — including a fixed modal-`veg_fire`
+layer (docs/11 §4.3) — without deviating from any network spec, because the six CSVs above have no
+denominator in them to deviate from.
+
+> **Duplication to resolve.** Step 11 wrote `workflow/11-burnable_area.py` and
+> `11-burned_area_stats.py` from scratch for the factsheet, in parallel with these six reference
+> scripts — which compute *more* than ours do, since the `*_coverage` encodings give them the LULC
+> cross for free and our step-11 pair has no LULC dimension at all. Before building stage 5, decide
+> whether the six are adaptations of the reference or of our step-11 code. docs/11 §5.1 holds the
+> factsheet-side requirements.
+
 ### 2.2 The territorial layer — ours to build, and the real constraint
 
 The guide is explicit: because **every subproduct × territory combination becomes a Looker Studio
@@ -113,8 +160,8 @@ Two distinct destinations, and it is worth being clear about which one the platf
 
 | Destination | Script | What it is |
 |---|---|---|
-| **Public GEE assets** — `projects/mapbiomas-public/assets/argentina/fire/collection1/` | `ToPublish/2-toAsset-Public` (`script_to_asset_Public`) | `copyAsset` → `setAssetAcl({all_users_can_read: true})` → `setAssetProperties({data_type, band_format, version})`. `data_type ∈ {annual, monthly, accumulated}`; `band_format` is the literal band template (`burned_monthly_{year}`, `fire_accumulated_{year1}_{year2}`, …) |
-| **Cloud Storage COGs** — `gs://shared-development-storage/COLLECTIONS/ARGENTINA/FIRE/COLLECTION1/temp/…` | `ToPublish/1-toBucket-subproducts` | one **COG per band**, cast to `byte` (or `uint16` for `year_last_fire`) |
+| **Public GEE assets** — `projects/mapbiomas-public/assets/argentina/fire/collection1/` | `ToPublish/3-toAsset-Public` (renumbered — was `2-`) | `copyAsset` → `setAssetAcl({all_users_can_read: true})` → `setAssetProperties({data_type, band_format, version})`. `data_type ∈ {annual, monthly, accumulated}`; `band_format` is the literal band template (`burned_monthly_{year}`, `fire_accumulated_{year1}_{year2}`, …) |
+| **Cloud Storage COGs** — `gs://shared-development-storage/COLLECTIONS/ARGENTINA/FIRE/COLLECTION1/temp/…` | `ToPublish/2-toBucket-subproducts` (renumbered — was `1-`) | one **COG per band**, cast to `byte` (or `uint16` for `year_last_fire`) |
 
 **What the platform ingests: the public GEE assets.** The evidence is the Workspace subtheme form, whose
 key field is a **`GEE Asset ID`** pointing at `projects/mapbiomas-public/...`, with the
