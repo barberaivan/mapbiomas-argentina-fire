@@ -24,6 +24,36 @@ explorers are in the Earth Engine repo (§6); the territory tags and every fire-
 built (§8); the burnable and burned-area scripts are written and checked (§5.1). What is left is
 one decision — the threshold — and then the exports.
 
+**Status, 11 Sep 2026, 04:30 UTC — read this first if you are the next session.** Overnight the
+three burnable benchmarks all **failed on a null-geometry export** (§4.3); the bug is fixed in both
+step-11 scripts and everything is relaunched. Four tasks are in flight, all in `TESTS/`, nothing
+production:
+
+| task | account | submitted (UTC) | what to do with it |
+|---|---|---|---|
+| `arg11_burnable_ecoregions13_2020_benchmark` (k=1, 30 m) | gmail | 11 Sep 04:20:21, **RUNNING from 04:23:53** | read `startTime → endTime`, fill the §4.3 table |
+| `…_benchmark_k3` (90 m) | comahue | 11 Sep 04:20:51 | ✅ landed in 37 s — **a compute-cache hit, not a timing** |
+| `…_benchmark_k4` (120 m) | comahue | 11 Sep 04:21:24 | ✅ landed in 41 s — same caveat |
+| `arg11_burned_ecoregions13_2020_benchmark` (burned area by region, 2020) | **comahue** | 11 Sep 04:27:49, **RUNNING from 04:27:54** | **the open question** — is the masked numerator actually cheap? |
+
+**The next session's job, in order:**
+
+1. **Poll the four tasks and record the durations in §4.3** — `ee.data.listOperations()` is
+   project-scoped, so poll **both** `mapbiomas-fire-485203` (gmail) and `mapbiomas-argentina`
+   (comahue), and do it before the operations age out (a few weeks). Earth Engine stores when an
+   asset *landed*, never how long its task ran.
+2. **Answer the burned-area question.** If `arg11_burned_…` comes back in minutes, the §5.1
+   assumption holds and the numerator is free. If it comes back in hours, that is a real problem:
+   the burned half **cannot** be decimated (§5.1), so there is no lever — say so loudly and rethink
+   the numerator's route (`--from-objects` in one pass is the fallback).
+3. **Decide on the fixed burnable layer** (§4.3, "the idea that makes this benchmark moot") — the
+   mode of `veg_fire` across years as a single frozen denominator. That is the structural fix; the
+   benchmark only tells us how much pain we avoid.
+4. Then the threshold decision and the exports, as before.
+
+Do **not** re-run an identical benchmark expression to get a timing — Earth Engine will serve it
+from cache and hand you a fake number (§4.3).
+
 ---
 
 ## 1. Some products must be re-exported anyway — the land cover was preliminary
@@ -244,26 +274,87 @@ so a watcher must poll both projects or it will report the other account's task 
 | 07b manual upload of the 27 scar files | — | ≤ 30 min |
 | territory tagging (local) | ~10 ms per object, 6 cores | ~50 min |
 
-#### Burnable-area benchmark — started, result pending
+#### Burnable-area benchmark — measured, and the null-geometry bug that ate the first round
 
 Launched 10 Sep to time the denominator (whole country, 13 ecoregions × `veg_fire`, calendar
-2020), into `TESTS/burnable_benchmark`. **Start times recorded here so the duration can be
-recovered later** — Earth Engine stores when an asset *landed*, not how long its task ran, and
-`ee.data.listOperations()` drops old operations after a few weeks.
+2020), into `TESTS/burnable_benchmark`.
+
+**All three tasks of the first round failed** — `code 3, "Unable to export features with null
+geometry"`. `year_table()` built `ee.Feature(None, …)` and a table ASSET cannot hold a
+null-geometry feature. This is the *same* trap already written up in
+`07-month_of_burn.py::stats_year()` (trap #1, from the 29 Jul failures) and already worked around
+in `validation/01_strata_export.py` — both step-11 scripts reintroduced it. Fixed 11 Sep in
+`11-burnable_area.py` **and** `11-burned_area_stats.py` (which had it too, unlaunched) with the
+same placeholder point `[-64, -34]` those two use; it carries no meaning.
+
+**The error fires at WRITE time, i.e. after the entire reduction has run.** So the failed tasks
+still measured the compute, and the first round is the only clean timing we will ever get:
+
+| task | account | started (UTC) | ran | EECU·s | outcome |
+|---|---|---|---|---|---|
+| `arg11_burnable_ecoregions13_2020_benchmark` (k=1, 30 m) | gmail | 2026-09-11 00:40:13 (attempt 1) | ~141 min, then GEE retried | — | killed by us at 03:01 → attempt 2, cancelled 04:20 |
+| `…_benchmark_k3` (90 m) | comahue | 2026-09-11 00:41:55 | **98.4 min** | 9 292 | FAILED (null geometry) |
+| `…_benchmark_k4` (120 m) | comahue | 2026-09-11 02:20:24 | **49.7 min** | 5 183 | FAILED (null geometry) |
+
+> ⚠️ **The re-run is NOT a timing.** Relaunched at 04:20 on 11 Sep, k=3 landed in **37 s** and k=4
+> in **41 s** — Earth Engine served the reduction from its **compute cache**, since the identical
+> computation had already been evaluated hours earlier and only the write had failed. Any rerun of
+> an identical expression within the cache window measures the cache, not the work. To time this
+> honestly again you must perturb the expression (a different year, a different territory).
+> The cache hit is itself the proof that the first round's failure was purely at write.
+
+**So the earlier "k=3 is not running faster than k=1" note was wrong** — it was read ~55 min in,
+before either finished. k=3 (98 min) beat k=1 (≥141 min), and k=4 halved k=3 again. Decimation
+*does* buy time on the denominator. Note also that the comahue account ran k=3 and k=4 strictly
+serially (k=4 started 5 s after k=3 ended), i.e. **one concurrent slot, not the two §4.2 assumes.**
+
+The k=3 asset reads back sensibly: 184 rows, **250,377,516 ha burnable** for 2020 against a
+279.27 Mha country.
+
+#### The idea that makes this whole benchmark moot: ONE fixed burnable layer
+
+*Iván, 11 Sep.* The denominator is expensive because it is recomputed for all 27 years, and the
+`veg_fire` layer moves year to year (it is built from the previous year's LULC). But **the number
+we report is a percentage, and the burned fraction is small** — single-digit percent nationally.
+Perturbing a denominator of that size by the small interannual drift in what counts as burnable
+changes the reported `%` in a digit nobody reads.
+
+So: **decide burnable/non-burnable ONCE per pixel, as fixed data — the mode of `veg_fire` across
+years** — compute the burnable area on that single frozen layer, and use it as the denominator for
+every year. One heavy compute instead of 27, and the series gains a property it does not have now:
+year-to-year changes in `%` burned are changes in *fire*, not in the denominator.
+
+Consequences to think through before adopting it (**next session**):
+
+- Which classes the mode collapses, and whether an ecoregion that genuinely converted (Chaco
+  clearing) ends up on the wrong side of burnable for half the series. The mode is a *majority over
+  28 years*, so a pixel cleared in 2010 stays "burnable" — that is arguably the right call for a
+  denominator, but it must be a stated decision, not a side effect.
+- It changes only the DENOMINATOR. The numerator (burned area) stays per-year and per-month.
+- The per-`veg_fire`-class breakdown still needs a class per pixel; the mode gives one, but
+  "burnable area of class 5" then means "of pixels whose modal class is 5".
+- Publishability: docs/09's stage-5 CSVs specify burnable = col-2 v8 `veg_fire`, **previous year**
+  (§5). A fixed layer is a *deviation from the network spec* and is fine for the factsheet, but
+  the platform CSVs may still need the per-year version. Check before replacing, not after.
+
+**For the test, keep it simple: the benchmark stays the single year it was already running (2020).**
+The fixed-layer idea is a design change, not a benchmark variant.
+
+#### Burned-area-by-region benchmark — launched 11 Sep 04:23 UTC, result pending
+
+*Iván, 11 Sep:* the assumption baked into this file's header (§ "the half that cannot be decimated
+— burned, masked — is the cheap one, because its mask already restricts the sweep") **has never
+been measured.** If it is wrong, it is a large problem: the burned numerator is the half that
+*cannot* be decimated (`--decimate` is refused without `--from-objects`, because the exported asset
+is read off a pyramid level and dilates — §5.1), so there is no lever to pull if it turns out to be
+slow.
 
 | task | account | started (UTC) | duration |
 |---|---|---|---|
-| `arg11_burnable_ecoregions13_2020_benchmark` (k=1, 30 m) | gmail | **2026-09-11 00:40:13** | *fill in* |
-| `…_benchmark_k3` (90 m) | comahue | **2026-09-11 00:41:55** | *fill in* |
-| `…_benchmark_k4` (120 m) | comahue | queued at 23:49:50 | *fill in* |
+| `arg11_burned_ecoregions13_2020_benchmark` (k=1, 30 m, from the published 07a asset) | comahue | started **2026-09-11 04:27:54** | *fill in* |
 
-To finish this row: subtract the start time above from the asset's creation time
-(`ee.data.getAsset(<id>)['updateTime']`), or read `startTime`/`endTime` straight off
-`listOperations()` while the task is still listed.
-
-**Early observation at ~55 min in: k=3 was not running faster than k=1.** If that holds, the
-denominator is not pixel-sweep-bound and `--decimate` buys little — in which case leave the scale
-at 30 m, which is where Iván wanted it anyway.
+First submitted on gmail at 04:23:33 and **cancelled and re-submitted on comahue at 04:27:49**: the gmail queue was already serving the k=1 burnable task and, as §4.2 records, each account gets very few concurrent slots — it would have sat PENDING all night instead of answering the question by morning. Lands in `TESTS/burned_benchmark/`. Read the duration off `startTime → endTime` in
+`ee.data.listOperations()` **before it ages out** (a few weeks), and write it into the row above.
 
 **07a does not depend on fire load.** Calendar 2012 (26,930 objects, 0.92 Mha) took 57.8 min;
 calendar 2020 (71,753 objects, 4.68 Mha) took 58.8 min — 2.7× the objects for 1.7 % more time.

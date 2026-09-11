@@ -102,6 +102,8 @@ ensure_container = _burnable.ensure_container
 decimated_transform = _burnable.decimated_transform
 
 TASK_PREFIX = "arg11_burned_"
+
+placeholder_geom = _burnable.placeholder_geom
 DEFAULT_COL = f"{C._FIRE_ROOT}/COLLECTION-1/STATISTICS/burned_area"
 
 
@@ -172,7 +174,7 @@ def year_table(cal_year, territory, geometry, collection, decimate=1,
     def to_feature(g):
         g = ee.Dictionary(g)
         zone = ee.Number(g.get("zone")).toInt()
-        return ee.Feature(None, {
+        return ee.Feature(placeholder_geom(), {
             "year": cal_year,
             "territory_id": zone.divide(100).floor().toInt(),
             "month": zone.mod(100).toInt(),

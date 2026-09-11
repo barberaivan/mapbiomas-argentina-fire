@@ -76,6 +76,21 @@ import utils.constants as C          # noqa: E402
 import utils.functions as F          # noqa: E402
 
 TASK_PREFIX = "arg11_burnable_"      # namespaced: the compute project is shared (CLAUDE.md)
+
+# A table ASSET cannot hold a null-geometry feature: `ee.Feature(None, …)` dies at WRITE time
+# with "Unable to export features with null geometry" — after the whole reduction has run, so the
+# task burns its full sweep first (measured 11 Sep 2026: k=3 died at 98 min, k=4 at 50 min).
+# Same trap, same placeholder point, as `07-month_of_burn.py::stats_year()` and
+# `validation/01_strata_export.py`. The point carries no meaning.
+# Built lazily: `ee.Geometry.Point` needs an initialized client, and this module is imported
+# (by `11-burned_area_stats.py`) before `initialize()` runs.
+PLACEHOLDER_XY = [-64.0, -34.0]
+
+
+def placeholder_geom():
+    return ee.Geometry.Point(PLACEHOLDER_XY)
+
+
 DEFAULT_COL = f"{C._FIRE_ROOT}/COLLECTION-1/STATISTICS/burnable_area"
 
 # ---------------------------------------------------------------------------
@@ -211,7 +226,7 @@ def year_table(year, territory, geometry, decimate=1):
     def to_feature(g):
         g = ee.Dictionary(g)
         zone = ee.Number(g.get("zone")).toInt()
-        return ee.Feature(None, {
+        return ee.Feature(placeholder_geom(), {
             "year": year,
             "territory_id": zone.divide(100).floor().toInt(),
             "veg_fire": zone.mod(100).toInt(),
