@@ -150,14 +150,20 @@ def task_in_flight(description):
 # ---------------------------------------------------------------------------
 # one fire-year's contribution to one calendar year
 # ---------------------------------------------------------------------------
-def accepted_objects(fire_year, agri_max=None):
-    """The objects that contribute pixels: called fire AND at least the minimum size.
+def accepted_objects(fire_year, rules=True, t_grass=None, window=None, t_agri=None):
+    """The objects that contribute pixels: called fire, big enough, and matching NEITHER
+    exclusion rule (docs/07 §1.1).
 
     `fire` is the DEPLOYED call — the collected label where there is one, else the model
     (docs/06 §5).  `fire_tag = -1` means "unlabelled", never "not fire", which is why we
     filter on `fire` and not on the tag.  Positive selection is deliberate: 36 objects in
     the collection are all-dieback and have a null `fire`/`date_med`, so "not rejected"
     would wrongly admit them.
+
+    THE EXCLUSION RULES ARE ON BY DEFAULT.  `rules=False` reproduces the pre-rule,
+    unfiltered map (the `mob_month_stats` cross-check, TESTS/ exports) and is recorded as
+    such in the asset properties — it is never the published selection.  The thresholds
+    default to the FINAL constants; pass one only to explore.
     """
     fc = ee.FeatureCollection(f"{C.OBJECTS_RAW_COL}/objects_raw_{fire_year}")
     # `notNull(date_med)` is unconditional, not tied to DIEBACK_USE_PARENT_DATE. It drops the 36
@@ -168,23 +174,33 @@ def accepted_objects(fire_year, agri_max=None):
     keep = [ee.Filter.eq("fire", 1),
             ee.Filter.gte("area_ha", C.MIN_FIRE_HA),
             ee.Filter.notNull(["date_med"])]
-    # AGRICULTURE FILTER (docs/11 §2) — optional, OFF by default. `frac_agri` is the object's
-    # abundance of veg_fire 1-3 (agriculture_{chaco,cuyo-pat,pampa}), EXCLUDING class 4
-    # agriculture-per. It is already a property of every objects_raw_<fy> FC, so this costs
-    # nothing to evaluate. Deliberately NOT wired to a constant yet: the threshold is chosen
-    # visually (docs/11 §6) and until it is, the products stay unfiltered.
-    if agri_max is not None:
-        keep.append(ee.Filter.lt("frac_agri", agri_max))
+    if rules:
+        t_grass = C.T_GRASS if t_grass is None else t_grass
+        t_agri = C.T_AGRI if t_agri is None else t_agri
+        # RULE B — agriculture. `frac_agri` is the object's abundance of veg_fire 1-3
+        # (agriculture_{chaco,cuyo-pat,pampa}), EXCLUDING class 4 agriculture-per. Already a
+        # property of every objects_raw_<fy> FC, so this costs nothing to evaluate. The rule
+        # drops on `>`, so the keep is `<=` — not `<` (docs/07 §1.1).
+        keep.append(ee.Filter.lte("frac_agri", t_agri))
+        # RULE A — Pampa grassland in the winter-spring window. `frac_c15` is the SINGLE
+        # veg_fire class 15 `grassland_pampa`, not the aggregated `frac_gr_tp`. `date_med` is a
+        # NUMBER of days since 1970-01-01, so the window is resolved to day numbers
+        # client-side (C.grass_window_days) — no ee.Date round trip per feature.
+        lo, hi = C.grass_window_days(fire_year, window)
+        keep.append(ee.Filter.Not(ee.Filter.And(
+            ee.Filter.gt("frac_c15", t_grass),
+            ee.Filter.gte("date_med", lo),
+            ee.Filter.lte("date_med", hi))))
     return fc.filter(ee.Filter.And(*keep))
 
 
-def _contribution(fire_year, cal_year, agri_max=None):
+def _contribution(fire_year, cal_year, **rule_kw):
     """Month-of-burn (1-12) for the part of `cal_year` that fire-year `fire_year` covers.
 
     Masked everywhere else.  Returns None-free: an empty contribution is simply a
     fully-masked image, which `max()` ignores.
     """
-    fc = accepted_objects(fire_year, agri_max)
+    fc = accepted_objects(fire_year, **rule_kw)
     cs = ee.Image(f"{C.SNIC_COL}/snic_{fire_year}").select("candseed")
     date = ee.Image(f"{C.SNIC_METRICS_COL}/snic_metrics_{fire_year}").select("abs_date")
 
@@ -221,9 +237,9 @@ def _contribution(fire_year, cal_year, agri_max=None):
     return month.updateMask(keep).rename(C.MONTH_OF_BURN_BAND).toUint8()
 
 
-def month_of_burn(cal_year, agri_max=None):
+def month_of_burn(cal_year, **rule_kw):
     """The published month-of-burn image for one calendar year."""
-    parts = [_contribution(fy, cal_year, agri_max) for fy in (cal_year - 1, cal_year)]
+    parts = [_contribution(fy, cal_year, **rule_kw) for fy in (cal_year - 1, cal_year)]
     img = (ee.ImageCollection(parts).max()          # union; later date wins on reburn
            .rename(C.MONTH_OF_BURN_BAND).toUint8())
     return img.set({
@@ -239,25 +255,26 @@ def month_of_burn(cal_year, agri_max=None):
         "lulc_mask": "embedded-upstream (veg_fire non-burnable classes are unreachable "
                      "as SNIC candidates; stricter than the reference water-only rule)",
         "solitary_pixel_filter": f"embedded-upstream (object >= {C.MIN_FIRE_HA} ha)",
-        "agriculture_filter": ("none" if agri_max is None
-                               else f"object dropped when frac_agri >= {agri_max} "
-                                    f"(veg_fire 1-3, excl. agriculture-per; docs/11 §2)"),
         "system:time_start": ee.Date.fromYMD(cal_year, 1, 1).millis(),
         "system:time_end": ee.Date.fromYMD(cal_year + 1, 1, 1).millis(),
+        # The two object exclusion rules, in words, so the asset states its own selection.
+        **C.exclusion_rules(t_grass=rule_kw.get("t_grass"), window=rule_kw.get("window"),
+                            t_agri=rule_kw.get("t_agri"),
+                            applied=rule_kw.get("rules", True)),
     })
 
 
 # ---------------------------------------------------------------------------
 # audit — small region only, so it stays cheap
 # ---------------------------------------------------------------------------
-def check(cal_year, roi, agri_max=None):
+def check(cal_year, roi, **rule_kw):
     """Per-month pixel histogram + the footprint/candseed disagreement, over a small ROI.
 
     The histogram is the number to compare against `07-calendar_scars.R`'s per-year
     validation CSV: if the local mask and this raster agree, the scar layer's mask is the
     month raster's mask, which is what docs/07 §5.6 requires.
     """
-    img = month_of_burn(cal_year, agri_max)
+    img = month_of_burn(cal_year, **rule_kw)
     hist = img.reduceRegion(ee.Reducer.frequencyHistogram(), roi,
                             crs=C.SNIC_CRS, crsTransform=C.SNIC_TRANSFORM,
                             maxPixels=int(1e10)).getInfo()
@@ -406,7 +423,7 @@ def stats_read(years, csv_path=None):
 
 
 def export_year(cal_year, region, launch, overwrite=False,
-                out_col=None, suffix="", agri_max=None):
+                out_col=None, suffix="", **rule_kw):
     """Export one calendar year.
 
     `out_col` + `suffix` exist so a timing/benchmark run lands in TESTS/ instead of next to a
@@ -426,7 +443,7 @@ def export_year(cal_year, region, launch, overwrite=False,
         print(f"[skip] {description} has a PENDING/RUNNING task")
         return
 
-    img = month_of_burn(cal_year, agri_max)
+    img = month_of_burn(cal_year, **rule_kw)
     task = ee.batch.Export.image.toAsset(
         image=img,
         description=description,
@@ -443,7 +460,9 @@ def export_year(cal_year, region, launch, overwrite=False,
         print(f"[launched] {task.id}  ->  {asset_id}")
     else:
         print(f"[dry] would export {asset_id}  bands={img.bandNames().getInfo()}  "
-              f"fire_years={cal_year - 1},{cal_year}  agri_max={agri_max}")
+              f"fire_years={cal_year - 1},{cal_year}\n"
+              f"      rules: {img.get('exclusion_rule_a').getInfo()}\n"
+              f"             {img.get('exclusion_rule_b').getInfo()}")
 
 
 def main():
@@ -474,10 +493,16 @@ def main():
                          "long-format. Pixel counts, not hectares, and of the UNFILTERED map")
     ap.add_argument("--overwrite", action="store_true",
                     help="re-export a year whose asset exists, replacing it in place")
-    ap.add_argument("--agri-max", type=float, default=None, metavar="T",
-                    help="AGRICULTURE FILTER (docs/11 §2): drop objects with frac_agri >= T "
-                         "before painting. Default: no filter. The threshold is chosen visually "
-                         "(docs/11 §6); this flag is what deploys it.")
+    ap.add_argument("--no-exclusions", action="store_true",
+                    help="build the UNFILTERED map — neither exclusion rule applied. Only for "
+                         "reproducing the pre-rule numbers (mob_month_stats) or a TESTS/ export; "
+                         "never for a published asset. Recorded in the asset properties.")
+    ap.add_argument("--t-agri", type=float, default=None, metavar="T",
+                    help=f"override rule B's threshold (default C.T_AGRI = {C.T_AGRI}); "
+                         "docs/07 §1.1. For exploration only — the default is FINAL.")
+    ap.add_argument("--t-grass", type=float, default=None, metavar="T",
+                    help=f"override rule A's threshold (default C.T_GRASS = {C.T_GRASS}); "
+                         "docs/07 §1.1. For exploration only — the default is FINAL.")
     ap.add_argument("--out-collection", default=None, metavar="ASSET",
                     help="write to this ImageCollection instead of the published one — for "
                          "benchmark/timing runs (docs/11 §4.4). Created if missing.")
@@ -492,6 +517,17 @@ def main():
     args = ap.parse_args()
 
     initialize(args.project, args.credentials)
+
+    # The exclusion rules are ON unless explicitly disabled (docs/07 §1.1). Passed as one dict
+    # so every entry point below — check, export_year, month_of_burn — cannot disagree.
+    rule_kw = {"rules": not args.no_exclusions,
+               "t_grass": args.t_grass, "t_agri": args.t_agri}
+    if args.no_exclusions:
+        print("[filter] NO EXCLUSION RULES — this is not the published selection")
+    else:
+        print(f"[filter] rule A: frac_c15 > {args.t_grass or C.T_GRASS} in "
+              f"{C.GRASS_WINDOW[0]}..{C.GRASS_WINDOW[1]} | "
+              f"rule B: frac_agri > {args.t_agri or C.T_AGRI}")
 
     years = C.CALENDAR_YEARS if args.all else [args.year]
     bad = [y for y in years if y not in C.CALENDAR_YEARS]
@@ -516,7 +552,7 @@ def main():
         roi = (ee.Geometry.Polygon(C.TEST_ROI_COORDS, None, False) if args.roi == "test"
                else ee.Geometry.Rectangle([float(v) for v in args.roi.split(",")], None, False))
         for y in years:
-            check(y, roi, args.agri_max)
+            check(y, roi, **rule_kw)
         return
 
     out_col = args.out_collection or C.MONTH_OF_BURN_COL
@@ -532,7 +568,7 @@ def main():
     region = ee.FeatureCollection(C.ARG_BUFFER_FC).geometry()
     for y in years:
         export_year(y, region, args.launch, args.overwrite,
-                    out_col=out_col, suffix=args.suffix, agri_max=args.agri_max)
+                    out_col=out_col, suffix=args.suffix, **rule_kw)
 
     if not args.launch:
         print("\nDry run only. Re-run with --launch to submit the task(s).")

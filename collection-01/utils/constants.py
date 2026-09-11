@@ -397,6 +397,71 @@ CALENDAR_YEARS = list(range(1999, 2026))   # 1999-2025, matches YEARS
 # a calendar-year part of a qualifying object may itself be smaller.
 MIN_FIRE_HA = 1.0
 
+# ─── Step 07 — the two object EXCLUSION rules (docs/07 §1.1) ──────────────────
+# An object that matches EITHER rule is not mapped.  The thresholds are FINAL,
+# confirmed with the team 2026-09-11: they are the values collection 1 is published
+# with, they are the DEFAULT everywhere (a run with no flags produces the published
+# map), and every asset records them in its properties.  A CLI/env override exists
+# only for the explorers and for TESTS/ exports.
+#
+# RULE A — Pampa grassland burning in the winter-spring window.  `frac_c15` is the
+# single veg_fire class 15 `grassland_pampa`, NOT the aggregated `frac_gr_tp`.
+T_GRASS = 0.70
+GRASS_WINDOW = ((7, 1), (11, 15))        # (month, day) inclusive, anchored in the FIRE year
+# RULE B — agriculture anywhere.  `frac_agri` = frac_c1 + frac_c2 + frac_c3
+# (agriculture_{chaco, cuyo-pat, pampa}), EXCLUDING class 4 agriculture-per.
+T_AGRI = 0.40
+
+
+def grass_window_days(fire_year, window=None):
+    """Rule A's window for one fire year, as INCLUSIVE day numbers since `EPOCH`.
+
+    The fire year runs 1 May <fy> to 30 Apr <fy>+1, so a window month >= 5 belongs to
+    `fire_year` and a month <= 4 to `fire_year + 1`.  `date_med` on the uploaded
+    `objects_raw_<fy>` FeatureCollections is a NUMBER of days since 1970-01-01
+    (`objects_upload.py` maps `date_median` -> `date_med`; the ISO string is the
+    separate `date_medd`), so the comparison is done on day numbers and never on an
+    `ee.Date` per feature.
+    """
+    import datetime as _dt
+    (m_lo, d_lo), (m_hi, d_hi) = window or GRASS_WINDOW
+    epoch = _dt.date(*(int(x) for x in EPOCH.split("-")))
+
+    def _day(month, day):
+        y = fire_year if month >= 5 else fire_year + 1
+        d = _dt.date(y, month, day)          # raises on an impossible date, e.g. 02-30
+        return (d - epoch).days
+
+    return _day(m_lo, d_lo), _day(m_hi, d_hi)
+
+
+def exclusion_rules(t_grass=None, window=None, t_agri=None, applied=True):
+    """The human-readable rule block stamped into EVERY step-07 asset (docs/07 §1.1).
+
+    Returned as a dict of asset properties so an asset always states its own
+    selection: a product that does not say what it excluded cannot be told apart
+    from one built before the rules existed.  `applied=False` is for an
+    explicitly unfiltered run (the `mob_month_stats` cross-check, TESTS/ exports)
+    and says so in the property rather than leaving it absent.
+    """
+    if not applied:
+        off = "NONE — unfiltered run, NOT the published selection (docs/07 §1.1)"
+        return {"exclusion_rule_a": off, "exclusion_rule_b": off}
+    t_grass = T_GRASS if t_grass is None else t_grass
+    (m_lo, d_lo), (m_hi, d_hi) = window or GRASS_WINDOW
+    t_agri = T_AGRI if t_agri is None else t_agri
+    return {
+        "exclusion_rule_a": (
+            f"Pampa grassland burning in the winter-spring window: object dropped when "
+            f"frac_c15 > {t_grass} (veg_fire 15 grassland_pampa) AND its date_med falls "
+            f"between {m_lo:02d}-{d_lo:02d} and {m_hi:02d}-{d_hi:02d} inclusive, anchored "
+            f"inside the fire year (docs/07 §1.1)"),
+        "exclusion_rule_b": (
+            f"agriculture: object dropped when frac_agri > {t_agri} "
+            f"(veg_fire 1-3 agriculture_{{chaco, cuyo-pat, pampa}}, EXCLUDING class 4 "
+            f"agriculture-per; docs/07 §1.1)"),
+    }
+
 # The canonical 30 m grid of every SNIC asset.  VERIFIED 2026-07-29: all 56 assets
 # (28 `snic_<fy>` + 28 `snic_metrics_<fy>`) share this exact crs + transform, and the
 # per-carta tiles in data/snic-rasters/ sit on the same lattice (offset 22578 columns,
@@ -442,12 +507,28 @@ DIEBACK_USE_PARENT_DATE = True
 # candseed>0 pixels on veg_fire 24 (non-burnable) or 25 (non-observed).  That is STRICTER than
 # the reference rule, which drops water (26) only.  Recorded as the `lulc_mask` property.
 CLASSIFICATION_COLLECTIONS = f"{_FIRE_ROOT}/COLLECTION-1/CLASSIFICATION_COLLECTIONS"
-MONTH_OF_BURN_COL = f"{CLASSIFICATION_COLLECTIONS}/collection1_fire_mask_v1"
+
+# ─── Product version ─────────────────────────────────────────────────────────
+# Bumped 1 -> 2 on 2026-09-11 for the September re-export: the object EXCLUSION rules
+# (docs/07 §1.1) change what is mapped, and the four `*_coverage` products move to the
+# PUBLISHED land cover (PRODUCT_LULC).  Agreed with the Brazil team: we write `_v2` on
+# OUR side and they copy it over the public asset, so the public id and therefore the
+# Workspace registration and every download link are unaffected (docs/07 §14, docs/09 §11).
+#
+# Versioning rather than overwriting in place buys three things: the v1 products stay
+# readable while v2 is built, nothing is ever half-replaced, and the "all 27 month assets
+# exist" trigger that gates 07d is meaningful — against an overwritten collection the
+# count is already 27 before anything has run.
+PRODUCT_VERSION = 2
+
+MONTH_OF_BURN_COL = f"{CLASSIFICATION_COLLECTIONS}/collection1_fire_mask_v{PRODUCT_VERSION}"
 MONTH_OF_BURN_BAND = "burned_monthly"
 
-# Final products + the calendar-year scar vectors that feed the scar-size chain.
+# Final products + the calendar-year scar vectors that feed the scar-size chain.  The scar
+# vectors are versioned too: they are hand-ingested, and a folder holding a mix of v1 and v2
+# scars would silently produce a scar raster from the wrong selection.
 FINAL_PRODUCTS = f"{_FIRE_ROOT}/COLLECTION-1/FINAL_PRODUCTS"
-ANNUAL_BURNED_VECTORS = f"{FINAL_PRODUCTS}/annual_burned_vectors"
+ANNUAL_BURNED_VECTORS = f"{FINAL_PRODUCTS}/annual_burned_vectors_v{PRODUCT_VERSION}"
 
 # Scar-size classes 1..8 — LOWER bounds in ha.  These are the classes the PUBLISHED PLATFORM
 # legend defines, confirmed 2026-07-29 from two independent sources:
@@ -483,8 +564,13 @@ PRODUCT_REGION = "argentina"   # one image per year, whole country: our predicti
                                # by cartas, not by the network's fire regions
 
 
-def product_name(subproduct, collection=1, version=1):
+def product_name(subproduct, collection=1, version=None):
     """Network-standard asset name, e.g.
-    ``mapbiomas_argentina_fire_collection1_annual_burned_v1``."""
+    ``mapbiomas_argentina_fire_collection1_annual_burned_v2``.
+
+    `version` defaults to `PRODUCT_VERSION`; pass one explicitly only to address an
+    older product deliberately (e.g. comparing v1 against v2).
+    """
+    version = PRODUCT_VERSION if version is None else version
     return (f"mapbiomas_{PRODUCT_REGION}_fire_collection{collection}"
             f"_{subproduct}_v{version}")

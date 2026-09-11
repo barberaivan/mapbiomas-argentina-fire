@@ -283,25 +283,40 @@ def merged_asset():
     This layer is not one of those: it is ours, it is for people, and it is a name a user has to
     read and type (Iván, 2026-07-30).
     """
-    return f"{C.FINAL_PRODUCTS}/{SUBPRODUCT}_v1"
+    return f"{C.FINAL_PRODUCTS}/{SUBPRODUCT}_v{C.PRODUCT_VERSION}"
 
 
 # ---------------------------------------------------------------------------
 # the layer
 # ---------------------------------------------------------------------------
-# Set once in main() from --agri-max (docs/11 §2). A MODULE-LEVEL value rather than a
-# parameter because fire_filter() has four call sites -- the build, --verify and two stats
-# paths -- and a verify that used a different filter from the build would report a mismatch
-# that is not there, or hide one that is.
-AGRI_MAX = None
+# The exclusion rules (docs/07 §1.1), set once in main(). MODULE-LEVEL rather than parameters
+# because fire_filter() has four call sites -- the build, --verify and two stats paths -- and a
+# verify that used a different filter from the build would report a mismatch that is not there,
+# or hide one that is.  ON by default: RULES=False is only for reproducing the pre-rule layer.
+RULES   = True
+T_GRASS = None          # None -> C.T_GRASS
+T_AGRI  = None          # None -> C.T_AGRI
 
 
-def fire_filter():
-    """The accepted-fire filter.  A function, not a module constant: building an `ee.Filter` at
-    import time runs before `ee.Initialize()` and dies with "client library not initialized"."""
+def fire_filter(fire_year):
+    """The accepted-fire filter for ONE fire year (docs/07 §1.1).
+
+    A function, not a module constant: building an `ee.Filter` at import time runs before
+    `ee.Initialize()` and dies with "client library not initialized".  It takes the fire year
+    because rule A's date window is anchored inside it — the same filter is a different set of
+    day numbers in every year.  IDENTICAL to `07-month_of_burn.py::accepted_objects()` by
+    construction; the two must never drift or the vector and raster layers stop describing the
+    same map.
+    """
     keep = [ee.Filter.eq("fire", 1), ee.Filter.gte("area_ha", C.MIN_FIRE_HA)]
-    if AGRI_MAX is not None:
-        keep.append(ee.Filter.lt("frac_agri", AGRI_MAX))
+    if RULES:
+        # rule B drops on `>`, so the keep is `<=`
+        keep.append(ee.Filter.lte("frac_agri", C.T_AGRI if T_AGRI is None else T_AGRI))
+        lo, hi = C.grass_window_days(fire_year)
+        keep.append(ee.Filter.Not(ee.Filter.And(
+            ee.Filter.gt("frac_c15", C.T_GRASS if T_GRASS is None else T_GRASS),
+            ee.Filter.gte("date_med", lo),
+            ee.Filter.lte("date_med", hi))))
     return ee.Filter.And(*keep)
 
 
@@ -322,7 +337,8 @@ def fires(fire_year):
     — `system:time_*` included.  No accepted object has a null date (all 28 fire-years audited
     2026-07-30), so `ee.Number` on them cannot fail mid-export.
     """
-    fc = ee.FeatureCollection(f"{C.OBJECTS_RAW_COL}/objects_raw_{fire_year}").filter(fire_filter())
+    fc = (ee.FeatureCollection(f"{C.OBJECTS_RAW_COL}/objects_raw_{fire_year}")
+          .filter(fire_filter(fire_year)))
 
     def one(f):
         med = ee.Number(f.get("date_med"))
@@ -399,6 +415,8 @@ def properties(years, n_features=None):
                         "calendar series starts at 1999, so FY1998's Nov-Dec 1998 tail "
                         "(~76 kha) is here only (docs/07 §2)"),
         "derived_from": C.OBJECTS_RAW_COL,
+        # The two object exclusion rules, in words, so the layer states its own selection.
+        **C.exclusion_rules(t_grass=T_GRASS, t_agri=T_AGRI, applied=RULES),
     }
     if n_features is not None:
         p["n_features"] = n_features
@@ -412,7 +430,8 @@ def check(years):
     """Per-fire-year counts and the property schema, before committing a long task."""
     sizes, areas = [], []
     for fy in years:
-        k = ee.FeatureCollection(f"{C.OBJECTS_RAW_COL}/objects_raw_{fy}").filter(fire_filter())
+        k = (ee.FeatureCollection(f"{C.OBJECTS_RAW_COL}/objects_raw_{fy}")
+             .filter(fire_filter(fy)))
         sizes.append(k.size())
         areas.append(k.aggregate_sum("area_ha"))
     n, ha = ee.List([ee.List(sizes), ee.List(areas)]).getInfo()
@@ -473,7 +492,8 @@ def verify(asset_id, years):
     q = []
     for fy in years:
         a = fc.filter(ee.Filter.eq("fire_year", fy))
-        s = ee.FeatureCollection(f"{C.OBJECTS_RAW_COL}/objects_raw_{fy}").filter(fire_filter())
+        s = (ee.FeatureCollection(f"{C.OBJECTS_RAW_COL}/objects_raw_{fy}")
+             .filter(fire_filter(fy)))
         q += [a.size(), a.aggregate_count_distinct("oid"), a.aggregate_sum("area_ha"),
               s.size(), s.aggregate_count_distinct("oid"), s.aggregate_sum("area_ha")]
     r = ee.List(q).getInfo()
@@ -575,10 +595,17 @@ def main():
                          "re-exporting a layer whose path is already shared")
     ap.add_argument("--set-props", action="store_true",
                     help="write the asset property block onto the landed asset")
-    ap.add_argument("--agri-max", type=float, default=None, metavar="T",
-                    help="AGRICULTURE FILTER (docs/11 §2): drop objects with frac_agri >= T. "
+    ap.add_argument("--no-exclusions", action="store_true",
+                    help="build the UNFILTERED layer — neither exclusion rule applied. Only for "
+                         "reproducing the pre-rule numbers; never for a published asset. "
+                         "Recorded in the asset properties.")
+    ap.add_argument("--t-agri", type=float, default=None, metavar="T",
+                    help="override rule B's threshold (docs/07 §1.1); exploration only. "
                          "MUST match what 07a was painted with, or this layer and the rasters "
                          "disagree about what a fire is.")
+    ap.add_argument("--t-grass", type=float, default=None, metavar="T",
+                    help="override rule A's threshold (docs/07 §1.1); exploration only, same "
+                         "warning as --t-agri.")
     ap.add_argument("--project", default=C.GEE_PROJECT,
                     help="compute project (default %(default)s). Use `mapbiomas-argentina` with "
                          "the comahue credentials — the destination asset path does not change")
@@ -589,10 +616,14 @@ def main():
                          "account's tasks, without swapping any file")
     args = ap.parse_args()
 
-    global AGRI_MAX
-    AGRI_MAX = args.agri_max
-    if AGRI_MAX is not None:
-        print(f"[filter] agriculture: dropping objects with frac_agri >= {AGRI_MAX}")
+    global RULES, T_GRASS, T_AGRI
+    RULES, T_GRASS, T_AGRI = not args.no_exclusions, args.t_grass, args.t_agri
+    if not RULES:
+        print("[filter] NO EXCLUSION RULES — this is not the published selection")
+    else:
+        print(f"[filter] rule A: frac_c15 > {T_GRASS or C.T_GRASS} in "
+              f"{C.GRASS_WINDOW[0]}..{C.GRASS_WINDOW[1]} | "
+              f"rule B: frac_agri > {T_AGRI or C.T_AGRI}")
 
     initialize(args.project, args.credentials)
 

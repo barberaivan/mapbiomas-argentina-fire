@@ -50,7 +50,8 @@ for sub, band_format in SPECS:
     have = ee.data.getAsset(aid).get("properties") or {}
     want = {"source": C.PRODUCT_SOURCE, "region": C.PRODUCT_REGION,
             "band_format": band_format, "years": f"{YEARS[0]}-{YEARS[-1]}",
-            "derived_from": C.MONTH_OF_BURN_COL}
+            "derived_from": C.MONTH_OF_BURN_COL,
+            **C.exclusion_rules()}          # docs/07 §1.1 — every product states its selection
     if sub.endswith("_coverage"):
         want["lulc_asset"] = C.PRODUCT_LULC
         want["lulc_year"] = "same calendar year as the burn"

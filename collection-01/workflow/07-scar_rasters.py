@@ -160,7 +160,13 @@ def _export_products(specs, years, launch):
                        "years": f"{years[0]}-{years[-1]}",
                        "scar_connectivity": "8-connected, calendar-year",
                        "scar_size_classes": str(C.SCAR_SIZE_LOWER_HA),
-                       "area_source": "pixel-count (local), not geometry().area()"})
+                       "area_source": "pixel-count (local), not geometry().area()",
+                       "derived_from": C.ANNUAL_BURNED_VECTORS,
+                       # The object exclusion rules the SCARS were labelled under (docs/07
+                       # §1.1). They are inherited from 07b, not applied here — but the
+                       # product must still state them, or a scar raster cannot be told
+                       # apart from one built before the rules existed.
+                       **C.exclusion_rules()})
         if not launch:
             print(f"[dry] would export {asset_id}  ({len(years)} bands, pyramiding={pyr})")
             continue

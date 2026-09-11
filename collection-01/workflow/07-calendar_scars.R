@@ -85,6 +85,21 @@ FIRST_FIRE_YEAR <- 1998; LAST_FIRE_YEAR <- 2025
 CAL_YEARS       <- 1999:2025      # the published calendar series (docs/07)
 MIN_FIRE_HA     <- 1              # minimum mapped fire, on the OBJECT (docs/07 §1)
 
+# ── the two object EXCLUSION rules (docs/07 §1.1) ─────────────────────────────
+# FINAL thresholds, confirmed with the team 2026-09-11, and ON BY DEFAULT: a run with no
+# environment overrides produces the PUBLISHED selection. MIRRORED from
+# utils/constants.py::{T_GRASS, GRASS_WINDOW, T_AGRI} -- there is no automatic sync between
+# this file and the Python constants, so KEEP THESE IN SYNC. They must equal what 07a painted
+# with or the scar layer stops being the month raster's mask.
+#
+# The env overrides exist for the explorers and TESTS/ only. RULES=0 builds the unfiltered
+# pixel set; both passes and the launcher read the same variables, so a run cannot end up with
+# one pass filtered and the other not.
+RULES        <- Sys.getenv("RULES", "1") != "0"
+T_GRASS      <- as.numeric(Sys.getenv("T_GRASS", "0.70"))   # rule A: frac_c15 above this
+GRASS_WINDOW <- c("07-01", "11-15")                          # rule A: date_med inside (MM-DD)
+T_AGRI       <- as.numeric(Sys.getenv("T_AGRI",  "0.40"))   # rule B: frac_agri above this
+
 # The canonical SNIC grid — IDENTICAL in all 56 snic/snic_metrics assets and in every carta
 # tile (verified 2026-07-29). Mirrored in utils/constants.py::SNIC_TRANSFORM; keep in sync.
 #
@@ -152,22 +167,38 @@ row_cell_area <- function(g) {
 }
 
 # ── pass 1 — accepted burned pixels of one fire-year, split by calendar year ───
-# AGRI_MAX is an environment variable, not an argument, because this function is called from
-# both passes and from the launcher: an env var reaches all of them identically and a run
-# cannot end up with one pass filtered and the other not. It MUST match what 07a was painted
-# with (`--agri-max`) or the scar layer stops being the month raster's mask (docs/11 §2.3).
-AGRI_MAX <- suppressWarnings(as.numeric(Sys.getenv("AGRI_MAX", NA)))
+# Rule A's window in DAY NUMBERS since EPOCH, for one fire year. The fire year runs 1 May fy
+# to 30 Apr fy+1, so a window month >= 5 belongs to fy and a month <= 4 to fy+1. Mirrors
+# utils/constants.py::grass_window_days().
+grass_window_days <- function(fy) {
+  bound <- function(md) {
+    mm <- as.integer(substr(md, 1, 2))
+    y  <- if (mm >= 5) fy else fy + 1L
+    as.integer(as.Date(sprintf("%d-%s", y, md)) - as.Date(EPOCH))
+  }
+  c(bound(GRASS_WINDOW[1]), bound(GRASS_WINDOW[2]))
+}
 
 accepted_oids <- function(fy) {
   pr <- fread(file.path(PRED_DIR, sprintf("objects_%d_pred.csv", fy)), select = c("oid", "fire"))
   cols <- c("oid", "area_ha", "date_median", "n_pixels")
-  if (!is.na(AGRI_MAX)) cols <- c(cols, "frac_c1", "frac_c2", "frac_c3")
+  if (RULES) cols <- c(cols, "frac_c1", "frac_c2", "frac_c3", "frac_c15")
   mt <- fread(file.path(OBJ_DIR, sprintf("objects_%d_raster_metrics.csv", fy)), select = cols)
   a <- merge(pr, mt, by = "oid")[fire == 1 & area_ha >= MIN_FIRE_HA & !is.na(date_median)]
-  if (!is.na(AGRI_MAX)) {
+  if (RULES) {
     before <- nrow(a)
-    a <- a[frac_c1 + frac_c2 + frac_c3 < AGRI_MAX]
-    msg("  [agri] frac_agri < %g: %d of %d objects kept", AGRI_MAX, nrow(a), before)
+    w <- grass_window_days(fy)
+    # rule A -- Pampa grassland in the winter-spring window; rule B -- agriculture anywhere.
+    # Both drop on `>`, so the keep is `<=` (docs/07 §1.1). `frac_c15` is the SINGLE veg_fire
+    # class 15 grassland_pampa, not the aggregated frac_gr_tp.
+    a <- a[!(frac_c15 > T_GRASS & date_median >= w[1] & date_median <= w[2])]
+    nA <- before - nrow(a)
+    a <- a[frac_c1 + frac_c2 + frac_c3 <= T_AGRI]
+    msg("  [rules] A (frac_c15 > %g in %s..%s): -%d | B (frac_agri > %g): -%d | %d of %d kept",
+        T_GRASS, GRASS_WINDOW[1], GRASS_WINDOW[2], nA, T_AGRI,
+        before - nA - nrow(a), nrow(a), before)
+  } else {
+    msg("  [rules] NONE APPLIED -- this is not the published selection")
   }
   a[, date_eff := as.integer(round(date_median))]
   a[, .(oid, date_eff, n_pixels)]

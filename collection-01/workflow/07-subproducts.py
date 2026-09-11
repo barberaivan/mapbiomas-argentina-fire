@@ -352,6 +352,9 @@ def export(specs, years, launch, roi=None):
             "band_format": band_format,
             "years": f"{years[0]}-{years[-1]}",
             "derived_from": C.MONTH_OF_BURN_COL,
+            # The object exclusion rules the month collection was painted under (docs/07
+            # §1.1) — inherited, not applied here, but every product states its own selection.
+            **C.exclusion_rules(),
         }
         # Only the four `*_coverage` products encode land cover. The first launch stamped
         # `lulc_asset` on all nine, which left the five that contain no LULC at all advertising the
