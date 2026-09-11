@@ -400,6 +400,61 @@ in the explorer as an option, but the prior is agriculture only.
 
 ---
 
+## 7.1 Already available with no compute: the national series and pirogram
+
+`CLASSIFICATION_COLLECTIONS/mob_month_stats` already holds **27 assets** — the whole-country
+per-month burned **pixel count** for 1999–2025, exported as 07b's cross-check. So the national
+time series (analysis 2) and the national pirogram (analysis 3) exist *today*:
+
+```bash
+$PYTHON collection-01/workflow/07-month_of_burn.py --all --stats-read     --csv collection-01/data/objects-analysis/national_month_pixels.csv
+```
+
+All 27 years still report `MATCH` against the local month counts.
+
+**National series, relative to the series mean (=100):** 2001 is the biggest year at **213 %**,
+2012 the smallest at **35 %** — a **6.2×** range. 2020 (177 %) and 2022 (162 %) are the recent
+peaks; 2010, 2012, 2014, 2015 the quiet years.
+
+**National pirogram, share of all burned pixels by month:** **bimodal** — a late-winter/spring
+peak in **Aug (18.2 %) / Sep (16.4 %) / Oct (9.6 %)** and a second summer peak in
+**Jan (14.6 %) / Dec (10.1 %) / Feb (7.7 %)**, with a March–June trough (1.6–3.6 %). That is two
+different fire regimes showing up in one national curve — Chaco late winter, Patagonia/Pampa
+summer — which is an argument for the per-region panels the factsheet already plans, and for
+plotting the x-axis May→April so neither peak is cut.
+
+### ⚠️ Two things these numbers are not
+
+1. **They are pixel counts, and × 0.09 ha is wrong by 18.5 %.** The lattice step is
+   0.000269494585236 **degrees**, so a pixel is ~30 m north–south everywhere but ~30·cos(lat) m
+   east–west. Naive conversion gives **81.93 Mha where the object database says 69.12** — a mean
+   effective pixel of **0.0759 ha** (lat ≈ 32°). Worse, the bias is not uniform by month:
+   Patagonian fires (≈0.064 ha/px) peak in summer and Chaco fires (≈0.082 ha/px) in late winter,
+   so the **pirogram's shape is skewed toward the summer months**. Use these for *relative*
+   structure only; hectares come from `11-burned_area_stats.py`, which sums `pixelArea()`.
+2. **They describe the current, unfiltered map** — no agriculture filter.
+
+### 7.2 Open cross-check: a 269,043-pixel gap against docs/07 §2
+
+Summing the 27 histograms gives **910,290,670 px**. docs/07 §2 states the published series holds
+**910,559,713 px** ("the pixel accounting closes exactly", 911,617,919 accepted − 1,058,206 for
+calendar 1998). The gap is **269,043 px (~20 kha, 0.03 %)**.
+
+The histograms are internally consistent — `n_px` equals the sum of `m01..m12` in **all 27
+years** — and every year still matches the local scar month counts. So this is not a corrupted
+asset.
+
+**Most likely explanation: intra-calendar-year reburn.** docs/07 §2's figure is built by summing
+each fire-year's two calendar halves, where a pixel that burned twice *within one calendar year*
+is counted once per fire-year contribution; the published raster collapses it to one pixel
+(`max` keeps the later month). If so, docs/07's "published series" total is an accounting sum
+rather than a reduction of the actual raster, and **910,290,670 is the right number for what the
+asset contains**.
+
+Worth resolving before any national total goes in the factsheet or the ATBD — it is small, but
+docs/07 claims exactness, and a claim of exactness that is off by 269 k pixels should either be
+corrected or explained.
+
 ## 8. Open — the Pampa problem
 
 The easy move for analysis 1's LULC panel is **simply not to show agriculture**. But that leaves a

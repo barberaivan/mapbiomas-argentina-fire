@@ -348,10 +348,30 @@ def stats_year(cal_year, region, launch):
         print(f"[dry] would submit histogram task for {cal_year} -> {asset_id}")
 
 
-def stats_read(years):
-    """Print the GEE histograms next to the local ones and flag any disagreement."""
+def stats_read(years, csv_path=None):
+    """Print the GEE histograms next to the local ones and flag any disagreement.
+
+    `--csv` dumps them long-format. These 27 assets are the whole-country per-month burned
+    PIXEL COUNT for 1999-2025 and they already exist (they were the 07b cross-check), so the
+    national time series and the national pirogram are available with no compute at all
+    (docs/11 §5.1).
+
+    Two caveats that must travel with the numbers:
+      * PIXEL COUNTS, NOT HECTARES, and the naive conversion is badly wrong. The lattice step
+        is 0.000269494585236 DEGREES, so a pixel is ~30 m north-south everywhere but only
+        ~30*cos(lat) m east-west: 0.09 ha is the equatorial figure. Measured against the object
+        database, px x 0.09 gives 81.93 Mha where the truth is 69.12 Mha -- **an 18.5 %
+        overstatement**, i.e. a mean effective pixel of 0.0759 ha (lat ~32 deg).
+        And the bias is not uniform across months: Patagonian fires (lat ~45 deg, 0.064 ha/px)
+        peak in summer while Chaco fires (lat ~25 deg, 0.082 ha/px) peak in late winter, so
+        even the PIROGRAM'S SHAPE is skewed toward the southern months by this.
+        Use these counts for RELATIVE structure; use `11-burned_area_stats.py`, which sums
+        `ee.Image.pixelArea()`, for anything quoted in hectares.
+      * They describe the CURRENT, UNFILTERED map — no agriculture filter (docs/11 §2).
+    """
     local_dir = REPO_ROOT / "collection-01/data/objects-scars"
     any_bad = False
+    rows = []
     for y in years:
         asset_id = f"{STATS_COL}/mob_months_{y}"
         if not asset_exists(asset_id):
@@ -372,6 +392,14 @@ def stats_read(years):
             any_bad = True
         print(f"[{y}] GEE {sum(gee.values()):>12,} px | local {sum(loc.values()):>12,} px | {tag}"
               + (f" {diffs}" if diffs else ""))
+        for m in range(1, 13):
+            rows.append({"year": y, "month": m, "n_px": gee.get(m, 0)})
+    if csv_path and rows:
+        with open(csv_path, "w", newline="") as fh:
+            w = csv.DictWriter(fh, fieldnames=["year", "month", "n_px"])
+            w.writeheader()
+            w.writerows(rows)
+        print(f"\n[csv] {len(rows)} rows -> {csv_path}   (PIXEL COUNTS, unfiltered map)")
     if any_bad:
         print("\nA divergence here is a BUG, not tolerance — both sides come from the same "
               "object pixel set (docs/07 §6).")
@@ -441,6 +469,9 @@ def main():
     ap.add_argument("--stats-read", action="store_true",
                     help="print finished --stats histograms beside the local ones and flag any "
                          "disagreement")
+    ap.add_argument("--csv", default=None, metavar="FILE",
+                    help="--stats-read: also write the whole-country per-month pixel counts "
+                         "long-format. Pixel counts, not hectares, and of the UNFILTERED map")
     ap.add_argument("--overwrite", action="store_true",
                     help="re-export a year whose asset exists, replacing it in place")
     ap.add_argument("--agri-max", type=float, default=None, metavar="T",
@@ -468,7 +499,7 @@ def main():
         ap.error(f"calendar year(s) {bad} outside {C.CALENDAR_YEARS[0]}-{C.CALENDAR_YEARS[-1]}")
 
     if args.stats_read:
-        stats_read(years)
+        stats_read(years, args.csv)
         return
 
     if args.stats:
