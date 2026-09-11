@@ -55,14 +55,18 @@ we will get, and the compute cache means a restart cannot re-measure honestly.
    asset *landed*, never how long its task ran. **Check `attempt` first: if it is > 1, `startTime`
    has been overwritten and there is no duration to record** — that is exactly how the first round's
    30 m number was lost (§4.3).
-2. **Act on the dead assumption, do not re-litigate it.** The numerator's only remaining lever is
+2. **⏸️ Ask Iván about the Brazil team's stats tool FIRST** (docs/09 §2.1.2) — he says it exists and
+   is cheap, and it may make steps 3-4 below unnecessary. Do not re-benchmark or rewrite the reducer
+   before that conversation.
+3. **Act on the dead assumption, do not re-litigate it.** The numerator's only remaining lever is
    `--from-objects` (paint in one pass; §5.1 shows it is decimation-safe). Decide whether the
    factsheet numbers come from that route, and say out loud in the footnote if they no longer come
    from the published asset.
-3. **Decide on the fixed burnable layer** (§4.3, "the idea that makes this benchmark moot") — the
-   mode of `veg_fire` across years as a single frozen denominator. With the per-year 30 m route now
-   measured as unrunnable, this is no longer an optimisation: it is the route.
-4. Then the threshold decision and the exports, as before.
+4. **Decide on the fixed burnable layer** (§4.3, "the idea that makes this benchmark moot") — the
+   mode of `veg_fire` across years as a single frozen denominator. The per-year 30 m route is
+   measured as unrunnable **as currently written** — but see the three self-inflicted costs in §4.3
+   and the Brazil tool before concluding the method itself is the problem.
+5. Then the threshold decision and the exports, as before.
 
 Do **not** re-run an identical benchmark expression to get a timing — Earth Engine will serve it
 from cache and hand you a fake number (§4.3).
@@ -419,6 +423,41 @@ not runnable.**
 > **Both tasks were left running deliberately.** They are the only clean (`attempt=1`) measurements
 > we will get, cancelling forfeits them a second time, and the compute cache means a restart would
 > not re-measure honestly. The cost is one slot on each account until they land.
+
+> ### ⏸️ STOP before optimising any of this — Brazil has a tool
+>
+> **Iván, 11 Sep 2026:** *"brazil team has a tool for these stats, not expensive at all."* Details
+> pending; he will explain. Recorded in docs/09 §2.1.2 with the questions to ask and the one
+> candidate in the reference repo (`2-Statistics/toolkit/v03/`, unconfirmed).
+>
+> **Everything below about how much the reduction costs may be moot.** Do not re-benchmark, do not
+> rewrite the reducer, and do not commit to the vector route on cost grounds until that tool is
+> understood. The measurements stand as measurements; the *conclusions drawn from them about what we
+> must build* are on hold.
+
+#### Three self-inflicted costs, if we do end up paying for our own reducer
+
+Comparing our two step-11 scripts against the six reference scripts line by line (11 Sep), three
+differences are ours alone and none is intrinsic to the raster method. **Unverified** — each is a
+hypothesis with an obvious test, and all three are moot if the Brazil tool replaces this stage.
+
+1. **The reduction geometry.** All six of theirs pass `regions.geometry().bounds()` — a rectangle.
+   Both of ours pass `ee.FeatureCollection(C.ARG_BUFFER_FC).geometry()`, the buffered national
+   outline, so every tile is clipped against a complex multipolygon. For us the box is free
+   semantically: `territory_image()` is `ee.Image().paint(…)`, masked outside the territories, so
+   the zone band is masked there too and those pixels never enter a grouped sum. Highest suspicion.
+2. **`tileScale=4`**, in both our scripts and in none of theirs. It shrinks shards to dodge OOM and
+   pays in overhead. The code comment asserts the group reduction is the memory risk, not the pixel
+   sweep — never measured against `tileScale=1`.
+3. **The denominator reduces a COMPUTED image, not a stored band.** Theirs is
+   `mapbiomas.select('burned_coverage_2020')`: one stored byte band, decode and go. Ours is
+   `F.veg_fire_image(year)`, rebuilt every time — col-2 v8 LULC band + `REGION_RASTER`,
+   `multiply(100).add()`, then `remap()` through the full region-class lookup, evaluated at all
+   ~9.16 × 10⁹ pixels. This is the same wound the fixed burnable layer closes: materialising
+   `veg_fire` once removes both the per-year repeat *and* the per-pixel graph.
+
+Not a suspect, checked and cleared: the `crsTransform` pinning. `SNIC_CRS` is EPSG:4326 and col-3 is
+integer-offset aligned to our lattice (§1), so nothing is reprojected — only the origin is pinned.
 
 #### The way out for the numerator: clip the polygons once, locally
 

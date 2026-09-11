@@ -111,6 +111,32 @@ denominator in them to deviate from.
 > whether the six are adaptations of the reference or of our step-11 code. docs/11 §5.1 holds the
 > factsheet-side requirements.
 
+### 2.1.2 ⏸️ The Brazil team has a tool for this, and it is cheap — ASK BEFORE BUILDING
+
+**Iván, 11 Sep 2026:** *"brazil team has a tool for these stats, not expensive at all."* Details to
+follow; he will explain.
+
+**This is a stop sign for §2.1.1's cost analysis and for anything in docs/11 §4.3 that assumes the
+statistics must be paid for at 8 h per year per product.** Do not optimise, re-benchmark, or rebuild
+our own reducer until that tool is understood — the cheapest version of this stage may be one we do
+not write at all.
+
+When the explanation arrives, the first thing to check is whether it is
+`2-Statistics/toolkit/v03/` — the Looker/App engine, with `core/calculate.js`, `core/export.js` and
+per-country `datasets/` + `territories/` folders (Bolivia, Brasil, Colombia, Paraguay, Perú; no
+Argentina folder yet). That is the only thing in the reference repo shaped like a reusable tool
+rather than a copy-per-country script. **This is a guess, not a confirmation** — the version of
+`calculate.js` in that toolkit runs the same grouped `reduceRegion` at `scale: 30` as the six
+scripts, so if the tool really is cheap, either it is something else, or the cost difference lives
+somewhere we have not looked (a precomputed input, a coarser accepted scale, a service outside GEE).
+
+Questions to put to them (adds to §10.2 of docs/11):
+
+- What is the tool, where does it run, and can a country outside Brazil use it?
+- What does it read — our `FINAL_PRODUCTS` assets directly, or something they prepare first?
+- Does it need the intersected territorial layer (§2.2), or does it build its own?
+- Does it produce the six CSVs in the required schema, or something we would still have to reshape?
+
 ### 2.2 The territorial layer — ours to build, and the real constraint
 
 The guide is explicit: because **every subproduct × territory combination becomes a Looker Studio
