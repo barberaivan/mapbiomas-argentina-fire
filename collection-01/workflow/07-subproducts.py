@@ -76,6 +76,7 @@ rather than trusting it.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -381,6 +382,32 @@ def export(specs, years, launch, roi=None):
         print(f"[launched] {task.id}  ->  {asset_id}")
 
 
+def initialize(project, credentials_path=None):
+    """`ee.Initialize`, optionally with a credentials file that is NOT the resident one.
+
+    Same helper as `07-month_of_burn.py` / `07-burned_area_polygons.py` (CLAUDE.md: copy the
+    pattern, never `cp` the credentials file into place).  The GEE task queue is PER USER, so
+    submitting as the second account (`ivanbarbera@comahue-conicet.gob.ar`, compute project
+    `mapbiomas-argentina`) starts the export immediately instead of behind the first account's
+    tasks.  Only the COMPUTE project changes — the destination asset path is unaffected.
+    """
+    if not credentials_path:
+        ee.Initialize(project=project)
+        return
+    from google.oauth2.credentials import Credentials
+    stored = json.loads(Path(credentials_path).expanduser().read_text())
+    ee.Initialize(Credentials(
+        None,
+        refresh_token=stored["refresh_token"],
+        token_uri=ee.oauth.TOKEN_URI,
+        client_id=stored.get("client_id", ee.oauth.CLIENT_ID),
+        client_secret=stored.get("client_secret", ee.oauth.CLIENT_SECRET),
+        scopes=stored.get("scopes", ee.oauth.SCOPES),
+        quota_project_id=stored.get("project"),
+    ), project=project)
+    print(f"[auth] {credentials_path}  |  compute project {project}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -397,10 +424,16 @@ def main():
                          f"the test assets afterwards.")
     ap.add_argument("--only", help="comma-separated subproduct names to build (default: all 9)")
     ap.add_argument("--years", help="comma-separated calendar years (default: the whole series)")
-    ap.add_argument("--project", default=C.GEE_PROJECT)
+    ap.add_argument("--project", default=C.GEE_PROJECT,
+                    help="compute project to submit under (e.g. mapbiomas-argentina with "
+                         "the comahue credentials — the destination asset path does not change)")
+    ap.add_argument("--credentials",
+                    help="path to a credentials file to authenticate with instead of the "
+                         "resident ~/.config/earthengine/credentials (e.g. "
+                         "…/credentials.comahue). Nothing on disk is clobbered.")
     args = ap.parse_args()
 
-    ee.Initialize(project=args.project)
+    initialize(args.project, args.credentials)
     years = [int(v) for v in args.years.split(",")] if args.years else list(C.CALENDAR_YEARS)
 
     if args.check:

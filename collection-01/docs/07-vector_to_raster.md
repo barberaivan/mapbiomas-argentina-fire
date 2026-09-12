@@ -61,6 +61,29 @@ $PYTHON collection-01/workflow/07-burned_area_polygons.py --set-props           
 `scripts/run_07_scars.sh` is the launcher for 07b (two modes, resumable, biggest-year first, one
 process per year — same pattern as `run_05_years.sh` / `run_06_predict.sh`).
 
+**The v2 re-run of all of the above is driven unattended** by `scripts/run_07_v2_driver.py`, one
+cron tick every 15 min (`scripts/v2_driver_tick.sh`). It exists because the gates here are hours
+apart — 07d waits for all 27 month assets, 07c for a manual ingest — and the obvious "sleep, then
+launch the next thing" shape dies with the session: a power cut takes the terminal, tmux and any
+sleeping process with it, while cron comes back at boot without a login. So it never sleeps. Each
+tick surveys the world (asset counts in both compute projects, `.done_fy*` markers, zips on disk,
+`pgrep`), runs whatever is unblocked, and exits; everything it invokes is already idempotent, so a
+repeated tick is a no-op and an interrupted one is retried by the next. Status board:
+`logs/v2-driver/STATUS.md`.
+
+Two traps it had to be taught, both of which bit on the first run:
+
+* **`listOperations()` is project-scoped** (CLAUDE.md). 07a/07d go out as comahue on
+  `mapbiomas-argentina`, 07e/07c as gmail on `mapbiomas-fire-485203`. A one-project watcher reports
+  the other account's task as missing — indistinguishable from never having submitted it — so the
+  driver polls **both** projects and maps each task prefix to the project it lives in.
+* **A resumable launcher reads v1 output as "done".** `run_07_scars.sh` skips a year whose
+  `.done_fy*` marker or `.zip` exists, and those were all still on disk from the v1 build, so the
+  first survey read C1 and C2 as complete with nothing rebuilt. The v1 local build is now archived
+  as `data/objects-scars_v1/` and `data/scars-upload-cache_v1/`, and the pixel-pass markers were
+  cleared. **Anything gated on a file must be gated on a file that v1 cannot have written** — which
+  is the same argument §1.2 makes for versioning the assets rather than overwriting them.
+
 ---
 
 ## 1. The decisions this step rests on

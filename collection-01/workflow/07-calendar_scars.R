@@ -194,11 +194,12 @@ accepted_oids <- function(fy) {
     a <- a[!(frac_c15 > T_GRASS & date_median >= w[1] & date_median <= w[2])]
     nA <- before - nrow(a)
     a <- a[frac_c1 + frac_c2 + frac_c3 <= T_AGRI]
-    msg("  [rules] A (frac_c15 > %g in %s..%s): -%d | B (frac_agri > %g): -%d | %d of %d kept",
-        T_GRASS, GRASS_WINDOW[1], GRASS_WINDOW[2], nA, T_AGRI,
-        before - nA - nrow(a), nrow(a), before)
+    message(sprintf(
+      "[FY%d]   [rules] A (frac_c15 > %g in %s..%s): -%d | B (frac_agri > %g): -%d | %d of %d kept",
+      fy, T_GRASS, GRASS_WINDOW[1], GRASS_WINDOW[2], nA, T_AGRI,
+      before - nA - nrow(a), nrow(a), before))
   } else {
-    msg("  [rules] NONE APPLIED -- this is not the published selection")
+    message(sprintf("[FY%d]   [rules] NONE APPLIED -- this is not the published selection", fy))
   }
   a[, date_eff := as.integer(round(date_median))]
   a[, .(oid, date_eff, n_pixels)]

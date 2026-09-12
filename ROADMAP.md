@@ -24,15 +24,24 @@ at **15 Sep 2026** for Brazil to copy them to `mapbiomas-public`.
 
 ## Now — re-export the products as v2
 
-Three independent branches. 
-- A blocks the factsheet and the platform; 
-- B is parallel, just for completeness; 
-- C is the scar-size path, blocks the platform.
+Three branches.
+- A blocks the factsheet and the platform;
+- B is fully independent, just for completeness;
+- C is the calendar-year scars, blocks the platform. Its local half is independent, but its last
+  step (07c, the rasterization) needs **A1 finished** as well as the manual ingest.
 
 Nothing blocks these. The exclusion rules are wired and ON by default, `C.PRODUCT_VERSION = 2`
 sends every output to a new asset path, and `C.PRODUCT_LULC` points at the published col-3 — so the
 commands in [docs/07](collection-01/docs/07-vector_to_raster.md)'s "Order of operations" produce the
 published selection with no flags.
+
+**These are being run unattended by a supervisor** — `collection-01/scripts/run_07_v2_driver.py`,
+one tick every 15 min from cron (`v2_driver_tick.sh`, `flock`-guarded, plus an `@reboot` entry so a
+power cut costs only the hours the box is off). It does not sleep: each tick reads the state of the
+world — assets on the server, files on disk, processes running — does whatever is now unblocked, and
+exits. **Read `collection-01/logs/v2-driver/STATUS.md` first**; `tick.log` is the narrative and
+`<stage>.out` the command output. Delete a `<stage>.done` marker to force that stage to run again.
+Remove the two crontab lines when STATUS.md is all ✅.
 
 - [ ] **A1 — 07a, month of burn.** *(run)* 27 Earth Engine tasks into the **new v2 collection** —
       no flags, no `--overwrite`: the rules are the default and v2 is a different asset path.
@@ -51,17 +60,22 @@ published selection with no flags.
       A. `--launch` (v2 is a new path, so no `--overwrite`), then `--verify` (the gate), then
       `--set-props`. Needed for the fire-count analyses, and it is the layer early users already
       have a link to — tell them the v1 link is superseded.
-- [ ] **C — the scar-size chain (07b → 07c).** *(run — not optional)* 28 + 27 local passes (no env
-      vars: the rules are the default), 27 manual ingests into `annual_burned_vectors_v2`, then 3
-      cheap Earth Engine tasks. **Set `exclusion_rule_a` / `exclusion_rule_b` on the ingested FCs by
-      hand** — only the rasters painted from them get the properties automatically.
-      **07b reads the object set directly, so the filters change the scars themselves** — not only
-      which pixels survive, but how they are labelled: a scar that was 8-connected *through* a
-      dropped object now splits in two, and every `area_ha` shrinks. **Re-running 07c alone is
-      wrong**, not merely stale: it would paint old scars (old ids, old areas) masked to the new
-      07a, so `annual_burned_id` and `annual_burned_area_ha` would disagree with the extent they sit
-      on. `annual_burned_scar_size_range` is a published subproduct, so this blocks the platform.
-      [docs/07 §1.1](collection-01/docs/07-vector_to_raster.md).
+- [ ] **C — the calendar-year scars (07b local → ingest → 07c).** *(run — not optional)* The scars
+      are built **locally, from the same filtered fire-year object set as 07a** (rules A and B on,
+      which is the whole reason this is being re-run): `run_07_scars.sh pixels` turns each of the 28
+      fire-years into its accepted burned pixels, `run_07_scars.sh scars` merges the two fire-year
+      halves of each of the 27 calendar years, labels them 8-connected and vectorizes → 27 zipped
+      Shapefiles. GEE cannot do this labelling (`connectedPixelCount` caps at 1024 px), so **the
+      scars exist only as vectors until they are ingested by hand** into `annual_burned_vectors_v2`
+      — set `exclusion_rule_a` / `exclusion_rule_b` on each ingested FC yourself; only the rasters
+      painted from them get the properties automatically. Then 07c is just the rasterization: 3
+      cheap tasks painting `annual_burned_id`, `annual_burned_area_ha` and
+      `annual_burned_scar_size_range` from the ingested FCs, masked to the v2 month of burn — **so
+      07c needs A1 finished as well as the ingest**. Because the filters change which objects exist,
+      they change the scars themselves: one that was 8-connected *through* a dropped object now
+      splits in two, and every `area_ha` shrinks — which is why the local build is re-run and not
+      just the painting. `annual_burned_scar_size_range` is a published subproduct, so this blocks
+      the platform. [docs/07 §1.1](collection-01/docs/07-vector_to_raster.md).
 
 ## Next — the summary statistics
 
