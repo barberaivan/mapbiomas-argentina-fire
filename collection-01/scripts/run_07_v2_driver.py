@@ -509,6 +509,13 @@ def main():
         f"scar_rasters={st['scar_rasters']}/3 scarfc={st['scarfc']}/{N_CAL} "
         f"pix={st['pix']}/{N_FIRE} zips={st['zips']}/{N_CAL}")
 
+    # Publish the survey BEFORE running anything.  A stage like 07e's --verify runs synchronously
+    # and can hold the tick (and the flock) for the best part of an hour; without this the board
+    # keeps showing the PREVIOUS tick's numbers throughout, which is the one time someone is most
+    # likely to be reading it.
+    write_status(st)
+    HEARTBEAT.touch()
+
     for stage in (stage_A1, stage_A2, stage_A3, stage_B,
                   stage_C1, stage_C2, stage_C3, stage_C4):
         try:

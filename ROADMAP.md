@@ -85,10 +85,13 @@ Three branches.
       to disk. **Count assets, not tasks** — the task list is project-scoped and shows the whole
       network's work. This gate only works because v2 is a new collection (docs/07 §1.2): against an
       overwritten one the count starts at 27.
-- [ ] **B — 07e, the fire-object polygon layer.** *(run)* One task, 3.27 h measured, independent of
-      A. `--launch` (v2 is a new path, so no `--overwrite`), then `--verify` (the gate), then
-      `--set-props`. Needed for the fire-count analyses, and it is the layer early users already
-      have a link to — tell them the v1 link is superseded.
+- [x] **B — 07e, the fire-object polygon layer.** ✅ **done 12 Sep 2026, 01:31** — one submission,
+      ~4 h, `--verify` clean on all 28 fire-years, 19 properties set.
+      `FINAL_PRODUCTS/burned_area_polygons_v2`: **908,346 rows / 908,343 objects / 58.05 Mha**
+      (per-object area; the 3-row gap is `2000_57529` split into 4 parts at the vertex limit, which
+      is why a row-sum over-counts by 5.1 Mha). Against v1 — 1,263,079 rows / 69.12 Mha — the
+      exclusion rules remove **28 % of the objects and 16 % of the area**. None of v1's duplicate
+      FY2021 rows (docs/07 §13.6) recurred. **Tell the early users the v1 link is superseded.**
 - [ ] **C — the calendar-year scars (07b local → ingest → 07c).** *(run — not optional)* The scars
       are built **locally, from the same filtered fire-year object set as 07a** (rules A and B on,
       which is the whole reason this is being re-run): `run_07_scars.sh pixels` turns each of the 28
@@ -105,6 +108,10 @@ Three branches.
       splits in two, and every `area_ha` shrinks — which is why the local build is re-run and not
       just the painting. `annual_burned_scar_size_range` is a published subproduct, so this blocks
       the platform. [docs/07 §1.1](collection-01/docs/07-vector_to_raster.md).
+      **Local half done 11 Sep 23:51** — 28/28 pixel passes (41 min), 27/27 calendar years (77 min),
+      no failures; `validate_scar_zips.py` passes **27/27**, 678 MB in `data/scars-upload-cache/`.
+      Measured: **2,217,621 scars / 57.96 Mha**, against v1's 2,734,416 / 69.02 Mha — −18.9 % of
+      scars, −16.0 % of area. Now waiting only on the manual ingest, then 07c fires itself.
 
 ## Next — the summary statistics
 
