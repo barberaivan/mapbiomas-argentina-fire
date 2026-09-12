@@ -231,8 +231,12 @@ def main():
     if failed:
         print(f"DO NOT UPLOAD — fix and rebuild: {failed}")
         sys.exit(1)
-    print("All packages pass. Safe to ingest by hand into "
-          ".../COLLECTION-1/FINAL_PRODUCTS/annual_burned_vectors/scars_<Y>")
+    # The destination is INTERPOLATED, never spelled out: it carries C.PRODUCT_VERSION, and a
+    # hardcoded path here is how the v2 scars get hand-ingested into the v1 folder. A folder
+    # holding a mix of v1 and v2 scars silently produces a scar raster from the wrong selection
+    # — which is the whole reason these are versioned (docs/07 §1.2).
+    print(f"All packages pass. Safe to ingest by hand into "
+          f"{C.ANNUAL_BURNED_VECTORS}/scars_<Y>")
 
 
 if __name__ == "__main__":
