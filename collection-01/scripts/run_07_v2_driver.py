@@ -53,6 +53,7 @@ GMAIL = ["--credentials", str(CRED_DIR / "credentials.gmail"),
          "--project", C.GEE_PROJECT]
 
 STATE = ROOT / "collection-01/logs/v2-driver"
+BLAUNCH = STATE / "B-export.launched"   # mtime = when stage_B last submitted 07e's export
 TICKLOG = STATE / "tick.log"
 STATUS = STATE / "STATUS.md"
 HEARTBEAT = STATE / "last_tick"     # mtime = the last tick that completed, however it went
@@ -217,6 +218,28 @@ def inflight(prefix):
             and str(m.get("description", "")).startswith(prefix)]
 
 
+def _epoch(ts):
+    """RFC3339 -> epoch seconds.  Trims over-long fractional seconds, which GEE emits and
+    `fromisoformat` rejects, and which also make a plain string compare unsafe."""
+    if not ts:
+        return None
+    ts = ts.replace("Z", "+00:00")
+    if "." in ts:
+        head, rest = ts.split(".", 1)
+        frac, tz = rest[:-6], rest[-6:]
+        ts = f"{head}.{frac[:6]}{tz}"
+    return dt.datetime.fromisoformat(ts).timestamp()
+
+
+def last_success_end(prefix):
+    """Epoch end time of the most recent SUCCEEDED task with `prefix`, or None."""
+    ends = [_epoch(m.get("endTime")) for m in _OPS.get(TASK_PROJECT[prefix], [])
+            if m.get("state") == "SUCCEEDED"
+            and str(m.get("description", "")).startswith(prefix)
+            and m.get("endTime")]
+    return max(ends) if ends else None
+
+
 # ---------------------------------------------------------------------------
 # "built with the CURRENT rules", not "exists"
 # ---------------------------------------------------------------------------
@@ -239,13 +262,36 @@ def n_month_assets_current():
         return 0
 
 
-def poly_current():
-    """True when the polygon layer exists AND states the current rule A."""
+def poly_landed():
+    """True when the polygon layer on the server is the output of THIS run — stamped or not.
+
+    NOT just "carries the current rule A".  `Export.table.toAsset` REPLACES the asset, so a
+    fresh export lands with an EMPTY property block; the rule text is written afterwards by
+    `--set-props`, deliberately (07e::properties — "a property block is not worth risking a
+    multi-hour table task on").  Gating the stamping step on the stamp is a deadlock, and it
+    fired: at 17:30 on 12 Sep the driver relaunched a 9 h export over a layer that had landed
+    correctly at 17:20, and would have kept doing so until MAX_TRIES without ever running
+    --verify.
+
+    So there are two ways to be landed.  Either it already carries the current rule text (it
+    has been through --set-props), or its updateTime is at/after the end of an arg07e_ export
+    that SUCCEEDED after we submitted one — which is what BLAUNCH's mtime records.  The
+    BLAUNCH bound is what keeps the BROKEN run's asset from qualifying: that one was also the
+    output of a successful export, just an older one.
+    """
     try:
         a = ee.data.getAsset(f"{C.FINAL_PRODUCTS}/burned_area_polygons_v{C.PRODUCT_VERSION}")
     except ee.EEException:
         return False
-    return (a.get("properties") or {}).get("exclusion_rule_a") == RULE_A_TEXT
+    if (a.get("properties") or {}).get("exclusion_rule_a") == RULE_A_TEXT:
+        return True
+    if not BLAUNCH.exists():
+        return False
+    end = last_success_end("arg07e_")
+    upd = _epoch(a.get("updateTime"))
+    if not end or not upd or end < BLAUNCH.stat().st_mtime:
+        return False
+    return upd >= end - 120          # the asset is that export's output
 
 
 def n_pixels_done():
@@ -309,10 +355,13 @@ def stage_B(st):
         if tries("B") >= MAX_TRIES:
             log(f"[B] ⚠ STOPPED after {MAX_TRIES} submissions — needs a human")
             return
-        run("B", [PYTHON, "collection-01/workflow/07-burned_area_polygons.py",
-                  "--launch", "--overwrite", *GMAIL], timeout=3600)
+        if run("B", [PYTHON, "collection-01/workflow/07-burned_area_polygons.py",
+                     "--launch", "--overwrite", *GMAIL], timeout=3600) == 0:
+            BLAUNCH.touch()     # poly_landed() dates "ours" from here
         return
-    # it landed — gate it, then stamp it
+    # it landed — gate it, then stamp it.  st["poly"] is poly_landed(), so we get here on the
+    # tick after the export succeeds, with the property block still empty; --verify is what
+    # decides whether that asset deserves the stamp.
     if tries("B-verify") >= MAX_TRIES:
         log(f"[B] ⚠ STOPPED — --verify has failed {MAX_TRIES} times on the landed layer; "
             f"see B-verify.out. v1 took three submissions for exactly this reason (docs/07 §13.6)")
@@ -434,7 +483,7 @@ def survey():
         "c_inflight": inflight("arg07c_"),
         "subproducts": sum(C.product_name(s) in fp for s in subs),
         "scar_rasters": sum(C.product_name(s) in fp for s in scar_subs),
-        "poly": poly_current(),
+        "poly": poly_landed(),
         "scarfc": n_assets(C.ANNUAL_BURNED_VECTORS),
         "pix": n_pixels_done(),
         "zips": n_zips(),

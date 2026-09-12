@@ -119,10 +119,21 @@ not the ones you happen to remember.**
       clean first build — but it is **gated on A1 reaching 27/27 assets carrying the current rule
       text**, which is the check the driver now makes. Count assets, not tasks: the task list is
       project-scoped and shows the whole network's work.
-- [ ] **B — 07e, the fire-object polygon layer.** *(run, `--overwrite`)* The landed
-      `burned_area_polygons_v2` is from the broken run and must be replaced **in place**, keeping
-      the link the early users already have. Expect ~4 h, then `--verify` on all 28 fire-years and
-      `--set-props`. The row/area counts will be **larger** than the 908,346 rows / 58.05 Mha now
+- [ ] **B — 07e, the fire-object polygon layer.** *(exported 12 Sep 17:20; `--verify` +
+      `--set-props` outstanding)* Replaced **in place**, keeping the link the early users already
+      have. The export took **8 h 58 min**, not the ~4 h estimated here. Then `--verify` on all 28
+      fire-years and `--set-props`.
+      **The trap that cost a 9 h export here, now fixed in the driver.** `Export.table.toAsset`
+      REPLACES the asset, so a fresh export lands with an **empty property block** — 07e sets the
+      properties afterwards, on purpose (`properties()`: "a property block is not worth risking a
+      multi-hour table task on"). The driver's gate was `exclusion_rule_a == current`, so it read
+      the freshly-landed correct layer as "never landed" and **relaunched the whole export at
+      17:30**, 10 min after it succeeded at 17:20 — and would have looped that until `MAX_TRIES`
+      without ever reaching `--verify`. Worse, had the duplicate finished *after* `--set-props`, it
+      would have wiped the stamp while `B.done` was already written. **Gating a stamping step on
+      its own stamp is a deadlock**; `poly_landed()` now also accepts an unstamped asset whose
+      `updateTime` matches an `arg07e_` export that succeeded after `B-export.launched`, which is
+      what keeps the *broken* run's asset from qualifying too. The row/area counts will be **larger** than the 908,346 rows / 58.05 Mha now
       published — the confined rule A gives 5.27 Mha back. **Tell the early users the numbers
       changed**, not just that v1 is superseded.
 - [x] **C1/C2 — the local scar build and its gate.** *(done 12 Sep 11:06)* `pixels` 28/28 then
