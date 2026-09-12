@@ -52,6 +52,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 ZIP_DIR = REPO_ROOT / "collection-01/data/scars-upload-cache"
 SCAR_DIR = REPO_ROOT / "collection-01/data/objects-scars"
 
+# The closing banner interpolates C.ANNUAL_BURNED_VECTORS so the ingest path carries
+# C.PRODUCT_VERSION (see main()).  Without this import that print is a NameError that fires
+# only AFTER every package has passed — the gate does all its work, reports 27/27, and still
+# exits 1.
+sys.path.insert(0, str(REPO_ROOT / "collection-01"))
+import utils.constants as C  # noqa: E402
+
 EXPECT_FIELDS = {"scar_id": "int", "area_ha": "real", "n_px": "int", "year": "int"}
 SHP_PARTS = {".shp", ".shx", ".dbf", ".prj"}
 OGR_KIND = {ogr.OFTInteger: "int", ogr.OFTInteger64: "int", ogr.OFTReal: "real",
