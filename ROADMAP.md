@@ -22,96 +22,98 @@ at **15 Sep 2026** for Brazil to copy them to `mapbiomas-public`.
 
 ---
 
-## Now — re-export the products as v2
+## Now — RELAUNCH the v2 re-export, overwriting what is already there
 
-> ### ⚠️ THIS SECTION IS ALREADY RUNNING, UNATTENDED — DO NOT RE-LAUNCH ANY OF IT BY HAND
+> ### ⚠ THE FIRST v2 RUN WENT OUT WITH A BROKEN RULE A. IT IS ALL BEING REDONE, IN PLACE.
 >
-> Started **Fri 11 Sep 2026, 21:27** (Iván away for the weekend). Every item below was submitted
-> or started by `collection-01/scripts/run_07_v2_driver.py`, which cron ticks **every 15 min**.
-> **Before you touch anything in this section, look at the board:**
+> **The one thing to know: we are launching `_v2` again, with `--overwrite`, over both the GEE
+> assets and the local files.** There is no `_v3`. The asset paths, `C.PRODUCT_VERSION = 2` and
+> every name stay exactly as they are; what changes is the object selection underneath them.
 >
-> ```bash
-> $PYTHON collection-01/scripts/run_07_v2_driver.py --status   # the board (no server calls)
-> tail -40 collection-01/logs/v2-driver/tick.log               # what it has been doing
-> crontab -l                                                   # is it still armed?
-> ```
+> **What was wrong.** Rule A dropped any object that was >70 % `veg_fire` 15 `grassland_pampa` and
+> burned 1 Jul–15 Nov, anywhere in the country. But class 15 is the remap of MapBiomas 11
+> *Herbáceas Inundables* + 12 + 15 **in the PAMPA region**, so the marshes of the **Delta del
+> Paraná** carry it like a Pampa pasture does. The rule was deleting **65.7 % of the Delta's FY2020
+> burned area** — 433 kha, including one 121,058 ha object that burned on 11 Aug 2020 — and 80.1 %
+> of FY2008, 77.6 % of FY2022. Those are the Islas del Paraná fires. It bit hardest in exactly the
+> big Delta fire years, so it distorted the time series as well as the level.
 >
-> A stage that shows ⏳ is either in flight or waiting on its gate — running its command yourself
-> duplicates work at best. If `STATUS.md`'s "last tick" stamp is more than ~20 min old, the
-> supervisor is not ticking: check `crontab -l` and `collection-01/logs/v2-driver/cron.log`.
-> **When the board is all ✅, delete the two crontab lines** (the `v2_driver_tick.sh` entries) —
-> that is the only manual cleanup it needs.
+> **The fix, already committed** (docs/07 §1.1): rule A gains two conjuncts — `area_ha < 150` and
+> *the object INTERSECTS* a hand-drawn agricultural-Pampa polygon (`config/rule_a_aoi.geojson`).
+> Rule B is unchanged. All 28 fire-years: the published map goes from 58.05 Mha to **63.33 Mha**
+> (the ruleset removes 8.4 % of the accepted area instead of 16.0 %), and the Delta's rule-A loss
+> from 1.455 Mha to 23 ha. All three application points — 07a, 07b, 07e — were re-verified to agree
+> **to the object** on FY2008/2020/2022.
+>
+> **The supervisor is PAUSED, deliberately.** `collection-01/logs/v2-driver/A1.tries` was set to 8
+> (= `MAX_TRIES`) and the 9 in-flight `mob_` tasks were cancelled on 12 Sep, so cron still ticks
+> every 15 min but every stage is a no-op and the board says `[A1] ⚠ STOPPED … needs a human`.
+> **Do not just reset it — do the checklist below first**, or the local scar build will read the
+> broken run's files as done.
 
-**Why a supervisor and not a sequence of commands.** The gates here are hours apart — 07d waits for
-all 27 month assets, 07c for a manual ingest — and the obvious "wait, then launch the next thing"
-shape dies with the session: a power cut takes the terminal, tmux and any sleeping process with it.
-So the driver never sleeps. Each tick reads the state of the *world* — asset counts in both compute
-projects, `.done_fy*` markers, zips on disk, `pgrep` — does whatever is now unblocked, writes
-`logs/v2-driver/STATUS.md`, and exits. cron comes back at boot without a login (there is an
-`@reboot` entry), so an outage costs only the hours the box is off; submitted Earth Engine tasks are
-unaffected either way. Everything it invokes is already idempotent, so a repeated tick is a no-op
-and an interrupted one is retried by the next. Per-stage state is in `logs/v2-driver/`: `<stage>.out`
-is the command output, `<stage>.done` the marker (delete one to force that stage to run again),
-`<stage>.tries` the retry counter — a stage that burns its budget stops and says so on the board
-rather than looping. Design notes and the two traps it had to be taught:
-[docs/07 "Order of operations"](collection-01/docs/07-vector_to_raster.md).
+**How the driver now knows the difference.** The old gate was "does the asset exist". That is
+useless when the wrong version exists, so `run_07_v2_driver.py` counts only assets whose
+`exclusion_rule_a` property equals the **current** `C.exclusion_rules()` text — one
+`ImageCollection.filter().size()` per tick for 07a, one `getAsset` for 07e. As of 12 Sep that reads
+**mob 0/27, poly False**, which is correct: 19 month assets and the polygon layer exist and are all
+from the broken run. A1 and B now pass `--overwrite`. This is the same lesson docs/07 already
+records about the v1 markers, one level up: *anything gated on a thing the previous run could also
+have written is not a gate*.
 
-**What it is waiting on you for:** the 27 scar zips in `collection-01/data/scars-upload-cache/` must
-be ingested **by hand** as `annual_burned_vectors_v2/scars_<Y>` (the folder already exists) with
-`exclusion_rule_a` / `exclusion_rule_b` set on each FC. The next tick after that launches 07c on its
-own. Nothing else needs a human.
+### The relaunch checklist — in this order
 
-The exclusion rules are wired and ON by default, `C.PRODUCT_VERSION = 2` sends every output to a new
-asset path, and `C.PRODUCT_LULC` points at the published col-3 — so the commands in
-[docs/07](collection-01/docs/07-vector_to_raster.md)'s "Order of operations" produce the published
-selection with no flags.
+- [ ] **1. Clear the local artefacts of the broken run.** *(run — deletions, so Iván's call)* The
+      launchers skip a year whose marker or zip exists, and all of them are on disk from the broken
+      build. Archive rather than delete, as was done for v1:
+      ```bash
+      cd collection-01/data
+      mv objects-scars objects-scars_v2bad && mv scars-upload-cache scars-upload-cache_v2bad
+      rm -f scars-pixels-cache/.done_fy*
+      cd ../logs/v2-driver && rm -f C1.done C2.done C1-pixels.tries C1-scars.tries C2.tries
+      ```
+      (`data/objects-scars_v1/` and `scars-upload-cache_v1/` are the ORIGINAL v1 archives — leave
+      them alone.)
+- [ ] **2. Build the rule-A AOI tag.** *(run)* ~2 min for all 28 fire-years; 07b **hard-errors**
+      without it rather than silently disabling half of rule A.
+      ```bash
+      Rscript collection-01/scripts/rule_a_aoi_tag.R          # -> objects-analysis/aoi_rule_a_<fy>.csv
+      ```
+      Already done for all 28 years on 12 Sep — re-run with `FORCE=1` only if the polygon is
+      redrawn, and then `$PYTHON collection-01/scripts/rule_a_aoi_extract.py` **first**.
+- [ ] **3. Un-pause the supervisor.** *(run)* `echo 1 > collection-01/logs/v2-driver/A1.tries`.
+      Cron is untouched and ticks every 15 min, so the next tick launches A1 with `--overwrite`.
+      Watch `$PYTHON collection-01/scripts/run_07_v2_driver.py --status`.
 
-Three branches.
-- A blocks the factsheet and the platform;
-- B is fully independent, just for completeness;
-- C is the calendar-year scars, blocks the platform. Its local half is independent, but its last
-  step (07c, the rasterization) needs **A1 finished** as well as the manual ingest.
+### What each branch has to redo
 
-- [ ] **A1 — 07a, month of burn.** *(run)* 27 Earth Engine tasks into the **new v2 collection** —
-      no flags, no `--overwrite`: the rules are the default and v2 is a different asset path.
-      ~58 min per calendar year; at ~4 concurrent across the two accounts, ~6.5 h. Submit **all 27
-      up front** and as the second account (`ivanbarbera@comahue-conicet.gob.ar`, project
-      `mapbiomas-argentina`) — the queue is per user and the shared project is the congested lane.
-      Once submitted, nothing local has to survive; a power cut does not affect them.
-- [ ] **A2 — 07d, the nine subproducts.** *(run)* **Must not start until all 27 month assets
-      exist**, or it silently builds a partial product. That is an asset-existence test, not a
-      judgement, so a cron entry can do it unattended: every 30 min, count assets in
-      `C.MONTH_OF_BURN_COL`; at 27, run `07-subproducts.py --launch` once, drop a marker file, log
-      to disk. **Count assets, not tasks** — the task list is project-scoped and shows the whole
-      network's work. This gate only works because v2 is a new collection (docs/07 §1.2): against an
-      overwritten one the count starts at 27.
-- [x] **B — 07e, the fire-object polygon layer.** ✅ **done 12 Sep 2026, 01:31** — one submission,
-      ~4 h, `--verify` clean on all 28 fire-years, 19 properties set.
-      `FINAL_PRODUCTS/burned_area_polygons_v2`: **908,346 rows / 908,343 objects / 58.05 Mha**
-      (per-object area; the 3-row gap is `2000_57529` split into 4 parts at the vertex limit, which
-      is why a row-sum over-counts by 5.1 Mha). Against v1 — 1,263,079 rows / 69.12 Mha — the
-      exclusion rules remove **28 % of the objects and 16 % of the area**. None of v1's duplicate
-      FY2021 rows (docs/07 §13.6) recurred. **Tell the early users the v1 link is superseded.**
-- [ ] **C — the calendar-year scars (07b local → ingest → 07c).** *(run — not optional)* The scars
-      are built **locally, from the same filtered fire-year object set as 07a** (rules A and B on,
-      which is the whole reason this is being re-run): `run_07_scars.sh pixels` turns each of the 28
-      fire-years into its accepted burned pixels, `run_07_scars.sh scars` merges the two fire-year
-      halves of each of the 27 calendar years, labels them 8-connected and vectorizes → 27 zipped
-      Shapefiles. GEE cannot do this labelling (`connectedPixelCount` caps at 1024 px), so **the
-      scars exist only as vectors until they are ingested by hand** into `annual_burned_vectors_v2`
-      — set `exclusion_rule_a` / `exclusion_rule_b` on each ingested FC yourself; only the rasters
-      painted from them get the properties automatically. Then 07c is just the rasterization: 3
-      cheap tasks painting `annual_burned_id`, `annual_burned_area_ha` and
-      `annual_burned_scar_size_range` from the ingested FCs, masked to the v2 month of burn — **so
-      07c needs A1 finished as well as the ingest**. Because the filters change which objects exist,
-      they change the scars themselves: one that was 8-connected *through* a dropped object now
-      splits in two, and every `area_ha` shrinks — which is why the local build is re-run and not
-      just the painting. `annual_burned_scar_size_range` is a published subproduct, so this blocks
-      the platform. [docs/07 §1.1](collection-01/docs/07-vector_to_raster.md).
-      **Local half done 11 Sep 23:51** — 28/28 pixel passes (41 min), 27/27 calendar years (77 min),
-      no failures; `validate_scar_zips.py` passes **27/27**, 678 MB in `data/scars-upload-cache/`.
-      Measured: **2,217,621 scars / 57.96 Mha**, against v1's 2,734,416 / 69.02 Mha — −18.9 % of
-      scars, −16.0 % of area. Now waiting only on the manual ingest, then 07c fires itself.
+- [ ] **A1 — 07a, month of burn.** *(run, `--overwrite`)* All **27** calendar years again, over the
+      19 assets that are already there plus the 8 that never landed. ~58 min per year, ~6.5 h at
+      ~4 concurrent. As comahue (`ivanbarbera@comahue-conicet.gob.ar`, project
+      `mapbiomas-argentina`) — the queue is per user. The driver does this on its own once
+      un-paused.
+- [ ] **A2 — 07d, the nine subproducts.** *(run)* Nothing landed from the broken run, so this is a
+      clean first build — but it is **gated on A1 reaching 27/27 assets carrying the current rule
+      text**, which is the check the driver now makes. Count assets, not tasks: the task list is
+      project-scoped and shows the whole network's work.
+- [ ] **B — 07e, the fire-object polygon layer.** *(run, `--overwrite`)* The landed
+      `burned_area_polygons_v2` is from the broken run and must be replaced **in place**, keeping
+      the link the early users already have. Expect ~4 h, then `--verify` on all 28 fire-years and
+      `--set-props`. The row/area counts will be **larger** than the 908,346 rows / 58.05 Mha now
+      published — the confined rule A gives 5.27 Mha back. **Tell the early users the numbers
+      changed**, not just that v1 is superseded.
+- [ ] **C — the calendar-year scars (07b local → manual ingest → 07c).** *(run — not optional)*
+      The whole local build again from step 1's cleared state: `run_07_scars.sh pixels` (28
+      fire-years, ~41 min) then `run_07_scars.sh scars` (27 calendar years, ~77 min), then
+      `validate_scar_zips.py`, then the **manual ingest** into `annual_burned_vectors_v2/scars_<Y>`
+      with `exclusion_rule_a` / `exclusion_rule_b` set on each FC — **nothing was ingested from the
+      broken run, so there is nothing to delete in GEE here**. 07c then paints the three scar
+      rasters from the ingested FCs, masked to the v2 month of burn, so it needs **A1 finished as
+      well as the ingest**. Changing the selection changes the scars themselves — one that was
+      8-connected *through* a dropped object splits in two — which is why the local build is redone
+      and not just the painting.
+
+**What is still waiting on a human:** the manual ingest in C, and steps 1 and 3 above. Everything
+else the supervisor does by itself.
 
 ## Next — the summary statistics
 

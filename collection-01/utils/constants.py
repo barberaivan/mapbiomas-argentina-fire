@@ -414,13 +414,53 @@ MIN_FIRE_HA = 1.0
 # map), and every asset records them in its properties.  A CLI/env override exists
 # only for the explorers and for TESTS/ exports.
 #
-# RULE A — Pampa grassland burning in the winter-spring window.  `frac_c15` is the
-# single veg_fire class 15 `grassland_pampa`, NOT the aggregated `frac_gr_tp`.
+# RULE A — Pampa grassland burning in the winter-spring window, CONFINED to small
+# objects inside the agricultural Pampa.  `frac_c15` is the single veg_fire class 15
+# `grassland_pampa`, NOT the aggregated `frac_gr_tp`.
 T_GRASS = 0.70
 GRASS_WINDOW = ((7, 1), (11, 15))        # (month, day) inclusive, anchored in the FIRE year
+# The two confinements, added 2026-09-12.  veg_fire 15 is the remap of MapBiomas 11
+# (Herbaceas Inundables) + 12 (Herbaceas) + 15 (Pasturas) IN THE PAMPA REGION, so the
+# marshes of the Delta del Parana carry it exactly as a Pampa pasture does.  Without
+# these two conditions rule A deleted 65.7 % of the Delta's FY2020 burned area — 433 kha,
+# 58 % of the rule's whole national drop — including a single 121,058 ha object that
+# burned on 11 Aug 2020.  The size cut spares the large scars, which are fires and not
+# harvest; the polygon keeps the rule out of the Delta and the Corrientes/Entre Rios
+# wetlands altogether.  Measured over all 28 fire-years, the pair takes rule A from
+# 8.71 Mha to 3.43 Mha and the Delta's rule-A loss from 1.455 Mha to 23 ha.
+RULE_A_MAX_HA = 150.0                    # rule A only fires BELOW this area
+RULE_A_AOI_GEOJSON = Path(__file__).resolve().parent.parent / "config" / "rule_a_aoi.geojson"
 # RULE B — agriculture anywhere.  `frac_agri` = frac_c1 + frac_c2 + frac_c3
 # (agriculture_{chaco, cuyo-pat, pampa}), EXCLUDING class 4 agriculture-per.
 T_AGRI = 0.40
+
+
+def rule_a_aoi_ring(path=None):
+    """Rule A's AOI as a closed [[lon, lat], ...] ring — no Earth Engine dependency.
+
+    The polygon is hand-drawn in the Code Editor (`aoiA` in the `fuego` explorer
+    `explore_rules_kept_vs_gone`) and pulled into `config/rule_a_aoi.geojson` by
+    `scripts/rule_a_aoi_extract.py`, so GEE and R filter against ONE geometry with one
+    provenance.  Callers on the GEE side must build it with **geodesic=False** — see
+    `rule_a_aoi_ee()`.
+    """
+    import json
+    gj = json.loads(Path(path or RULE_A_AOI_GEOJSON).read_text())
+    return gj["features"][0]["geometry"]["coordinates"][0]
+
+
+def rule_a_aoi_ee(path=None):
+    """Rule A's AOI as an `ee.Geometry`, PLANAR.
+
+    `geodesic=False` is not a detail: the ring has edges spanning several degrees, and
+    a geodesic edge bows away from the straight lon/lat line R's `terra::is.related()`
+    tests against.  Left geodesic, GEE and the local build would disagree about the
+    objects near those edges — which is exactly the drift docs/07 §1.1 forbids between
+    the three application points.  Measured at the settled thresholds, planar makes the
+    two implementations agree to the object.
+    """
+    import ee
+    return ee.Geometry.Polygon([rule_a_aoi_ring(path)], proj="EPSG:4326", geodesic=False)
 
 
 def grass_window_days(fire_year, window=None):
@@ -445,7 +485,8 @@ def grass_window_days(fire_year, window=None):
     return _day(m_lo, d_lo), _day(m_hi, d_hi)
 
 
-def exclusion_rules(t_grass=None, window=None, t_agri=None, applied=True):
+def exclusion_rules(t_grass=None, window=None, t_agri=None, applied=True,
+                    max_ha=None):
     """The human-readable rule block stamped into EVERY step-07 asset (docs/07 §1.1).
 
     Returned as a dict of asset properties so an asset always states its own
@@ -460,12 +501,16 @@ def exclusion_rules(t_grass=None, window=None, t_agri=None, applied=True):
     t_grass = T_GRASS if t_grass is None else t_grass
     (m_lo, d_lo), (m_hi, d_hi) = window or GRASS_WINDOW
     t_agri = T_AGRI if t_agri is None else t_agri
+    max_ha = RULE_A_MAX_HA if max_ha is None else max_ha
     return {
         "exclusion_rule_a": (
-            f"Pampa grassland burning in the winter-spring window: object dropped when "
-            f"frac_c15 > {t_grass} (veg_fire 15 grassland_pampa) AND its date_med falls "
-            f"between {m_lo:02d}-{d_lo:02d} and {m_hi:02d}-{d_hi:02d} inclusive, anchored "
-            f"inside the fire year (docs/07 §1.1)"),
+            f"Pampa grassland burning in the winter-spring window, confined to small "
+            f"objects in the agricultural Pampa: object dropped when frac_c15 > {t_grass} "
+            f"(veg_fire 15 grassland_pampa) AND its date_med falls between "
+            f"{m_lo:02d}-{d_lo:02d} and {m_hi:02d}-{d_hi:02d} inclusive, anchored inside "
+            f"the fire year, AND area_ha < {max_ha:g}, AND the object INTERSECTS the "
+            f"rule-A AOI (the hand-drawn agricultural-Pampa polygon, "
+            f"config/rule_a_aoi.geojson, planar EPSG:4326; docs/07 §1.1)"),
         "exclusion_rule_b": (
             f"agriculture: object dropped when frac_agri > {t_agri} "
             f"(veg_fire 1-3 agriculture_{{chaco, cuyo-pat, pampa}}, EXCLUDING class 4 "

@@ -160,6 +160,11 @@ def accepted_objects(fire_year, rules=True, t_grass=None, window=None, t_agri=No
     the collection are all-dieback and have a null `fire`/`date_med`, so "not rejected"
     would wrongly admit them.
 
+    Rule A is not just a composition threshold and a season: it also needs the object to
+    be under `C.RULE_A_MAX_HA` and to INTERSECT `C.rule_a_aoi_ee()`, the hand-drawn
+    agricultural-Pampa polygon.  Without those two the rule deleted two thirds of the
+    Delta del Parana, whose marshes remap to the same veg_fire class as a Pampa pasture.
+
     THE EXCLUSION RULES ARE ON BY DEFAULT.  `rules=False` reproduces the pre-rule,
     unfiltered map (the `mob_month_stats` cross-check, TESTS/ exports) and is recorded as
     such in the asset properties — it is never the published selection.  The thresholds
@@ -186,11 +191,19 @@ def accepted_objects(fire_year, rules=True, t_grass=None, window=None, t_agri=No
         # veg_fire class 15 `grassland_pampa`, not the aggregated `frac_gr_tp`. `date_med` is a
         # NUMBER of days since 1970-01-01, so the window is resolved to day numbers
         # client-side (C.grass_window_days) — no ee.Date round trip per feature.
+        # Rule A is CONFINED (docs/07 §1.1): it fires only on objects under
+        # C.RULE_A_MAX_HA that INTERSECT the hand-drawn agricultural-Pampa AOI.
+        # `ee.Filter.bounds` is the exact-geometry intersects predicate and rides the
+        # asset's spatial index; the AOI must be PLANAR (C.rule_a_aoi_ee) or its
+        # geodesic edges bow away from the straight lon/lat lines the local build
+        # tests against — measured, that alone moves 6 objects in FY2020.
         lo, hi = C.grass_window_days(fire_year, window)
         keep.append(ee.Filter.Not(ee.Filter.And(
             ee.Filter.gt("frac_c15", t_grass),
             ee.Filter.gte("date_med", lo),
-            ee.Filter.lte("date_med", hi))))
+            ee.Filter.lte("date_med", hi),
+            ee.Filter.lt("area_ha", C.RULE_A_MAX_HA),
+            ee.Filter.bounds(C.rule_a_aoi_ee()))))
     return fc.filter(ee.Filter.And(*keep))
 
 

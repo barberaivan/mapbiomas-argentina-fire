@@ -130,15 +130,54 @@ would leave area that is in one product and not another.
 
 Each rule names a *set of objects*. The selection above is what excludes them.
 
-#### Rule A — Pampa grassland burning in the winter–spring window
+#### Rule A — Pampa grassland burning in the winter–spring window, confined
 
-Objects that are almost entirely `grassland_pampa` **and** burned in the winter–spring window.
+Objects that are almost entirely `grassland_pampa`, **and** burned in the winter–spring window,
+**and** are small, **and** lie in the agricultural Pampa.
 
 ```
 frac_c15 > T_GRASS   AND   T_DATE_FROM <= date_med <= T_DATE_TO
+                     AND   area_ha < RULE_A_MAX_HA
+                     AND   the object INTERSECTS the rule-A AOI
 ```
 
-`T_GRASS = 0.70`, window **1 Jul → 15 Nov**.
+`T_GRASS = 0.70`, window **1 Jul → 15 Nov**, `RULE_A_MAX_HA = 150`, AOI =
+`config/rule_a_aoi.geojson`.
+
+##### The two confinements, and why they exist (2026-09-12)
+
+**`veg_fire` 15 is not only Pampa pasture.** It is the remap of MapBiomas **11 Herbáceas
+Inundables + 12 Herbáceas + 15 Pasturas** *in the PAMPA region* (`config/veg_fire_remap.csv`), so
+the marshes of the **Delta del Paraná** carry class 15 exactly as a Pampa pasture does — and the
+Delta burns inside 1 Jul → 15 Nov. Measured on FY2020, the unconfined rule deleted **432,966 ha of
+the Delta, 65.7 % of that ecoregion's burned area and 58 % of the rule's whole national drop**,
+including a single **121,058 ha** object with `frac_c15 = 1.000` whose median date is 11 Aug 2020 —
+the Islas del Paraná fires, the most-reported fire event in the country that year. It is not a 2020
+accident: the share of the Delta deleted was 80.1 % in FY2008, 77.6 % in FY2022, 65.9 % in FY2006,
+65.5 % in FY2023. The rule bit hardest exactly in the big Delta fire years, so it distorted the
+interannual series and not merely the level.
+
+**The size cut.** Rule A's drop was bimodal: median dropped object 9.7 ha, but 39 % of its area sat
+in **11 objects over 5,000 ha**. Harvest, tillage and stubble burning happen on fields; a 121 kha
+scar is not a field. `RULE_A_MAX_HA = 150` costs almost nothing on the intended target.
+
+**The AOI.** A hand-drawn 25-vertex polygon over the agricultural Pampa (Buenos Aires, southern
+Santa Fe and Córdoba, eastern La Pampa), drawn by Iván in the Code Editor as the `aoiA` import of
+`explore_rules_kept_vs_gone` and pulled into `config/rule_a_aoi.geojson` by
+`scripts/rule_a_aoi_extract.py`. It excludes the Delta (1 of FY2020's 4,763 Delta objects falls
+inside it) and Campos y Malezales entirely. **Re-run the extractor whenever the polygon is
+redrawn** — the GeoJSON in the repo is the only copy the production scripts read.
+
+**INTERSECTS, not centroid.** An object that merely touches the AOI is inside it: the rule is a
+statement about a region and a scar straddling the edge is half in the agricultural Pampa. The
+local side uses `terra::is.related(v, aoi, "intersects")` — the predicate, not `terra::intersect()`,
+which would build 78 k clipped geometries a year to throw them away.
+
+**The AOI must be PLANAR on the GEE side.** `C.rule_a_aoi_ee()` builds it with `geodesic=False`.
+The ring has edges spanning several degrees, and a geodesic edge bows away from the straight
+lon/lat line `terra` tests against: measured on FY2020, geodesic moves **6 objects / 65 ha**.
+Planar, the two implementations agree **to the object** — 8,227 dropped / 136,993 ha from GEE and
+from R alike.
 
 `frac_c15` is one single `veg_fire` class — class 15, `grassland_pampa`, checked against
 `config/veg_fire_remap.csv`. It deliberately does **not** use the `frac_gr_tp` predictor, which
@@ -163,12 +202,19 @@ orchards, which burn for different reasons and are not the confusion this rule a
 
 Unlike rule A this is unconditional on season and applies everywhere.
 
-#### The thresholds are final
+#### The thresholds
 
-`T_GRASS = 0.70`, window 1 Jul → 15 Nov, `T_AGRI = 0.40`. **FINAL — confirmed with the team,
-2026-09-11.** These are the values collection 1 is published with. Changing one means re-running
-07a, 07b, 07c, 07d and 07e and then every statistic, so treat a proposal to change them as a new
-collection, not a tweak.
+`T_GRASS = 0.70`, window 1 Jul → 15 Nov, `RULE_A_MAX_HA = 150`, the AOI, `T_AGRI = 0.40`.
+Confirmed with the team 2026-09-11; **rule A's two confinements added 2026-09-12** after the Delta
+problem above was found — that revision is what the `_v2` re-export is being relaunched with
+([`ROADMAP.md`](../../ROADMAP.md)). Changing any of them means re-running 07a, 07b, 07c, 07d and
+07e and then every statistic, so treat a proposal to change them as a new collection, not a tweak.
+
+**Rule B was left alone.** Adding a `frac_woody` condition, a `shape_idx` compactness condition and
+an area cap to it was explored on 2026-09-12 and rejected: `shape_idx` correlates 0.685 with
+log₁₀(area) on raster-derived polygons, so one global threshold acts mostly as a size filter, and
+the agri/non-agri distributions overlap heavily below ~25 ha. The knobs survive in the explorer,
+off by default.
 
 They live in `utils/constants.py` as `C.T_GRASS`, `C.GRASS_WINDOW` and `C.T_AGRI`, and they are the
 **default**: a run with no flags produces the published selection. Every script keeps an override
@@ -180,10 +226,15 @@ are recorded in the asset properties, so an unfiltered run can never be mistaken
 
 | | rule | measured, FY2020, whole country |
 |---|---|---|
-| **A** | Pampa grassland in the window | 15,092 obj / 746,603 ha — **17.5 %** of the year's burned area |
+| **A** | Pampa grassland in the window, **confined** | 8,227 obj / 136,993 ha — **3.2 %** of the year's burned area |
+| | *(A unconfined, for comparison)* | *15,092 obj / 746,603 ha — 17.5 %* |
 | **B** | agriculture | 2,389 obj / 162,168 ha — **3.8 %** |
-| | **A or B** | 17,481 obj / 908,771 ha — **21.3 %** |
+| | **A or B** | 10,616 obj / 299,162 ha — **7.0 %** |
 | | the accepted set before them (`fire == 1 & area_ha >= 1`) | 62,605 obj / 4,268,189 ha |
+
+Over all 28 fire-years: before the rules **69.12 Mha**; the unconfined ruleset published
+**58.05 Mha (−16.0 %)**; the confined one publishes **63.33 Mha (−8.4 %)**. The **5.27 Mha**
+difference is almost all real fire — the Delta's rule-A loss alone goes from **1.455 Mha to 23 ha**.
 
 Rule A is therefore five times more aggressive than any national `frac_agri` threshold, which is why
 it is a headline decision rather than a QC tweak. Its **window is the single biggest lever in the
@@ -221,13 +272,29 @@ The rules are applied at read time, in the three places that read the object set
 
 | file | where | mechanism |
 |---|---|---|
-| `workflow/07-month_of_burn.py` | `accepted_objects(fire_year, rules=True, …)` | `ee.Filter` on the `objects_raw_<fy>` FC properties |
-| `workflow/07-calendar_scars.R` | `accepted_oids(fy)` | `data.table` predicate on the local metrics CSV |
+| `utils/constants.py` | `T_GRASS`, `GRASS_WINDOW`, `RULE_A_MAX_HA`, `RULE_A_AOI_GEOJSON`, `T_AGRI`, `rule_a_aoi_ee()`, `exclusion_rules()` | the single source of truth for the Python side |
+| `workflow/07-month_of_burn.py` | `accepted_objects(fire_year, rules=True, …)` | `ee.Filter` on the FC properties + `ee.Filter.bounds(C.rule_a_aoi_ee())` |
+| `workflow/07-calendar_scars.R` | `accepted_oids(fy)` | `data.table` predicate on the local metrics CSV + the `in_aoi` tag |
 | `workflow/07-burned_area_polygons.py` | `fire_filter(fire_year)` | `ee.Filter`, identical to 07a's |
+| `scripts/rule_a_aoi_extract.py` | — | pulls `aoiA` out of the pushed GEE explorer into `config/rule_a_aoi.geojson` |
+| `scripts/rule_a_aoi_tag.R` | — | writes `objects-analysis/aoi_rule_a_<fy>.csv`, the `in_aoi` column 07b reads |
+| `scripts/rule_a_cap_diagnostic.py` | `settled()` | the diagnostic, same predicate, for measuring |
 
-**Both implementations were cross-checked against the explorer, 2026-09-11, and agree to the
-object**: FY2020, rule A 15,092, rule B 2,389, union 17,481 objects / 908,771 ha, overlap 0 — the
-same six numbers from GEE and from R.
+`07-scar_rasters.py`, `07-subproducts.py` and `scripts/audit_product_properties.py` need no edit:
+they stamp and audit `C.exclusion_rules()`, which now words the confined rule A.
+
+**The AOI membership is evaluated ONCE**, by `rule_a_aoi_tag.R`, and 07b reads a column. A spatial
+predicate evaluated separately in two languages is exactly the thing that drifts; `accepted_oids()`
+**hard-errors** when the tag file is missing or stale rather than silently treating every object as
+outside the AOI, which would disable half of rule A and still look plausible.
+
+**Verified 2026-09-12, all three application points agree to the object** on FY2008, FY2020 and
+FY2022: 47,996 / 51,989 / 44,082 objects kept, the same from `accepted_objects()`, `fire_filter()`
+and `accepted_oids()`.
+
+**Both implementations were cross-checked against the explorer, 2026-09-11 (unconfined rule A) and
+again 2026-09-12 (confined), and agree to the object**: FY2020, rule A 8,227 objects / 136,993 ha,
+rule B 2,389 / 162,168 ha, 51,989 objects kept — the same numbers from GEE and from R.
 
 ⚠️ **07c cannot be brought up to date on its own.** It paints the *ingested* scar FCs and masks them
 to 07a, so re-running it against scars built from an unfiltered object set does not just leave an

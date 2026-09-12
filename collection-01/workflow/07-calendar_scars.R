@@ -99,6 +99,16 @@ RULES        <- Sys.getenv("RULES", "1") != "0"
 T_GRASS      <- as.numeric(Sys.getenv("T_GRASS", "0.70"))   # rule A: frac_c15 above this
 GRASS_WINDOW <- c("07-01", "11-15")                          # rule A: date_med inside (MM-DD)
 T_AGRI       <- as.numeric(Sys.getenv("T_AGRI",  "0.40"))   # rule B: frac_agri above this
+# Rule A's two CONFINEMENTS (docs/07 §1.1, added 2026-09-12). veg_fire 15 is the remap of
+# MapBiomas 11/12/15 in the PAMPA region, so the Delta del Parana marshes carry it like a
+# Pampa pasture; unconfined, rule A deleted 65.7 % of the Delta's FY2020 burned area.
+RULE_A_MAX_HA <- as.numeric(Sys.getenv("RULE_A_MAX_HA", "150"))
+# AOI membership is NOT tested here. It is precomputed ONCE per fire-year by
+# scripts/rule_a_aoi_tag.R (terra::is.related(v, aoi, "intersects")) into
+# objects-analysis/aoi_rule_a_<fy>.csv, and read as a column. Both passes and every other
+# reader then see the same answer, and the GEE side tests the same PLANAR polygon with
+# ee.Filter.bounds -- verified identical to the object on FY2020 (8,227 dropped / 136,993 ha).
+AOI_TAG_DIR  <- "collection-01/data/objects-analysis"   # symlink into the store
 
 # The canonical SNIC grid — IDENTICAL in all 56 snic/snic_metrics assets and in every carta
 # tile (verified 2026-07-29). Mirrored in utils/constants.py::SNIC_TRANSFORM; keep in sync.
@@ -179,6 +189,21 @@ grass_window_days <- function(fy) {
   c(bound(GRASS_WINDOW[1]), bound(GRASS_WINDOW[2]))
 }
 
+# The rule-A AOI membership of one fire-year's objects, as a named 0/1 vector keyed by oid.
+# A HARD ERROR when the tag file is missing: silently treating every object as outside the
+# AOI would disable half of rule A and produce a map that looks plausible and is not the
+# published selection. Run `Rscript collection-01/scripts/rule_a_aoi_tag.R` first.
+aoi_tag <- function(fy) {
+  f <- file.path(AOI_TAG_DIR, sprintf("aoi_rule_a_%d.csv", fy))
+  if (!file.exists(f)) {
+    stop(sprintf(paste0("rule-A AOI tag missing for FY%d:\n  %s\n",
+                        "Build it with:  Rscript collection-01/scripts/rule_a_aoi_tag.R %d"),
+                 fy, f, fy))
+  }
+  t <- fread(f, select = c("oid", "in_aoi"))
+  setNames(as.integer(t$in_aoi), t$oid)
+}
+
 accepted_oids <- function(fy) {
   pr <- fread(file.path(PRED_DIR, sprintf("objects_%d_pred.csv", fy)), select = c("oid", "fire"))
   cols <- c("oid", "area_ha", "date_median", "n_pixels")
@@ -188,15 +213,25 @@ accepted_oids <- function(fy) {
   if (RULES) {
     before <- nrow(a)
     w <- grass_window_days(fy)
-    # rule A -- Pampa grassland in the winter-spring window; rule B -- agriculture anywhere.
+    tag <- aoi_tag(fy)
+    a[, in_aoi := tag[oid]]
+    if (anyNA(a$in_aoi)) {
+      stop(sprintf(paste0("FY%d: %d accepted objects are absent from the rule-A AOI tag -- ",
+                          "the tag is stale, rebuild it with FORCE=1"),
+                   fy, sum(is.na(a$in_aoi))))
+    }
+    # rule A -- Pampa grassland in the winter-spring window, CONFINED to objects under
+    # RULE_A_MAX_HA that INTERSECT the agricultural-Pampa AOI; rule B -- agriculture anywhere.
     # Both drop on `>`, so the keep is `<=` (docs/07 §1.1). `frac_c15` is the SINGLE veg_fire
-    # class 15 grassland_pampa, not the aggregated frac_gr_tp.
-    a <- a[!(frac_c15 > T_GRASS & date_median >= w[1] & date_median <= w[2])]
+    # class 15 grassland_pampa, not the aggregated frac_gr_tp. All four of rule A's conjuncts
+    # must match 07a/07e exactly, `area_ha <` and the intersects included.
+    a <- a[!(frac_c15 > T_GRASS & date_median >= w[1] & date_median <= w[2] &
+             area_ha < RULE_A_MAX_HA & in_aoi == 1L)]
     nA <- before - nrow(a)
     a <- a[frac_c1 + frac_c2 + frac_c3 <= T_AGRI]
     message(sprintf(
-      "[FY%d]   [rules] A (frac_c15 > %g in %s..%s): -%d | B (frac_agri > %g): -%d | %d of %d kept",
-      fy, T_GRASS, GRASS_WINDOW[1], GRASS_WINDOW[2], nA, T_AGRI,
+      "[FY%d]   [rules] A (frac_c15 > %g in %s..%s, < %g ha, in AOI): -%d | B (frac_agri > %g): -%d | %d of %d kept",
+      fy, T_GRASS, GRASS_WINDOW[1], GRASS_WINDOW[2], RULE_A_MAX_HA, nA, T_AGRI,
       before - nA - nrow(a), nrow(a), before))
   } else {
     message(sprintf("[FY%d]   [rules] NONE APPLIED -- this is not the published selection", fy))

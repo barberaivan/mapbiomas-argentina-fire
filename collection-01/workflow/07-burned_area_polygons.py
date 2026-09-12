@@ -312,11 +312,16 @@ def fire_filter(fire_year):
     if RULES:
         # rule B drops on `>`, so the keep is `<=`
         keep.append(ee.Filter.lte("frac_agri", C.T_AGRI if T_AGRI is None else T_AGRI))
+        # Rule A is CONFINED to small objects intersecting the agricultural-Pampa AOI
+        # (docs/07 §1.1). Byte-for-byte the same four conjuncts as
+        # 07-month_of_burn.py::accepted_objects, PLANAR AOI included.
         lo, hi = C.grass_window_days(fire_year)
         keep.append(ee.Filter.Not(ee.Filter.And(
             ee.Filter.gt("frac_c15", C.T_GRASS if T_GRASS is None else T_GRASS),
             ee.Filter.gte("date_med", lo),
-            ee.Filter.lte("date_med", hi))))
+            ee.Filter.lte("date_med", hi),
+            ee.Filter.lt("area_ha", C.RULE_A_MAX_HA),
+            ee.Filter.bounds(C.rule_a_aoi_ee()))))
     return ee.Filter.And(*keep)
 
 
@@ -622,7 +627,8 @@ def main():
         print("[filter] NO EXCLUSION RULES — this is not the published selection")
     else:
         print(f"[filter] rule A: frac_c15 > {T_GRASS or C.T_GRASS} in "
-              f"{C.GRASS_WINDOW[0]}..{C.GRASS_WINDOW[1]} | "
+              f"{C.GRASS_WINDOW[0]}..{C.GRASS_WINDOW[1]} and area_ha < "
+              f"{C.RULE_A_MAX_HA:g} and intersecting {C.RULE_A_AOI_GEOJSON.name} | "
               f"rule B: frac_agri > {T_AGRI or C.T_AGRI}")
 
     initialize(args.project, args.credentials)

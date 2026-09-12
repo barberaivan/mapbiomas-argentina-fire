@@ -217,6 +217,37 @@ def inflight(prefix):
             and str(m.get("description", "")).startswith(prefix)]
 
 
+# ---------------------------------------------------------------------------
+# "built with the CURRENT rules", not "exists"
+# ---------------------------------------------------------------------------
+# The first _v2 run went out with the UNCONFINED rule A (it deleted two thirds of the Delta
+# del Paraná), so 19 month assets and the polygon layer exist and are WRONG.  Everything here
+# is therefore re-launched with `--overwrite`, and an asset only counts as done when it
+# carries the CURRENT `exclusion_rule_a` text.  Counting existence instead would let a tick
+# read a half-overwritten collection as complete — the same trap docs/07 records for the v1
+# markers, one level up: ANYTHING GATED ON A THING THE PREVIOUS RUN COULD ALSO HAVE WRITTEN
+# is not a gate.
+RULE_A_TEXT = C.exclusion_rules()["exclusion_rule_a"]
+
+
+def n_month_assets_current():
+    """Month-of-burn images whose `exclusion_rule_a` is the one we are building now."""
+    try:
+        return int(ee.ImageCollection(C.MONTH_OF_BURN_COL)
+                   .filter(ee.Filter.eq("exclusion_rule_a", RULE_A_TEXT)).size().getInfo())
+    except ee.EEException:
+        return 0
+
+
+def poly_current():
+    """True when the polygon layer exists AND states the current rule A."""
+    try:
+        a = ee.data.getAsset(f"{C.FINAL_PRODUCTS}/burned_area_polygons_v{C.PRODUCT_VERSION}")
+    except ee.EEException:
+        return False
+    return (a.get("properties") or {}).get("exclusion_rule_a") == RULE_A_TEXT
+
+
 def n_pixels_done():
     return len(list(PIX_CACHE.glob(".done_fy*"))) if PIX_CACHE.exists() else 0
 
@@ -229,8 +260,10 @@ def n_zips():
 # the stages
 # ---------------------------------------------------------------------------
 def stage_A1(st):
-    """07a — 27 month-of-burn tasks, as comahue.  The script itself skips an existing asset or
-    an in-flight task, so re-invoking it is how a FAILED year gets resubmitted."""
+    """07a — 27 month-of-burn tasks, as comahue, with --overwrite.  The script skips an
+    in-flight task, so re-invoking it is how a FAILED year gets resubmitted; `st["mob"]`
+    counts only assets stamped with the CURRENT rule A, so a leftover from the first _v2
+    run can never read as done."""
     if st["mob"] >= N_CAL:
         if not done("A1"):
             mark("A1", f"{st['mob']}/{N_CAL} month assets")
@@ -242,8 +275,10 @@ def stage_A1(st):
         log(f"[A1] ⚠ STOPPED after {MAX_TRIES} submissions with {st['mob']}/{N_CAL} landed "
             f"— needs a human")
         return
+    # --overwrite: the 19 month assets from the first _v2 run carry the unconfined rule A
+    # and must be REPLACED in place, not skipped as "already there".
     run("A1", [PYTHON, "collection-01/workflow/07-month_of_burn.py",
-               "--all", "--launch", *COMAHUE], timeout=5400)
+               "--all", "--launch", "--overwrite", *COMAHUE], timeout=5400)
 
 
 def stage_A2(st):
@@ -275,7 +310,7 @@ def stage_B(st):
             log(f"[B] ⚠ STOPPED after {MAX_TRIES} submissions — needs a human")
             return
         run("B", [PYTHON, "collection-01/workflow/07-burned_area_polygons.py",
-                  "--launch", *GMAIL], timeout=3600)
+                  "--launch", "--overwrite", *GMAIL], timeout=3600)
         return
     # it landed — gate it, then stamp it
     if tries("B-verify") >= MAX_TRIES:
@@ -384,7 +419,7 @@ def stage_C3(st):
 # ---------------------------------------------------------------------------
 def survey():
     fetch_ops()
-    mob = n_assets(C.MONTH_OF_BURN_COL)
+    mob = n_month_assets_current()
     fp = {a["id"].split("/")[-1]
           for a in ee.data.listAssets({"parent": C.FINAL_PRODUCTS}).get("assets", [])}
     subs = ["monthly_burned", "annual_burned", "monthly_burned_coverage",
@@ -399,7 +434,7 @@ def survey():
         "c_inflight": inflight("arg07c_"),
         "subproducts": sum(C.product_name(s) in fp for s in subs),
         "scar_rasters": sum(C.product_name(s) in fp for s in scar_subs),
-        "poly": f"burned_area_polygons_v{C.PRODUCT_VERSION}" in fp,
+        "poly": poly_current(),
         "scarfc": n_assets(C.ANNUAL_BURNED_VECTORS),
         "pix": n_pixels_done(),
         "zips": n_zips(),
