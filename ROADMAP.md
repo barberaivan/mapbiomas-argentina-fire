@@ -45,11 +45,11 @@ at **15 Sep 2026** for Brazil to copy them to `mapbiomas-public`.
 > from 1.455 Mha to 23 ha. All three application points — 07a, 07b, 07e — were re-verified to agree
 > **to the object** on FY2008/2020/2022.
 >
-> **The supervisor is PAUSED, deliberately.** `collection-01/logs/v2-driver/A1.tries` was set to 8
-> (= `MAX_TRIES`) and the 9 in-flight `mob_` tasks were cancelled on 12 Sep, so cron still ticks
-> every 15 min but every stage is a no-op and the board says `[A1] ⚠ STOPPED … needs a human`.
-> **Do not just reset it — do the checklist below first**, or the local scar build will read the
-> broken run's files as done.
+> **The supervisor was RELAUNCHED on 12 Sep 08:05**, after the checklist below was worked
+> through: the broken run's local files are gone, every stage marker is cleared and `A1.tries`
+> is back to 0, so the next cron tick starts A1 (`--overwrite`) and C1 together. Watch it with
+> `$PYTHON collection-01/scripts/run_07_v2_driver.py --status`; **nothing below needs a human
+> until the manual ingest in branch C.**
 
 **How the driver now knows the difference.** The old gate was "does the asset exist". That is
 useless when the wrong version exists, so `run_07_v2_driver.py` counts only assets whose
@@ -60,37 +60,58 @@ from the broken run. A1 and B now pass `--overwrite`. This is the same lesson do
 records about the v1 markers, one level up: *anything gated on a thing the previous run could also
 have written is not a gate*.
 
+**But the asset gate is only half of it — and the other half nearly ate branch B.** Every stage
+also short-circuits on its own `<stage>.done` file *before* it ever looks at an asset
+(`stage_B` opens with `if done("B"): return`). `B.done` was written at 01:31 on 12 Sep, eight
+hours **before** the rule-A fix landed at 07:49, so it certified the BROKEN polygon layer. The
+original checklist cleared `C1.done` and `C2.done` and not `B.done`: branch B would have
+returned at its first line on every tick for the rest of the weekend, the board would have shown
+`B ✅ verified=True`, and the layer early users hold would still be the 58.05 Mha one. **When a
+run is invalidated, the markers are as stale as the assets — clear every `*.done` and `*.tries`,
+not the ones you happen to remember.**
+
 ### The relaunch checklist — in this order
 
-- [ ] **1. Clear the local artefacts of the broken run.** *(run — deletions, so Iván's call)* The
-      launchers skip a year whose marker or zip exists, and all of them are on disk from the broken
-      build. Archive rather than delete, as was done for v1:
+- [x] **1. Clear the local artefacts of the broken run.** *(done 12 Sep 08:03)* The launchers skip
+      a year whose marker or zip exists, and all of them were on disk from the broken build.
+      **Deleted outright, not archived** (Iván's call, 12 Sep): they are a known-wrong build,
+      fully regenerable from step 05, and archiving 4.4 GB into the Insync store to sit beside
+      the v1 archives buys nothing.
       ```bash
       cd collection-01/data
-      mv objects-scars objects-scars_v2bad && mv scars-upload-cache scars-upload-cache_v2bad
-      rm -f scars-pixels-cache/.done_fy*
-      cd ../logs/v2-driver && rm -f C1.done C2.done C1-pixels.tries C1-scars.tries C2.tries
+      rm -rf objects-scars scars-upload-cache                    # 3.7 GB + 678 MB
+      rm -f scars-pixels-cache/.done_fy* scars-pixels-cache/*.rds   # 28 markers + 54 files, 15 GB
+      cd ../logs/v2-driver && rm -f *.done *.tries               # ALL of them — see above
       ```
-      (`data/objects-scars_v1/` and `scars-upload-cache_v1/` are the ORIGINAL v1 archives — leave
-      them alone.)
-- [ ] **2. Build the rule-A AOI tag.** *(run)* ~2 min for all 28 fire-years; 07b **hard-errors**
+      The 54 `.rds` went too, beyond what this list first said: the pixels pass rewrites all of
+      them anyway, and a stale one is only invisible while all 28 markers are present. A wrong
+      file that survives a failed rerun is worse than a missing one.
+      (`data/objects-scars_v1/` and `scars-upload-cache_v1/` are the ORIGINAL v1 archives — left
+      alone.)
+- [x] **2. Build the rule-A AOI tag.** *(run)* ~2 min for all 28 fire-years; 07b **hard-errors**
       without it rather than silently disabling half of rule A.
       ```bash
       Rscript collection-01/scripts/rule_a_aoi_tag.R          # -> objects-analysis/aoi_rule_a_<fy>.csv
       ```
-      Already done for all 28 years on 12 Sep — re-run with `FORCE=1` only if the polygon is
-      redrawn, and then `$PYTHON collection-01/scripts/rule_a_aoi_extract.py` **first**.
-- [ ] **3. Un-pause the supervisor.** *(run)* `echo 1 > collection-01/logs/v2-driver/A1.tries`.
-      Cron is untouched and ticks every 15 min, so the next tick launches A1 with `--overwrite`.
-      Watch `$PYTHON collection-01/scripts/run_07_v2_driver.py --status`.
+      *(done 12 Sep — all 28 CSVs present.)* Re-run with `FORCE=1` only if the polygon is
+      redrawn, and then `$PYTHON collection-01/scripts/rule_a_aoi_extract.py` **first**. Only 07b
+      reads these; 07a and 07e test the AOI server-side with `ee.Filter.bounds(C.rule_a_aoi_ee())`,
+      so **no step-06 re-upload was needed** — the AOI is not a property on the object FCs.
+- [x] **3. Un-pause the supervisor.** *(done 12 Sep 08:05)*
+      `echo 0 > collection-01/logs/v2-driver/A1.tries` — 0, not 1, so the relaunch gets the full
+      `MAX_TRIES` budget like every other stage (whose counters are now absent, i.e. 0).
+      Cron is untouched and ticks every 15 min. Watch
+      `$PYTHON collection-01/scripts/run_07_v2_driver.py --status`.
 
 ### What each branch has to redo
 
-- [ ] **A1 — 07a, month of burn.** *(run, `--overwrite`)* All **27** calendar years again, over the
-      19 assets that are already there plus the 8 that never landed. ~58 min per year, ~6.5 h at
-      ~4 concurrent. As comahue (`ivanbarbera@comahue-conicet.gob.ar`, project
-      `mapbiomas-argentina`) — the queue is per user. The driver does this on its own once
-      un-paused.
+- [ ] **A1 — 07a, month of burn.** *(running since 12 Sep 08:15)* All **27** calendar years again,
+      over the 19 assets that are already there plus the 8 that never landed. ~58 min per year,
+      ~6.5 h at ~4 concurrent. As comahue (`ivanbarbera@comahue-conicet.gob.ar`, project
+      `mapbiomas-argentina`) — the queue is per user. `Export.image.toAsset(overwrite=True)`
+      replaces an asset only when the **new task completes**, so a failed year leaves the old
+      (wrong) image in place rather than a hole — which is why the `exclusion_rule_a` asset filter,
+      not existence, is what the driver counts.
 - [ ] **A2 — 07d, the nine subproducts.** *(run)* Nothing landed from the broken run, so this is a
       clean first build — but it is **gated on A1 reaching 27/27 assets carrying the current rule
       text**, which is the check the driver now makes. Count assets, not tasks: the task list is
@@ -101,8 +122,8 @@ have written is not a gate*.
       `--set-props`. The row/area counts will be **larger** than the 908,346 rows / 58.05 Mha now
       published — the confined rule A gives 5.27 Mha back. **Tell the early users the numbers
       changed**, not just that v1 is superseded.
-- [ ] **C — the calendar-year scars (07b local → manual ingest → 07c).** *(run — not optional)*
-      The whole local build again from step 1's cleared state: `run_07_scars.sh pixels` (28
+- [ ] **C — the calendar-year scars (07b local → manual ingest → 07c).** *(C1 running since 12 Sep
+      08:15; the ingest is Monday's)* The whole local build again from step 1's cleared state: `run_07_scars.sh pixels` (28
       fire-years, ~41 min) then `run_07_scars.sh scars` (27 calendar years, ~77 min), then
       `validate_scar_zips.py`, then the **manual ingest** into `annual_burned_vectors_v2/scars_<Y>`
       with `exclusion_rule_a` / `exclusion_rule_b` set on each FC — **nothing was ingested from the
@@ -112,8 +133,15 @@ have written is not a gate*.
       8-connected *through* a dropped object splits in two — which is why the local build is redone
       and not just the painting.
 
-**What is still waiting on a human:** the manual ingest in C, and steps 1 and 3 above. Everything
-else the supervisor does by itself.
+**What is still waiting on a human:** only the **manual ingest in C** — Iván ingests the 27 zips on
+Monday 14 Sep, and the next tick then launches 07c on its own. Steps 1–3 are done. Everything else
+the supervisor does by itself over the weekend: A1 → A2 → A3, B (launch → `--verify` → `--set-props`)
+and C1 → C2.
+
+**Still owed to people, once B lands:** `burned_area_polygons_v2` is replaced in place, so the link
+early users already hold keeps working but its numbers change — 908,346 rows / 58.05 Mha becomes
+something larger, the confined rule A giving 5.27 Mha back. **Tell them the numbers moved**, not
+merely that v1 is superseded.
 
 ## Next — the summary statistics
 

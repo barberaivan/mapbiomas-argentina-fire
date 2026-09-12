@@ -7,3 +7,9 @@
 # which would also hide the built out/taller_mayo_2026_col_01.pdf.
 /taller_mayo_2026_col_01.pptx
 /taller_mayo_2026_col_01.pdf
+
+# Quarto render of factsheet-notes.md. Unlike the notebooks/ HTML (self-contained,
+# `embed-resources`), this one ships a 920 KB `_files/libs/` sidecar — regenerable
+# from the .md, which IS tracked, so neither half belongs in git.
+/factsheet-notes.html
+/factsheet-notes_files/
