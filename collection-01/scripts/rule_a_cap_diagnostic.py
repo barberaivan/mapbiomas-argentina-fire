@@ -41,6 +41,7 @@ def store_root():
 
 
 MIN_FIRE_HA = 1.0
+RULE_A_CAP = 150.0        # rule A only applies below this area (ha)
 # The two ecoregions whose "grassland_pampa" is flooded marsh, not cropland.
 WETLANDS = ["Delta e Islas del Paraná", "Campos y Malezales"]
 DELTA = "Delta e Islas del Paraná"
@@ -63,7 +64,19 @@ def load(fy, data_dir):
     d["ruleB"] = (d.frac_c1 + d.frac_c2 + d.frac_c3) > C.T_AGRI
     rg = pd.read_csv(f"{data_dir}/objects-analysis/regions_{fy}_one.csv")
     rg = rg[rg.layer == "ecoregions13"][["oid", "region_name"]]
-    return d.merge(rg, on="oid", how="left")
+    d = d.merge(rg, on="oid", how="left")
+    # The rule-A AOI membership, precomputed ONCE by scripts/rule_a_aoi_tag.R
+    # (terra::is.related, "intersects") so GEE and R cannot drift apart.
+    aoi = Path(f"{data_dir}/objects-analysis/aoi_rule_a_{fy}.csv")
+    d["in_aoi"] = (d.oid.map(pd.read_csv(aoi).set_index("oid").in_aoi).fillna(0).astype(int)
+                   if aoi.exists() else 0)
+    return d
+
+
+def settled(d, cap=RULE_A_CAP):
+    """The ruleset as decided, 2026-09-12: rule A also needs `area_ha < cap` and
+    an object that intersects the rule-A AOI; rule B is unchanged."""
+    return (d.ruleA & (d.area_ha < cap) & (d.in_aoi == 1)), d.ruleB
 
 
 def pct(a, b):
