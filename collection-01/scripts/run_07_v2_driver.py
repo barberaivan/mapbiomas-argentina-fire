@@ -277,6 +277,10 @@ def stage_B(st):
                   "--launch", *GMAIL], timeout=3600)
         return
     # it landed — gate it, then stamp it
+    if tries("B-verify") >= MAX_TRIES:
+        log(f"[B] ⚠ STOPPED — --verify has failed {MAX_TRIES} times on the landed layer; "
+            f"see B-verify.out. v1 took three submissions for exactly this reason (docs/07 §13.6)")
+        return
     if run("B-verify", [PYTHON, "collection-01/workflow/07-burned_area_polygons.py",
                         "--verify", *GMAIL], timeout=7200) != 0:
         log("[B] ⚠ --verify FAILED on the landed layer — see B-verify.out")
@@ -329,6 +333,31 @@ def stage_C2(st):
     if run("C2", [PYTHON, "collection-01/scripts/validate_scar_zips.py"], timeout=3600) == 0:
         mark("C2", "27/27 zips validated — READY FOR IVÁN'S MANUAL INGEST")
         log("[C2] COMPLETE — the zips are gated and ready to ingest")
+
+
+def stage_A3(st):
+    """Once the nine subproducts have landed, leave an audit on disk for Monday morning: the
+    band bookkeeping + ROI counts (`--check`) and the property-block audit, which is a DRY RUN —
+    `audit_product_properties.py` only writes with `--apply`.  Neither touches a pixel."""
+    if done("A3") or st["subproducts"] < 9:
+        return
+    run("A3-check", [PYTHON, "collection-01/workflow/07-subproducts.py", "--check", *GMAIL],
+        timeout=7200)
+    run("A3-props", [PYTHON, "collection-01/scripts/audit_product_properties.py"], timeout=3600)
+    mark("A3", "subproducts checked + property block audited (READ A3-*.out)")
+    log("[A3] the nine subproducts are audited — read A3-check.out and A3-props.out")
+
+
+def stage_C4(st):
+    """Same for the three scar rasters: the scar-vs-month agreement check on the Chaco box
+    (docs/07 §9.1). Whole-country is one reduceRegion per year and far too slow to run blind."""
+    if done("C4") or st["scar_rasters"] < 3:
+        return
+    run("C4-check", [PYTHON, "collection-01/workflow/07-scar_rasters.py", "--check",
+                     "--years", "2003,2020", "--roi=-61.6,-25.6,-61.1,-25.1", *GMAIL],
+        timeout=7200)
+    mark("C4", "scar rasters checked against the month mask (READ C4-check.out)")
+    log("[C4] the three scar rasters are checked — read C4-check.out")
 
 
 def stage_C3(st):
@@ -396,11 +425,15 @@ def write_status(st):
         f"verified={done('B')} |",
         f"| C1 | 07b local scars | {tick(done('C1'))} | "
         f"pixels {st['pix']}/{N_FIRE}, zips {st['zips']}/{N_CAL} |",
+        f"| A3 | 07d audit | {tick(done('A3'))} | "
+        f"`--check` + property audit, once the nine land — read `A3-*.out` |",
         f"| C2 | zip gate | {tick(done('C2'))} | validate_scar_zips.py |",
         f"| C3 | 07c scar rasters | {tick(st['scar_rasters'] == 3)} | "
         f"{st['scar_rasters']}/3 assets; ingested scar FCs {st['scarfc']}/{N_CAL}"
         f"{' — WAITING FOR THE MANUAL INGEST' if st['scarfc'] < N_CAL else ''}"
         f"{' — GATED on A1 (07c masks to the v2 month of burn)' if st['mob'] < N_CAL else ''} |",
+        f"| C4 | 07c check | {tick(done('C4'))} | "
+        f"scar-vs-month agreement on the Chaco box — read `C4-check.out` |",
         "",
     ]
     if done("C2") and st["scarfc"] < N_CAL:
@@ -413,7 +446,7 @@ def write_status(st):
             "on its own. Then `$PYTHON collection-01/scripts/validate_scar_zips.py --ingested`.",
             "",
         ]
-    stuck = [n for n in ("A1", "A2", "B", "C1-pixels", "C1-scars", "C3")
+    stuck = [n for n in ("A1", "A2", "B", "B-verify", "C1-pixels", "C1-scars", "C3")
              if tries(n) >= MAX_TRIES and not done(n.split("-")[0])]
     if stuck:
         lines += [f"## ⚠ Stopped after {MAX_TRIES} attempts: {', '.join(stuck)}", "",
@@ -442,7 +475,8 @@ def main():
         f"scar_rasters={st['scar_rasters']}/3 scarfc={st['scarfc']}/{N_CAL} "
         f"pix={st['pix']}/{N_FIRE} zips={st['zips']}/{N_CAL}")
 
-    for stage in (stage_A1, stage_A2, stage_B, stage_C1, stage_C2, stage_C3):
+    for stage in (stage_A1, stage_A2, stage_A3, stage_B,
+                  stage_C1, stage_C2, stage_C3, stage_C4):
         try:
             stage(st)
         except Exception as exc:                       # one broken stage must not stop the rest
