@@ -105,9 +105,12 @@ not the ones you happen to remember.**
 
 ### What each branch has to redo
 
-- [ ] **A1 — 07a, month of burn.** *(running since 12 Sep 08:15)* All **27** calendar years again,
-      over the 19 assets that are already there plus the 8 that never landed. ~58 min per year,
-      ~6.5 h at ~4 concurrent. As comahue (`ivanbarbera@comahue-conicet.gob.ar`, project
+- [ ] **A1 — 07a, month of burn.** *(running since 12 Sep 08:15; 27/27 submitted, rc=0)* All **27**
+      calendar years again, over the 19 assets that are already there plus the 8 that never landed.
+      **Measured 12 Sep: GEE gives this account ~2 concurrent, not 4**, and a year takes 42–54 min
+      (mob_2000 54, mob_2003 52, mob_2001 42) — so A1 is **~11 h, landing ~19:30**, not the ~6.5 h
+      estimated here. Nothing is wrong; the estimate was optimistic about concurrency. Budget from
+      11 h when planning a relaunch. As comahue (`ivanbarbera@comahue-conicet.gob.ar`, project
       `mapbiomas-argentina`) — the queue is per user. `Export.image.toAsset(overwrite=True)`
       replaces an asset only when the **new task completes**, so a failed year leaves the old
       (wrong) image in place rather than a hole — which is why the `exclusion_rule_a` asset filter,
@@ -122,14 +125,22 @@ not the ones you happen to remember.**
       `--set-props`. The row/area counts will be **larger** than the 908,346 rows / 58.05 Mha now
       published — the confined rule A gives 5.27 Mha back. **Tell the early users the numbers
       changed**, not just that v1 is superseded.
-- [ ] **C — the calendar-year scars (07b local → manual ingest → 07c).** *(C1 running since 12 Sep
-      08:15; the ingest is Monday's)* The whole local build again from step 1's cleared state: `run_07_scars.sh pixels` (28
-      fire-years, ~41 min) then `run_07_scars.sh scars` (27 calendar years, ~77 min), then
-      `validate_scar_zips.py`, then the **manual ingest** into `annual_burned_vectors_v2/scars_<Y>`
-      with `exclusion_rule_a` / `exclusion_rule_b` set on each FC — **nothing was ingested from the
-      broken run, so there is nothing to delete in GEE here**. 07c then paints the three scar
-      rasters from the ingested FCs, masked to the v2 month of burn, so it needs **A1 finished as
-      well as the ingest**. Changing the selection changes the scars themselves — one that was
+- [x] **C1/C2 — the local scar build and its gate.** *(done 12 Sep 11:06)* `pixels` 28/28 then
+      `scars` 27/27 in **2 h 23 min** (08:22 → 10:45); gate green at 11:06. The 27 packages sit in
+      `collection-01/data/scars-upload-cache/`, 630 MB, waiting for the ingest.
+      **This is where the fix was independently confirmed.** Summing the 27
+      `scars_<Y>_summary.csv` gives **63.24 Mha** against the 63.33 Mha predicted above, and the
+      ruleset now removes **8.38 %** of the accepted area against the 8.4 % predicted — while the
+      broken run's 16.0 % reproduces the 58.05 Mha that went out (69.02 × 0.840 = 57.98). Both
+      numbers come out of a branch that never touches Earth Engine, so they check the selection
+      rather than restate it.
+- [ ] **C3 — the manual ingest, then 07c.** *(Monday 14 Sep — the only human gate left)* Ingest the
+      27 zips as `annual_burned_vectors_v2/scars_<Y>` with `exclusion_rule_a` / `exclusion_rule_b`
+      set on each FC — **nothing was ingested from the broken run, so there is nothing to delete in
+      GEE here**. Copy the destination from the gate's own closing line, which interpolates
+      `C.PRODUCT_VERSION`; then `$PYTHON collection-01/scripts/validate_scar_zips.py --ingested`.
+      07c then paints the three scar rasters from the ingested FCs, masked to the v2 month of
+      burn, so it needs **A1 finished as well as the ingest**. Changing the selection changes the scars themselves — one that was
       8-connected *through* a dropped object splits in two — which is why the local build is redone
       and not just the painting.
 
