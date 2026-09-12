@@ -119,10 +119,16 @@ not the ones you happen to remember.**
       clean first build — but it is **gated on A1 reaching 27/27 assets carrying the current rule
       text**, which is the check the driver now makes. Count assets, not tasks: the task list is
       project-scoped and shows the whole network's work.
-- [ ] **B — 07e, the fire-object polygon layer.** *(exported 12 Sep 17:20; `--verify` +
-      `--set-props` outstanding)* Replaced **in place**, keeping the link the early users already
+- [x] **B — 07e, the fire-object polygon layer.** *(DONE 12 Sep 17:46 — exported, verified,
+      stamped)* Replaced **in place**, keeping the link the early users already
       have. The export took **8 h 58 min**, not the ~4 h estimated here. Then `--verify` on all 28
       fire-years and `--set-props`.
+      **The landed numbers: 1,012,648 rows, `area per OBJECT` = 63,328,585 ha.** That is the
+      63.33 Mha predicted above, to five figures, and it is the *second* independent route to it —
+      the local scar build said 63.24 Mha hours earlier without touching Earth Engine (the gap is
+      just fire-year vs calendar-year partitioning). `--verify` passed all 28 fire-years on rows,
+      distinct `oid` and area against source. Note the row-sum (68,447,098 ha) is NOT the total:
+      vertex-split parts are counted once per row, and 2000_57529 alone over-counts by 5.1 Mha.
       **The trap that cost a 9 h export here, now fixed in the driver.** `Export.table.toAsset`
       REPLACES the asset, so a fresh export lands with an **empty property block** — 07e sets the
       properties afterwards, on purpose (`properties()`: "a property block is not worth risking a
@@ -160,10 +166,12 @@ Monday 14 Sep, and the next tick then launches 07c on its own. Steps 1–3 are d
 the supervisor does by itself over the weekend: A1 → A2 → A3, B (launch → `--verify` → `--set-props`)
 and C1 → C2.
 
-**Still owed to people, once B lands:** `burned_area_polygons_v2` is replaced in place, so the link
-early users already hold keeps working but its numbers change — 908,346 rows / 58.05 Mha becomes
-something larger, the confined rule A giving 5.27 Mha back. **Tell them the numbers moved**, not
-merely that v1 is superseded.
+**Still owed to people — B HAS landed:** `burned_area_polygons_v2` was replaced in place at 17:46
+on 12 Sep, so the link early users already hold keeps working but its numbers have changed:
+**908,346 rows / 58.05 Mha → 1,012,648 rows / 63.33 Mha**, the confined rule A giving 5.28 Mha
+back, concentrated in the Delta del Paraná and its big fire years (FY2008, FY2020, FY2022).
+**Tell them the numbers moved**, not merely that v1 is superseded — anyone who has already quoted a
+total from that layer has quoted one that is 8 % low.
 
 ## Next — the summary statistics
 
