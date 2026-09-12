@@ -24,24 +24,53 @@ at **15 Sep 2026** for Brazil to copy them to `mapbiomas-public`.
 
 ## Now — re-export the products as v2
 
+> ### ⚠️ THIS SECTION IS ALREADY RUNNING, UNATTENDED — DO NOT RE-LAUNCH ANY OF IT BY HAND
+>
+> Started **Fri 11 Sep 2026, 21:27** (Iván away for the weekend). Every item below was submitted
+> or started by `collection-01/scripts/run_07_v2_driver.py`, which cron ticks **every 15 min**.
+> **Before you touch anything in this section, look at the board:**
+>
+> ```bash
+> $PYTHON collection-01/scripts/run_07_v2_driver.py --status   # the board (no server calls)
+> tail -40 collection-01/logs/v2-driver/tick.log               # what it has been doing
+> crontab -l                                                   # is it still armed?
+> ```
+>
+> A stage that shows ⏳ is either in flight or waiting on its gate — running its command yourself
+> duplicates work at best. If `STATUS.md`'s "last tick" stamp is more than ~20 min old, the
+> supervisor is not ticking: check `crontab -l` and `collection-01/logs/v2-driver/cron.log`.
+> **When the board is all ✅, delete the two crontab lines** (the `v2_driver_tick.sh` entries) —
+> that is the only manual cleanup it needs.
+
+**Why a supervisor and not a sequence of commands.** The gates here are hours apart — 07d waits for
+all 27 month assets, 07c for a manual ingest — and the obvious "wait, then launch the next thing"
+shape dies with the session: a power cut takes the terminal, tmux and any sleeping process with it.
+So the driver never sleeps. Each tick reads the state of the *world* — asset counts in both compute
+projects, `.done_fy*` markers, zips on disk, `pgrep` — does whatever is now unblocked, writes
+`logs/v2-driver/STATUS.md`, and exits. cron comes back at boot without a login (there is an
+`@reboot` entry), so an outage costs only the hours the box is off; submitted Earth Engine tasks are
+unaffected either way. Everything it invokes is already idempotent, so a repeated tick is a no-op
+and an interrupted one is retried by the next. Per-stage state is in `logs/v2-driver/`: `<stage>.out`
+is the command output, `<stage>.done` the marker (delete one to force that stage to run again),
+`<stage>.tries` the retry counter — a stage that burns its budget stops and says so on the board
+rather than looping. Design notes and the two traps it had to be taught:
+[docs/07 "Order of operations"](collection-01/docs/07-vector_to_raster.md).
+
+**What it is waiting on you for:** the 27 scar zips in `collection-01/data/scars-upload-cache/` must
+be ingested **by hand** as `annual_burned_vectors_v2/scars_<Y>` (the folder already exists) with
+`exclusion_rule_a` / `exclusion_rule_b` set on each FC. The next tick after that launches 07c on its
+own. Nothing else needs a human.
+
+The exclusion rules are wired and ON by default, `C.PRODUCT_VERSION = 2` sends every output to a new
+asset path, and `C.PRODUCT_LULC` points at the published col-3 — so the commands in
+[docs/07](collection-01/docs/07-vector_to_raster.md)'s "Order of operations" produce the published
+selection with no flags.
+
 Three branches.
 - A blocks the factsheet and the platform;
 - B is fully independent, just for completeness;
 - C is the calendar-year scars, blocks the platform. Its local half is independent, but its last
   step (07c, the rasterization) needs **A1 finished** as well as the manual ingest.
-
-Nothing blocks these. The exclusion rules are wired and ON by default, `C.PRODUCT_VERSION = 2`
-sends every output to a new asset path, and `C.PRODUCT_LULC` points at the published col-3 — so the
-commands in [docs/07](collection-01/docs/07-vector_to_raster.md)'s "Order of operations" produce the
-published selection with no flags.
-
-**These are being run unattended by a supervisor** — `collection-01/scripts/run_07_v2_driver.py`,
-one tick every 15 min from cron (`v2_driver_tick.sh`, `flock`-guarded, plus an `@reboot` entry so a
-power cut costs only the hours the box is off). It does not sleep: each tick reads the state of the
-world — assets on the server, files on disk, processes running — does whatever is now unblocked, and
-exits. **Read `collection-01/logs/v2-driver/STATUS.md` first**; `tick.log` is the narrative and
-`<stage>.out` the command output. Delete a `<stage>.done` marker to force that stage to run again.
-Remove the two crontab lines when STATUS.md is all ✅.
 
 - [ ] **A1 — 07a, month of burn.** *(run)* 27 Earth Engine tasks into the **new v2 collection** —
       no flags, no `--overwrite`: the rules are the default and v2 is a different asset path.

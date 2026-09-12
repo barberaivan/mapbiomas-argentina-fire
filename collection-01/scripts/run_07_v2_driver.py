@@ -55,6 +55,7 @@ GMAIL = ["--credentials", str(CRED_DIR / "credentials.gmail"),
 STATE = ROOT / "collection-01/logs/v2-driver"
 TICKLOG = STATE / "tick.log"
 STATUS = STATE / "STATUS.md"
+HEARTBEAT = STATE / "last_tick"     # mtime = the last tick that completed, however it went
 MAX_TRIES = 8                     # a stage that has failed this often stops and shouts
 
 N_CAL = len(C.CALENDAR_YEARS)     # 27
@@ -411,7 +412,9 @@ def write_status(st):
     lines = [
         "# step-07 `_v2` re-export — driver status",
         "",
-        f"_last tick {dt.datetime.now():%F %T}_ — `collection-01/logs/v2-driver/`",
+        f"_last tick {dt.datetime.now():%F %T}_ — `collection-01/logs/v2-driver/`. "
+        f"The supervisor ticks every 15 min from cron: **if that stamp is more than ~20 min old "
+        f"it is not running** (`crontab -l`, then `cron.log`).",
         "",
         "| | stage | state | detail |",
         "|---|---|---|---|",
@@ -420,13 +423,13 @@ def write_status(st):
         f"| A2 | 07d nine subproducts | {tick(st['subproducts'] == 9)} | "
         f"{st['subproducts']}/9 assets, {len(st['d_inflight'])} in flight"
         f"{' — GATED on A1' if st['mob'] < N_CAL else ''} |",
+        f"| A3 | 07d audit | {tick(done('A3'))} | "
+        f"`--check` + property audit, once the nine land — read `A3-*.out` |",
         f"| B | 07e polygon layer | {tick(done('B'))} | "
         f"asset {'exists' if st['poly'] else 'not yet'}, {len(st['e_inflight'])} in flight, "
         f"verified={done('B')} |",
         f"| C1 | 07b local scars | {tick(done('C1'))} | "
         f"pixels {st['pix']}/{N_FIRE}, zips {st['zips']}/{N_CAL} |",
-        f"| A3 | 07d audit | {tick(done('A3'))} | "
-        f"`--check` + property audit, once the nine land — read `A3-*.out` |",
         f"| C2 | zip gate | {tick(done('C2'))} | validate_scar_zips.py |",
         f"| C3 | 07c scar rasters | {tick(st['scar_rasters'] == 3)} | "
         f"{st['scar_rasters']}/3 assets; ingested scar FCs {st['scarfc']}/{N_CAL}"
@@ -454,6 +457,19 @@ def write_status(st):
     STATUS.write_text("\n".join(lines))
 
 
+def staleness_line():
+    """A board nobody can date is worse than no board.  The supervisor ticks every 15 min, so
+    anything older than ~20 min means it is NOT running — which otherwise looks exactly like
+    `nothing has changed yet`."""
+    if not HEARTBEAT.exists():
+        return "⚠ no heartbeat file — the driver has never finished a tick."
+    age = (dt.datetime.now().timestamp() - HEARTBEAT.stat().st_mtime) / 60
+    if age <= 20:
+        return f"(last tick {age:.0f} min ago — the supervisor is ticking)"
+    return (f"⚠ LAST TICK WAS {age:.0f} MIN AGO — the supervisor is NOT running. "
+            f"Check `crontab -l` and {STATE / 'cron.log'}")
+
+
 def main():
     global DRY
     ap = argparse.ArgumentParser(description=__doc__,
@@ -465,12 +481,30 @@ def main():
     args = ap.parse_args()
 
     if args.status:
-        print(STATUS.read_text() if STATUS.exists() else "no status yet")
+        if not STATUS.exists():
+            print("no status yet — the driver has not completed a tick. "
+                  "Check `crontab -l` and collection-01/logs/v2-driver/cron.log")
+            return
+        print(STATUS.read_text())
+        print(staleness_line())
         return
     DRY = args.dry_run
     STATE.mkdir(parents=True, exist_ok=True)
 
-    st = survey()
+    try:
+        st = survey()
+    except Exception as exc:
+        # A tick that dies HERE writes no board, and a board that silently stops updating reads
+        # exactly like one where nothing has happened yet.  Say so on the board itself.
+        log(f"[survey] ⚠ EXCEPTION {type(exc).__name__}: {exc}")
+        if STATUS.exists():
+            STATUS.write_text(STATUS.read_text().split("\n<!--tick-->")[0] +
+                              f"\n<!--tick-->\n\n> ⚠ the tick at {dt.datetime.now():%F %T} could "
+                              f"not reach Earth Engine: `{type(exc).__name__}: {exc}`. The numbers "
+                              f"above are from the last tick that did. Retrying in 15 min.\n")
+        HEARTBEAT.touch()          # it IS ticking; it just could not see the server
+        raise
+
     log(f"tick  mob={st['mob']}/{N_CAL} sub={st['subproducts']}/9 poly={st['poly']} "
         f"scar_rasters={st['scar_rasters']}/3 scarfc={st['scarfc']}/{N_CAL} "
         f"pix={st['pix']}/{N_FIRE} zips={st['zips']}/{N_CAL}")
@@ -483,6 +517,7 @@ def main():
             log(f"[{stage.__name__}] ⚠ EXCEPTION {type(exc).__name__}: {exc}")
 
     write_status(st)
+    HEARTBEAT.touch()
 
 
 if __name__ == "__main__":
