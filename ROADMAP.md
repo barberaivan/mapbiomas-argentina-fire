@@ -117,7 +117,9 @@ Two things about the join, because they are what a wrong number will come from:
 - [x] **The denominator is computed and gated** — 252.25 Mha burnable of 280.73 Mha (89.9 %),
       burnable ≤ region area in all 13, raster vs polygon within 0.2 %. Table in
       [docs/09 §4.7](collection-01/docs/09-statistics.md).
-- [ ] **Decide what the factsheet says about the Delta e Islas del Paraná.** *(Iván)* **1.53 Mha —
+- [ ] **⏳ AWAITING IVÁN'S REVIEW — what the factsheet says about the Delta e Islas del Paraná.**
+      Raised 14 Sep, not yet decided; nothing else is blocked by it, but the Delta cannot be drawn
+      until it is. **1.53 Mha —
       27 % of that ecoregion — is "never observed"**: col-3 does not map the open water of the Paraná
       and the Río de la Plata, so it is excluded from the denominator (correct per docs/09 §6). The
       Delta's `%` therefore runs on **3.50 Mha, not 5.61 Mha**, which is ~60 % higher than a reader
@@ -169,6 +171,10 @@ From the toolkit's table, our burnable table and the local vectors. No Earth Eng
       per region, the little map as the legend, `all_regions` vs focal variants), §4's intra-annual
       distribution normalised per region, and §2's interannual series in "veces el año típico".
       Figures land in `data/statistics/figures/`. Data is due to the designers **~Wed 16 Sep**.
+- [ ] **Decide what the factsheet says about the Delta** — the same shape of question as the Pampa
+      below, and **also waiting on Iván**: 27 % of that ecoregion is unmapped open water, so its
+      denominator is 3.50 Mha, not 5.61 Mha. Full statement in the "Now" section above and in
+      [docs/09 §4.7](collection-01/docs/09-statistics.md).
 - [ ] **Decide what the factsheet says about the Pampa.** Still open, and it needs a call before the
       16th. The Pampa is largely cropland; after the filters its total is still built partly on
       residual cropland pixels (1.37 Mha nationally at `T_AGRI = 0.4`). Candidate framings: report

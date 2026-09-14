@@ -181,6 +181,14 @@ reclass de fuego: la lista de clases está en `09-statistics.md` §6 (agua, urba
 suelo desnudo, hielo y "otras áreas no vegetadas" son no quemables). La clase
 **no observado se ignora**: no suma ni al numerador ni al denominador.
 
+⚠️ **PENDIENTE DE DECISIÓN (Iván) — el Delta e Islas del Paraná.** El 27 % de esa
+ecorregión (1,53 de 5,61 Mha) es agua abierta que col 3 no mapea, así que queda
+fuera del denominador: el `%` del Delta se calcula sobre **3,50 Mha**, no sobre los
+5,61 Mha que un lector mediría en el mapa. Es correcto, pero hay que decidir cómo
+se cuenta — y si el Delta aparece en el factsheet, la frase va en el epígrafe.
+Medido el 14/9, detalle en `09-statistics.md` §4.7. Ninguna otra ecorregión pasa
+de 10 kha de "nunca observado".
+
 ⚠️ **La versión por clase de LULC no sale de estas tablas** (`09-statistics.md` §4.4):
 el numerador del toolkit sólo tiene filas quemadas y nuestro denominador no tiene
 dimensión de clase. Si el factsheet la quiere, hay que pagar un export más — decidirlo
