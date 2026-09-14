@@ -147,21 +147,32 @@ Open that script in the Code Editor and press **Run**. The panel is "Herramienta
 
 **Three things to know about what comes out** (docs/09 §4.1):
 
-- **The LULC cross is SAME-YEAR**, not previous-year: their `alignThemeToFire()` pairs
-  `burned_area_<Y>` with `classification_<Y>`. That settles the open question — and it is why the
-  per-class panel is a decision, not a freebie: "% of grassland burned" would read this year's
-  grassland, partly a consequence of the fire.
+- **The LULC cross is PREVIOUS-year in our copy** (`fuego` 742b23a3). Upstream pairs
+  `burned_area_<Y>` with `classification_<Y>`; ours pairs it with `classification_<Y−1>`, because
+  the same-year class of a burned pixel is partly a *consequence* of the fire. Only
+  `annual_burned_coverage` is shifted — frequency and accumulated keep same-year, since their band
+  names end in the last year of a multi-year window. **The published `*_coverage` assets are
+  untouched and stay same-year**, so the CSV and the product disagree by construction: say which one
+  a figure used (docs/09 §4.1.1).
 - **There is no monthly × LULC dataset** in their app, even though our
   `monthly_burned_coverage_v2` asset exists. Month and land cover cannot be crossed through this
   route; the pirogram is month-only.
 - **They reduce at `scale: 30`**, not our pinned `crsTransform`. Same pixel size on this lattice, a
   sub-pixel phase shift (docs/09 §3) — fine for these numbers, and not worth asking them to change.
 
-- [ ] **Tell Vera two things** *(Iván)*, so this copy can be deleted: their `lulc_base.js` should
-      point at **v2** (or v2 should be published to `mapbiomas-public`), and their
-      `datasets/fuego_col1.js` has `band_pattern: 'fire_frequency_1995_{year}'` where the base
-      module selects `fire_frequency_1999_.*` — a 1995/1999 mismatch that will bite whoever exports
-      frequency.
+- [ ] **Tell Vera three things** *(Iván)*, two of which would let us delete our copy:
+      1. **Their `lulc_base.js` should point at `_v2`** (or v2 should be published to
+         `mapbiomas-public`) — as it stands, `annual_burned_v1` and `monthly_burned_v1` do not exist
+         there at all, and the v1 that does exist is the superseded mapping.
+      2. **Argentina's `annual_burned_coverage` should cross the PREVIOUS year's land cover**, not
+         the same year — a fire consumes what was there *before* it burned, and the same-year class
+         of a burned pixel is partly a consequence of the fire. We have made that change in our copy
+         (`alignThemeToFirePrevYear`, `fuego` 742b23a3) and it is a one-line helper she can lift.
+         If the network wants same-year everywhere for comparability, fine — then it stays a
+         documented divergence on our side and the factsheet says so (docs/09 §4.1.1).
+      3. Their `datasets/fuego_col1.js` has `band_pattern: 'fire_frequency_1995_{year}'` where the
+         base module selects `fire_frequency_1999_.*` — a 1995/1999 mismatch that will bite whoever
+         exports frequency.
 - [x] **Build `collection-01/statistics/`** — `legends.py` (class lists, status codes, the 13
       ecoregion names, the 16→13 crosswalk) and `burnable_export.py` (`--test-rect`, `--regions`,
       `--export`, `--status`). `ECOREGIONS13/16`, `ECOREGION_ID_PROPERTY` and `STATS_DRIVE_FOLDER`

@@ -199,7 +199,7 @@ Laisa). It is real, it already carries our ecorregiones, and it works. What the 
 |---|---|
 | territory | `ecorregiones.js` reads **our 13-class vector**, keys on `GEOCODE`, names from `LEVEL_2` ✅. Its `ee.Number.parse()` on a numeric `GEOCODE` is harmless (tested) |
 | which assets | `_shared/lulc_base.js` reads **public `_v1`** — and `annual_burned_v1` / `monthly_burned_v1` **are not there**, while the v1 that is there is the superseded mapping. See below |
-| which LULC year | **SAME-year.** `alignThemeToFire()` pairs `burned_area_<Y>` with `classification_<Y>`. Previous-year is not on offer; the `%` uses our own denominator anyway, so this only bites the per-class panel (§4.4) |
+| which LULC year | upstream is **SAME-year** (`alignThemeToFire()` pairs `burned_area_<Y>` with `classification_<Y>`). **Our copy crosses the PREVIOUS year** — see §4.1.1 |
 | month × LULC | **not available** — there is no `monthly_burned_coverage` dataset in their app, though our v2 asset of that name exists. The pirogram is month-only |
 | grid | `scale: 30`, not our pinned transform — same pixel size on this lattice, a sub-pixel phase shift (§3). Fine, and not worth asking them to change |
 | destination | `Export.table.toCloudStorage` → `gs://mapbiomas-fire`, and **we have write access** (`storage.objects.create` granted). The "do we need a Drive fallback?" question is closed |
@@ -216,6 +216,37 @@ once v2 is published to `mapbiomas-public`.
 
 The click-by-click — which boxes to tick, what lands where — is in [`ROADMAP.md`](../../ROADMAP.md)
 under "RUN THIS", because it is a procedure, not a design.
+
+#### 4.1.1 The land-cover year: we cross the PREVIOUS one, and that is a discrepancy
+
+**What we changed.** In our copy, `annual_burned_coverage` crosses fire band `<Y>` with
+`classification_<Y−1>` (`alignThemeToFirePrevYear`, `fuego` 742b23a3). Verified server-side:
+`burned_area_1999..2025` select `classification_1998..2024`, all inside col-3's 1985–2025, no band
+missing.
+
+**Why.** A fire consumes the vegetation that was there *before* it burned. The same-year class of a
+burned pixel is partly a **consequence** of the fire — burned forest is frequently classified as
+something else in the very year it burns — so a same-year cross answers "what did this pixel
+become", not "what burned". Argentina reports the second question.
+
+**What we did NOT change, and why.** `frequency_burned_coverage` and `accumulated_burned_coverage`
+stay on same-year: their band names end in the **last** year of a multi-year window
+(`fire_frequency_1999_2025`), so "previous year" has no single meaning there, and they are
+network-spec products we do not reinterpret. Neither feeds the factsheet.
+
+**The discrepancy this creates — three places, and they are not the same thing:**
+
+| | crosses | why |
+|---|---|---|
+| our statistics CSV (`annual_burned_coverage` via our copy) | **previous year** | the question we report |
+| the **published** `*_coverage` assets (`..._v2`, docs/07 §12) | **same year** | the network's encoding, copied verbatim; not ours to change |
+| every other country's statistics | **same year** | their spec |
+
+**The published asset is untouched by this.** The app computes coverage on the fly from
+`annual_burned × LULC` and never reads the `*_coverage` asset — so our change moves the CSV only.
+That is deliberate: the product stays network-conformant, the analysis answers our question, and the
+two **disagree by construction**. Any figure or table that crosses fire with land cover must say
+which of the two it came from. See §9 for the same warning on the platform's side.
 
 ### 4.2 The denominator — one constant burnable layer
 
@@ -676,8 +707,10 @@ landed**: `annual_burned_v2`, `monthly_burned_v2`, `annual_burned_coverage_v2`,
 ingest of the 27 calendar-scar packages**, which nobody else can do for us, so `toDrive-area-scar-size`
 cannot run until that lands ([`ROADMAP.md`](../../ROADMAP.md), "After").
 
-**These tables and the factsheet's numbers cannot agree, by construction**: same-year vs the
-27-year modal denominator, and burned-only rows vs a space-filling one. Say so in the CSV hand-off.
+**These tables and the factsheet's numbers cannot agree, by construction**: the published products
+cross **same-year** land cover while our statistics CSV crosses the **previous** year (§4.1.1), the
+denominator is a 27-year mode rather than a per-year area (§4.4), and their rows are burned-only
+while ours is space-filling. Say so in the CSV hand-off.
 The `%` metric is **never** computed from these — they are absolute areas for the platform, which is
 all the network's six CSVs have ever contained.
 
@@ -796,7 +829,7 @@ Actionable work is on [`ROADMAP.md`](../../ROADMAP.md); these are the questions 
 | 5 | Fire counts assign each fire to **one** territory, by **centroid**; the count-in-every-region rule is retired | Iván, 2026-09-14 |
 | 6 | The lattice is pinned (`crs` + `crsTransform`), never `scale: 30` | Iván, 2026-09-11 |
 | 7 | Territories are **packed painted vectors**, never intersected ones | Iván, 2026-09-11 |
-| 8 | Everything crosses **col-3 (`PRODUCT_LULC`)**. Previous-year is what we want for the burned × LULC cross and is a request to Brazil (§4.1); the published `*_coverage` products keep the network's same-year encoding either way | Iván, 2026-09-11 / 09-14 |
+| 8 | Everything crosses **col-3 (`PRODUCT_LULC`)**, and the burned × LULC cross reads the **PREVIOUS** year — implemented in our copy of the toolkit (§4.1.1). The published `*_coverage` products keep the network's **same-year** encoding, so the two disagree by construction and every figure says which it used. Asking Vera to make previous-year the Argentina default upstream | Iván, 2026-09-11 / 09-14 |
 | 9 | Burnable is defined on **col-3 classes** (§6), never on `veg_fire` — the modal layer that was cancelled in September was the `veg_fire` one; §4.2's is a different layer. Col-3 **22 and 26 are non-burnable** | Iván, 2026-09-11 / 09-14 |
 | 10 | Ecoregions are **Burkart et al. 1999**, and **both sides run on the 13-class vector** `ARG-Political_Level_2-13Ecorregiones_3857` — the toolkit's territory and ours must key identically. The 16-class layer and the exact 16 → 13 crosswalk stay for December (§5.2) | Iván, 2026-09-10 / 09-14 |
 | 11 | Territorial layers are **existing assets, painted from the VECTORS** — never the `_r` rasters, whose ids do not match their own vectors' `GEOCODE` (§5.1 trap 1) | Iván, 2026-09-11 / 09-14 |
