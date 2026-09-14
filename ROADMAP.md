@@ -62,7 +62,7 @@ RUNNING in `mapbiomas-argentina`.
 | **Month-of-burn rasters** (07a) | `collection1_fire_mask_v2/…_<year>` | ✅ **27/27**, all carrying the current rule A. 2002 landed 00:16. **This is what the toolkit's numerator reads.** |
 | **Fire-object polygon layer** (07e) | `FINAL_PRODUCTS/burned_area_polygons_v2` | ✅ exported, `--verify` green on all 28 fire-years, `--set-props` written. **1,012,648 rows / 63,328,585 ha** |
 | **Calendar scar packages** (07b, local) | `data/scars-upload-cache/` | ✅ 27 zips, 739 MB, gate green — **awaiting the manual ingest ("After")** |
-| **The nine subproducts** (07d) | `FINAL_PRODUCTS/` | ⛔ **cancelled 14 Sep 13:05**, 0/9. Paused, see "After" |
+| **The nine subproducts** (07d) | `FINAL_PRODUCTS/` | 🟡 **4 of 9 landed — Vera is exporting them.** `annual_burned_v2`, `monthly_burned_v2`, `annual_burned_coverage_v2`, `monthly_burned_coverage_v2`, 27 bands each, verified 14 Sep. Our own launch stays paused; see "After" |
 | **The three scar rasters** (07c) | `FINAL_PRODUCTS/` | ⛔ gated on the ingest — "After" |
 
 Everything is **`_v2`, replaced in place**. There is no `_v3`; the asset paths and
@@ -96,15 +96,72 @@ Two things about the join, because they are what a wrong number will come from:
 
 ### The work
 
-- [ ] **Hand Brazil the territorial layer and agree the dataset — first, and blocking.** *(Iván)*
-      Three questions in one message: the territorial layer (below), **which asset the dataset reads**
-      (month-of-burn collection vs the not-yet-exported `*_coverage` subproducts — see above), and
-      which LULC year it crosses. The asset is
-      `projects/mapbiomas-argentina/assets/ANCILLARY_DATA/VECTOR/ARG/ARG-Political_Level_2-13Ecorregiones_3857`
-      (13 features, unique id `GEOCODE` 1..13, names in `LEVEL_2`, clean UTF-8). **Not the `_r`
-      raster** — docs/09 §5.1 trap 1. One thing to settle in the same message: **which LULC year
-      their dataset crosses** — we want the **previous** year (docs/09 §4.1); if their definition
-      only does same-year, take it and say so in the footnote.
+### ▶ RUN THIS: the toolkit app, interactively (Iván)
+
+**Reviewed 14 Sep — Vera's Argentina toolkit is real, it already carries our ecorregiones, and it
+works.** `toolkit/v03/argentina/territories/ecorregiones.js` reads
+`ARG-Political_Level_2-13Ecorregiones_3857`, keys on `GEOCODE`, names from `LEVEL_2` — exactly the
+layer we asked for, and the `ee.Number.parse()` it does on a numeric `GEOCODE` is harmless (tested).
+Export goes to `gs://mapbiomas-fire`, and **we have write access** (`storage.objects.create`
+granted — that closes docs/09's open question).
+
+**One thing was wrong, and is fixed in a copy of ours.** Their `_shared/lulc_base.js` reads the
+PUBLIC `_v1` assets, where **`annual_burned_v1` and `monthly_burned_v1` do not exist** — the two the
+factsheet needs — and where v1 is the superseded mapping anyway (unconfined rule A, the Delta del
+Paraná bug). So run **our repointed copy**, which reads our `FINAL_PRODUCTS` `_v2` (`dc02097f` in
+the `fuego` repo):
+
+```
+users/mapbiomas-arg/fuego:collection-01/statistics/apps/fuego_col1.js
+```
+
+Open that script in the Code Editor and press **Run**. The panel is "Herramienta de Análisis de Área
+— Fuego Col. 1 (Argentina)".
+
+- [ ] **Tick exactly these boxes.** *(run)* Under **1. Select Layers for Statistics** open the
+      **▶ Fuego** group and tick:
+      | box | gives | the factsheet needs it for |
+      |---|---|---|
+      | **Área Quemada Anual** | `Área ha`, `Ano`, `Situación`, `Ecorregión` | analyses 1 and 2 — the burned-area numerator per year |
+      | **Área Quemada Mensual** | + `Mes`, `Mes_id` | analyses 3 and 4 — the pirogram and the intra-annual shape |
+
+      Optionally, under **▶ Fuego + Uso y Cobertura**, **Área Quemada Anual + Uso y Cobertura**
+      (adds `Nivel 0/1/2`) — only if we go ahead with analysis 1's per-class panel, and read the
+      caveat below before promising it.
+      **Leave the other four unticked**: *Frecuencia*, *Área Quemada Acumulada*, *Tamaño de
+      Cicatrices* and *Año del Último Fuego* still point at **v1** in our copy, because they have no
+      v2 yet. The app would export them happily and the numbers would be wrong.
+      Under **2. Select Territorial Units** tick **only "Recorte por Ecorregiones"** — September is
+      ecoregion-only (docs/09 §1.2); País and Provincia are December.
+      Then press **Export Selected Layer Statistics Tables** — it *creates* one task per
+      (layer × unit) in the **Tasks** tab. **They do not start themselves: press RUN on each.**
+- [ ] **Collect the CSVs.** They land in
+      `gs://mapbiomas-fire/data-container/stats/mapbiomas_fuego_argentina_collection1/Ecorregiones/`
+      as `annual_burned_Ecorregiones.csv` and `monthly_burned_Ecorregiones.csv` (task descriptions
+      `MBFUEGO_ARG_COL1-*`). Columns: **`Área ha`, `Ano`**, the layer's own columns, then
+      **`Ecorregión`**. Drop them in `collection-01/data/statistics/` as `burned_toolkit_annual.csv`
+      / `burned_toolkit_monthly.csv` — that is what the factsheet code reads (docs/09 §1.1).
+- [ ] **Then join to the denominator and check gate 2** — the 13 ids and names must be identical on
+      both sides ([docs/09 §7](collection-01/docs/09-statistics.md)). Ours is
+      `data/statistics/burnable_eco13.csv`, already computed.
+
+**Three things to know about what comes out** (docs/09 §4.1):
+
+- **The LULC cross is SAME-YEAR**, not previous-year: their `alignThemeToFire()` pairs
+  `burned_area_<Y>` with `classification_<Y>`. That settles the open question — and it is why the
+  per-class panel is a decision, not a freebie: "% of grassland burned" would read this year's
+  grassland, partly a consequence of the fire.
+- **There is no monthly × LULC dataset** in their app, even though our
+  `monthly_burned_coverage_v2` asset exists. Month and land cover cannot be crossed through this
+  route; the pirogram is month-only.
+- **They reduce at `scale: 30`**, not our pinned `crsTransform`. Same pixel size on this lattice, a
+  sub-pixel phase shift (docs/09 §3) — fine for these numbers, and not worth asking them to change.
+
+- [ ] **Tell Vera two things** *(Iván)*, so this copy can be deleted: their `lulc_base.js` should
+      point at **v2** (or v2 should be published to `mapbiomas-public`), and their
+      `datasets/fuego_col1.js` has `band_pattern: 'fire_frequency_1995_{year}'` where the base
+      module selects `fire_frequency_1999_.*` — a 1995/1999 mismatch that will bite whoever exports
+      frequency.
 - [x] **Build `collection-01/statistics/`** — `legends.py` (class lists, status codes, the 13
       ecoregion names, the 16→13 crosswalk) and `burnable_export.py` (`--test-rect`, `--regions`,
       `--export`, `--status`). `ECOREGIONS13/16`, `ECOREGION_ID_PROPERTY` and `STATS_DRIVE_FOLDER`
