@@ -10,12 +10,17 @@ from. **[`ROADMAP.md`](../../ROADMAP.md) is the *when*; this file is the *how*.*
 
 **Four things that are settled, so nobody re-opens them:**
 
-- **We do not write a reducer, and we do not fork their JavaScript.** The *method* is the network's
-  `2-Statistics/toolkit/v03/` (§2); the *code* is a Python implementation of it in
-  `collection-01/statistics/` (§1). The per-year hand-written 30 m reductions
-  (`workflow/11-burnable_area.py`, `workflow/11-burned_area_stats.py`) and the fixed
-  modal-`veg_fire` layer are **dead** — those two scripts survive only until the route is verified
-  end to end, then they are deleted ([`ROADMAP.md`](../../ROADMAP.md)).
+- **We do not compute the burned-area table at all.** As of 14 Sep it comes from **the network's
+  toolkit**, run with our ecoregion layer registered in it. The only thing we compute in GEE is the
+  **burnable denominator** — one constant layer, 26 rows, §4. The old per-year hand-written 30 m
+  reductions (`workflow/11-burnable_area.py`, `workflow/11-burned_area_stats.py`) stay dead and are
+  deleted once this route is verified ([`ROADMAP.md`](../../ROADMAP.md)).
+- **A fixed modal burnable layer is back — but on col-3, not `veg_fire`.** September's earlier plan
+  cancelled the modal layer because a per-year space-filling table carried its own denominator.
+  With the numerator
+  coming from the toolkit that is no longer true, so the denominator is a **mode over 1998–2024 of
+  the col-3 burnable classes** (§4.2, §6). It is a different layer from the `veg_fire` modal one
+  that was cancelled, and the reason it is acceptable is written down in §4.4.
 - **The object filters are not here.** The rules that fix the agriculture and Pampa over-mapping
   are part of the *mapping* and live in [`07-vector_to_raster.md` §1.1](07-vector_to_raster.md). By
   the time the statistics run they are already baked into the assets.
@@ -34,18 +39,18 @@ from. **[`ROADMAP.md`](../../ROADMAP.md) is the *when*; this file is the *how*.*
 
 ```
 collection-01/statistics/          ALL statistics + factsheet code, Python and R
-  d1_export.py      build the packed D1 image and launch the Drive export (§4)
-  decode.py         raw CSV -> tidy table: year, eco16, eco13, month, LULC, burnable, area_ha
-  legends.py        col-3 legend nivel 0/1/2, the burnable list (§6), the 16->13 crosswalk and
-                    the 16 ecoregion names as literals (§5.1-§5.2)
-  territories.py    paint the territorial vectors on the pinned grid (§5)
-  fire_counts.R     fire counts off the LOCAL object database (§8.2)
-  factsheet_tables.R  the four factsheet analyses, from the tidy table + the counts (§8)
+  burnable_export.py  the constant burnable layer and its Drive export — our ONE GEE job (§4.2-§4.3)
+  decode.py           both raw CSVs -> tidy tables: ours (eco13 x burnable) and the toolkit's
+  legends.py          col-3 legend nivel 0/1/2, the burnable class list (§6), the 13 ecoregion
+                      names as literals, the 16->13 crosswalk kept for December (§5.2)
+  fire_counts.R       fire counts off the LOCAL object database (§8.2)
+  factsheet_tables.R  the four factsheet analyses, from the tidy tables + the counts (§8)
   factsheet_plots.R   the plots; content plan in docs/10-factsheet_design.md
 
-collection-01/data/statistics/     ALL statistics data — raw export and derived tables
-  d1_ecoregion_raw.csv     exactly what GEE wrote: year, code, sum
-  d1_ecoregion.csv         the decoded tidy table — the input to every factsheet number
+collection-01/data/statistics/     ALL statistics data — raw exports and derived tables
+  burnable_eco13_raw.csv   exactly what GEE wrote: code, sum
+  burnable_eco13.csv       decoded: ecoregion, burnable, area_ha — the denominator, 13 rows
+  burned_toolkit_*.csv     what the toolkit produced (month x year x ecoregion x LULC)
   fire_counts_by_month.csv per ecoregion x fire-year x month (counts, from objects)
   fire_region_summary.csv  per ecoregion: fires/year, area/year, size quantiles
   figures/                 the plots handed to the designers
@@ -65,16 +70,17 @@ code — but `scripts/factsheet_object_stats.R` is factsheet code and moves in a
 are real work we intend to do — they are for the **December Bariloche launch**, not for the 24 Sep
 factsheet. Consequences, all deliberate:
 
-- One territorial cut, so **one export task and one table** (§4), not a family.
-- The territory id is **packed into the class code** (§4.1) instead of being a second group field,
+- One territorial cut, so **one export task on our side** (§4.3) and one cut asked of the toolkit
+  (§4.1), not a family of either.
+- The territory id is **packed into the class code** (§4.3) instead of being a second group field,
   which is what makes one integer per pixel enough.
 - The `ecoregion16 · 100000 + GEOCODE(departamento)` packing designed for the master cut is
   **deferred, not cancelled** — it is written down in §5.4 so December does not re-derive it.
 - Anything the platform's territory selector needs at province level (§11) is a *registration*
   question, not a statistics one, and is unaffected.
 
-The factsheet reports the **13-class** ecoregions; the export runs on the **16-class** layer because
-16 → 13 is an exact aggregation (§5.2), so one table serves both.
+**Both sides run on the 13-class layer** — the toolkit's numerator and our denominator are joined on
+that id, so they cannot be keyed differently (§5.2).
 
 ---
 
@@ -89,8 +95,9 @@ benchmarked at 8 h/year:
 var reducer = ee.Reducer.sum().group(1, 'class').group(1, 'territory');
 ```
 
-There is no trick in the reducer. It is fast because of what is *around* it, and those are the five
-things the Python implementation must copy:
+There is no trick in the reducer. It is fast because of what is *around* it — and since the
+numerator is now literally their app, these five are what **our one export** (§4.3) copies, and what
+to check if their run is ever slow:
 
 1. **The cross-tab lives in the pixel value, not in a loop.** Every crossing is packed into one
    integer — Brazil goes to four dimensions in one band (`fire·10⁵ + lulc·10³ + def_sec_veg·10 +
@@ -115,14 +122,13 @@ multiplication and hidden resampling are.
 Decoding codes to names happens on the few thousand *result rows*, locally in `decode.py` — never
 per pixel.
 
-**Where we diverge from their `core/`, and why.** Mark each of these in the code, because the first
-is one we owe back to Brazil (§13):
+**Where our one export diverges from their `core/`, and why:**
 
 | divergence | reason |
 |---|---|
-| `crs` + `crsTransform` instead of `scale: 30` | §3 — every raster here is on one lattice |
-| Python instead of JavaScript | the analysis is already Python + R in this repo, the constants already exist in `utils/constants.py`, and a Code Editor round-trip is the wrong dependency in this calendar |
-| `Export.table.toDrive` instead of GCS | we have no write access to `gs://mapbiomas-fire/…` and do not need one; Drive syncs straight into the store (§4.4) |
+| `crs` + `crsTransform` instead of `scale: 30` | §3 — every raster here is on one lattice. Their numerator run stays on `scale: 30`; at this pixel size that is a sub-pixel phase difference (§3), not a resolution difference |
+| Python instead of JavaScript | the analysis is already Python + R in this repo and the constants already exist in `utils/constants.py`; a Code Editor round-trip is the wrong dependency for a 26-row table |
+| `Export.table.toDrive` instead of GCS | we have no write access to `gs://mapbiomas-fire/…` and do not need one; Drive syncs straight into the store (§4.6) |
 | territory packed into the class code | one cut (§1.2), so one group field is enough |
 
 ---
@@ -153,193 +159,202 @@ Two things worth knowing about why this is cheap rather than expensive:
 
 ---
 
-## 4. D1 — the big table: one packed integer, one grouped sum
+## 4. The two tables, and who computes each
 
-This is the deliverable of stage 5 and the input to every factsheet number. **One row per
-(year, class code)**, one area value.
+**The strategy changed on 14 Sep.** We no longer compute the burned-area cross-tab ourselves. The
+split is now:
 
-### 4.1 The encoding
+| table | what it is | who computes it | how |
+|---|---|---|---|
+| **the numerator** | burned area by **month × year × ecoregion × LULC** | **the network's toolkit**, with our ecoregion layer registered in it (§4.1) | their app, their grid, their encoding |
+| **the denominator** | **burnable area by ecoregion**, one constant | **us**, one small GEE export (§4.2–§4.3) | the same programming strategy as their app |
+| the fire counts | fires per ecoregion × fire-year × month | us, **locally**, off the object database | §8.2 — unchanged, never touches GEE |
 
-A row is an area; the class code says what that area *is*: burned or not, in which month, on which
-land cover of the previous year, in which ecoregion.
+What this buys: the one heavy, error-prone export is no longer ours to write, verify and re-run
+three days before the factsheet. What it costs is written down in §4.4 — read it before quoting a
+`%`.
+
+### 4.1 The numerator — the toolkit run
+
+Brazil runs their toolkit with **our ecoregion layer** as the territorial cut. The layer to hand
+them is the **13-class vector**, and the id is:
 
 ```
-code = ecoregion16 · 10⁴  +  month · 10²  +  lulc_col3(calendar_year − 1)
+projects/mapbiomas-argentina/assets/ANCILLARY_DATA/VECTOR/ARG/ARG-Political_Level_2-13Ecorregiones_3857
 ```
 
-| field | range | digits |
-|---|---|---|
-| `ecoregion16` | 1..16 (`GEOCODE`) | 2 |
-| `month` | **0**..12, where **0 = did not burn** | 2 |
-| `lulc` | col-3 codes, 0..77 | 2 |
+13 features, unique id **`GEOCODE`** (a number, 1..13), name **`LEVEL_2`**, clean UTF-8 — the schema
+their toolkit expects (§5).
 
-Maximum code `16·10⁴ + 12·10² + 77 = 161,277`.
+**⚠️ Do not hand them the `_r` raster twin instead.** Its pixel values are *not* `GEOCODE`: the
+raster numbers the regions alphabetically, the vector appends Islas del Atlántico Sur at 13, and
+they disagree for six of thirteen (§5.2). A dictionary built from one and applied to the other
+reports Monte's 47 Mha as Pampa. Verified by cross-tab, 2026-09-14.
 
-**Therefore int32, not uint16.** uint16 caps at 65,535 and six decimal digits do not fit. It could
-be forced to fit by bit-packing (`eco<<11 | month<<7 | lulc`, max 34,381) — we decline: the image is
-computed on the fly and never stored, so the dtype buys nothing, while a decimal code is readable
-straight off the raw CSV (`161277` *is* eco 16, month 12, class 77) and that is worth real money the
-first time a number looks wrong.
+**⚠️ The first thing to settle with them: which asset the dataset reads.** Their toolkit's datasets
+normally read the **published `*_coverage` subproducts** — which for Argentina are the nine of 07d,
+not yet exported (Brazil is helping with those; the scar-size side is blocked on our manual ingest —
+§9). If the dataset is defined that way, **the numerator is gated on 07d landing**. If it is defined
+against the **month-of-burn collection + col-3 LULC** instead — 27/27, landed, exactly what our own
+table was going to read — it can run immediately. This decides whether the factsheet has a numerator
+this week, so ask it first and in writing.
 
-**The burned flag is not encoded**, because `month == 0` already *is* "did not burn". Adding a
-separate 0/1 digit costs a digit and creates a field that can disagree with the month. `burned` is
-`month >= 1`, everywhere, and it is derived at decode.
+**The second thing to settle: which LULC year their dataset crosses.** The network's
+reference encoding uses the **same-year** LULC; we wanted the **previous** year, because the
+same-year class of a burned pixel is partly a *consequence* of the fire. Ask for previous-year if their dataset definition allows it; if it does not, take
+same-year and **say which one the factsheet used** — it changes what "burned grassland" means, and
+it is invisible in the CSV.
 
-**Year is not in the code either.** It is a column, written per reduction (§4.3) — 27 more digits'
-worth of packing for a field the reducer can carry for free.
+### 4.2 The denominator — one constant burnable layer
 
-### 4.2 The image
+**Burnable stops being per-year.** One boolean per pixel: was this pixel burnable *most of the
+time* over 1998–2024? Then one area per ecoregion, computed once, used as the denominator for every
+year.
 
 ```python
-# GEOCODE is a STRING on this asset (§5.1) — cast, or every id paints as 0
-eco16 = (ee.FeatureCollection(C.ECOREGIONS16)          # ARG-Political_Level_2-16Ecorregiones_3857
-         .map(lambda f: f.set("GEOCODE", ee.Number.parse(f.get("GEOCODE")))))
-eco   = ee.Image().paint(eco16, "GEOCODE")             # masked outside Argentina: the mask driver
+BURNABLE = [1, 3, 4, 6, 9, 10, 11, 12, 14, 15, 18, 19, 21, 36, 63, 66, 73, 77]   # §6
+NON_BURN = [22, 24, 25, 26, 33, 34]                                              # §6
+# 0 and 27 (no observado) are in NEITHER list, so remap leaves them MASKED and the
+# mode never sees them — which is exactly "no observado is excluded everywhere" (§6).
 
-def code(year):
-    mob  = (ee.Image(ee.ImageCollection(C.MONTH_OF_BURN_COL)
-                     .filter(ee.Filter.eq("year", year)).first())
-            .select(C.MONTH_OF_BURN_BAND).unmask(0))          # 0 = did not burn
-    lulc = ee.Image(C.PRODUCT_LULC).select(f"classification_{year - 1}").unmask(0)
-    return eco.multiply(10000).add(mob.multiply(100)).add(lulc).toInt().rename("code")
+def burnable_year(y):
+    return (ee.Image(C.PRODUCT_LULC).select(f"classification_{y}")
+            .remap(BURNABLE + NON_BURN, [1] * len(BURNABLE) + [0] * len(NON_BURN)))
+
+burnable = (ee.ImageCollection([burnable_year(y) for y in range(1998, 2025)])
+            .reduce(ee.Reducer.mode()))        # masked where every year was no-observado
 ```
 
-`C.ECOREGIONS16` does not exist yet — **add the two ecoregion asset ids to
-`utils/constants.py`** (16- and 13-class, §5.1) in the same pass. Everything else the export needs
-is already there: `MONTH_OF_BURN_COL`, `MONTH_OF_BURN_BAND`, `PRODUCT_LULC`, `ARG_BUFFER_FC`,
-`SNIC_CRS`, `SNIC_TRANSFORM`. That one file stays the single source of truth — do not retype an
-asset id into `statistics/`.
+- **1998–2024**, i.e. the previous-year range of calendar years 1999–2025 — the same 27 layers the
+  per-year design would have read, collapsed instead of crossed.
+- **Ties break to 0** (GEE's mode returns the smallest value on a tie). With 27 years and a binary
+  variable a tie is impossible unless some years are masked, so it can only bite in chronically
+  no-observado pixels — gate 3 (§7) measures how many. If that count is not negligible, swap the
+  mode for `mean >= 0.5` and say so.
+- The result is **one image, no year dimension**. That is the whole point: 13 numbers, stable, and
+  nothing in the denominator moves when a LULC class does.
 
-**`unmask(0)` on the month band is load-bearing.** It makes the image space-filling, so *unburned*
-pixels are reported too. That single decision is what turns one table into numerator **and**
-denominator:
+### 4.3 The reduction — the same programming strategy as the app
 
-| question | rows to sum |
-|---|---|
-| burned area, year × ecoregion | `month >= 1`, burnable LULC |
-| burned area × land cover | idem, grouped by `Nivel 1/2` |
-| burned area × month (pirogram) | idem, grouped by `month` |
-| **burnable area** (the denominator) | **all** `month` 0..12, burnable LULC |
-| burned on non-burnable (QC) | `month >= 1`, non-burnable LULC |
-| no observado (excluded everywhere) | `lulc` in {0, 27} |
+Same shape as §2, one cut, so the territory packs into the class code and one group field is enough:
 
-**Exactly one layer drives the mask** — the ecoregions, which tile the country. `add()` propagates
-masks, so if two layers were masked, any pixel missing from either would drop silently out of the
-reduction. Hence `unmask(0)` on both month and LULC, and `paint` (masked) on the ecoregions.
-
-**Why the *previous* year's land cover.** A fire consumes the vegetation that was there *before* it
-burned; the same-year class of a burned pixel is partly a *consequence* of the fire. And it is what
-makes `%` coherent: numerator and denominator read the same layer, so "% of grassland that burned"
-is a ratio of two areas of the same thing. Calendar years are 1999..2025, so the LULC bands needed
-are 1998..2024 — all inside col-3's `classification_1985..2025`, no forward duplication, no cap.
-
-**Why col-3 and not our `veg_fire`.** Col-3 is the best current estimate of land cover, it is the
-legend every reader and every other MapBiomas product uses, and its non-burnable classes are
-directly identifiable — so the denominator needs no extra asset at all (§6). The cost is that the
-denominator is no longer *exactly* the layer the SNIC candidate set was built from (col-2 v8
-reclassed to `veg_fire`), so a pixel can be mapped as burned and be non-burnable under col-3. That
-residual is measurable in this same table, is excluded from both numerator and denominator so it
-can never produce a `%` above 100, and gets **reported once** (gate 4, §7).
-
-### 4.3 The reduction and the export
+```
+code = ecoregion13 · 10 + burnable        # max 13·10 + 1 = 131 — fits uint8
+```
 
 ```python
-area    = ee.Image.pixelArea().divide(1e4)                      # hectares
-reducer = ee.Reducer.sum().group(groupField=1, groupName="code")
+eco = ee.Image().paint(ee.FeatureCollection(C.ECOREGIONS13), "GEOCODE")   # the mask driver
+code = eco.multiply(10).add(burnable.unmask(0)).toUint8().rename("code")
 
-def rows(year):
-    g = area.addBands(code(year)).reduceRegion(
-            reducer=reducer, geometry=BOUNDS,                   # a RECTANGLE, never the multipolygon
-            crs=C.SNIC_CRS, crsTransform=C.SNIC_TRANSFORM,
-            maxPixels=1e12)
-    return ee.List(g.get("groups")).map(
-        lambda d: ee.Feature(None, ee.Dictionary(d).set("year", year)))
-
-fc = ee.FeatureCollection(ee.List([rows(y) for y in YEARS]).flatten())
+g = (ee.Image.pixelArea().divide(1e4)                    # hectares
+     .addBands(code)
+     .reduceRegion(reducer=ee.Reducer.sum().group(groupField=1, groupName="code"),
+                   geometry=BOUNDS,                      # a RECTANGLE, never the multipolygon
+                   crs=C.SNIC_CRS, crsTransform=C.SNIC_TRANSFORM,
+                   maxPixels=1e12))
 ```
 
-- **Hectares, converted in GEE**, so the CSV needs no unit convention downstream.
-- `BOUNDS` is `ee.FeatureCollection(C.ARG_BUFFER_FC).geometry().bounds()`. That rectangle is
-  ~74 k × 124 k ≈ **9.2 × 10⁹ px**, so `maxPixels=1e12` has two orders of headroom.
-- The client-side `for y in YEARS` is the toolkit's "all years in one task" — 27 reductions, one
-  export, one CSV.
-- **Namespace the task `description`** (`arg09_d1_eco_…`). The compute project is shared with the
-  whole network and a generic description collides with another country's (docs/07 §12.7).
-- `selectors=["year", "code", "sum"]` — pin the columns, do not let GEE choose them.
+- **26 rows.** One task, seconds to minutes, one CSV.
+- **Exactly one layer drives the mask** — the ecoregions. `add()` propagates masks, so the burnable
+  image is `unmask(0)`ed and its "always no-observado" pixels land in the `burnable == 0` bucket;
+  report them separately if gate 3 says they matter.
+- `C.ECOREGIONS13` does not exist yet — **add the asset id to `utils/constants.py`** (§4.1) rather
+  than retyping it into `statistics/`. `PRODUCT_LULC`, `ARG_BUFFER_FC`, `SNIC_CRS` and
+  `SNIC_TRANSFORM` are already there.
+- **Pin the grid anyway** (§3). Their toolkit reduces the numerator at `scale: 30`, which on this
+  lattice is the same pixel size and a sub-pixel phase shift (§3) — irrelevant for a denominator
+  quoted to three significant figures, but our side costs nothing to get exactly right.
+- **Namespace the task `description`** (`arg09_burnable_eco13`). The compute project is shared with
+  the whole network (docs/07 §12.7).
 
-Expected size: 27 years × 16 ecoregions × 13 months × ~25 classes = **140 k rows** upper bound, most
-combinations empty. A few MB. If it ever is not, the problem is not the table.
+### 4.4 What the constant denominator changes — read before quoting a `%`
 
-> **Escape hatch if the reduction is slow** — it should not be; it is two stored byte reads, a
-> multiply and an add on one lattice, i.e. exactly Brazil's shape. Materialise the 27 code bands as
-> **one int32 asset** with a pixel-wise `Export.image.toAsset` (a pixel-wise export is not a
-> reduction and is cheap) and reduce that. **Do not go back to a hand-written per-year reducer.**
+- **`%` is now "of the area that is burnable most of the time", not "of this year's burnable
+  area".** For a series over 27 years that is arguably the better reference: a fixed denominator
+  means the trend is a trend in *fire*, not in land-cover change. Say it in the footnote in exactly
+  those terms.
+- **Numerator and denominator no longer read the same layer-year.** They cannot be reconciled pixel
+  by pixel, and a `%` above 100 is no longer structurally impossible — it would mean a region burned
+  more than its modal burnable area, which is a real (if unlikely) finding about non-burnable pixels
+  burning, not an arithmetic bug. Gate 4 (§7) checks it.
+- **`%` by LULC class is not computable from these two tables.** The toolkit's table is burned-masked
+  (no unburned rows) and our denominator has no class dimension. If the factsheet wants "% of
+  grassland that burned" (docs/10 analysis 1's per-class variant), it needs one more small export of
+  the same shape — `code = eco13 · 100 + lulc`, per year, space-filling — which is the same cost as
+  §4.3 plus a digit. Decide before promising the panel, not after.
+- **Everything is keyed on the 13-class ecoregion**, on both sides, because the join is on that id.
+  Do not let one side be computed on the 16-class layer (§5.2).
 
-### 4.4 Drive, and which account
+### 4.5 Test on a rectangle first
 
-Output goes to **Google Drive, not Cloud Storage** — we have no write access to the network's
-bucket and do not need one. Export with `folder=` set to the Drive folder Insync syncs into the
-store, so the CSV appears under `collection-01/data/statistics/` with no manual download (the
-`objects-raw` handoff of step 04 is the same mechanism, `C.SNIC_DRIVE_FOLDER`).
+Before the national run, run §4.3 with `BOUNDS` replaced by a small rectangle inside Argentina. It
+returns in seconds and catches every structural error the national run takes longer to reveal: a
+wrong band name, a mask that ate the country, a code that decodes to an impossible class, an empty
+`groups` list. `burnable_export.py` must carry that as a flag, not as a commented-out block.
+
+### 4.6 Drive, and which account
+
+Output goes to **Google Drive, not Cloud Storage** — we have no write access to the network's bucket
+and do not need one. Export with `folder=` set to the Drive folder Insync syncs into the store, so
+the CSV appears under `collection-01/data/statistics/` with no manual download (step 04's
+`objects-raw` handoff is the same mechanism, `C.SNIC_DRIVE_FOLDER`).
 
 **That Drive belongs to the `ivanbarbera@comahue-conicet.gob.ar` account**, so the export must be
 submitted as that account — pass the credentials explicitly (`--credentials` + `--project`, the
 `workflow/07-burned_area_polygons.py::initialize()` pattern) rather than swapping the credentials
-file. That account is registered under the `mapbiomas-argentina` compute project, and its task queue
-is its own, which is a second reason to use it.
-
-### 4.5 Test on a rectangle first
-
-Before the national launch, run the identical code with `BOUNDS` replaced by a small rectangle
-inside Argentina (one that contains known fire — a Chaco or Pampa box). It returns in seconds and it
-catches every structural error the national run would take an hour to reveal: a wrong band name, a
-mask that ate the country, a code that decodes to an impossible class, an empty `groups` list.
-`d1_export.py` must carry that as a flag, not as a commented-out block.
+file. That account is registered under the `mapbiomas-argentina` compute project.
 
 ---
 
 ## 5. The territorial layer
 
-Two consumers: the statistics (as a painted id raster) and the **platform's territory selector** (as
-a registered Workspace layer, §11).
+Three consumers now: **the toolkit's numerator run** (§4.1), our denominator export (§4.3), and the
+**platform's territory selector** (§11). All three must name the **same 13-class asset**, because
+the factsheet joins the numerator to the denominator on that id.
 
-### 5.1 The layers exist — and two of them are traps
+### 5.1 The layers exist — and three of them are traps
 
 **Verified 2026-09-11 in the asset browser, and re-checked against the assets themselves
 2026-09-14.** A complete, purpose-built territorial family is already in
 `ANCILLARY_DATA/VECTOR/ARG/`, carrying MapBiomas's own schema (`CATEG_ID`, `GEOCODE`, `LEVEL_1..3`,
 `NAME_STD`, `SOURCE`, `VERSION`):
 
-| asset | n | `GEOCODE` | names | notes |
+| asset (`ANCILLARY_DATA/VECTOR/ARG/`) | n | `GEOCODE` | names | notes |
 |---|---|---|---|---|
-| `ARG-Political_Level_2-16Ecorregiones_3857` | **16** ecorregiones | 1..16, **as STRINGS** | `LEVEL_2`, clean UTF-8 | **what we paint** |
-| `Stats-Arg_ecorregions` | **16** ecorregiones | 1..16, numbers | `LEVEL_2`, **Latin-1 damaged** | same ids, same regions — verified identical |
-| `ARG-Political_Level_2-13Ecorregiones_3857` | **13** ecorregiones | 1..13 | clean UTF-8 | the aggregation (§5.2) |
-| `Stats-Arg_political_level_3_v` | **528** departamentos | INDEC 5-digit | `LEVEL_3` depto, **`LEVEL_2` provincia** | December (§5.4) |
-| `Stats-Arg_political_level_2_v` | **24** provincias | 2..94 | `LEVEL_2` | December (§5.4) |
+| **`ARG-Political_Level_2-13Ecorregiones_3857`** | **13** | 1..13, numbers | `LEVEL_2`, clean UTF-8 | ✅ **THE layer — ours and the toolkit's** |
+| `ARG-Political_Level_2-16Ecorregiones_3857` | 16 | 1..16, **STRINGS** | clean UTF-8 | December / the finer split (§5.2) |
+| `Stats-Arg_ecorregions` | 16 | 1..16, numbers | **Latin-1 damaged** | same ids as the above — do not use for names |
+| `Stats-Arg_political_level_3_v` | 528 departamentos | INDEC 5-digit | `LEVEL_3` depto, **`LEVEL_2` provincia** | December (§5.4) |
+| `Stats-Arg_political_level_2_v` | 24 provincias | 2..94 | `LEVEL_2` | December (§5.4) |
 
-**⚠️ Two traps here, both measured on 2026-09-14:**
+The 13-class `GEOCODE` → name list, straight off the asset: 1 Altos Andes · 2 Bosques Patagónicos ·
+3 Campos y Malezales · 4 Chaco · 5 Delta e Islas del Paraná · 6 Espinal · 7 Estepa Patagónica ·
+8 Monte · 9 Pampa · 10 Puna · 11 Selva Paranense · 12 Yungas · 13 Islas del Atlántico Sur. Put it in
+`statistics/legends.py` as a literal, so no decode depends on reading a vector.
 
-1. **There are two 16-class ecoregion assets and they are not interchangeable.** The id → region
-   mapping is *identical* in both, but `Stats-Arg_ecorregions` carries Latin-1 bytes stored as UTF-8
-   (`Esteros del Iber<?>`, `Bosques Patag<?>nicos`, `Administraci<?>n de Parques Nacionales`) while
-   the `_3857` twin is clean. **Paint the `_3857` one.** The same damage is in
-   `Stats-Arg_political_level_*` and will matter again in December — never let it reach a CSV a
+**⚠️ Three traps, all measured on 2026-09-14:**
+
+1. **The `_r` rasters are numbered differently from their own vectors.** On
+   `ARG-Political_Level_2-13Ecorregiones_3857_r` the pixel values run **alphabetically** — Islas del
+   Atlántico Sur is **8**, Monte 9, Pampa 10, Puna 11, Selva Paranense 12, Yungas 13 — while the
+   vector's `GEOCODE` appends Islas at 13 and numbers Monte 8, Pampa 9, Puna 10, Selva Paranense 11,
+   Yungas 12. Ids 1–7 agree; **six of thirteen do not**. Verified by cross-tabbing the raster against
+   the painted vector over the whole country: each raster id maps ~100 % onto one polygon, so the
+   geometry is the same and only the numbering diverges. Decoding a raster-derived table with the
+   vector's dictionary reports **Monte's 47 Mha as Pampa**. **Hand the toolkit the vector** (§4.1).
+2. **`Stats-Arg_*` names are Latin-1 bytes stored as UTF-8** — `Esteros del Iber<?>`,
+   `Administraci<?>n de Parques Nacionales`. The `_3857` layers are clean. The damage is also in
+   `Stats-Arg_political_level_*` and will matter again in December; never let it reach a CSV a
    designer reads.
-2. **`GEOCODE` on `ARG-Political_Level_2-16Ecorregiones_3857` is a STRING**, so
-   `ee.Image().paint(fc, 'GEOCODE')` does not do what it looks like. Cast first:
-   `fc.map(lambda f: f.set('GEOCODE', ee.Number.parse(f.get('GEOCODE'))))`. On
-   `Stats-Arg_ecorregions` it is already a number — which is exactly the kind of difference that
-   makes an export succeed and decode to nonsense.
+3. **`GEOCODE` is a STRING on the 16-class `_3857` asset** (it is a number on the 13-class one), so
+   `ee.Image().paint(fc, 'GEOCODE')` silently paints nothing useful. Cast before painting:
+   `fc.map(lambda f: f.set('GEOCODE', ee.Number.parse(f.get('GEOCODE'))))`. Only bites in December,
+   but it is exactly the kind of difference that makes an export succeed and decode to nonsense.
 
-Names go in `statistics/legends.py` as a 16-entry literal, copied from the clean asset (the list is
-§5.2's table), so the decode never depends on reading a vector.
-
-Each layer has a raster twin in `…RASTER/ARG/`, all **EPSG:3857 at 30 m** — a different grid from
-ours. **Paint the vectors, not the `_r` rasters**: reading one inside a reduction pinned to
-`SNIC_TRANSFORM` reprojects it. For an integer category band that is nearest-neighbour, so no code
-is ever invented, but boundary pixels shift by up to half a pixel for no benefit. Keep the rasters
-as an independent cross-check, not as the input.
+Every layer has a raster twin in `…RASTER/ARG/`, all **EPSG:3857 at 30 m** — a different grid from
+ours, and mis-numbered per trap 1. **Paint the vectors, never read the `_r` rasters.** Keep them as
+an independent cross-check, not as an input. (Their background is also `0` and *unmasked*, so a
+reduction that reads one without `selfMask()` gets a giant "territory 0" row.)
 
 ### 5.2 16 → 13 is an exact aggregation (measured)
 
@@ -360,15 +375,15 @@ inside one 13-class.
 The only non-obvious row is **Esteros del Iberá → Chaco**, which is why this was measured rather
 than assumed.
 
-**Therefore export on 16.** The 13-class figures the factsheet wants are a `group_by` on this
-crosswalk at decode time, and the finer split (Chaco Húmedo vs Chaco Seco, the two Montes) is there
-for free if anyone asks. Exporting the 13-class layer instead would throw that away and save
-nothing.
+**We nonetheless run on 13**, both sides, because the toolkit's numerator is keyed on the 13-class
+layer and the join has to be on one id (§4.4). The crosswalk stays here for December, when the finer
+split (Chaco Húmedo vs Chaco Seco, the two Montes) is worth having: it is exact, so a 16-class run
+can always be aggregated down, but a 13-class table can never be split up.
 
 ### 5.3 Why packing, not intersecting
 
 Brazil packs painted layers arithmetically; Paraguay and Bolivia pre-intersect a vector. **We
-pack** — into the class code itself (§4.1) while there is one cut, into a territory id when there
+pack** — into the class code itself (§4.3) while there is one cut, into a territory id when there
 are two (§5.4). Packing has no sliver problem (there are no new polygons) and no topology cleaning,
 and it is reversible by integer division at decode.
 
@@ -383,7 +398,7 @@ territory_id = ecoregion16 · 100000 + GEOCODE(departamento)      # max 1,694,02
 `GEOCODE` on the department layer is `provincia·1000 + departamento`, so **one painted layer gives
 both political levels** and the province needs no second asset. Because the pieces are disjoint,
 every coarser cut is a `group_by` on the finer table — no double counting, no re-export. With two
-packed layers the masking rule of §4.2 bites again: keep the ecoregions as the single mask driver
+packed layers the masking rule of §4.3 bites again: keep the ecoregions as the single mask driver
 and `unmask(0)` the departments, so a `departamento == 0` row means "inside an ecoregion, outside
 the department layer" and is *visible* rather than silently dropped.
 
@@ -402,9 +417,14 @@ in Workspace (§11), so the registration and the statistics must name the same a
 
 **Nobody in the network computes a burnable denominator.** Grepped the whole reference repo: no
 `burnable`, no `quemable`. Every network statistic is an absolute area. **`% burned` is entirely
-Argentina's own addition**, so there is no spec to deviate from — but it must be *stated*, because a
-CSV carries no metadata: the class list lives in `statistics/legends.py`, next to the decode, and is
-named in the export task description.
+Argentina's own addition** — which is also why the denominator is the one piece we still compute
+ourselves (§4.2). There is no spec to deviate from, but it must be *stated*, because a CSV carries
+no metadata: this list lives in `statistics/legends.py`, next to the decode, and is named in the
+export task description.
+
+This table is the input to the modal layer: `BURNABLE` and `NON_BURN` in §4.2 are its two columns,
+and "no observado" is in neither, which is what keeps it out of the mode and out of both sides of
+every ratio.
 
 "Burnable" is a property of the class, not a computation. Our col-2 remap
 (`config/veg_fire_remap.csv`) is the anchor: in **every one of the 5 regions** it sends MapBiomas
@@ -434,17 +454,21 @@ and absent from this table. A class that falls through into the decode default i
 
 ## 7. Verification gates — run these before any number leaves the building
 
+Two tables now, computed by two teams on two grids, joined on one id. Most of what can go wrong is
+in that join.
+
 | # | check | passes if |
 |---|---|---|
-| 1 | **The test rectangle** (§4.5) decodes to sane classes, months 0..12 and one ecoregion. | Before anything national runs. |
-| 2 | **Lattice.** One year, run once pinned and once with `scale: 30`. | Difference is sub-pixel rounding, not systematic inflation. A large gap means §3's phase assumption is wrong. |
-| 3 | **National annual burned, D1 vs the object database.** Sum `month >= 1` over all ecoregions per calendar year. | Matches the local object-derived area to well under 1 %. Not exactly: the products split objects per pixel by `abs_date`, the object table does not. |
-| 4 | **Burned on non-burnable.** | Small, and *reported*. This is the price of col-3 instead of `veg_fire` (§4.2) and it must be a stated number, not a discovery. |
-| 5 | **Every ecoregion present, every year.** | 16 ids × 27 years all appear. A missing one means a paint/mask failure, not a region that did not burn — unburned still has `month == 0` rows. |
-| 6 | **Total area closes.** Σ all rows for one year ≈ the national burnable+non-burnable+no-observado area (279.27 Mha for the whole country). | The `unmask(0)` space-filling property is what this tests; if it fails, every `%` is wrong. |
-| 7 | **Against the platform, in *staging*, before launch.** | Within the network's stated ~1 % mean difference. **Don't chase the 1 %.** Do chase anything much larger — wrong territory layer, wrong LULC year, a region missing from the mosaic. |
+| 1 | **The test rectangle** (§4.5) decodes to 13 ecoregions × {0,1} and nothing else. | Before anything national runs. |
+| 2 | **Both sides key the same.** The toolkit's territory ids and our `ecoregion13` are the same 13 numbers with the same names. | This is the trap of §5.1 item 1 and it is silent: a mis-keyed join produces a plausible, wrong `%` for six regions. Check the names, not the count. |
+| 3 | **Mode ties and always-no-observado pixels.** Count pixels where the burnable mode is a 50/50 tie, and pixels masked in every year. | Negligible. If not, swap the mode for `mean >= 0.5` and report the masked area separately (§4.2). |
+| 4 | **Denominator ≥ numerator, every ecoregion × year.** | Always. A `%` over 100 means either a mis-keyed join (gate 2) or real burning on modally non-burnable pixels — both are findings, neither is acceptable unexplained (§4.4). |
+| 5 | **Total area closes.** Σ our 26 rows ≈ the national area (279.27 Mha), minus whatever gate 3 reports as never-observed. | If it does not, the paint mask or the remap dropped classes, and every `%` is wrong. |
+| 6 | **National annual burned, toolkit vs the object database.** | Matches the local object-derived area to well under 1 %. Not exactly: the products split objects per pixel by `abs_date`, the object table does not. This is the one check that the toolkit read *our* products correctly. |
+| 7 | **Lattice.** Our export once pinned, once at `scale: 30`. | Difference is sub-pixel rounding, not systematic inflation. Also tells us how much of a difference their `scale: 30` numerator can carry (§3). |
+| 8 | **Against the platform, in *staging*, before launch.** | Within the network's stated ~1 % mean difference. **Don't chase the 1 %.** Do chase anything much larger — wrong territory layer, wrong LULC year, a region missing from the mosaic. |
 
-Gates 1, 2 and 6 are cheap and catch the failure modes that are invisible in the numbers themselves.
+Gates 2, 4 and 5 are cheap and catch the failure modes that are invisible in the numbers themselves.
 Do them first.
 
 One failure mode is **ours to warn the network about**, not ours to fix: any statistic that reads
@@ -455,18 +479,20 @@ our burned rasters below native resolution over-reports (§3, and §13 item 7).
 ## 8. From the tables to the factsheet
 
 [`10-factsheet_design.md`](10-factsheet_design.md) holds the message and the graphic design; this is
-where each number comes from. Everything is a `group_by` on the tidy D1 table **except the fire
-counts**.
+where each number comes from. **Three sources, and every figure must say which one it used**: the
+toolkit's burned-area table (§4.1), our 13-row burnable table (§4.2), and the local fire counts
+(§8.2).
 
 ### 8.1 The four analyses
 
 | # (docs/10) | number | source |
 |---|---|---|
-| 1 | **mean annual burned proportion**, national and per ecoregion | `quemado = Σ(month >= 1, burnable)`, `quemable = Σ(all months, burnable)`, `pct = quemado/quemable`, mean over years. The caption absolutes ("4.2 Mha de 100 Mha quemables") are the same two sums. The per-LULC version is the same rows grouped by `Nivel 1/2`. |
-| 2 | **time series + trend** | the per-year `pct` series from analysis 1; GAM fitted locally in R (small `k`), summarised as the mean slope standardised by the series mean or sd. The "veces el año típico" variant is that series divided by its own mean. Nothing new is exported. |
-| 3 | **pirogram**, area half | `month >= 1` rows grouped by `month`; per month the mean over years of that month's share of the year's burned area. Plot May→April so neither peak is cut — the national curve is bimodal. |
-| 3 | **pirogram**, count half | **not from this table** — §8.2. |
-| 4 | **intra-annual shape, comparable across regions** | per ecoregion, each month's share of that region's whole-series burned area (sums to 100 %). Preferred source is D1 (pixels); the object-based version in `fire_counts_by_month.csv` is the fallback and the two do not close (§8.3). |
+| 1 | **mean annual burned proportion**, national and per ecoregion | `quemado` = the toolkit's burned area for that ecoregion × year; `quemable` = our constant burnable area for that ecoregion; `pct = quemado/quemable`, mean over years. The caption absolutes ("4.2 Mha de 100 Mha quemables") are those same two numbers. **The denominator does not vary by year** — §4.4. |
+| 1b | the **per-LULC-class** variant | **not computable from these two tables** (§4.4): the toolkit's rows are burned-only, our denominator has no class dimension. It needs one more small export. Settle it before promising the panel. |
+| 2 | **time series + trend** | the per-year `pct` series from analysis 1; GAM fitted locally in R (small `k`), summarised as the mean slope standardised by the series mean or sd. The "veces el año típico" variant is that series divided by its own mean. With a constant denominator this series is a pure fire signal — say so, it is the argument for the change. |
+| 3 | **pirogram**, area half | the toolkit's rows grouped by month; per month the mean over years of that month's share of the year's burned area. Plot May→April so neither peak is cut — the national curve is bimodal. |
+| 3 | **pirogram**, count half | **not from any GEE table** — §8.2. |
+| 4 | **intra-annual shape, comparable across regions** | per ecoregion, each month's share of that region's whole-series burned area (sums to 100 %). Preferred source is the toolkit's table (pixels); the object-based version in `fire_counts_by_month.csv` is the fallback and the two do not close (§8.3). |
 
 ### 8.2 Fire counts come from the local polygons, and each fire is counted **once**
 
@@ -501,9 +527,10 @@ the selection changed after the existing CSVs were written ([`ROADMAP.md`](../..
 
 The rasters assign calendar year and month **per pixel** from `abs_date`; the object/count side
 assigns **per object** from `date_median`. So (i) a fire straddling 31 December is split in the
-rasters and not in the counts, and (ii) "area burned in month M" is a pixel sum in D1 and a
-whole-object assignment in the counts. Acceptable — say it out loud, and always say which side a
-number came from.
+rasters and not in the counts, and (ii) "area burned in month M" is a pixel sum in the toolkit's
+table and a whole-object assignment in the counts. Acceptable — say it out loud, and always say
+which side a number came from. **A third divergence joins them now**: the numerator is a per-year
+land-cover cross and the denominator is a 27-year mode (§4.4).
 
 ### 8.4 What these tables cannot answer
 
@@ -511,18 +538,19 @@ number came from.
   database (§8.2).
 - **Scar size crossed with land cover or month**: the `annual_burned_scar_size_range` product has no
   LULC dimension.
-- **Fire-year totals**, directly — but D1 carries month *and* year, so a fire-year total is
-  recoverable as May..Dec of *y* plus Jan..Apr of *y+1*. That is a legitimate aggregation of the
+- **Fire-year totals**, directly — but the toolkit's table carries month *and* year, so a fire-year
+  total is recoverable as May..Dec of *y* plus Jan..Apr of *y+1*. That is a legitimate aggregation of the
   published calendar-year products and should be labelled as such.
 - **Error-adjusted area.** That is [`11-validation.md`](11-validation.md)'s design-based estimate,
   and it is not ready for September.
 
 ---
 
-## 9. D2 — the six network-spec tables (publication, not analysis)
+## 9. The other five network tables (publication, not analysis)
 
 The network's own stage-5 deliverable: the published products read **as they are**, with the
-**same-year** LULC their reference encoding specifies. Spec from
+**same-year** LULC their reference encoding specifies. The first of the six is what §4.1 already
+gives us; the rest are publication artefacts that no factsheet number depends on. Spec from
 `2-Statistics/2-ColAnual-Products-Reference/`; decode strategies copied from
 `peru/datasets/fuego_col1.js`.
 
@@ -536,12 +564,19 @@ The network's own stage-5 deliverable: the published products read **as they are
 | `toDrive-area-year-last-fire` | `…_year_last_fire` | area per year of last fire × territory |
 
 Asset ids come from `utils/constants.py::product_name()` — one source of truth, so a version bump is
-one edit. **These are blocked on 07c/07d** (the scar rasters and the nine subproducts) and are
-therefore *after* the factsheet in [`ROADMAP.md`](../../ROADMAP.md).
+one edit.
 
-**D1 and D2 cannot agree, by construction** — previous-year vs same-year LULC. Say so in the CSV
-hand-off. The `%` metric is **only ever** computed from D1; D2 is absolute areas for the platform,
-which is all the network's six CSVs have ever contained.
+**These are blocked on the products, and the products are now split between us and Brazil.** As of
+14 Sep **Brazil is helping export the remaining fire subproducts** (07d, the nine) — the same
+reference code, run on their side. **The exception is the scar-size side**: `annual_burned_scar_id`,
+`annual_burned_scar_area` and `annual_burned_scar_size_range` (07c) are gated on **Iván's manual
+ingest of the 27 calendar-scar packages**, which nobody else can do for us, so `toDrive-area-scar-size`
+cannot run until that lands ([`ROADMAP.md`](../../ROADMAP.md), "After").
+
+**These tables and the factsheet's numbers cannot agree, by construction**: same-year vs the
+27-year modal denominator, and burned-only rows vs a space-filling one. Say so in the CSV hand-off.
+The `%` metric is **never** computed from these — they are absolute areas for the platform, which is
+all the network's six CSVs have ever contained.
 
 `2-Statistics/1-Burned_area_products/` additionally computes the same areas for **FireCCI, GABAM and
 MCD64A1** — the inter-comparison used in launch materials. Optional, but it is the standard way to
@@ -651,17 +686,18 @@ Actionable work is on [`ROADMAP.md`](../../ROADMAP.md); these are the questions 
 
 | # | decision | who / when |
 |---|---|---|
-| 1 | The **method** is the network's `toolkit/v03`; the **code** is ours, a Python implementation in `collection-01/statistics/`. No JS fork, no hand-written reducer; both `workflow/11-*.py` are retired | Iván, 2026-09-11 / 09-14 |
+| 1 | **The burned-area table is the network's toolkit's**, run with our ecoregion layer registered in it; we compute **only the burnable denominator** (§4). No JS fork, no hand-written reducer; both `workflow/11-*.py` are retired | Iván, 2026-09-11 / 09-14 |
 | 2 | Results are exported to **Google Drive** (Insync-synced into `data/statistics/`), not to the network's GCS bucket | Iván, 2026-09-14 |
 | 3 | **September computes at ecoregion only.** Departamento and provincia are December (Bariloche) work | Iván, 2026-09-14 |
-| 4 | D1 packs **ecoregion, month and previous-year LULC into one int32 code**, decimal, decoded locally; the burned flag is not encoded because `month == 0` is "did not burn" | Iván, 2026-09-14 |
+| 4 | The denominator is a **constant burnable layer**: the **mode over 1998–2024** of the col-3 burnable classes (§6), reduced as `ecoregion13·10 + burnable` on the pinned grid — the app's programming strategy, our one export | Iván, 2026-09-14 |
 | 5 | Fire counts assign each fire to **one** territory, by **centroid**; the count-in-every-region rule is retired | Iván, 2026-09-14 |
 | 6 | The lattice is pinned (`crs` + `crsTransform`), never `scale: 30` | Iván, 2026-09-11 |
 | 7 | Territories are **packed painted vectors**, never intersected ones | Iván, 2026-09-11 |
-| 8 | The vegetation cross uses **col-3 (`PRODUCT_LULC`), previous year**, for D1; the published `*_coverage` products keep the network's same-year encoding | Iván, 2026-09-11 |
-| 9 | Burnable is defined on col-3 classes (§6); no separate burnable asset, no fixed modal `veg_fire` layer. Col-3 **22 and 26 are non-burnable** | Iván, 2026-09-11 |
-| 10 | Ecoregions are **Burkart et al. 1999**: the factsheet reports the **13-class** aggregation, the export runs on the **16-class** layer, since 16 → 13 is exact | Iván, 2026-09-10 / 09-11 |
-| 11 | The territorial layers are the existing **`Stats-Arg_*` family**, painted from the vectors — not new assets, not the `_r` rasters | Iván, 2026-09-11 |
+| 8 | Everything crosses **col-3 (`PRODUCT_LULC`)**. Previous-year is what we want for the burned × LULC cross and is a request to Brazil (§4.1); the published `*_coverage` products keep the network's same-year encoding either way | Iván, 2026-09-11 / 09-14 |
+| 9 | Burnable is defined on **col-3 classes** (§6), never on `veg_fire` — the modal layer that was cancelled in September was the `veg_fire` one; §4.2's is a different layer. Col-3 **22 and 26 are non-burnable** | Iván, 2026-09-11 / 09-14 |
+| 10 | Ecoregions are **Burkart et al. 1999**, and **both sides run on the 13-class vector** `ARG-Political_Level_2-13Ecorregiones_3857` — the toolkit's territory and ours must key identically. The 16-class layer and the exact 16 → 13 crosswalk stay for December (§5.2) | Iván, 2026-09-10 / 09-14 |
+| 11 | Territorial layers are **existing assets, painted from the VECTORS** — never the `_r` rasters, whose ids do not match their own vectors' `GEOCODE` (§5.1 trap 1) | Iván, 2026-09-11 / 09-14 |
 | 12 | The two object exclusion rules and their thresholds are **FINAL** (docs/07 §1.1) — not a parameter these statistics may vary | Iván + team, 2026-09-11 |
 | 13 | The September re-export is **`_v2`** on our tree; Brazil copies it over the public asset, so no public id changes | Iván + Brazil, 2026-09-11 |
-| 14 | Statistics on our own **fire-year objects** (per-event size distributions, season-spanning fires) are worth a separate, clearly-unofficial output — but not before 24 September | Iván, 2026-09-11 |
+| 14 | **Brazil helps export the remaining fire subproducts** (07d); the **scar-size side stays blocked** on the manual scar ingest, which is ours alone (§9) | Iván + Brazil, 2026-09-14 |
+| 15 | Statistics on our own **fire-year objects** (per-event size distributions, season-spanning fires) are worth a separate, clearly-unofficial output — but not before 24 September | Iván, 2026-09-11 |

@@ -20,7 +20,7 @@ el factsheet. Puede también servir como hoja de ruta/bitácora, para estar al
 tanto de qué se hizo y qué falta.
 
 > **Plan de producción: [`09-statistics.md`](09-statistics.md)** (de dónde sale cada
-> número: la tabla grande D1, el conteo de incendios, el denominador quemable) y
+> número: el área quemada del toolkit, el denominador quemable, el conteo de incendios) y
 > **[`07-vector_to_raster.md` §1.1](07-vector_to_raster.md)** (los filtros de
 > polígonos que resuelven la sobre-estimación en agricultura y en el pastizal pampeano).
 > **El orden de trabajo está en [`../../ROADMAP.md`](../../ROADMAP.md).**
@@ -159,17 +159,24 @@ La media se calcula reduciendo los años de la serie.
 Esta puede ser la primera imagen. Mapa de ARG con cada región pintada según 
 esta métrica, y un globito mostrando cuánto se quema en proporción el total 
 de ARG. También reportar los absolutos, e.g.: 4.2 Mha quemadas de 100 Mha quemables. 
-El quemable también se calcula por año, según el land cover del año previo.
-**No es un cálculo aparte ni costoso**: numerador y denominador salen de la misma
-tabla D1, porque incluye los píxeles no quemados (`mes == 0`) — `09-statistics.md` §4.2.
+**El quemable es una constante por región, no un número por año** (decisión del 14/9,
+`09-statistics.md` §4.2): se toma el modo 1998–2024 de quemable/no quemable por píxel
+y se suma por ecorregión. Son 13 números, calculados una vez. El área quemada por año
+viene del toolkit de la red (`09-statistics.md` §4.1), no de un cálculo nuestro.
+
+Consecuencia para el epígrafe: el `%` se lee como "del área que es quemable la mayor
+parte del tiempo", así que la serie temporal es señal de **fuego**, no de cambio de uso
+del suelo. Decirlo así. Detalle de lo que esto cambia: `09-statistics.md` §4.4.
 
 Lo quemable/no quemable **se define sobre la leyenda de col 3**, no sobre nuestra
 reclass de fuego: la lista de clases está en `09-statistics.md` §6 (agua, urbano,
 suelo desnudo, hielo y "otras áreas no vegetadas" son no quemables). La clase
 **no observado se ignora**: no suma ni al numerador ni al denominador.
 
-Este es también el resultado que se analiza por unidad de LULC: el área quemable es
-el área de cada clase en cada año, y es el mismo `group_by` sobre la misma tabla.
+⚠️ **La versión por clase de LULC no sale de estas tablas** (`09-statistics.md` §4.4):
+el numerador del toolkit sólo tiene filas quemadas y nuestro denominador no tiene
+dimensión de clase. Si el factsheet la quiere, hay que pagar un export más — decidirlo
+antes de prometer el panel.
 
 ### 2. Serie temporal de proporción quemada: cómo cambió en el tiempo
 
@@ -299,9 +306,9 @@ mostrando el resto en gris de fondo.
 **De dónde salen los números, y el caveat.** Son dos fuentes distintas y hay que
 decir siempre cuál se usó:
 
-- **Área**: de la tabla grande **D1** (`data/statistics/d1_ecoregion.csv`), que asigna
-  mes y año **píxel por píxel**. Es la fuente preferible para área y es la que se está
-  construyendo ahora (`09-statistics.md` §4).
+- **Área**: de la tabla del toolkit de la red (`data/statistics/burned_toolkit_*.csv`),
+  que asigna mes y año **píxel por píxel**. Es la fuente preferible para área
+  (`09-statistics.md` §4.1).
 - **Cantidad de incendios**: de `data/statistics/fire_counts_by_month.csv`, la base
   vectorial por año de fuego. Ahí cada incendio es un objeto, su mes es el de la fecha
   mediana y por lo tanto **toda su área cae en un solo mes**.
