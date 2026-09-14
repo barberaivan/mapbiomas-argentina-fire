@@ -192,19 +192,30 @@ raster numbers the regions alphabetically, the vector appends Islas del Atlánti
 they disagree for six of thirteen (§5.2). A dictionary built from one and applied to the other
 reports Monte's 47 Mha as Pampa. Verified by cross-tab, 2026-09-14.
 
-**⚠️ The first thing to settle with them: which asset the dataset reads.** Their toolkit's datasets
-normally read the **published `*_coverage` subproducts** — which for Argentina are the nine of 07d,
-not yet exported (Brazil is helping with those; the scar-size side is blocked on our manual ingest —
-§9). If the dataset is defined that way, **the numerator is gated on 07d landing**. If it is defined
-against the **month-of-burn collection + col-3 LULC** instead — 27/27, landed, exactly what our own
-table was going to read — it can run immediately. This decides whether the factsheet has a numerator
-this week, so ask it first and in writing.
+**Reviewed against their code, 2026-09-14** (`toolkit/v03/argentina/`, by Wallace Silva and Vera
+Laisa). It is real, it already carries our ecorregiones, and it works. What the review settled:
 
-**The second thing to settle: which LULC year their dataset crosses.** The network's
-reference encoding uses the **same-year** LULC; we wanted the **previous** year, because the
-same-year class of a burned pixel is partly a *consequence* of the fire. Ask for previous-year if their dataset definition allows it; if it does not, take
-same-year and **say which one the factsheet used** — it changes what "burned grassland" means, and
-it is invisible in the CSV.
+| question | answer |
+|---|---|
+| territory | `ecorregiones.js` reads **our 13-class vector**, keys on `GEOCODE`, names from `LEVEL_2` ✅. Its `ee.Number.parse()` on a numeric `GEOCODE` is harmless (tested) |
+| which assets | `_shared/lulc_base.js` reads **public `_v1`** — and `annual_burned_v1` / `monthly_burned_v1` **are not there**, while the v1 that is there is the superseded mapping. See below |
+| which LULC year | **SAME-year.** `alignThemeToFire()` pairs `burned_area_<Y>` with `classification_<Y>`. Previous-year is not on offer; the `%` uses our own denominator anyway, so this only bites the per-class panel (§4.4) |
+| month × LULC | **not available** — there is no `monthly_burned_coverage` dataset in their app, though our v2 asset of that name exists. The pirogram is month-only |
+| grid | `scale: 30`, not our pinned transform — same pixel size on this lattice, a sub-pixel phase shift (§3). Fine, and not worth asking them to change |
+| destination | `Export.table.toCloudStorage` → `gs://mapbiomas-fire`, and **we have write access** (`storage.objects.create` granted). The "do we need a Drive fallback?" question is closed |
+| units | `pixelArea/1e6` km², `×100` → the `Área ha` column really is hectares |
+
+**The one problem, and the fix.** Their base module reads `mapbiomas-public/..._v1`, which is missing
+exactly the two layers the factsheet needs. So we run **a repointed copy** in our own repo —
+`users/mapbiomas-arg/fuego:collection-01/statistics/apps/fuego_col1.js` — identical to theirs except
+that `_shared/lulc_base.js` reads our `FINAL_PRODUCTS` `_v2`, with an in-place warning on the four
+products that have no v2 yet (frequency, accumulated, scar size, year-last-fire: exporting those
+today would publish v1 numbers). `core/*` and `00_Tools/Legends.js` are still required from **their**
+repo — the engine is not ours to fork. **Delete the copy** once their `lulc_base` points at v2, or
+once v2 is published to `mapbiomas-public`.
+
+The click-by-click — which boxes to tick, what lands where — is in [`ROADMAP.md`](../../ROADMAP.md)
+under "RUN THIS", because it is a procedure, not a design.
 
 ### 4.2 The denominator — one constant burnable layer
 
@@ -658,8 +669,9 @@ Asset ids come from `utils/constants.py::product_name()` — one source of truth
 one edit.
 
 **These are blocked on the products, and the products are now split between us and Brazil.** As of
-14 Sep **Brazil is helping export the remaining fire subproducts** (07d, the nine) — the same
-reference code, run on their side. **The exception is the scar-size side**: `annual_burned_scar_id`,
+14 Sep **Vera is exporting the remaining fire subproducts** (07d) on their side, and **four have
+landed**: `annual_burned_v2`, `monthly_burned_v2`, `annual_burned_coverage_v2`,
+`monthly_burned_coverage_v2` — 27 bands each, verified against the assets. **The exception is the scar-size side**: `annual_burned_scar_id`,
 `annual_burned_scar_area` and `annual_burned_scar_size_range` (07c) are gated on **Iván's manual
 ingest of the 27 calendar-scar packages**, which nobody else can do for us, so `toDrive-area-scar-size`
 cannot run until that lands ([`ROADMAP.md`](../../ROADMAP.md), "After").
