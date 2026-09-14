@@ -38,14 +38,14 @@ unconfined rule A that deleted two thirds of the Delta del Paraná. Fixed in 803
 also requires `area_ha < 150` and intersection with `config/rule_a_aoi.geojson`. Full story in
 `git log` and docs/07 §1.1; it is settled and needs no further action.)
 
-### State — 13 Sep 23:25
+### State — 14 Sep 00:25
 
 | What | Where | State |
 |---|---|---|
 | **Fire-object polygon layer** (07e) | `FINAL_PRODUCTS/burned_area_polygons_v2` | ✅ **DONE** — exported, `--verify` green on all 28 fire-years, `--set-props` written. **1,012,648 rows / 63,328,585 ha** |
 | **Calendar scar packages** (07b, local) | `collection-01/data/scars-upload-cache/` | ✅ **DONE** — 27 zips, 630 MB, gate green |
-| **Month-of-burn rasters** (07a) | `collection1_fire_mask_v2/…_<year>` | ⏳ **26/27** — 2002 re-running and confirmed advancing; a re-wedge is now self-healing, see below |
-| **The nine subproducts** (07d) | `FINAL_PRODUCTS/` | ⏳ not started — gated on 27/27 |
+| **Month-of-burn rasters** (07a) | `collection1_fire_mask_v2/…_<year>` | ✅ **DONE** — **27/27**, all carrying the current rule A. 2002 landed 14 Sep 00:16 |
+| **The nine subproducts** (07d) | `FINAL_PRODUCTS/` | ⏳ **launched 14 Sep 00:21** — 9/9 `arg07d_*` tasks in flight, verified on the server (not just `rc=0`) |
 | **The three scar rasters** (07c) | `FINAL_PRODUCTS/` | ⏳ gated on Iván's ingest **and** on 27/27 |
 
 **The fix is confirmed, twice, independently — do not re-derive this.** The local scar build
@@ -53,69 +53,55 @@ also requires `area_ha < 150` and intersection with `config/rule_a_aoi.geojson`.
 reports `area per OBJECT` = **63.33 Mha**. The roadmap predicted 63.33. The small gap between the
 two is fire-year vs calendar-year partitioning, as expected.
 
-### ⚠ The one live problem: month-of-burn 2002
+### A wedged GEE task no longer needs a human
 
-**The first 2002 export wedged inside GEE.** It ran **37 hours** stuck at 73.7 % (`progress`
-frozen at `14/18` work units, `attempt: 1`) while the other 26 years each finished in 42–54 min.
-2002 is a mid-sized year (3.55 Mha), so there was no reason for it. **Nothing in our code caused
-it and nothing in our code can prevent it** — it was a server-side stall.
+**Settled — do not re-derive.** One 2002 export ran **37 h** stuck at 73.7 % (`progress` frozen at
+`14/18` work units, `attempt: 1`) while the other 26 years each finished in 42–54 min. It was a
+server-side stall: nothing in our code caused it and nothing in our code can prevent it. Cancelled
+and resubmitted by hand; the retry landed in 78 min.
 
-**Already done (13 Sep 22:57):** cancelled that operation and resubmitted 2002 alone with
-`--year 2002 --launch --overwrite`. Confirmed alive at 23:24 — work units creeping
-(6.0059 → 6.0135 between two ticks), so it is computing, not hung.
+The supervisor now breaks such a stall itself (`stall_survey` / `cancel_wedged_mob`, tested by
+`scripts/test-07-v2_driver_stall.py`; full rationale in those docstrings). Four things about it
+are worth knowing before you touch it:
 
-**If it wedges again, the supervisor now handles it — no human needed.** This was the last
-thing on the critical path that required someone awake, and it is closed
-(`stall_survey` / `cancel_wedged_mob` in `run_07_v2_driver.py`):
-
-- Every tick records each in-flight task's `progress` **and** `stages[].completeWorkUnits` to
-  `logs/v2-driver/mob-progress.json`. GEE serves a task's *current* progress but keeps **no
-  history**, so last tick's reading has to live on disk — that file is the watchdog's only memory.
-- A `mob_` task flat for **2.5 h** (3× the slowest healthy year; the real wedge was flat 37 h) is
-  cancelled, and the next tick tops that year up. Up to `MAX_STALL_KILLS = 3` times, then it stops
-  and says so on the board.
-- **`updateTime` is not the signal** — the server refreshes it on a stalled task too; the wedged
-  2002 op carried a fresh `updateTime` for all 37 h. Only the work-unit count is real.
-- Four guards before any cancel (description is `mob_<our calendar year>`, operation is in
-  `mapbiomas-argentina`, description still matches on a fresh `getOperation`, state still
-  PENDING/RUNNING). The shared compute project is why: cancelling another country's export is
-  unrecoverable for them. Covered by `scripts/test-07-v2_driver_stall.py` — run it if you touch
-  this; it cannot cancel anything, `cancelOperation` is patched to raise.
-- **07d / 07c tasks are tracked and shown on the board but never auto-cancelled.** We have 27
-  measured healthy `mob_` runs to calibrate against and none for those, and a guessed threshold
-  would eventually kill work that was only slow.
-
-The board now prints in-flight health, not just a count — `` `mob_2002` 32%, flat 0 min `` — so
-"running" and "hung" no longer read identically.
+- **GEE serves a task's current progress but no history**, so last tick's reading lives on disk in
+  `logs/v2-driver/mob-progress.json`. That file is the watchdog's only memory.
+- **`updateTime` is not the signal** — the server refreshes it on a stalled task too; the wedged op
+  carried a fresh `updateTime` for all 37 h. Only the work-unit count is real.
+- A `mob_` task flat for **2.5 h** is cancelled and re-topped-up, `MAX_STALL_KILLS = 3` times, then
+  it stops and says so on the board. **07d/07c tasks are shown but never auto-cancelled** — 27
+  measured healthy `mob_` runs calibrate that threshold and nothing calibrates theirs.
+- Four guards run before any cancel, because the compute project is shared with the whole network
+  and cancelling another country's export is unrecoverable for them.
 
 **Never relaunch with `--all` to fix one year.** The supervisor tops up only the missing
-years (`month_years_current()` → `missing`), because `--all --overwrite` re-exports the 26 good
-assets too: ~24 h to repair ~50 min of work, tearing down good assets on the way.
+years (`month_years_current()` → `missing`), because `--all --overwrite` re-exports the good
+assets too: ~24 h to repair ~50 min of work, tearing them down on the way.
 
-### What happens after 2002 lands — all unattended
+### What is running right now — no human needed
 
-1. The supervisor sees 27/27 and marks the month collection complete.
-2. **The nine subproducts (07d) launch automatically** — `07-subproducts.py --launch`, 9 GEE
-   tasks. Encodings are copied verbatim from the network's reference; **do not innovate there**
-   (docs/07 §12).
-3. When the nine land, an **audit runs automatically** and leaves `A3-check.out` and
-   `A3-props.out` in `collection-01/logs/v2-driver/` — read them, they are not self-checking.
+The nine subproduct tasks (07d) went out at **00:21 on 14 Sep** and are on the server. When they
+land, the supervisor runs the **audit automatically** and leaves `A3-check.out` and `A3-props.out`
+in `collection-01/logs/v2-driver/` — **read them, they are not self-checking.**
 
-Nothing above needs a human. If the board still shows `0/9` an hour after 27/27, read
-`A2.out`.
+Encodings there are copied verbatim from the network's reference; **do not innovate** (docs/07 §12).
+If the board still shows `0/9` hours from now with nothing in flight, read `A2.out`.
 
-**So the morning check is one command:**
+**The morning check is one command:**
 
 ```bash
 $PYTHON collection-01/scripts/run_07_v2_driver.py --status
 ```
 
-Read the A1 row first. `27/27` → the night went fine, go do the ingest below. Still `26/27` with
-a task in flight → look at its `flat N min`: small means it is just slow, large means the
-watchdog either has already acted (grep `A1-stall` in `logs/v2-driver/tick.log`) or has given up
-after three kills and says so on the board.
+Read the **A2** row. `9/9` → the night went fine; go read `A3-*.out`, then do the ingest below.
+Still short with tasks in flight → look at each task's `flat N min` on that row: small means merely
+slow, large means it has stopped moving. **07d tasks are not auto-cancelled** (above), so a wedged
+one is yours to cancel and resubmit — the same drill the 2002 note describes.
 
-### What Iván has to do on Monday — the only human gate
+The ingest below does **not** wait on 07d. It is gated only on 27/27 month assets, which landed at
+00:16, so you can do it the moment you sit down.
+
+### What Iván has to do — the only human gate
 
 **Ingest the 27 scar packages by hand**, then the last product builds itself:
 
