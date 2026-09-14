@@ -538,9 +538,15 @@ def main():
     if args.no_exclusions:
         print("[filter] NO EXCLUSION RULES — this is not the published selection")
     else:
-        print(f"[filter] rule A: frac_c15 > {args.t_grass or C.T_GRASS} in "
-              f"{C.GRASS_WINDOW[0]}..{C.GRASS_WINDOW[1]} | "
-              f"rule B: frac_agri > {args.t_agri or C.T_AGRI}")
+        # Printed from C.exclusion_rules(), the SAME text stamped on the exported asset, so
+        # this line cannot drift from what is actually applied.  Hand-written here, it did:
+        # 8032aa2 added `area_ha < 150` and the AOI intersect to the filter and left this print
+        # describing the UNCONFINED rule, so the 2002 relaunch on 13 Sep announced the broken
+        # selection while building the correct one.  This is the line a human reads to check
+        # which selection is being built.
+        r = C.exclusion_rules(t_grass=args.t_grass, t_agri=args.t_agri)
+        print(f"[filter] {r['exclusion_rule_a']}")
+        print(f"[filter] {r['exclusion_rule_b']}")
 
     years = C.CALENDAR_YEARS if args.all else [args.year]
     bad = [y for y in years if y not in C.CALENDAR_YEARS]

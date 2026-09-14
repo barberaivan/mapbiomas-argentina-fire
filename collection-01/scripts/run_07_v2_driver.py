@@ -253,13 +253,24 @@ def last_success_end(prefix):
 RULE_A_TEXT = C.exclusion_rules()["exclusion_rule_a"]
 
 
-def n_month_assets_current():
-    """Month-of-burn images whose `exclusion_rule_a` is the one we are building now."""
+def month_years_current():
+    """Calendar years whose month-of-burn asset carries the rule text we are building now.
+
+    Returns the YEARS, not a count, because stage_A1 needs to know WHICH are missing: a
+    relaunch that redoes the years already done is a 24 h round trip to fix one of them.
+    """
     try:
-        return int(ee.ImageCollection(C.MONTH_OF_BURN_COL)
-                   .filter(ee.Filter.eq("exclusion_rule_a", RULE_A_TEXT)).size().getInfo())
+        idx = (ee.ImageCollection(C.MONTH_OF_BURN_COL)
+               .filter(ee.Filter.eq("exclusion_rule_a", RULE_A_TEXT))
+               .aggregate_array("system:index").getInfo()) or []
     except ee.EEException:
-        return 0
+        return set()
+    out = set()
+    for i in idx:
+        tail = str(i)[-4:]
+        if tail.isdigit():
+            out.add(int(tail))
+    return out
 
 
 def poly_landed():
@@ -321,10 +332,22 @@ def stage_A1(st):
         log(f"[A1] ⚠ STOPPED after {MAX_TRIES} submissions with {st['mob']}/{N_CAL} landed "
             f"— needs a human")
         return
-    # --overwrite: the 19 month assets from the first _v2 run carry the unconfined rule A
+    # --overwrite: an existing month asset from the first _v2 run carries the unconfined rule A
     # and must be REPLACED in place, not skipped as "already there".
-    run("A1", [PYTHON, "collection-01/workflow/07-month_of_burn.py",
-               "--all", "--launch", "--overwrite", *COMAHUE], timeout=5400)
+    #
+    # But submit ONLY the years that are actually missing.  `--all --overwrite` re-exports the
+    # years already done too, so a top-up after ONE year got stuck would redo the other 26 --
+    # ~24 h to repair ~50 min of work, and it would tear down 26 good assets to do it.  That is
+    # what forced a hand-pause on 13 Sep when mob_2002 wedged at 26/27.
+    missing = [y for y in C.CALENDAR_YEARS if y not in st["mob_years"]]
+    if len(missing) == N_CAL:
+        run("A1", [PYTHON, "collection-01/workflow/07-month_of_burn.py",
+                   "--all", "--launch", "--overwrite", *COMAHUE], timeout=5400)
+        return
+    log(f"[A1] topping up {len(missing)} missing year(s): {missing}")
+    for y in missing:
+        run("A1", [PYTHON, "collection-01/workflow/07-month_of_burn.py",
+                   "--year", str(y), "--launch", "--overwrite", *COMAHUE], timeout=1800)
 
 
 def stage_A2(st):
@@ -468,7 +491,7 @@ def stage_C3(st):
 # ---------------------------------------------------------------------------
 def survey():
     fetch_ops()
-    mob = n_month_assets_current()
+    mob_years = month_years_current()
     fp = {a["id"].split("/")[-1]
           for a in ee.data.listAssets({"parent": C.FINAL_PRODUCTS}).get("assets", [])}
     subs = ["monthly_burned", "annual_burned", "monthly_burned_coverage",
@@ -476,7 +499,8 @@ def survey():
             "accumulated_burned", "accumulated_burned_coverage", "year_last_fire"]
     scar_subs = ["annual_burned_id", "annual_burned_area_ha", "annual_burned_scar_size_range"]
     return {
-        "mob": mob,
+        "mob": len(mob_years),
+        "mob_years": mob_years,
         "mob_inflight": inflight("mob_"),
         "d_inflight": inflight("arg07d_"),
         "e_inflight": inflight("arg07e_"),
