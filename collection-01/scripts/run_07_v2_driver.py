@@ -98,6 +98,29 @@ def mark(name, note=""):
     marker(name).write_text(f"{dt.datetime.now():%F %T}  {note}\n")
 
 
+def paused(name):
+    """True when `<stage>.pause` exists — that stage is skipped entirely this tick.
+
+    Deliberately NOT done by writing a `<stage>.done`.  A `.done` asserts the stage SUCCEEDED, and
+    a marker that claims a success which never happened is the exact bug this project hit three
+    times in Sep 2026 (stale `B.done`; the zip gate exiting 1 after passing; `stage_B` gated on its
+    own stamp).  A pause is a different fact — "deprioritised, work not done" — so it gets its own
+    file, is visible on the board as ⏸, and is undone by deleting it.
+
+    Written by a human (or by whoever deprioritises the branch); the driver never creates one.
+    Put the reason in the file: the board prints its first line.
+    """
+    return (STATE / f"{name}.pause").exists()
+
+
+def pause_reason(name):
+    p = STATE / f"{name}.pause"
+    try:
+        return (p.read_text().strip().splitlines() or [""])[0]
+    except Exception:
+        return ""
+
+
 def tries(name, bump=False):
     p = STATE / f"{name}.tries"
     n = int(p.read_text().strip()) if p.exists() else 0
@@ -670,7 +693,9 @@ def health(st, prefix):
 
 
 def write_status(st):
-    def tick(ok):
+    def tick(ok, name=None):
+        if name and paused(name):
+            return "⏸"
         return "✅" if ok else "⏳"
     lines = [
         "# step-07 `_v2` re-export — driver status",
@@ -684,10 +709,11 @@ def write_status(st):
         f"| A1 | 07a month of burn | {tick(st['mob'] >= N_CAL)} | "
         f"{st['mob']}/{N_CAL} assets, {len(st['mob_inflight'])} task(s) in flight"
         f"{health(st, 'mob_')} |",
-        f"| A2 | 07d nine subproducts | {tick(st['subproducts'] == 9)} | "
+        f"| A2 | 07d nine subproducts | {tick(st['subproducts'] == 9, 'A2')} | "
         f"{st['subproducts']}/9 assets, {len(st['d_inflight'])} in flight"
+        f"{' — ⏸ PAUSED: ' + pause_reason('A2') if paused('A2') else ''}"
         f"{' — GATED on A1' if st['mob'] < N_CAL else ''}{health(st, 'arg07d_')} |",
-        f"| A3 | 07d audit | {tick(done('A3'))} | "
+        f"| A3 | 07d audit | {tick(done('A3'), 'A3')} | "
         f"`--check` + property audit, once the nine land — read `A3-*.out` |",
         f"| B | 07e polygon layer | {tick(done('B'))} | "
         f"asset {'exists' if st['poly'] else 'not yet'}, {len(st['e_inflight'])} in flight, "
@@ -783,6 +809,9 @@ def main():
 
     for stage in (stage_A1, stage_A2, stage_A3, stage_B,
                   stage_C1, stage_C2, stage_C3, stage_C4):
+        name = stage.__name__.replace("stage_", "")
+        if paused(name):
+            continue
         try:
             stage(st)
         except Exception as exc:                       # one broken stage must not stop the rest
