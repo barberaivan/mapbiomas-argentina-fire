@@ -51,7 +51,7 @@ collection-01/data/statistics/     ALL statistics data — raw exports and deriv
   burnable_eco13_raw.csv   exactly what GEE wrote: code, sum
   burnable_eco13.csv       decoded: ecoregion, burnable, area_ha — the denominator, 13 rows
   burned_toolkit_*.csv     what the toolkit produced (month x year x ecoregion x LULC)
-  fire_counts_by_month.csv per ecoregion x fire-year x month (counts, from objects)
+  fire_counts_by_month.csv per ecoregion x CALENDAR year x month (counts, from objects)
   fire_region_summary.csv  per ecoregion: fires/year, area/year, size quantiles
   figures/                 the plots handed to the designers
 ```
@@ -168,7 +168,7 @@ split is now:
 |---|---|---|---|
 | **the numerator** | burned area by **month × year × ecoregion × LULC** | **the network's toolkit**, with our ecoregion layer registered in it (§4.1) | their app, their grid, their encoding |
 | **the denominator** | **burnable area by ecoregion**, one constant | **us**, one small GEE export (§4.2–§4.3) | the same programming strategy as their app |
-| the fire counts | fires per ecoregion × fire-year × month | us, **locally**, off the object database | §8.2 — unchanged, never touches GEE |
+| the fire counts | fires per ecoregion × **calendar year** × month | us, **locally**, off the object database | §8.2 — never touches GEE |
 
 What this buys: the one heavy, error-prone export is no longer ours to write, verify and re-run
 three days before the factsheet. What it costs is written down in §4.4 — read it before quoting a
@@ -500,9 +500,15 @@ Counts are not a pixel statistic and never touch Earth Engine. Source: the local
 (`objects-pred/`, `objects-raw/*_raster_metrics.csv`, the `.gpkg` geometries), filtered to the
 deployed selection (`fire == 1 & area_ha >= 1`, docs/07 §1.1).
 
-- **Fire-year, not calendar year** — the object database is fire-year throughout.
-- **Month = the month of `date_median`** (the local CSV column; the same value is `date_med` on the
-  uploaded FCs, docs/07 §13.2.1). So a whole fire's count falls in one month.
+- **Calendar year and month, both from `date_median`.** The object database is stored by *fire*
+  year, but a count is filed under the **calendar** year and month of its median date — so a whole
+  fire lands in exactly one year and one month. `date_median` is the local CSV column; the same
+  value is `date_med` on the uploaded FCs (docs/07 §13.2.1). **Everything the factsheet reports is
+  calendar-year**, on every side (§8.3).
+- **A calendar year therefore needs TWO fire-year files.** Fire-year `Y` (1 May Y → 30 Apr Y+1)
+  feeds calendar years `Y` and `Y+1`, so no calendar year is complete until both its fire-years are
+  read — the same trap as the step-07 scar build (docs/07). Read all 28 fire-years, assign the
+  calendar year, then aggregate; never aggregate per file.
 - **Territory = the region containing the object's CENTROID.** One fire, one ecoregion, counted
   once. Regional counts therefore **sum to the national count** — which is the point.
   `scripts/objects_region_tag.R` already writes this as `regions_<fy>_one.csv`.
@@ -517,20 +523,26 @@ deployed selection (`fire == 1 & area_ha >= 1`, docs/07 §1.1).
 - Centroid, not largest-overlap: the two agree for every object that does not straddle a boundary,
   which is nearly all of them.
 
-Outputs: `data/statistics/fire_counts_by_month.csv` (ecoregion × fire-year × month) and
+Outputs: `data/statistics/fire_counts_by_month.csv` (ecoregion × **calendar year** × month) and
 `fire_region_summary.csv` (fires/year, area/year, size quantiles, density per 10,000 km²). These are
 **threshold-agnostic** — the tagging runs on every object, `fire == 0` included, and the filter is a
 `filter()` on the output — but they must be **regenerated under the final object selection**, since
 the selection changed after the existing CSVs were written ([`ROADMAP.md`](../../ROADMAP.md)).
 
-### 8.3 The two divergences to state in the footnote
+### 8.3 Everything is calendar-year — and the three divergences to state in the footnote
 
-The rasters assign calendar year and month **per pixel** from `abs_date`; the object/count side
-assigns **per object** from `date_median`. So (i) a fire straddling 31 December is split in the
-rasters and not in the counts, and (ii) "area burned in month M" is a pixel sum in the toolkit's
-table and a whole-object assignment in the counts. Acceptable — say it out loud, and always say
-which side a number came from. **A third divergence joins them now**: the numerator is a per-year
-land-cover cross and the denominator is a 27-year mode (§4.4).
+**Every number the factsheet reports is calendar-year**: the toolkit's burned area, our denominator
+and the fire counts. The fire-year (1 May → 30 Apr) is how the *mapping* is organised (docs/07), not
+how anything is reported. What differs is *how* each side files a fire into a year and a month:
+
+1. **Per pixel vs per object.** The rasters assign year and month **per pixel** from `abs_date`; the
+   counts assign **per object** from `date_median`. So a fire straddling 31 December is split
+   between two calendar years in the area numbers and filed whole in one of them in the counts.
+2. **"Area burned in month M"** is a pixel sum on the toolkit's side and a whole-object assignment
+   on the object side. The two curves have the same shape and will not have the same values.
+3. **The denominator is a 27-year mode**, not that year's burnable area (§4.4).
+
+Acceptable — say all three out loud, and always say which side a number came from.
 
 ### 8.4 What these tables cannot answer
 

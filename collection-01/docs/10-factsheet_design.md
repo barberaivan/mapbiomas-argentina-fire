@@ -100,6 +100,14 @@ regiones, según qué nos parezca relevante de cada variable.
 Todas las proporciones se expresan en porcentaje, 
 aunque las llamemos proporción... es más fácil leerlo.
 
+**Todo el factsheet es por AÑO CALENDARIO**, en las tres fuentes: el área quemada
+del toolkit, el denominador quemable y el conteo de incendios. El año de fuego
+(1 mayo → 30 abril) es cómo está organizado el *mapeo*, no cómo se reporta nada.
+En el conteo, cada incendio se archiva en el año y mes calendario de su fecha
+mediana (`date_median`), así que un incendio entero cae en un solo año y un solo
+mes — mientras que los rásters lo parten píxel por píxel. Detalle en
+`09-statistics.md` §8.3.
+
 Las regiones también pueden ser las clases de LULC de MapBiomas.
 El concepto aplica igual, pero el análisis es muy distinto, ya que esas 
 regiones no se trabajan de forma vectorial sino por pixel. Si hay análisis
@@ -223,9 +231,11 @@ La versión completa del pirograma es % quemada y nro de incendios >= 10 ha
 Seguir modelo en Barberá et al. 2025, figura 2C [https://link.springer.com/article/10.1186/s42408-025-00353-8].
 Si es demasiado, se quita el número de incendios.
 
-La cantidad de incendios se juzga sobre la base de datos vectorial de fuego,
-basada en años de fuego, no años calendario. El mes es el de la fecha mediana del
-polígono (`date_median`).
+La cantidad de incendios se juzga sobre la base de datos vectorial de fuego. El
+**año y el mes son los calendario de la fecha mediana del polígono**
+(`date_median`): la base está *guardada* por año de fuego, pero se reporta por año
+calendario como todo lo demás. Un incendio que cruza el 31 de diciembre cae entero
+en uno de los dos años acá, y se parte en el área de los rásters.
 
 **Cada incendio se cuenta una sola vez**, en la región que contiene su **centroide**
 (`09-statistics.md` §8.2). Antes este documento pedía contarlo en toda región que
@@ -238,7 +248,9 @@ juzgado por % quemado, pero también podría ser el mes con más eventos.
 
 Sería ideal ajustar un GAM cíclico para acompañar los puntos. 
 En el gráfico, quizás convenga que el eje x corra de mayo a abril, como
-nuestro año de fuego, así no se corta nada. 
+nuestro año de fuego, así no se corta la temporada por el medio. Es una
+convención de *display* del eje de meses: los datos siguen siendo por año
+calendario. 
 
 El número medio de incendios, si se muestra, quizás debería expresarse como
 densidad cada 10000 km2, o de alguna manera que deje números agradables,
@@ -289,10 +301,11 @@ meses usáramos quincenas, todos los números se parten al medio. Por eso el
 binning mensual no es un detalle de implementación sino parte de la definición
 del gráfico, y va dicho en el epígrafe.
 
-**Eje X de mayo a abril**, que es nuestro año de fuego (ver
-`utils/constants.py`: el FY va del 1 de mayo al 30 de abril siguiente, y se
-nombra por el año de inicio). Además de ser consistente con los datos, evita
-cortar la temporada de fuego por el medio.
+**Eje X de mayo a abril**, el orden del año de fuego (ver `utils/constants.py`:
+el FY va del 1 de mayo al 30 de abril siguiente, y se nombra por el año de
+inicio). Es sólo el **orden del eje de meses** — los datos se agregan por año
+calendario, como todo el factsheet — y evita cortar la temporada de fuego por el
+medio.
 
 La misma lógica aplica a la cantidad de incendios: qué % de los incendios de una
 región ocurre en cada mes. Sumar o promediar los años da lo mismo, porque la
@@ -310,7 +323,7 @@ decir siempre cuál se usó:
   que asigna mes y año **píxel por píxel**. Es la fuente preferible para área
   (`09-statistics.md` §4.1).
 - **Cantidad de incendios**: de `data/statistics/fire_counts_by_month.csv`, la base
-  vectorial por año de fuego. Ahí cada incendio es un objeto, su mes es el de la fecha
-  mediana y por lo tanto **toda su área cae en un solo mes**.
+  vectorial, por **año calendario y mes de la fecha mediana**. Ahí cada incendio es un
+  objeto, así que **todo el incendio cae en un solo mes y un solo año**.
 
 Los dos números no van a cerrar y no están pensados para cerrar.

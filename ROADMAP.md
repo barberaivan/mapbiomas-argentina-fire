@@ -127,12 +127,15 @@ Two things about the join, because they are what a wrong number will come from:
 
 From the toolkit's table, our burnable table and the local vectors. No Earth Engine.
 
-- [ ] **Regenerate the fire-count tables under the final filters, counting each fire ONCE.**
-      *(edit → run)* Two changes at once ([docs/09 §8.2](collection-01/docs/09-statistics.md)): the
-      object selection changed, so the existing CSVs are stale; and a fire is now counted in the
-      single region containing its **centroid**, not in every region it touches. The centroid tags
-      already exist (`regions_<fy>_one.csv`) — the work is to switch the consumer to them and
-      **drop the `_multi` path from both the script and the doc**, not to leave both. Move
+- [ ] **Regenerate the fire-count tables: final filters, each fire ONCE, by CALENDAR year.**
+      *(edit → run)* Three changes at once ([docs/09 §8.2](collection-01/docs/09-statistics.md)):
+      the object selection changed, so the existing CSVs are stale; a fire is now counted in the
+      single region containing its **centroid**, not in every region it touches; and a fire is filed
+      under the **calendar year and month of `date_median`**, not under its fire-year — everything
+      the factsheet reports is calendar-year. The centroid tags already exist
+      (`regions_<fy>_one.csv`), so the work is to switch the consumer to them and **drop the
+      `_multi` path from both script and doc**, not to leave both. ⚠️ **A calendar year needs both
+      of its fire-years**, so read all 28 files first and aggregate after — never per file. Move
       `scripts/factsheet_object_stats.R` in as `statistics/fire_counts.R`, writing
       `data/statistics/fire_counts_by_month.csv` + `fire_region_summary.csv`. Local R, minutes.
 - [ ] **Build the four analyses** from the toolkit's table + `burnable_eco13.csv` + the counts —
@@ -142,11 +145,13 @@ From the toolkit's table, our burnable table and the local vectors. No Earth Eng
       objects**); the intra-annual shape normalised per region. **Analysis 1's per-LULC-class
       variant is not computable** from these tables (docs/09 §4.4) — decide whether to drop it or to
       pay for one more small export, before it is promised to the designers.
-- [ ] **State the three divergences in the footnote.** (i) Rasters assign calendar year and month
-      **per pixel** from `abs_date`, the count side **per object** from `date_median`, so a fire
-      straddling 31 December is split in one and not the other; (ii) "area burned in month M" is a
-      pixel sum on one side and a whole-object assignment on the other; (iii) the denominator is a
-      **27-year modal burnable area**, not that year's. Acceptable — say all three out loud.
+- [ ] **State the three divergences in the footnote.** Everything reported is **calendar-year** —
+      the fire-year is how the mapping is organised, not how anything is published. What differs is
+      how each side files a fire: (i) rasters assign year and month **per pixel** from `abs_date`,
+      the count side **per object** from `date_median`, so a fire straddling 31 December is split in
+      one and filed whole in the other; (ii) "area burned in month M" is a pixel sum on one side and
+      a whole-object assignment on the other; (iii) the denominator is a **27-year modal burnable
+      area**, not that year's. Acceptable — say all three out loud.
 
 ## Then — the factsheet plots
 
