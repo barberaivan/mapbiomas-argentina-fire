@@ -28,6 +28,13 @@ State lives in `collection-01/logs/v2-driver/`:
     STATUS.md       the human-readable board — `cat` this first
     <stage>.done    stage markers (delete one to force that stage to run again)
     <stage>.tries   resubmission counter; a stage that has burned MAX_TRIES stops and shouts
+    mob-progress.json  last tick's work-unit reading per in-flight 07a task — the stall watchdog's
+                    only memory, because GEE serves a task's CURRENT progress but no history
+
+A task that is RUNNING is not necessarily progressing: `mob_2002` sat 37 h at 14/18 work units in
+Sep 2026 while every healthy year finished in 42-54 min.  `mob_stall_survey` diffs each tick's
+reading against the last one and `cancel_wedged_mob` breaks a year that has been flat for
+STALL_H, so one server-side stall no longer holds the whole pipeline until someone wakes up.
 """
 from __future__ import annotations
 
@@ -206,7 +213,10 @@ def fetch_ops():
     """
     for account, project in (("comahue", ARG_PROJECT), ("gmail", FIRE_PROJECT)):
         init_ee(account, project)
-        _OPS[project] = [o.get("metadata", {}) for o in ee.data.listOperations()]
+        # Keep the operation NAME alongside the metadata: `cancelOperation` addresses a task by
+        # name, and the stall watchdog below is the only thing that can free a wedged year.
+        _OPS[project] = [dict(o.get("metadata", {}), _name=o.get("name"))
+                         for o in ee.data.listOperations()]
     init_ee("comahue", ARG_PROJECT)      # leave the session on the project the assets live in
 
 
@@ -229,6 +239,122 @@ def _epoch(ts):
         frac, tz = rest[:-6], rest[-6:]
         ts = f"{head}.{frac[:6]}{tz}"
     return dt.datetime.fromisoformat(ts).timestamp()
+
+
+MOBPROG = STATE / "mob-progress.json"   # per-task progress history, across ticks
+STALL_H = 2.5                          # flat for this long = wedged; a healthy year takes ~50 min
+MAX_STALL_KILLS = 3                    # after this many, stop cancelling and shout for a human
+
+# Which prefixes the watchdog may CANCEL, as opposed to merely report.  Only `mob_`: we have 27
+# measured healthy runs for it (42-54 min each), so STALL_H is calibrated.  We have no such
+# baseline for the nine subproducts or the scar rasters — `accumulated_burned` folds 27 years —
+# and a threshold guessed for those would eventually kill work that was merely slow.  They are
+# tracked and shown on the board, which is what a human needs at 8 a.m.; they are never cancelled.
+STALL_CANCELLABLE = ("mob_",)
+
+
+def _sig(m):
+    """A signature of how far a task has got.  Not just `progress`: a task in its upload stage can
+    sit at the same overall fraction while stage 2 moves, so fold in every stage's
+    completeWorkUnits as well.  Any change at all resets the stall clock."""
+    units = [str(s.get("completeWorkUnits")) for s in (m.get("stages") or [])]
+    return f"{m.get('state')}|{m.get('progress')}|{'|'.join(units)}|{m.get('attempt')}"
+
+
+def stall_survey():
+    """Track every in-flight task of OURS across ticks and report how long each has been frozen.
+
+    Returns `{prefix: [{desc, name, flat_h, progress}, ...]}`, one entry per PENDING/RUNNING task
+    whose description carries one of our namespaced prefixes.  Other countries' tasks in the shared
+    fire project are never touched, here or anywhere (CLAUDE.md).
+
+    Why this exists.  On 12-13 Sep `mob_2002` ran 37 h stuck at 73.7 % (`progress` frozen at
+    14/18 work units, `attempt: 1`) while the other 26 years each finished in 42-54 min.  It was
+    a server-side stall — nothing in our code caused it and nothing in our code can prevent it.
+    The only cure is cancel-and-resubmit, and until now that needed a human awake: `stage_A1`
+    returns early whenever ANY task is in flight, so one wedged year silently holds A1, A2, A3,
+    C3 and C4 for as long as it likes.  A supervisor that cannot tell "running" from "hung" is
+    not unattended.
+
+    Two things make this measurable.  `metadata.progress` and `stages[].completeWorkUnits` ARE
+    readable per task (floats, so sub-work-unit creep shows) — but GEE keeps no history, so the
+    previous tick's reading has to live on disk; that is all MOBPROG is.  And `updateTime` is NOT
+    the signal: the server refreshes it on a stalled task too — the wedged 2002 op carried a fresh
+    `updateTime` throughout its 37 h.  Only the work-unit count is real.
+
+    Work units are lumpy, so a healthy task genuinely pauses at one count for minutes.  STALL_H is
+    2.5 h for that reason: three times the longest healthy year, and the real wedge was flat for
+    fifteen times it.
+    """
+    try:
+        hist = json.loads(MOBPROG.read_text())
+    except Exception:
+        hist = {}
+    now = dt.datetime.now().timestamp()
+    live, out = {}, {p: [] for p in TASK_PROJECT}
+    for prefix, project in TASK_PROJECT.items():
+        for m in _OPS.get(project, []):
+            desc = str(m.get("description", ""))
+            if not desc.startswith(prefix) or m.get("state") not in ("PENDING", "RUNNING"):
+                continue
+            sig, prev = _sig(m), hist.get(desc)
+            # `since` survives only while the signature is unchanged AND it is the same operation:
+            # a resubmitted year reuses the description, and inheriting the dead task's clock would
+            # make the fresh one look wedged from birth.
+            since = (prev["since"] if prev and prev.get("sig") == sig
+                     and prev.get("name") == m.get("_name") else now)
+            live[desc] = {"sig": sig, "since": since, "name": m.get("_name")}
+            out[prefix].append({"desc": desc, "name": m.get("_name"),
+                                "flat_h": (now - since) / 3600.0, "progress": m.get("progress")})
+    if not DRY:
+        MOBPROG.write_text(json.dumps(live, indent=1))
+    return out
+
+
+def cancel_wedged_mob(task):
+    """Cancel ONE frozen month-of-burn task, so the next tick's top-up resubmits that year.
+
+    Four assertions before anything is cancelled, because this is the one place the driver touches
+    a task rather than launching one, and the compute project is shared with the whole MapBiomas
+    Fuego network (CLAUDE.md): cancelling another country's export is unrecoverable for them.  The
+    task must (1) be named `mob_<year>` for a year in our calendar range, (2) live under
+    `projects/mapbiomas-argentina/operations/`, (3) still carry that exact description when we
+    re-read it by name, and (4) still be PENDING/RUNNING at that moment — not one that finished
+    while this tick was busy elsewhere.
+    """
+    desc, name = task["desc"], task["name"]
+    year = desc[4:]
+    if not (year.isdigit() and int(year) in C.CALENDAR_YEARS):
+        log(f"[A1-stall] refusing to cancel {desc!r} — not a mob_<calendar year> task")
+        return False
+    if not name or not name.startswith(f"projects/{ARG_PROJECT}/operations/"):
+        log(f"[A1-stall] refusing to cancel {desc!r} — operation {name!r} is not in {ARG_PROJECT}")
+        return False
+    init_ee("comahue", ARG_PROJECT)
+    try:
+        fresh = (ee.data.getOperation(name) or {}).get("metadata", {})
+    except Exception as exc:
+        log(f"[A1-stall] could not re-read {desc} ({name}): {type(exc).__name__}: {exc}")
+        return False
+    if str(fresh.get("description", "")) != desc:
+        log(f"[A1-stall] refusing to cancel {name} — description is "
+            f"{fresh.get('description')!r}, not {desc!r}")
+        return False
+    if fresh.get("state") not in ("PENDING", "RUNNING"):
+        log(f"[A1-stall] {desc} is now {fresh.get('state')} — nothing to cancel")
+        return False
+    log(f"[A1-stall] ⚠ {desc} frozen for {task['flat_h']:.1f} h at progress={task['progress']} "
+        f"— cancelling {name} (kill {tries('A1-stall') + 1}/{MAX_STALL_KILLS}); "
+        f"the next tick resubmits that year")
+    if DRY:
+        return True
+    tries("A1-stall", bump=True)
+    try:
+        ee.data.cancelOperation(name)
+    except Exception as exc:
+        log(f"[A1-stall] cancel FAILED: {type(exc).__name__}: {exc}")
+        return False
+    return True
 
 
 def last_success_end(prefix):
@@ -327,7 +453,18 @@ def stage_A1(st):
             log("[A1] COMPLETE — 27/27 month-of-burn assets")
         return
     if st["mob_inflight"]:
-        return                      # tasks are running; nothing to do
+        # "In flight" is not the same as "progressing".  A wedged year holds this stage — and
+        # therefore A2, A3, C3 and C4 — indefinitely, so before returning, check whether any of
+        # those tasks has stopped moving and break it if so (mob_stall_survey).
+        wedged = [t for t in st["stall"]["mob_"] if t["flat_h"] >= STALL_H]
+        if wedged and tries("A1-stall") >= MAX_STALL_KILLS:
+            log(f"[A1-stall] ⚠ STOPPED — {MAX_STALL_KILLS} tasks already cancelled for stalling "
+                f"and {[t['desc'] for t in wedged]} is frozen again. This is no longer a GEE "
+                f"lottery; a human must look at it.")
+            return
+        for t in wedged:
+            cancel_wedged_mob(t)    # the NEXT tick sees no task in flight and tops that year up
+        return                      # tasks are running; nothing else to do
     if tries("A1") >= MAX_TRIES:
         log(f"[A1] ⚠ STOPPED after {MAX_TRIES} submissions with {st['mob']}/{N_CAL} landed "
             f"— needs a human")
@@ -491,6 +628,7 @@ def stage_C3(st):
 # ---------------------------------------------------------------------------
 def survey():
     fetch_ops()
+    stall = stall_survey()          # must run every tick: it is what dates the next tick's clock
     mob_years = month_years_current()
     fp = {a["id"].split("/")[-1]
           for a in ee.data.listAssets({"parent": C.FINAL_PRODUCTS}).get("assets", [])}
@@ -502,6 +640,7 @@ def survey():
         "mob": len(mob_years),
         "mob_years": mob_years,
         "mob_inflight": inflight("mob_"),
+        "stall": stall,
         "d_inflight": inflight("arg07d_"),
         "e_inflight": inflight("arg07e_"),
         "c_inflight": inflight("arg07c_"),
@@ -512,6 +651,22 @@ def survey():
         "pix": n_pixels_done(),
         "zips": n_zips(),
     }
+
+
+def health(st, prefix):
+    """How a stage's in-flight tasks are actually doing, for the board.
+
+    "1 task in flight" was the whole content of the A1 cell for the 37 h `mob_2002` was wedged, and
+    it read identically to a healthy run.  Say the progress and how long it has been flat, so the
+    person reading this at 8 a.m. can tell slow from hung without opening a Python shell."""
+    tasks = (st.get("stall") or {}).get(prefix) or []
+    bits = []
+    for t in sorted(tasks, key=lambda t: t["desc"]):
+        pct = f"{100 * t['progress']:.0f}%" if t["progress"] is not None else "?"
+        flag = (" ⚠ WEDGED" if t["flat_h"] >= STALL_H else "") if prefix in STALL_CANCELLABLE \
+            else (" ⚠ FLAT — check it" if t["flat_h"] >= STALL_H else "")
+        bits.append(f"`{t['desc']}` {pct}, flat {t['flat_h'] * 60:.0f} min{flag}")
+    return " — " + "; ".join(bits) if bits else ""
 
 
 def write_status(st):
@@ -527,10 +682,11 @@ def write_status(st):
         "| | stage | state | detail |",
         "|---|---|---|---|",
         f"| A1 | 07a month of burn | {tick(st['mob'] >= N_CAL)} | "
-        f"{st['mob']}/{N_CAL} assets, {len(st['mob_inflight'])} task(s) in flight |",
+        f"{st['mob']}/{N_CAL} assets, {len(st['mob_inflight'])} task(s) in flight"
+        f"{health(st, 'mob_')} |",
         f"| A2 | 07d nine subproducts | {tick(st['subproducts'] == 9)} | "
         f"{st['subproducts']}/9 assets, {len(st['d_inflight'])} in flight"
-        f"{' — GATED on A1' if st['mob'] < N_CAL else ''} |",
+        f"{' — GATED on A1' if st['mob'] < N_CAL else ''}{health(st, 'arg07d_')} |",
         f"| A3 | 07d audit | {tick(done('A3'))} | "
         f"`--check` + property audit, once the nine land — read `A3-*.out` |",
         f"| B | 07e polygon layer | {tick(done('B'))} | "
@@ -542,7 +698,8 @@ def write_status(st):
         f"| C3 | 07c scar rasters | {tick(st['scar_rasters'] == 3)} | "
         f"{st['scar_rasters']}/3 assets; ingested scar FCs {st['scarfc']}/{N_CAL}"
         f"{' — WAITING FOR THE MANUAL INGEST' if st['scarfc'] < N_CAL else ''}"
-        f"{' — GATED on A1 (07c masks to the v2 month of burn)' if st['mob'] < N_CAL else ''} |",
+        f"{' — GATED on A1 (07c masks to the v2 month of burn)' if st['mob'] < N_CAL else ''}"
+        f"{health(st, 'arg07c_')} |",
         f"| C4 | 07c check | {tick(done('C4'))} | "
         f"scar-vs-month agreement on the Chaco box — read `C4-check.out` |",
         "",

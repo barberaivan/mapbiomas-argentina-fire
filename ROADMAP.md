@@ -38,13 +38,13 @@ unconfined rule A that deleted two thirds of the Delta del Paraná. Fixed in 803
 also requires `area_ha < 150` and intersection with `config/rule_a_aoi.geojson`. Full story in
 `git log` and docs/07 §1.1; it is settled and needs no further action.)
 
-### State — 13 Sep 23:00
+### State — 13 Sep 23:25
 
 | What | Where | State |
 |---|---|---|
 | **Fire-object polygon layer** (07e) | `FINAL_PRODUCTS/burned_area_polygons_v2` | ✅ **DONE** — exported, `--verify` green on all 28 fire-years, `--set-props` written. **1,012,648 rows / 63,328,585 ha** |
 | **Calendar scar packages** (07b, local) | `collection-01/data/scars-upload-cache/` | ✅ **DONE** — 27 zips, 630 MB, gate green |
-| **Month-of-burn rasters** (07a) | `collection1_fire_mask_v2/…_<year>` | ⏳ **26/27** — 2002 re-running, see below |
+| **Month-of-burn rasters** (07a) | `collection1_fire_mask_v2/…_<year>` | ⏳ **26/27** — 2002 re-running and confirmed advancing; a re-wedge is now self-healing, see below |
 | **The nine subproducts** (07d) | `FINAL_PRODUCTS/` | ⏳ not started — gated on 27/27 |
 | **The three scar rasters** (07c) | `FINAL_PRODUCTS/` | ⏳ gated on Iván's ingest **and** on 27/27 |
 
@@ -61,22 +61,34 @@ frozen at `14/18` work units, `attempt: 1`) while the other 26 years each finish
 it and nothing in our code can prevent it** — it was a server-side stall.
 
 **Already done (13 Sep 22:57):** cancelled that operation and resubmitted 2002 alone with
-`--year 2002 --launch --overwrite`. The fresh task reached 6/18 units in 3 minutes, which is what
-a healthy year looks like. Expect it to land inside an hour.
+`--year 2002 --launch --overwrite`. Confirmed alive at 23:24 — work units creeping
+(6.0059 → 6.0135 between two ticks), so it is computing, not hung.
 
-**If it wedges again** — `progress` flat for >2 h, especially stuck at the same work-unit count —
-do the same thing again; it is a GEE-side lottery, not a bug to chase:
+**If it wedges again, the supervisor now handles it — no human needed.** This was the last
+thing on the critical path that required someone awake, and it is closed
+(`stall_survey` / `cancel_wedged_mob` in `run_07_v2_driver.py`):
 
-```bash
-# 1. confirm it is actually frozen: sample progress a few minutes apart, not once
-#    (metadata: state, progress, stages[-2].completeWorkUnits)
-# 2. cancel THAT operation by name, asserting description == "mob_2002" first
-# 3. resubmit the single year:
-$PYTHON collection-01/workflow/07-month_of_burn.py --year 2002 --launch --overwrite \
-  --credentials ~/.config/earthengine/credentials.comahue --project mapbiomas-argentina
-```
+- Every tick records each in-flight task's `progress` **and** `stages[].completeWorkUnits` to
+  `logs/v2-driver/mob-progress.json`. GEE serves a task's *current* progress but keeps **no
+  history**, so last tick's reading has to live on disk — that file is the watchdog's only memory.
+- A `mob_` task flat for **2.5 h** (3× the slowest healthy year; the real wedge was flat 37 h) is
+  cancelled, and the next tick tops that year up. Up to `MAX_STALL_KILLS = 3` times, then it stops
+  and says so on the board.
+- **`updateTime` is not the signal** — the server refreshes it on a stalled task too; the wedged
+  2002 op carried a fresh `updateTime` for all 37 h. Only the work-unit count is real.
+- Four guards before any cancel (description is `mob_<our calendar year>`, operation is in
+  `mapbiomas-argentina`, description still matches on a fresh `getOperation`, state still
+  PENDING/RUNNING). The shared compute project is why: cancelling another country's export is
+  unrecoverable for them. Covered by `scripts/test-07-v2_driver_stall.py` — run it if you touch
+  this; it cannot cancel anything, `cancelOperation` is patched to raise.
+- **07d / 07c tasks are tracked and shown on the board but never auto-cancelled.** We have 27
+  measured healthy `mob_` runs to calibrate against and none for those, and a guessed threshold
+  would eventually kill work that was only slow.
 
-**Never relaunch with `--all` to fix one year.** The supervisor now tops up only the missing
+The board now prints in-flight health, not just a count — `` `mob_2002` 32%, flat 0 min `` — so
+"running" and "hung" no longer read identically.
+
+**Never relaunch with `--all` to fix one year.** The supervisor tops up only the missing
 years (`month_years_current()` → `missing`), because `--all --overwrite` re-exports the 26 good
 assets too: ~24 h to repair ~50 min of work, tearing down good assets on the way.
 
@@ -91,6 +103,17 @@ assets too: ~24 h to repair ~50 min of work, tearing down good assets on the way
 
 Nothing above needs a human. If the board still shows `0/9` an hour after 27/27, read
 `A2.out`.
+
+**So the morning check is one command:**
+
+```bash
+$PYTHON collection-01/scripts/run_07_v2_driver.py --status
+```
+
+Read the A1 row first. `27/27` → the night went fine, go do the ingest below. Still `26/27` with
+a task in flight → look at its `flat N min`: small means it is just slow, large means the
+watchdog either has already acted (grep `A1-stall` in `logs/v2-driver/tick.log`) or has given up
+after three kills and says so on the board.
 
 ### What Iván has to do on Monday — the only human gate
 
