@@ -133,9 +133,12 @@ From the big table and the local vectors. No Earth Engine.
 
 ## Then — the factsheet plots
 
-- [ ] **Draw the plots** off those datasets (`scripts/factsheet_plots.R`,
-      `factsheet_plot_functions.R`; the temporal-shape panels are already comparable across regions,
-      ccc0f08). Data is due to the designers **~Wed 16 Sep**.
+- [ ] **Draw the plots** off those datasets. There is no plotting script: the pair Lican pushed in
+      ccc0f08 was written against the old object selection and has been deleted. What survives from
+      that commit is the content plan in
+      [`factsheet-notes.md`](collection-01/presentations/factsheet-notes.md) — §4's intra-annual
+      distribution normalised per region, and §2's interannual series in "times the typical year" —
+      which is what to build from. Data is due to the designers **~Wed 16 Sep**.
 - [ ] **Decide what the factsheet says about the Pampa.** Still open, and it needs a call before the
       16th. The Pampa is largely cropland; after the filters its total is still built partly on
       residual cropland pixels (1.37 Mha nationally at `T_AGRI = 0.4`). Candidate framings: report
