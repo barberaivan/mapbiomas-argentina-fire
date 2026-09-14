@@ -19,9 +19,9 @@ En este documento se detallan enlaces/datos relevantes, e ideas para
 el factsheet. Puede también servir como hoja de ruta/bitácora, para estar al
 tanto de qué se hizo y qué falta.
 
-> **Plan de producción: [`../docs/09-statistics.md`](../docs/09-statistics.md)** (de dónde sale cada
-> número: las tablas de área, el toolkit de la red, el denominador quemable) y
-> **[`../docs/07-vector_to_raster.md` §1.1](../docs/07-vector_to_raster.md)** (los filtros de
+> **Plan de producción: [`09-statistics.md`](09-statistics.md)** (de dónde sale cada
+> número: la tabla grande D1, el conteo de incendios, el denominador quemable) y
+> **[`07-vector_to_raster.md` §1.1](07-vector_to_raster.md)** (los filtros de
 > polígonos que resuelven la sobre-estimación en agricultura y en el pastizal pampeano).
 > **El orden de trabajo está en [`../../ROADMAP.md`](../../ROADMAP.md).**
 > Este archivo tiene el *contenido* del factsheet: qué gráficos, qué mensaje.
@@ -70,7 +70,11 @@ Decidimos que los principales territorios de interés serán
 las ecorregiones de Burkart et al. 1999 
 [Burkart, R., Bárbaro, N. O., Sánchez, R. O., & Gómez, D. A. (1999). 
 Eco-regiones de la Argentina.].
-Tenemos que elegir qué asset usar (13 vs. 16, me inclino por 13).
+**Resuelto**: el cálculo corre sobre el asset de **16 clases** y el factsheet reporta
+las **13**. La agregación 16 → 13 es exacta (medida: cada clase de 16 cae 100 % dentro
+de una de 13), así que una sola tabla sirve para las dos — ver `09-statistics.md` §5.2.
+**Septiembre es sólo a nivel de ecorregión**: provincia y departamento quedan para el
+lanzamiento de diciembre en Bariloche (`09-statistics.md` §1.2).
 
 A continuación se describen los principales análisis. 
 El procedimiento que se describe aplica tanto a nivel de todo ARG como
@@ -155,16 +159,17 @@ La media se calcula reduciendo los años de la serie.
 Esta puede ser la primera imagen. Mapa de ARG con cada región pintada según 
 esta métrica, y un globito mostrando cuánto se quema en proporción el total 
 de ARG. También reportar los absolutos, e.g.: 4.2 Mha quemadas de 100 Mha quemables. 
-El quemable también se calcula por año, según las capas de MapBiomas del año
-previo. Este cálculo es costoso a nivel nacional creo, así que vale la pena
-revisar si ya está calculado para otras cosas, como validación.
-Lo quemable/no quemable se define según nuestro método de mapeo; con la 
-reclass de LULC para fuego tenemos esos números. La clase no observado se ignora,
-no suma a lo quemable.
+El quemable también se calcula por año, según el land cover del año previo.
+**No es un cálculo aparte ni costoso**: numerador y denominador salen de la misma
+tabla D1, porque incluye los píxeles no quemados (`mes == 0`) — `09-statistics.md` §4.2.
 
-Quizás este sea el único resultado que también se analizaría por unidad de LULC.
-Acá el área quemable es el área de cada LULC class en cada año. Ojo que esta es 
-una reducción a nivel nacional y puede ser pesada.
+Lo quemable/no quemable **se define sobre la leyenda de col 3**, no sobre nuestra
+reclass de fuego: la lista de clases está en `09-statistics.md` §6 (agua, urbano,
+suelo desnudo, hielo y "otras áreas no vegetadas" son no quemables). La clase
+**no observado se ignora**: no suma ni al numerador ni al denominador.
+
+Este es también el resultado que se analiza por unidad de LULC: el área quemable es
+el área de cada clase en cada año, y es el mismo `group_by` sobre la misma tabla.
 
 ### 2. Serie temporal de proporción quemada: cómo cambió en el tiempo
 
@@ -211,11 +216,15 @@ La versión completa del pirograma es % quemada y nro de incendios >= 10 ha
 Seguir modelo en Barberá et al. 2025, figura 2C [https://link.springer.com/article/10.1186/s42408-025-00353-8].
 Si es demasiado, se quita el número de incendios.
 
-La cantidad de incendios debería juzgarse en base a la base de datos vectorial
-de fuego, basada en años de fuego, no años calendario. Ahí, es mes corresponde 
-al mes de la fecha mediana del polígono. El conteo por región consiste en 
-todos los polígonos que intersectan la región, no importa si sólo tocan un extremo.
-Esto implica que muchos fuegos serán contados más de una vez, pero no es problema.
+La cantidad de incendios se juzga sobre la base de datos vectorial de fuego,
+basada en años de fuego, no años calendario. El mes es el de la fecha mediana del
+polígono (`date_median`).
+
+**Cada incendio se cuenta una sola vez**, en la región que contiene su **centroide**
+(`09-statistics.md` §8.2). Antes este documento pedía contarlo en toda región que
+tocara; se cambió porque así los conteos regionales suman el total nacional y
+"incendios por región" es una partición. Donde un fuego cruza un límite, el
+centroide decide.
 
 La versión escalar de estas variables es el mes de mayor actividad de fuego, 
 juzgado por % quemado, pero también podría ser el mes con más eventos. 
@@ -287,16 +296,14 @@ leyenda, y las variantes `all_regions` y focal. La focal es especialmente útil
 acá — permite decir "el Chaco quema en invierno tardío, a contramano del resto"
 mostrando el resto en gris de fondo.
 
-**De dónde salen los números, y el caveat.** De
-`data/objects-analysis/factsheet_counts_by_month_<TAG>.csv`, que ya produce
-`scripts/factsheet_object_stats.R` con `area_ha` y `n_fires` por región × año de
-fuego × mes. No hace falta ningún export nuevo.
+**De dónde salen los números, y el caveat.** Son dos fuentes distintas y hay que
+decir siempre cuál se usó:
 
-Pero es la base vectorial, no los píxeles: cada incendio es un objeto, su mes es
-el de la fecha mediana del polígono, y por lo tanto **toda el área de un
-incendio cae en un solo mes**. Los rásters publicados, en cambio, asignan el mes
-píxel por píxel y parten en años calendario. Los dos números no van a cerrar y
-no están pensados para cerrar; siempre hay que decir de cuál viene cada uno. Si
-en algún momento existe la tabla por píxel (la D1 de `../docs/09-statistics.md`
-§5.1), este gráfico se puede rehacer con ella y sería el número preferible para
-área — pero hoy no está construida.
+- **Área**: de la tabla grande **D1** (`data/statistics/d1_ecoregion.csv`), que asigna
+  mes y año **píxel por píxel**. Es la fuente preferible para área y es la que se está
+  construyendo ahora (`09-statistics.md` §4).
+- **Cantidad de incendios**: de `data/statistics/fire_counts_by_month.csv`, la base
+  vectorial por año de fuego. Ahí cada incendio es un objeto, su mes es el de la fecha
+  mediana y por lo tanto **toda su área cae en un solo mes**.
+
+Los dos números no van a cerrar y no están pensados para cerrar.

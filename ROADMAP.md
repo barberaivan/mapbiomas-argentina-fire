@@ -24,19 +24,20 @@ at **15 Sep 2026** for Brazil to copy them to `mapbiomas-public`.
 
 ## Now — the statistics toolkit, in Python, and the one big table
 
-> **Goal: have real numbers to analyse for the factsheet tomorrow (Wed 16 Sep).** Everything in
+> **Goal: have real numbers to analyse for the factsheet on Tue 15 Sep.** Everything in
 > this section is local Python + one GEE export. Nothing here waits on a product asset.
+> **Scope: ecoregion only** — departamento and provincia are December (docs/09 §1.2).
 
 **The decision that reorders the whole file (14 Sep 13:00).** The nine subproducts (07d) were
 launched at 00:21 and **cancelled at 13:05** with one task 12 h in at 36 %. They are not on the
 path to any number we report:
 
 - **D1 — the master table, and the only one the `%` metric may use — reads the month-of-burn
-  collection directly** (`month·100 + lulc_col3(year−1)`, `unmask(0)`), crossed with col-3 LULC.
-  Month-of-burn is **27/27, done**. docs/09 §5.1.
+  collection directly** (`eco·10⁴ + month·10² + lulc_col3(year−1)`, `unmask(0)`), crossed with col-3
+  LULC. Month-of-burn is **27/27, done**. docs/09 §4.
 - **Every factsheet number is a `group_by` on D1**, except the fire counts, which come from the
   **local** object database (`objects-pred/`, `objects-raw/*_raster_metrics.csv`, the `.gpkg`) and
-  never touch Earth Engine at all. docs/09 §9.
+  never touch Earth Engine at all. docs/09 §8.2.
 - The nine feed **D2**, the network's six platform CSVs — and only **five** of them do
   (`*_coverage` ×4 + `year_last_fire`). That is critical-path item 6, **publication**, not analysis.
 
@@ -67,14 +68,16 @@ reports `area per OBJECT` = **63.33 Mha**. The gap is fire-year vs calendar-year
 expected. **When reading 07e's `--verify`, never quote the ROW sum** (68,447,098 ha) — vertex-split
 parts are one row each, and object `2000_57529` alone over-counts by 5.1 Mha.
 
-### The route changed: Python, not a fork of their JavaScript
+### The route: Python, not a fork of their JavaScript
 
-**[docs/09 §3](collection-01/docs/09-statistics.md) is superseded and must be rewritten as the
-first task below.** It specifies forking the network's `2-Statistics/toolkit/v03/core/` into the
-`fuego` Code Editor repo and patching `scale` → `crs` + `crsTransform` in JavaScript. We are
-instead writing **a Python translation of that toolkit** in this repo. Reasons, on record:
+**[docs/09](collection-01/docs/09-statistics.md) was rewritten for this route on 14 Sep and is the
+build spec — read it before writing a line.** The old plan (fork
+`2-Statistics/toolkit/v03/core/` into the `fuego` Code Editor repo, patch `scale` →
+`crs` + `crsTransform` in JavaScript, export to GCS) is **gone from the doc, on purpose**. We write
+**a Python implementation of that toolkit** in this repo, exporting to **Drive**. Reasons, on
+record:
 
-- The analysis is ours and already lives here, in Python and R (docs/09 §9 — **we do not use Looker
+- The analysis is ours and already lives here, in Python and R (docs/09 §8 — **we do not use Looker
   Studio**). A JS toolkit in a separate repo puts the one artefact the factsheet depends on behind a
   Code Editor round-trip, at the point in the calendar where that costs the most.
 - Everything it needs is already a Python constant — `MONTH_OF_BURN_COL`, `PRODUCT_LULC`,
@@ -90,42 +93,48 @@ their `core/`, because the `crs` + `crsTransform` change is one we owe back to B
 
 ### The work
 
-- [ ] **Rewrite [docs/09 §3](collection-01/docs/09-statistics.md) for the Python route.** *(edit)*
-      Replace the fork-their-`core/` plan with the module layout below, and delete the JS path
-      rather than leaving both — a losing alternative left in the docs is the next person's trap.
-      Keep §3.2 (**pin `crs` + `crsTransform`, never `scale: 30`**) verbatim; it is the one piece of
-      §3 that survives unchanged, and it is the whole reason the fork existed.
-- [ ] **Build `collection-01/statistics/` (Python).** *(edit)* A translation of their `core/`:
-      `datasets.py` (D1 first: one band per calendar year, `month·100 + lulc_col3(year−1)`,
-      `unmask(0)`, uint16 — docs/09 §5.1), `territories.py` (paint the `Stats-Arg_*` vectors and
-      **pack** as `ecoregion16·100000 + GEOCODE`; packing instead of intersecting is what removes
-      the sliver problem — docs/09 §4.3, and the 16 ecoregion names are **hand-written**, the
-      asset's are Latin-1 damaged — §4.2), `calculate.py` (the grouped area reduction, on the pinned
-      grid), `legends.py` (col-3 `nivel0/1/2` + the burnable class list — docs/09 §6).
-- [ ] **Export D1 × ecoregión first, and run verification gates 1, 2, 4 and 5**
-      ([docs/09 §8](collection-01/docs/09-statistics.md)) before anything else is exported. It
-      answers the whole factsheet and it is the cheapest thing to be wrong about.
-      **`unmask(0)` is load-bearing** — it is what makes one table carry numerator *and*
+- [ ] **Build `collection-01/statistics/`** *(edit)* — the module layout is
+      [docs/09 §1.1](collection-01/docs/09-statistics.md); the build spec for each piece is §3–§6.
+      Python for the export and decode, R for the factsheet. Two things to get right before anything
+      else: add `ECOREGIONS16` / the 13-class id to `utils/constants.py` (§4.2 — do not retype asset
+      ids into `statistics/`), and remember **`GEOCODE` is a string** on the clean 16-class asset, so
+      it must be cast before painting (§5.1, measured 14 Sep — an uncast paint exports happily and
+      decodes to nonsense).
+- [ ] **Test on a small rectangle inside Argentina first** — one that contains known fire. Seconds,
+      and it catches every structural error the national run takes an hour to reveal (docs/09 §4.5).
+      This is a flag on `d1_export.py`, not a commented-out block.
+- [ ] **Export D1 × ecorregión** — one task, 27 years, **to Drive as the comahue account** so it
+      lands in `data/statistics/` via Insync (docs/09 §4.4). One int32 code per pixel
+      (`eco·10⁴ + month·10² + lulc_prev`), `unmask(0)` on month and LULC, ecoregion as the single
+      mask driver. **`unmask(0)` is load-bearing** — it is what makes one table carry numerator *and*
       denominator; a D1 without it silently cannot answer "% of grassland that burned".
-- [ ] **Download the big CSV.** That is the deliverable of this section: the table the next two
-      sections read. If the reduction is slow — it should not be, it is two stored byte reads, a
-      multiply and an add on one lattice — the escape hatch in docs/09 §5.1 is to materialise D1 as
-      **one 27-band uint16 asset** with a pixel-wise `Export.image.toAsset` and reduce that.
+- [ ] **Decode it and run the verification gates** ([docs/09 §7](collection-01/docs/09-statistics.md)).
+      Gates 1, 2 and 6 first — they are cheap and catch what is invisible in the numbers. Gate 6
+      (total area closes) is the one that tests the `unmask(0)` property everything else assumes.
+      The decoded `data/statistics/d1_ecoregion.csv` is the deliverable of this section: the table
+      the next two sections read.
+      If the reduction is slow — it should not be, it is two stored byte reads, a multiply and an add
+      on one lattice — the escape hatch in docs/09 §4.3 is to materialise the codes as **one 27-band
+      int32 asset** with a pixel-wise `Export.image.toAsset` and reduce that.
       **Do not go back to a hand-written reducer.**
-- [ ] **Then export D1 × ecoregión_departamento.** The finer cut, same table shape, once the coarse
-      one is verified.
 
 ## Next — the factsheet datasets
 
 From the big table and the local vectors. No Earth Engine.
 
-- [ ] **Regenerate the local fire-count tables under the final filters.** *(run)* The object
-      selection changed, so `factsheet_region_summary_min10ha.csv` and
-      `factsheet_counts_by_month_min10ha.csv` are stale. Local `sf`/R only, minutes.
-- [ ] **Build the three analyses** from the D1 CSV + the count tables —
-      [docs/09 §9](collection-01/docs/09-statistics.md), content plan in
-      `collection-01/presentations/factsheet-notes.md`: mean annual burned proportion; the time
-      series and its GAM trend; the pirogram (area half from D1, **count half from the objects**).
+- [ ] **Regenerate the fire-count tables under the final filters, counting each fire ONCE.**
+      *(edit → run)* Two changes at once ([docs/09 §8.2](collection-01/docs/09-statistics.md)): the
+      object selection changed, so the existing CSVs are stale; and a fire is now counted in the
+      single region containing its **centroid**, not in every region it touches. The centroid tags
+      already exist (`regions_<fy>_one.csv`) — the work is to switch the consumer to them and
+      **drop the `_multi` path from both the script and the doc**, not to leave both. Move
+      `scripts/factsheet_object_stats.R` in as `statistics/fire_counts.R`, writing
+      `data/statistics/fire_counts_by_month.csv` + `fire_region_summary.csv`. Local R, minutes.
+- [ ] **Build the four analyses** from `d1_ecoregion.csv` + the count tables —
+      [docs/09 §8.1](collection-01/docs/09-statistics.md), content plan in
+      [docs/10](collection-01/docs/10-factsheet_design.md): mean annual burned proportion; the time
+      series and its GAM trend; the pirogram (area half from D1, **count half from the objects**);
+      the intra-annual shape normalised per region.
 - [ ] **State the two divergences in the footnote.** Rasters assign calendar year and month **per
       pixel** from `abs_date`; the count side assigns **per object** from `date_median`. So a fire
       straddling 31 December is split in one and not the other, and "area burned in month M" is a
@@ -133,12 +142,13 @@ From the big table and the local vectors. No Earth Engine.
 
 ## Then — the factsheet plots
 
-- [ ] **Draw the plots** off those datasets. There is no plotting script: the pair Lican pushed in
-      ccc0f08 was written against the old object selection and has been deleted. What survives from
-      that commit is the content plan in
-      [`factsheet-notes.md`](collection-01/presentations/factsheet-notes.md) — §4's intra-annual
-      distribution normalised per region, and §2's interannual series in "times the typical year" —
-      which is what to build from. Data is due to the designers **~Wed 16 Sep**.
+- [ ] **Draw the plots** off those datasets, in `statistics/factsheet_plots.R`. There is no
+      plotting script yet: the pair pushed in ccc0f08 was written against the old object selection
+      and has been deleted (3f494b4). What survives from that commit is the content plan in
+      [docs/10](collection-01/docs/10-factsheet_design.md) — the multi-region conventions (colour
+      per region, the little map as the legend, `all_regions` vs focal variants), §4's intra-annual
+      distribution normalised per region, and §2's interannual series in "veces el año típico".
+      Figures land in `data/statistics/figures/`. Data is due to the designers **~Wed 16 Sep**.
 - [ ] **Decide what the factsheet says about the Pampa.** Still open, and it needs a call before the
       16th. The Pampa is largely cropland; after the filters its total is still built partly on
       residual cropland pixels (1.37 Mha nationally at `T_AGRI = 0.4`). Candidate framings: report
@@ -180,7 +190,7 @@ Publication, not analysis. Picks up exactly where 14 Sep 13:05 left it.
       relaunch the same list twice.
 - [ ] **Run D2 — the six network-spec tables** once the five `*_coverage` + `year_last_fire`
       products and the scar-size raster exist. D1 and D2 **cannot agree by construction** (previous
-      vs same-year LULC); say so in the CSV hand-off. docs/09 §5.2.
+      vs same-year LULC); say so in the CSV hand-off. docs/09 §9.
 
 ## Still owed to people
 
@@ -218,21 +228,28 @@ superseded: anyone who already quoted a total from that layer quoted one ~8 % lo
 ## Later — hand-off and cleanup
 
 - [ ] **Tell Brazil the assets are ready, and work the question list** in
-      [docs/09 §16](collection-01/docs/09-statistics.md) — GCS bucket access, whether the public
-      asset ids stay the same, the real deadline, and the coarse-read over-reporting warning that
-      affects every country. **Two items on that list changed today:** "where `argentina/` lives"
-      is moot — we are not adding a country folder to their toolkit — and the `crsTransform` patch
-      is now a Python translation of `core/`, so offering it back means handing them a diff against
-      their JS, not a branch. Say so plainly; the grid fix still matters to them.
+      [docs/09 §13](collection-01/docs/09-statistics.md) — whether the public asset ids stay the
+      same, the real deadline, whether they need our CSVs at all now that we export to Drive, and the
+      coarse-read over-reporting warning that affects every country. The `crsTransform` patch is now
+      a Python implementation of `core/`, so offering it back means handing them a diff against their
+      JS, not a branch. Say so plainly; the grid fix still matters to them.
+- [ ] **Export D1 × ecorregión_departamento — December, not September.** The finer cut for the
+      Bariloche launch: same table shape, plus the packed `ecoregion16·100000 + GEOCODE` territory id
+      and the masking rule that comes with it, both written down in
+      [docs/09 §5.4](collection-01/docs/09-statistics.md) so nothing is re-derived. Province falls
+      out of the department layer; no second asset.
 - [ ] **Delete the dead step-11 code** once the toolkit route is verified end to end:
       `workflow/11-burnable_area.py`, `workflow/11-burned_area_stats.py`. Both are superseded —
       [docs/09](collection-01/docs/09-statistics.md)'s opening note.
-- [ ] **Fix the stale doc pointers in code comments.** `docs/11-*.md` no longer exists; 24 `docs/11
-      §…` references survive in five files. `07-month_of_burn.py` (6) →
+- [ ] **Fix the stale doc pointers in code comments.** Two generations of drift now. (a) The
+      **validation doc moved 10 → 11** on 14 Sep (`docs/10` is now the factsheet design), so every
+      `docs/10 §…` in `collection-01/validation/*.py` and `scripts/10_burned_area_by_fire_year.py`
+      means **docs/11**. (b) The older one: `docs/11-*.md` as cited by 24 `docs/11 §…` references in
+      five files no longer exists at all. `07-month_of_burn.py` (6) →
       [docs/07 §1.1](collection-01/docs/07-vector_to_raster.md) for the rules and
       [docs/09](collection-01/docs/09-statistics.md) for the TESTS/ notes;
       `factsheet_object_stats.R` (4) and `objects_region_tag.R` (3) → docs/07 §1.1 for the filter,
-      [docs/09 §9](collection-01/docs/09-statistics.md) for the fire-count family. The 11 in
+      [docs/09 §8.2](collection-01/docs/09-statistics.md) for the fire-count family. The 11 in
       `workflow/11-*.py` need no fixing — those two scripts are deleted by the item above.
 - [ ] **Delete the `FIRE/COLLECTION-1/TESTS/` asset folder** when the September work is done. It
       holds only benchmark assets. Deletions are Iván's to run.
@@ -240,6 +257,6 @@ superseded: anyone who already quoted a total from that layer quoted one ~8 % lo
 ## Not on the critical path
 
 Running in parallel, nothing above depends on them: validation
-([docs/10](collection-01/docs/10-validation.md), and the open items in
+([docs/11](collection-01/docs/11-validation.md), and the open items in
 [`BACKLOG.md`](BACKLOG.md)), the ATBD and methodology page, and the December Bariloche launch
 materials.
