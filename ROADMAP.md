@@ -276,6 +276,12 @@ first item below is still the one that matters, and it is still ours.
       4. The next 15-min tick launches **07c** (the three scar rasters) on its own, then `C4-check.out`.
 
       Nothing was ingested from the broken run, so **there is nothing to delete in GEE here**.
+- [ ] **`monthly_burned_coverage_v2` is missing its asset properties.** *(checked 14 Sep)* The other
+      three that landed carry `data_type` / `band_format` / `version`; that one has **none**. Those
+      are exactly what the platform reads to know how to open the bands (docs/09 §10), so it cannot
+      be published as it stands. Either Vera sets them on export or we set them afterwards — but
+      whoever fixes it should check the remaining five as they land, because this is a per-asset
+      omission, not a one-off.
 - [ ] **Settle with Brazil which of the nine they export, then resume the rest.** *(run)* They are
       helping with 07d, so the first move is to agree the split explicitly — then
       `rm collection-01/logs/v2-driver/A2.pause` and the next tick resubmits **whatever is left to
