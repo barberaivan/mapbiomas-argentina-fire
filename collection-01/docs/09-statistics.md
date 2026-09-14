@@ -39,17 +39,18 @@ from. **[`ROADMAP.md`](../../ROADMAP.md) is the *when*; this file is the *how*.*
 
 ```
 collection-01/statistics/          ALL statistics + factsheet code, Python and R
-  burnable_export.py  the constant burnable layer and its Drive export — our ONE GEE job (§4.2-§4.3)
-  decode.py           both raw CSVs -> tidy tables: ours (eco13 x burnable) and the toolkit's
-  legends.py          col-3 legend nivel 0/1/2, the burnable class list (§6), the 13 ecoregion
-                      names as literals, the 16->13 crosswalk kept for December (§5.2)
+  burnable_export.py  ✅ the constant burnable layer: the Córdoba test (--test-rect), the
+                      per-ecoregion table + gate (--regions), the national Drive export (--export)
+  legends.py          ✅ the burnable class list (§6), the 4 status codes, the 13 ecoregion names
+                      as literals, the 16->13 crosswalk kept for December (§5.2)
+  decode.py           the toolkit's CSV -> tidy table (ours is decoded by burnable_export.py)
   fire_counts.R       fire counts off the LOCAL object database (§8.2)
   factsheet_tables.R  the four factsheet analyses, from the tidy tables + the counts (§8)
   factsheet_plots.R   the plots; content plan in docs/10-factsheet_design.md
 
 collection-01/data/statistics/     ALL statistics data — raw exports and derived tables
-  burnable_eco13_raw.csv   exactly what GEE wrote: code, sum
-  burnable_eco13.csv       decoded: ecoregion, burnable, area_ha — the denominator, 13 rows
+  burnable_eco13_raw.csv   as GEE returned it: code, area_ha
+  burnable_eco13.csv       decoded: ecoregion, status, area_ha, polygon_ha — the denominator
   burned_toolkit_*.csv     what the toolkit produced (month x year x ecoregion x LULC)
   fire_counts_by_month.csv per ecoregion x CALENDAR year x month (counts, from objects)
   fire_region_summary.csv  per ecoregion: fires/year, area/year, size quantiles
@@ -227,24 +228,43 @@ burnable = (ee.ImageCollection([burnable_year(y) for y in range(1998, 2025)])
 
 - **1998–2024**, i.e. the previous-year range of calendar years 1999–2025 — the same 27 layers the
   per-year design would have read, collapsed instead of crossed.
-- **Ties break to 0** (GEE's mode returns the smallest value on a tie). With 27 years and a binary
-  variable a tie is impossible unless some years are masked, so it can only bite in chronically
-  no-observado pixels — gate 3 (§7) measures how many. If that count is not negligible, swap the
-  mode for `mean >= 0.5` and say so.
 - The result is **one image, no year dimension**. That is the whole point: 13 numbers, stable, and
   nothing in the denominator moves when a LULC class does.
+
+**What is implemented is the mean, not `ee.Reducer.mode()` — and it writes four statuses, not
+two.** The two reducers agree everywhere except exact 50/50 pixels, which `mode()` sends silently to
+0 (it breaks ties toward the smaller value). Both of the things that could quietly shrink the
+denominator therefore get **their own code** instead of being folded into "not burnable":
+
+| status | meaning |
+|---|---|
+| 0 | not burnable |
+| 1 | burnable |
+| **2** | **never observed** — masked in every year 1998–2024 |
+| **3** | **tie** — burnable in exactly half the observed years |
+
+```python
+mean   = ee.ImageCollection([burnable_year(y) for y in years]).reduce(ee.Reducer.mean())
+status = (ee.Image(0).where(mean.gt(0.5), 1).where(mean.eq(0.5), 3)
+          .updateMask(mean.mask())      # observed pixels only...
+          .unmask(2))                   # ...everything else is "never observed"
+```
+
+A shrunk denominator inflates every percentage in the factsheet, so it has to be visible in the
+table rather than discovered later. Gate 3 (§7) is then just "read rows 2 and 3"; the decode folds
+them wherever we decide, on the record.
 
 ### 4.3 The reduction — the same programming strategy as the app
 
 Same shape as §2, one cut, so the territory packs into the class code and one group field is enough:
 
 ```
-code = ecoregion13 · 10 + burnable        # max 13·10 + 1 = 131 — fits uint8
+code = ecoregion13 · 10 + status          # max 13·10 + 3 = 133 — fits uint8
 ```
 
 ```python
 eco = ee.Image().paint(ee.FeatureCollection(C.ECOREGIONS13), "GEOCODE")   # the mask driver
-code = eco.multiply(10).add(burnable.unmask(0)).toUint8().rename("code")
+code = eco.multiply(10).add(status).toUint8().rename("code")
 
 g = (ee.Image.pixelArea().divide(1e4)                    # hectares
      .addBands(code)
@@ -254,13 +274,12 @@ g = (ee.Image.pixelArea().divide(1e4)                    # hectares
                    maxPixels=1e12))
 ```
 
-- **26 rows.** One task, seconds to minutes, one CSV.
-- **Exactly one layer drives the mask** — the ecoregions. `add()` propagates masks, so the burnable
-  image is `unmask(0)`ed and its "always no-observado" pixels land in the `burnable == 0` bucket;
-  report them separately if gate 3 says they matter.
-- `C.ECOREGIONS13` does not exist yet — **add the asset id to `utils/constants.py`** (§4.1) rather
-  than retyping it into `statistics/`. `PRODUCT_LULC`, `ARG_BUFFER_FC`, `SNIC_CRS` and
-  `SNIC_TRANSFORM` are already there.
+- **At most 52 rows** (13 ecoregions × 4 statuses), in practice fewer. One task, one CSV.
+- **Exactly one layer drives the mask** — the ecoregions. `add()` propagates masks, so `status` is
+  already unmasked into codes 0–3 before it is added, and nothing can vanish silently.
+- Constants: `C.ECOREGIONS13`, `C.ECOREGION_ID_PROPERTY`, `C.STATS_DRIVE_FOLDER` were added to
+  `utils/constants.py` alongside the existing `PRODUCT_LULC`, `ARG_BUFFER_FC`, `SNIC_CRS`,
+  `SNIC_TRANSFORM`. Never retype an asset id into `statistics/`.
 - **Pin the grid anyway** (§3). Their toolkit reduces the numerator at `scale: 30`, which on this
   lattice is the same pixel size and a sub-pixel phase shift (§3) — irrelevant for a denominator
   quoted to three significant figures, but our side costs nothing to get exactly right.
@@ -285,24 +304,84 @@ g = (ee.Image.pixelArea().divide(1e4)                    # hectares
 - **Everything is keyed on the 13-class ecoregion**, on both sides, because the join is on that id.
   Do not let one side be computed on the 16-class layer (§5.2).
 
-### 4.5 Test on a rectangle first
+### 4.5 The rectangle test — `--test-rect`
 
-Before the national run, run §4.3 with `BOUNDS` replaced by a small rectangle inside Argentina. It
-returns in seconds and catches every structural error the national run takes longer to reveal: a
-wrong band name, a mask that ate the country, a code that decodes to an impossible class, an empty
-`groups` list. `burnable_export.py` must carry that as a flag, not as a commented-out block.
+Before the national run, the same code runs over a small rectangle in **Córdoba** (dry Chaco /
+Espinal, west of Villa María: −63.90 −31.55 → −63.70 −31.35), where nearly everything is burnable.
+Two numbers have to come out right, and both are cheap:
+
+| check | measured 2026-09-14 |
+|---|---|
+| **reported total vs the rectangle's own area** — does the table account for the whole rectangle? | 42,156.3 / **42,191.8 ha = 99.92 %** (the gap is boundary pixels: the rectangle does not fall on the lattice) |
+| **burnable share** — Córdoba should be nearly all burnable | **99.92 %** (31.9 ha of `no_burnable`) |
+
+7 s. It catches every structural error the national run takes longer to reveal: a wrong band name, a
+mask that ate the country, a code that decodes to an impossible class, an empty `groups` list. It is
+a flag on `burnable_export.py`, not a commented-out block.
 
 ### 4.6 Drive, and which account
 
 Output goes to **Google Drive, not Cloud Storage** — we have no write access to the network's bucket
-and do not need one. Export with `folder=` set to the Drive folder Insync syncs into the store, so
-the CSV appears under `collection-01/data/statistics/` with no manual download (step 04's
-`objects-raw` handoff is the same mechanism, `C.SNIC_DRIVE_FOLDER`).
+and do not need one. The folder is **`gee_fire_stats` on the PRIMARY (gmail) account's Drive**
+(`C.STATS_DRIVE_FOLDER`, Iván 2026-09-14), so the default resident credentials are the right ones
+and nothing has to be swapped.
 
-**That Drive belongs to the `ivanbarbera@comahue-conicet.gob.ar` account**, so the export must be
-submitted as that account — pass the credentials explicitly (`--credentials` + `--project`, the
-`workflow/07-burned_area_polygons.py::initialize()` pattern) rather than swapping the credentials
-file. That account is registered under the `mapbiomas-argentina` compute project.
+**That folder is NOT Insync-synced into the store** — unlike step 04's `objects-raw`
+(`C.SNIC_DRIVE_FOLDER`), which lands under `STORE_ROOT/collection-01/data/`. It does not matter
+here: these tables are tens of rows, so `burnable_export.py` also computes them locally and writes
+`data/statistics/burnable_eco13{,_raw}.csv` directly. The Drive copy is the shareable artefact, not
+the path the analysis reads.
+
+To run as the second account anyway (its task queue is its own):
+`--credentials ~/.config/earthengine/credentials.comahue --project mapbiomas-argentina`, the
+`workflow/07-burned_area_polygons.py::initialize()` pattern — never swap the credentials file.
+
+### 4.7 First run — the numbers, and the one thing to look at
+
+Run 2026-09-14. The national reduction is **one batch task, 2 m 15 s**, 52 rows, landing in Drive
+`gee_fire_stats` and in `data/statistics/burnable_eco13{,_raw}.csv`.
+
+| ecorregión | burnable Mha | not burnable | never obs. | raster Mha | polygon Mha | burnable / region |
+|---|---|---|---|---|---|---|
+| Altos Andes | 4.582 | 7.696 | 0.002 | 12.281 | 12.296 | 37.3 % |
+| Bosques Patagónicos | 4.435 | 2.017 | 0.004 | 6.455 | 6.438 | 68.9 % |
+| Campos y Malezales | 2.600 | 0.080 | 0.000 | 2.680 | 2.684 | 96.9 % |
+| Chaco | 63.201 | 1.771 | 0.009 | 64.982 | 65.085 | 97.1 % |
+| **Delta e Islas del Paraná** | 3.495 | 0.585 | **1.530** | 5.610 | 5.613 | **62.3 %** |
+| Espinal | 29.377 | 0.500 | 0.001 | 29.878 | 29.886 | 98.3 % |
+| Estepa Patagónica | 47.939 | 6.313 | 0.003 | 54.255 | 54.136 | 88.6 % |
+| Monte | 44.409 | 2.605 | 0.001 | 47.015 | 47.007 | 94.5 % |
+| Pampa | 38.860 | 0.765 | 0.000 | 39.625 | 39.623 | 98.1 % |
+| Puna | 4.879 | 4.385 | 0.000 | 9.264 | 9.282 | 52.6 % |
+| Selva Paranense | 2.639 | 0.066 | 0.001 | 2.706 | 2.711 | 97.3 % |
+| Yungas | 4.674 | 0.085 | 0.000 | 4.759 | 4.769 | 98.0 % |
+| Islas del Atlántico Sur | 1.158 | 0.042 | 0.007 | 1.207 | 1.202 | 96.3 % |
+| **TOTAL** | **252.248** | 26.910 | 1.558 | 280.717 | 280.733 | **89.9 %** |
+
+**The gates it passes.** Burnable ≤ the region's own polygon area, every region (the gate the run
+exists for). Rasterised total vs polygon area agrees to **0.2 % or better** everywhere — the two
+share only the asset, so the paint, the lattice and the packing are all confirmed at once. The
+shape of the low numbers is the right shape: Altos Andes 37 % and Puna 53 % are rock, salt and ice;
+Chaco, Espinal, Pampa and Yungas are 97–98 %.
+
+**⚠️ Delta e Islas del Paraná: 1.53 Mha — 27 % of the region — is "never observed".** Col-3 does not
+map the open water of the Paraná and the Río de la Plata, so those pixels are class 0 in every year
+and are excluded from the denominator, which is exactly what §6 asks for. But it means the Delta's
+`%` runs on **3.50 Mha, not 5.61 Mha** — a `%` around 60 % larger than a reader computing it off the
+region's map area would get. **If the Delta appears in the factsheet, that sentence goes in the
+caption.** Every other region's never-observed area is under 10 kha.
+
+**Ties are not a problem.** 268 ha nationally, all of it in Altos Andes. So `mean` and
+`ee.Reducer.mode()` would give the same answer here; the tie code stays anyway, because "it was
+negligible in 2026" is not a property of the next collection.
+
+**Two operational notes for whoever runs this again.** (1) **Batch, not interactive**: the national
+batch task took 2 m 15 s, while the per-region `getInfo` fallback needed over 13 minutes for its
+*first* region — interactive compute is throttled differently. `--regions` is a fallback, not a
+route. (2) **The Drive API is not enabled on `mapbiomas-fire-485203`**, and enabling an API on a
+project shared with the whole network to read one of our own files is not ours to do — so `--fetch`
+builds its Drive client **without a quota project**, which bills the call to the OAuth client and
+touches nothing shared.
 
 ---
 

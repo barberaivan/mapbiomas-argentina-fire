@@ -105,23 +105,30 @@ Two things about the join, because they are what a wrong number will come from:
       raster** — docs/09 §5.1 trap 1. One thing to settle in the same message: **which LULC year
       their dataset crosses** — we want the **previous** year (docs/09 §4.1); if their definition
       only does same-year, take it and say so in the footnote.
-- [ ] **Build `collection-01/statistics/`** *(edit)* — module layout in
-      [docs/09 §1.1](collection-01/docs/09-statistics.md), spec in §4–§6. Much smaller than
-      yesterday's plan: `burnable_export.py`, `decode.py`, `legends.py`, and the R side. Add
-      `ECOREGIONS13` to `utils/constants.py` rather than retyping the asset id.
-- [ ] **Test on a small rectangle inside Argentina first.** Seconds, and it catches every structural
-      error the national run reveals slowly (docs/09 §4.5). A flag on `burnable_export.py`, not a
-      commented-out block.
-- [ ] **Export the burnable denominator** — `eco13·10 + burnable`, the **mode of the col-3 burnable
-      classes over 1998–2024**, on the pinned grid, **to Drive as the comahue account** so it lands
-      in `data/statistics/` via Insync (docs/09 §4.2–§4.3, §4.6). 26 rows. Watch the two things that
-      are easy to get wrong: **no observado must stay masked** (it belongs to neither list, so the
-      mode never sees it) and the **ecoregions must be the single mask driver**.
-- [ ] **Decode both tables and run the verification gates**
-      ([docs/09 §7](collection-01/docs/09-statistics.md)). Gates 2 (both sides key the same), 4
-      (denominator ≥ numerator) and 5 (total area closes) first — they are cheap and they catch what
-      is invisible in the numbers. `data/statistics/burnable_eco13.csv` plus the toolkit's CSVs are
-      what the next two sections read.
+- [x] **Build `collection-01/statistics/`** — `legends.py` (class lists, status codes, the 13
+      ecoregion names, the 16→13 crosswalk) and `burnable_export.py` (`--test-rect`, `--regions`,
+      `--export`, `--status`). `ECOREGIONS13/16`, `ECOREGION_ID_PROPERTY` and `STATS_DRIVE_FOLDER`
+      added to `utils/constants.py`. docs/09 §4 matches the code.
+- [x] **The Córdoba rectangle test** — 42,156.3 ha reported against a 42,191.8 ha rectangle
+      (**99.92 %**, the gap is boundary pixels) and **99.92 % burnable**. 7 s. docs/09 §4.5.
+- [x] **Export the burnable denominator** — `eco13·10 + status` over 1998–2024 on the pinned grid,
+      one task → **Drive `gee_fire_stats` (gmail account)**. The table is also written locally by
+      the same script, so nothing waits on Drive: `data/statistics/burnable_eco13{,_raw}.csv`.
+- [x] **The denominator is computed and gated** — 252.25 Mha burnable of 280.73 Mha (89.9 %),
+      burnable ≤ region area in all 13, raster vs polygon within 0.2 %. Table in
+      [docs/09 §4.7](collection-01/docs/09-statistics.md).
+- [ ] **Decide what the factsheet says about the Delta e Islas del Paraná.** *(Iván)* **1.53 Mha —
+      27 % of that ecoregion — is "never observed"**: col-3 does not map the open water of the Paraná
+      and the Río de la Plata, so it is excluded from the denominator (correct per docs/09 §6). The
+      Delta's `%` therefore runs on **3.50 Mha, not 5.61 Mha**, which is ~60 % higher than a reader
+      would compute off the region's map area. If the Delta appears in the factsheet, that sentence
+      goes in the caption. Every other region's never-observed area is under 10 kha; ties are 268 ha
+      nationally.
+- [ ] **Run the remaining gates once the toolkit's numerator exists**
+      ([docs/09 §7](collection-01/docs/09-statistics.md)): gate 2 (both sides key the same 13 ids,
+      checked by NAME), gate 4 (denominator ≥ numerator, every ecoregion × year) and gate 6
+      (national burned vs the object database). Gates 1, 3 and 5 are already run — see the per-region
+      table in `collection-01/logs/burnable_regions.log`.
 
 ## Next — the factsheet datasets
 
