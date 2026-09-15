@@ -318,9 +318,31 @@ first item below is still the one that matters, and it is still ours.
       | **completely EMPTY** | `monthly_burned_coverage`, `frequency_burned`, `frequency_burned_coverage`, `accumulated_burned`, `accumulated_burned_coverage`, `year_last_fire` |
       | ours (`source`, `region`, `years`, `exclusion_rule_a/b`, `band_format`, …) but **no** `data_type`/`version` | the three scar rasters |
 
-      `audit_product_properties.py` covers only the **nine** — the three scar rasters are not in its
-      `SPECS` at all, and nobody has said what `data_type`/`version` should read on them (ask Brazil
-      with the docs/09 §13 list). The two half-truths that combine into a silent publication break:
+      **`data_type` / `version` are NOT ours to set, and never were** (established 15 Sep from the
+      reference repo + our own v1). They are written at PUBLICATION by the network's
+      `4-Collection_anual_final_products/Reference/ToPublish/3-toAsset-Public`, which copies
+      `…/mapbiomas-argentina/…/FINAL_PRODUCTS/<name>` to
+      `projects/mapbiomas-public/assets/argentina/fire/collection1/<name>`, makes it world-readable
+      and *then* calls `setAssetProperties({data_type, band_format, version})` on **the public
+      copy**. We cannot do it: we have no read access to that folder, let alone write. Two facts
+      confirm it — our **v1** products carry our block (`band_format`, `source`, `region`, `years`,
+      `derived_from`, `lulc`) and have **never** carried `data_type`/`version`, and they went public
+      and entered the platform; and the three v2 assets that DO carry the trio are exactly the three
+      Vera has uncommented in that script's `rasters_names`. Its values are already tabulated there,
+      so nothing needs inventing: `annual_burned_area_ha` and `annual_burned_scar_size_range` are
+      both `data_type: annual`. **Two things to tell Vera:** the script's `setAssetProperties` call
+      is currently **commented out**, and **`annual_burned_id` is absent from `data_type_map`**, so
+      it would publish as `unknown`.
+
+      **⚠ A second trap, measured 15 Sep: our audit's canonical `band_format` is WRONG for
+      `year_last_fire`.** It says `classification_{year}`; the exported bands are
+      `year_last_fire_2000 … year_last_fire_2026`. `--apply` today would write a false band_format
+      onto a landed product — the platform reads that key to open the bands. (The reference's own
+      map is wrong the other way for the two frequency products: it says
+      `frequency_burned_{year1}_{year2}`, the bands are `fire_frequency_1999_1999 …`. Check every
+      value against `bandNames()`, trust neither table.) `audit_product_properties.py` also covers
+      only the **nine** — the three scar rasters are not in its `SPECS` at all. The two half-truths
+      that combine into a silent publication break:
       1. **Vera's exports carry the PLATFORM's properties** — `data_type`, `band_format`, `version`
          — on `annual_burned_v2`, `monthly_burned_v2` and `annual_burned_coverage_v2`.
          **`monthly_burned_coverage_v2` carries none at all.**
