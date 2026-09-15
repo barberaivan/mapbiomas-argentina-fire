@@ -193,8 +193,10 @@ def running(pattern):
 # that is already running (or, once the retry budget is spent, declare a healthy 3 h export dead).
 ARG_PROJECT = "mapbiomas-argentina"          # comahue submits here: 07a, 07d
 FIRE_PROJECT = C.GEE_PROJECT                 # gmail submits here:   07e, 07c
+# 07c moved to comahue/ARG_PROJECT on 15 Sep: the gmail queue and the fire project are needed for
+# the statistics exports (`MBFUEGO_ARG_COL1-*`), which write to GCS — comahue has no access there.
 TASK_PROJECT = {"mob_": ARG_PROJECT, "arg07d_": ARG_PROJECT,
-                "arg07e_": FIRE_PROJECT, "arg07c_": FIRE_PROJECT}
+                "arg07e_": FIRE_PROJECT, "arg07c_": ARG_PROJECT}
 
 
 def init_ee(account="comahue", project=ARG_PROJECT):
@@ -622,7 +624,7 @@ def stage_C4(st):
     if done("C4") or st["scar_rasters"] < 3:
         return
     run("C4-check", [PYTHON, "collection-01/workflow/07-scar_rasters.py", "--check",
-                     "--years", "2003,2020", "--roi=-61.6,-25.6,-61.1,-25.1", *GMAIL],
+                     "--years", "2003,2020", "--roi=-61.6,-25.6,-61.1,-25.1", *COMAHUE],
         timeout=7200)
     mark("C4", "scar rasters checked against the month mask (READ C4-check.out)")
     log("[C4] the three scar rasters are checked — read C4-check.out")
@@ -644,7 +646,7 @@ def stage_C3(st):
         log(f"[C3] ⚠ STOPPED after {MAX_TRIES} submissions — needs a human")
         return
     if run("C3", [PYTHON, "collection-01/workflow/07-scar_rasters.py",
-                  "--launch", *GMAIL], timeout=3600) == 0:
+                  "--launch", *COMAHUE], timeout=3600) == 0:
         mark("C3", "3 scar-raster tasks submitted")
 
 

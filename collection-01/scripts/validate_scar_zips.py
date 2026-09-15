@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import sys
 import zipfile
 from pathlib import Path
@@ -152,17 +153,33 @@ def check_year(year):
     return ok, [head] + [f"       - {m}" for m in msgs]
 
 
-def check_ingested(years, project):
+def check_ingested(years, project, credentials=None):
     """Compare the INGESTED FeatureCollections against the local build.
 
     Only years already present are compared; the rest are reported as still-in-flight rather than
     as failures, because 27 hand uploads land over a long stretch.
+
+    `credentials` takes the same explicit-file route as the workflow scripts (CLAUDE.md): this is
+    the gate `watch_07c.py` runs UNATTENDED before launching 07c, and a resident credentials file
+    that has been swapped to the other account would make it fail for a reason that has nothing to
+    do with the data — and a gate that fails closed for the wrong reason costs a whole night.
     """
     import ee
     sys.path.insert(0, str(REPO_ROOT / "collection-01"))
     import utils.constants as C
 
-    ee.Initialize(project=project)
+    if credentials:
+        from google.oauth2.credentials import Credentials
+        st = json.loads(Path(credentials).expanduser().read_text())
+        ee.Initialize(Credentials(
+            None, refresh_token=st["refresh_token"], token_uri=ee.oauth.TOKEN_URI,
+            client_id=st.get("client_id", ee.oauth.CLIENT_ID),
+            client_secret=st.get("client_secret", ee.oauth.CLIENT_SECRET),
+            scopes=st.get("scopes", ee.oauth.SCOPES),
+            quota_project_id=st.get("project"),
+        ), project=project)
+    else:
+        ee.Initialize(project=project)
     present = {a["id"].split("/")[-1] for a in
                ee.data.listAssets(C.ANNUAL_BURNED_VECTORS).get("assets", [])}
     print(f"ingested into {C.ANNUAL_BURNED_VECTORS}\n")
@@ -219,12 +236,15 @@ def main():
                          "(feature count, area_ha total, scar_id type) instead of the zips")
     ap.add_argument("--project", default="mapbiomas-fire-485203",
                     help="GEE project to initialize under (default: %(default)s)")
+    ap.add_argument("--credentials",
+                    help="path to a credentials file to authenticate with instead of the resident "
+                         "~/.config/earthengine/credentials (nothing on disk is clobbered)")
     args = ap.parse_args()
     years = ([int(v) for v in args.years.split(",")] if args.years
              else list(range(1999, 2026)))
 
     if args.ingested:
-        check_ingested(years, args.project)
+        check_ingested(years, args.project, args.credentials)
         return
 
     failed = []

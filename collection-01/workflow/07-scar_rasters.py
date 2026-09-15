@@ -155,10 +155,18 @@ def _export_products(specs, years, launch):
         if asset_exists(asset_id):
             print(f"[skip] {asset_id} already exists")
             continue
+        # A year set with a HOLE in it must not describe itself as a range.  `--years` exists
+        # so a night is not lost when one of the 27 hand ingests fails (ROADMAP "After"), and a
+        # product that lands over 26 years while saying "1999-2025" is a product nobody can tell
+        # apart from the complete one.  So: spell the years out when they are not contiguous, and
+        # say `partial` when any calendar year of the collection is absent.
+        contiguous = years == list(range(years[0], years[-1] + 1))
+        absent = [y for y in C.CALENDAR_YEARS if y not in years]
         img = img.set({"source": C.PRODUCT_SOURCE, "region": C.PRODUCT_REGION,
                        "band_format": ("scar_id_{year}" if sub == "annual_burned_id"
                                        else "scar_area_ha_{year}"),
-                       "years": f"{years[0]}-{years[-1]}",
+                       "years": (f"{years[0]}-{years[-1]}" if contiguous
+                                 else ",".join(str(y) for y in years)),
                        "scar_connectivity": "8-connected, calendar-year",
                        "scar_size_classes": str(C.SCAR_SIZE_LOWER_HA),
                        "area_source": "pixel-count (local), not geometry().area()",
@@ -168,6 +176,12 @@ def _export_products(specs, years, launch):
                        # product must still state them, or a scar raster cannot be told
                        # apart from one built before the rules existed.
                        **C.exclusion_rules()})
+        if absent:
+            img = img.set({"partial": (
+                f"INCOMPLETE — {len(years)} of {len(C.CALENDAR_YEARS)} calendar years. "
+                f"Missing: {','.join(str(y) for y in absent)}. The missing years had no ingested "
+                f"scar FeatureCollection when this was exported; completing the series needs the "
+                f"asset deleted and re-exported, since a band cannot be added to a landed image")})
         if not launch:
             print(f"[dry] would export {asset_id}  ({len(years)} bands, pyramiding={pyr})")
             continue

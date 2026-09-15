@@ -135,6 +135,10 @@ Open that script in the Code Editor and press **Run**. The panel is "Herramienta
       ecoregion-only (docs/09 §1.2); País and Provincia are December.
       Then press **Export Selected Layer Statistics Tables** — it *creates* one task per
       (layer × unit) in the **Tasks** tab. **They do not start themselves: press RUN on each.**
+
+      // comment de Iván: también tildé [Fuego + Uso y Cobertura > Área Quemada Anual + Uso y Cobertura]
+      // Y le pedí por ecorregión y por provincia (aunque no sé si están las provincias en el dataset.)
+
 - [ ] **Collect the CSVs.** They land in
       `gs://mapbiomas-fire/data-container/stats/mapbiomas_fuego_argentina_collection1/Ecorregiones/`
       as `annual_burned_Ecorregiones.csv` and `monthly_burned_Ecorregiones.csv` (task descriptions
@@ -262,20 +266,36 @@ our critical path. **The exception is everything on the scar-size side**: `annua
 of the 27 calendar-scar packages, which only Iván can do** — nobody can unblock those for us. So the
 first item below is still the one that matters, and it is still ours.
 
-- [ ] **Ingest the 27 calendar-scar packages by hand.** *(Iván)* They are built and gated, in
-      `collection-01/data/scars-upload-cache/` — which is a symlink into the Insync store, so the
-      real path is
-      `/home/ivan/Insync/MapBiomas/mapbiomas-arg-fire-store/collection-01/data/scars-upload-cache/`.
-      27 files, `scars_1999.zip` … `scars_2025.zip`, 739 MB.
-      1. Upload each as `…/FINAL_PRODUCTS/annual_burned_vectors_v2/scars_<Y>`. **Copy the
-         destination from the gate's own closing line** (`validate_scar_zips.py` prints it,
-         interpolated from `C.PRODUCT_VERSION`) — never type it. v2 scars in the v1 folder is
-         exactly what the versioning exists to prevent.
-      2. Set `exclusion_rule_a` / `exclusion_rule_b` on each FeatureCollection.
-      3. `$PYTHON collection-01/scripts/validate_scar_zips.py --ingested`
-      4. The next 15-min tick launches **07c** (the three scar rasters) on its own, then `C4-check.out`.
+- [x] **Ingest the 27 calendar-scar packages by hand** — *Iván uploaded all 27 on the night of
+      14-15 Sep.* Everything after the upload is now automatic, and **the 2-min watcher
+      `collection-01/scripts/watch_07c.py` owns it** (cron `*/2`, plus `@reboot`; board:
+      `collection-01/logs/v2-driver/C3-watch.md`). Per tick it:
+      1. stamps `exclusion_rule_a` / `exclusion_rule_b` on each ingested FeatureCollection — a
+         **property, not a filter**: the scars were already built from the filtered object set
+         (docs/07 §1.1). The write MERGES the existing block, because
+         `updateAsset(..., ["properties"])` replaces the whole dict;
+      2. runs `validate_scar_zips.py --ingested` as the gate **before** the launch (feature count,
+         `area_ha` total, numeric `scar_id`), dropping any year that disagrees with the local build;
+      3. launches **07c** — the three scar rasters — **as comahue on `mapbiomas-argentina`**, so
+         the gmail queue and the fire project stay free for the statistics exports
+         (`MBFUEGO_ARG_COL1-*`), which need GCS write access comahue does not have;
+      4. confirms the submission **on the server**, not from `rc=0`, and writes `C3.done`.
+
+      Driver stage C3 is **paused** (`logs/v2-driver/C3.pause`) while the watcher owns the launch —
+      both take the same `tick.lock`, so the two can never submit at once. Stage C4 (the
+      scar-vs-month check on the landed assets, `C4-check.out`) still belongs to the 15-min driver.
+
+      **If a year's ingest failed, the watcher launches without it** (Iván, 15 Sep: "run the
+      following steps with the available years, and I run tomorrow only the remaining ones"): a
+      hard 60-min deadline, or 25 min of no ingest in flight, whichever comes first, and a floor of
+      20 of 27 years below which it refuses and shouts instead. A partial launch writes
+      **`logs/v2-driver/C3-PARTIAL.md`** — which years are missing and the exact delete + re-export
+      needed to complete the series — and the three assets carry `partial` and an explicit `years`
+      list of their own. Completing them is a full re-export: a band cannot be added to a landed
+      image.
 
       Nothing was ingested from the broken run, so **there is nothing to delete in GEE here**.
+      When the three rasters have landed, remove the `*/2` watcher lines from `crontab -l`.
 - [ ] **⚠️ Reconcile the two property sets BEFORE anyone runs `audit_product_properties.py
       --apply`.** *(edit → run, checked 14 Sep)* Two half-truths that combine into a silent
       publication break:
