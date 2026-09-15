@@ -431,7 +431,7 @@ running** (`crontab -l`, then `C3-watch.log`).
 | ingested scar FCs | **{len(st['present'])}/{N_CAL}** |
 | missing | {', '.join(str(y) for y in missing) or '— none'} |
 | ingests still in flight | {', '.join(str(y) for y in st['ingesting']) or '— none'} |
-| hard deadline on waiting | {deadline_at():%F %H:%M} ({MAX_WAIT_MIN} min after the first tick that saw a year missing) |
+| hard deadline on waiting | {deadline_at():%F %H:%M} — past it, a year still ingesting is launched without (set in `C3-watch.deadline`; default {MAX_WAIT_MIN} min) |
 | `exclusion_rule_*` stamped | {st['stamped_n']}/{len(st['present'])} |
 | 07c tasks in flight | {'<br>'.join(st['inflight']) or '— none'} |
 | 07c assets landed | {st['landed']}/3 |
