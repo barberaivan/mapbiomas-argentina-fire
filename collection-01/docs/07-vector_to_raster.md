@@ -19,7 +19,7 @@ Run in this order; each sub-step needs the one before it.
 | **07b** | **Calendar-year scars**, 8-connected, labelled locally → `data/scars-upload-cache/scars_<Y>.zip`, then ingested by hand as `FINAL_PRODUCTS/annual_burned_vectors/scars_<Y>` | `workflow/07-calendar_scars.R` + `scripts/run_07_scars.sh` (local, two passes) | ✅ **done** — 27/27 built, gated and ingested, all verified against the local build |
 | **07c** | **Scar rasters** — `annual_burned_id`, `annual_burned_area_ha`, `annual_burned_scar_size_range`, painted from the ingested scars and masked to 07a | `workflow/07-scar_rasters.py` (GEE) | ✅ **done** — 3/3 exported and verified on the landed assets (§9.1) |
 | **07d** | **The nine derived subproducts** — `monthly_burned`, `annual_burned`, both `*_coverage`, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`), `year_last_fire` | `workflow/07-subproducts.py` (GEE) | ✅ **done** — 9/9 landed and verified on the exported assets (§12.8) |
-| **07e** | **The fire-object polygon layer** — every mapped fire, all 28 fire-years, merged into one FC with ten properties, for early users → `FINAL_PRODUCTS/burned_area_polygons_v1` | `workflow/07-burned_area_polygons.py` (GEE) | ✅ **done** (2026-07-31, third submission, 3.27 h) — **1,263,079 rows / 1,263,076 objects / 69.12 Mha**, `--verify` clean on all 28 fire-years, 19 asset properties set, `filterDate()` working. Took three goes: the first two carried 1,249 duplicate FY2021 rows because `objects_raw_2021` is duplicated *in storage* where no metadata count reveals it (§13.6) |
+| **07e** | **The fire-object polygon layer** — every mapped fire, all 28 fire-years, merged into one FC with ten properties, for early users → `FINAL_PRODUCTS/burned_area_polygons_v2` | `workflow/07-burned_area_polygons.py` (GEE) | ✅ **done** — **`_v2`: 1,012,648 rows / 1,012,645 objects / 63.33 Mha** (counted on the asset, 2026-09-15; the local object tables reproduce it to the object — docs/09 §4). `_v1` (2026-07-31, third submission, 3.27 h) was **1,263,079 rows / 1,263,076 objects / 69.12 Mha** — that is the **pre-rule** layer, and the 250,431-object difference is exactly what exclusion rules A and B remove (§1.1). v1 took three goes: the first two carried 1,249 duplicate FY2021 rows because `objects_raw_2021` is duplicated *in storage* where no metadata count reveals it (§13.6) |
 
 > ⚠️ **Every "done" above is the FIRST build (v1), and all of it is being rebuilt as `_v2` in
 > September 2026.** Two things changed underneath: the object selection gains the two exclusion
@@ -352,7 +352,7 @@ preliminary `…_integration_v1_buffer` to the published `mapbiomas_argentina_co
 | the nine subproducts (07d) | `FINAL_PRODUCTS/mapbiomas_argentina_fire_collection1_<sub>_v1` | `…_<sub>_v2` |
 | the three scar rasters (07c) | idem | idem |
 | the scar vectors (07b, hand-ingested) | `FINAL_PRODUCTS/annual_burned_vectors` | `…_annual_burned_vectors_v2` |
-| the polygon layer (07e) | `FINAL_PRODUCTS/burned_area_polygons_v1` | `…_v2` |
+| the polygon layer (07e) | `FINAL_PRODUCTS/burned_area_polygons_v1` (1,263,076 obj, pre-rule) | `…_v2` (1,012,645 obj) |
 
 One constant drives all of it: **`C.PRODUCT_VERSION = 2`**, which `C.product_name()` defaults to and
 which `MONTH_OF_BURN_COL` and `ANNUAL_BURNED_VECTORS` interpolate. Pass `version=1` explicitly to
@@ -768,8 +768,8 @@ the exported assets (§9.1, §12.8), and docs/08 §7 is the delivery checklist. 
   `scars_<Y>_months.csv`, and `data/scars-upload-cache` is empty — so `07-calendar_scars.R`'s pass 2
   has to be re-run from `scars-pixels-cache` before `--stats-read` can report `MATCH`. This is the
   last unrun verification of the month product.
-- **07e is still exporting** (§13): 1.26 M polygons in one table task, submitted as the second
-  account. `--set-props` once it lands, `--per-year` if it dies.
+- ~~**07e is still exporting**~~ — **done**, and re-exported as `_v2` under the final exclusion
+  rules: **1,012,648 rows / 1,012,645 objects** (§13).
 - ~~The 27 scar FCs must be ingested by hand~~ — **done**, 27/27, both gates passing (§8.1). The
   hand-ingest route stands for any future re-upload: no GCS bucket is reachable, so the zip is the
   deliverable (docs/06 §12).
@@ -973,14 +973,22 @@ The reference's `accumulated_burned` filename typo is not copied (§12.3.2).
 ## 13. Sub-step 07e — the fire-object polygon layer, for early users
 
 ```
-FINAL_PRODUCTS/burned_area_polygons_v1
+FINAL_PRODUCTS/burned_area_polygons_v2
 ```
 
 Every mapped fire, all 28 fire-years, in **one** FeatureCollection. Script:
 `workflow/07-burned_area_polygons.py`. Nothing is computed and no geometry is touched — it is the
-step-06 object set filtered to `fire == 1 & area_ha >= 1` (the same positive selection 07a paints,
-§1), stripped to ten properties, merged and flattened. **1,263,079 rows for 1,263,076 objects,
-69.12 Mha** (a naive row-sum says 74.23 Mha — §13.7).
+step-06 object set under the full positive selection 07a paints (`fire == 1 & area_ha >= 1 &
+not(A) & not(B)`, §1.1), stripped to ten properties, merged and flattened.
+
+**`_v2`: 1,012,648 rows for 1,012,645 objects, 63.33 Mha** (counted on the asset 2026-09-15).
+
+⚠️ **The `_v1` figures quoted throughout §13 — 1,263,079 rows / 1,263,076 objects / 69.12 Mha —
+are the PRE-RULE layer**, exported 31 July, before exclusion rules A and B were finalised
+(2026-09-11/12). The 250,431-object gap between the two is the rules: −196,804 to rule A and
+−53,627 to rule B, measured per fire-year by `statistics/fire_counts.R`, whose local object tables
+reproduce the v2 count **to the object** (docs/09 §4). Do not quote a v1 number as the size of the
+published layer. (A naive row-sum of `area_ha` overstates the area in either version — §13.7.)
 
 It depends only on step 06, not on 07a–07d, so it can be rebuilt at any time and in any order.
 
@@ -1078,7 +1086,8 @@ The honest answer beforehand was *probably, but this is the one export in step 0
 - the 28 source shapefiles hold **5.12 GB** of raw `.shp` geometry for 1.689 M objects (~190
   vertices/polygon), so the fire-only subset is **~4–4.5 GB**. GEE already stores exactly that in the
   28 source assets, so reading is not the question — one `Export.table.toAsset` shuffling 1.26 M
-  complex multipolygons is, and its failure mode (`User memory limit exceeded`) arrives *after* hours;
+  complex multipolygons is (that was v1's size; v2 is 1.01 M), and its failure mode (`User memory
+  limit exceeded`) arrives *after* hours;
 - precedent is against it: Brazil ships `mbfogo_col5_<year>_v1` **per year**, our scars are 27
   per-year assets, `objects_raw` is 28. Nobody in the network ships one merged all-years vector;
 - building it locally and ingesting is worse — >2 GB breaks the Shapefile limit and no GCS bucket is
