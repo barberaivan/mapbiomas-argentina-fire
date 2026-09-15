@@ -72,6 +72,77 @@ ECO16_TO_13 = {1: 1, 2: 2, 3: 3, 4: 4, 5: 4, 6: 5, 7: 6, 8: 7,
                9: 4, 10: 8, 11: 8, 12: 9, 13: 10, 14: 11, 15: 12, 16: 13}
 
 
+# --- the col-3 land-cover legend, all three levels (docs/09 §5.4) ----------------
+# VERBATIM from the network's own `00_Tools/Legends.js::lulc_argentina_nivel{0,1,2}`,
+# which is what the toolkit decodes its burned-area CSVs with.  Copied here so the
+# DENOMINATOR (our per-class area export) and the NUMERATOR (their burned-area table)
+# carry the same class names and can be joined on them — a second, independently typed
+# legend is exactly how the join silently stops matching.
+LULC_NIVEL_0 = {
+    0: "No observado", 27: "No observado",
+    1: "Natural", 3: "Natural", 4: "Natural", 6: "Natural",
+    10: "Natural", 66: "Natural", 77: "Natural", 63: "Natural", 12: "Natural",
+    11: "Natural", 73: "Natural",
+    14: "Antrópico", 18: "Antrópico", 19: "Antrópico", 36: "Antrópico", 15: "Antrópico",
+    9: "Antrópico", 21: "Antrópico",
+    22: "Natural", 24: "Antrópico", 25: "Natural",
+    26: "Natural", 34: "Natural", 33: "Natural",
+}
+LULC_NIVEL_1 = {
+    0: "No observado", 27: "No observado",
+    1: "Bosques", 3: "Bosques", 4: "Bosques", 6: "Bosques",
+    10: "Vegetación natural herbácea y arbustiva",
+    66: "Vegetación natural herbácea y arbustiva",
+    77: "Vegetación natural herbácea y arbustiva",
+    63: "Vegetación natural herbácea y arbustiva",
+    12: "Vegetación natural herbácea y arbustiva",
+    11: "Vegetación natural herbácea y arbustiva",
+    73: "Vegetación natural herbácea y arbustiva",
+    # NOTE their own asymmetry, copied rather than tidied: code 14 is "Agropecuario"
+    # at nivel 1 while every other code of the family is "Áreas de uso agropecuario".
+    # 14 is a parent code and does not appear in col-3 pixels, so it never shows up in a
+    # table; fixing it here would be a silent divergence from the numerator's decode.
+    14: "Agropecuario", 18: "Áreas de uso agropecuario", 19: "Áreas de uso agropecuario",
+    36: "Áreas de uso agropecuario", 15: "Áreas de uso agropecuario",
+    9: "Áreas de uso agropecuario", 21: "Áreas de uso agropecuario",
+    22: "Áreas sin vegetación", 24: "Áreas sin vegetación", 25: "Áreas sin vegetación",
+    26: "Cuerpos de agua", 34: "Cuerpos de agua", 33: "Cuerpos de agua",
+}
+LULC_NIVEL_2 = {
+    0: "No observado", 27: "No observado",
+    1: "Bosques", 3: "Bosque cerrado", 4: "Bosque abierto", 6: "Bosque inundable",
+    10: "Vegetación natural herbácea y arbustiva",
+    66: "Matorrales y arbustales cerrados", 77: "Matorrales y arbustales abiertos",
+    63: "Herbaceas", 12: "Herbaceas Inundables",
+    11: "Mosaicos de arbustos y herbaceas", 73: "Turberas",
+    14: "Agropecuario", 18: "Agricultura", 19: "Cultivos temporarios",
+    36: "Cultivos perennes", 15: "Pastura", 9: "Silvicultura", 21: "Mosaico de usos",
+    22: "Áreas sin vegetación", 24: "Áreas urbanas", 25: "Otras áreas no vegetadas",
+    26: "Cuerpos de agua", 34: "Glaciares descubiertos y nieve perenne",
+    33: "Ríos, lagunas, lagos y océano",
+}
+LULC_CODES = sorted(LULC_NIVEL_2)
+
+
+def decode_lulc(code):
+    """`ecoregion13 * 100 + lulc_class` -> (eco_id, eco_name, class_id, n0, n1, n2)."""
+    code = int(code)
+    eco, cls = divmod(code, 100)
+    if eco not in ECO13_NAMES:
+        raise ValueError(
+            f"code {code} decodes to ecoregion {eco}, which does not exist — the packing "
+            "or the paint is wrong, do not use the table"
+        )
+    if cls not in LULC_NIVEL_2:
+        raise ValueError(
+            f"code {code} decodes to land-cover class {cls}, which is NOT in the col-3 "
+            "legend above. A class that falls through into a decode default is a silent "
+            "error; add it to all three levels (from the network's Legends.js) first"
+        )
+    return (eco, ECO13_NAMES[eco], cls,
+            LULC_NIVEL_0[cls], LULC_NIVEL_1[cls], LULC_NIVEL_2[cls])
+
+
 def decode(code):
     """Unpack `ecoregion13 * 10 + status` -> (eco_id, eco_name, status_id, status_name)."""
     code = int(code)

@@ -21,10 +21,6 @@ tanto de qué se hizo y qué falta.
 
 > **Plan de producción: [`09-statistics.md`](09-statistics.md)** (de dónde sale cada
 > número: el área quemada del toolkit, el denominador quemable, el conteo de incendios) y
-> **[`07-vector_to_raster.md` §1.1](07-vector_to_raster.md)** (los filtros de
-> polígonos que resuelven la sobre-estimación en agricultura y en el pastizal pampeano).
-> **El orden de trabajo está en [`../../ROADMAP.md`](../../ROADMAP.md).**
-> Este archivo tiene el *contenido* del factsheet: qué gráficos, qué mensaje.
 
 ## Enlaces/archivos relevantes
 
@@ -104,9 +100,8 @@ aunque las llamemos proporción... es más fácil leerlo.
 del toolkit, el denominador quemable y el conteo de incendios. El año de fuego
 (1 mayo → 30 abril) es cómo está organizado el *mapeo*, no cómo se reporta nada.
 En el conteo, cada incendio se archiva en el año y mes calendario de su fecha
-mediana (`date_median`), así que un incendio entero cae en un solo año y un solo
-mes — mientras que los rásters lo parten píxel por píxel. Detalle en
-`09-statistics.md` §8.3.
+mediana (`date_median` o `date_med`), así que un incendio entero cae en un solo año 
+y un solo mes.
 
 Las regiones también pueden ser las clases de LULC de MapBiomas.
 El concepto aplica igual, pero el análisis es muy distinto, ya que esas 
@@ -139,6 +134,14 @@ mapa, y el mapa se ve como un degradé coherente en vez de un mosaico arbitrario
 Además la identidad fina la carga el mapa, así que los colores no necesitan ser
 máximamente separables; alcanza con que lo sean entre regiones que se comparan.
 
+OJO: en la mayor parte de las slides, el mapa de ARG con ecorregiones dibujadas
+tendrá el color asociado a un escalar para cada ecorregión. Ahí no aplica esto 
+de "un color fijo por región". En los factsheets se suele sacar una línea desde
+el mapa para indicar que un plot pertenece a una región.
+
+**Área quemable** no varía entre años, se toma como una constante por píxel.
+Es sensato y ya fue pensado, no discutirlo.
+
 **Dos variantes de cada gráfico:**
 
 - `all_regions`: todas las líneas coloreadas en un solo panel. Sirve para ver el
@@ -167,38 +170,25 @@ La media se calcula reduciendo los años de la serie.
 Esta puede ser la primera imagen. Mapa de ARG con cada región pintada según 
 esta métrica, y un globito mostrando cuánto se quema en proporción el total 
 de ARG. También reportar los absolutos, e.g.: 4.2 Mha quemadas de 100 Mha quemables. 
-**El quemable es una constante por región, no un número por año** (decisión del 14/9,
-`09-statistics.md` §4.2): se toma el modo 1998–2024 de quemable/no quemable por píxel
-y se suma por ecorregión. Son 13 números, calculados una vez. El área quemada por año
-viene del toolkit de la red (`09-statistics.md` §4.1), no de un cálculo nuestro.
+**El quemable es una constante por región, no un número por año**.
+Se toma el modo 1998–2024 de quemable/no quemable por píxel
+y se suma por ecorregión. Son 13 números, calculados una vez. 
 
 Consecuencia para el epígrafe: el `%` se lee como "del área que es quemable la mayor
 parte del tiempo", así que la serie temporal es señal de **fuego**, no de cambio de uso
-del suelo. Decirlo así. Detalle de lo que esto cambia: `09-statistics.md` §4.4.
+del suelo. Decirlo así. 
 
 Lo quemable/no quemable **se define sobre la leyenda de col 3**, no sobre nuestra
-reclass de fuego: la lista de clases está en `09-statistics.md` §6 (agua, urbano,
+reclass de fuego: la lista de clases está en `09-statistics.md` (agua, urbano,
 suelo desnudo, hielo y "otras áreas no vegetadas" son no quemables). La clase
 **no observado se ignora**: no suma ni al numerador ni al denominador.
-
-⚠️ **PENDIENTE DE DECISIÓN (Iván) — el Delta e Islas del Paraná.** El 27 % de esa
-ecorregión (1,53 de 5,61 Mha) es agua abierta que col 3 no mapea, así que queda
-fuera del denominador: el `%` del Delta se calcula sobre **3,50 Mha**, no sobre los
-5,61 Mha que un lector mediría en el mapa. Es correcto, pero hay que decidir cómo
-se cuenta — y si el Delta aparece en el factsheet, la frase va en el epígrafe.
-Medido el 14/9, detalle en `09-statistics.md` §4.7. Ninguna otra ecorregión pasa
-de 10 kha de "nunca observado".
-
-⚠️ **La versión por clase de LULC no sale de estas tablas** (`09-statistics.md` §4.4):
-el numerador del toolkit sólo tiene filas quemadas y nuestro denominador no tiene
-dimensión de clase. Si el factsheet la quiere, hay que pagar un export más — decidirlo
-antes de prometer el panel.
 
 ### 2. Serie temporal de proporción quemada: cómo cambió en el tiempo
 
 La proporción quemada anual en función del año calendario. 
 Ajustar un modelo que suavice el patrón en función del tiempo.
-Lo más simple es una recta, pero preferiría una GAM de pocas bases.
+Lo más simple es una recta, pero preferiría una GAM de pocas bases 
+(k = 5 en mgcv, modelo normal).
 Esta tendencia se puede resumir en escalar como la pendiente promedio (b):
 se evalúa la pendiente en cada año y se promedia sobre años. Si es una 
 recta, esta cuenta se omite, ya que la pendiente es ese valor.
@@ -245,11 +235,8 @@ La cantidad de incendios se juzga sobre la base de datos vectorial de fuego. El
 calendario como todo lo demás. Un incendio que cruza el 31 de diciembre cae entero
 en uno de los dos años acá, y se parte en el área de los rásters.
 
-**Cada incendio se cuenta una sola vez**, en la región que contiene su **centroide**
-(`09-statistics.md` §8.2). Antes este documento pedía contarlo en toda región que
-tocara; se cambió porque así los conteos regionales suman el total nacional y
-"incendios por región" es una partición. Donde un fuego cruza un límite, el
-centroide decide.
+**Cada incendio puede contar más de una vez**, porque cruza regiones. 
+El incendio corresponde a todas las regiones que intersecta.
 
 La versión escalar de estas variables es el mes de mayor actividad de fuego, 
 juzgado por % quemado, pero también podría ser el mes con más eventos. 
@@ -324,14 +311,63 @@ leyenda, y las variantes `all_regions` y focal. La focal es especialmente útil
 acá — permite decir "el Chaco quema en invierno tardío, a contramano del resto"
 mostrando el resto en gris de fondo.
 
-**De dónde salen los números, y el caveat.** Son dos fuentes distintas y hay que
-decir siempre cuál se usó:
+### 5. Composición de lo quemado: qué se quema en cada región
 
-- **Área**: de la tabla del toolkit de la red (`data/statistics/burned_toolkit_*.csv`),
-  que asigna mes y año **píxel por píxel**. Es la fuente preferible para área
-  (`09-statistics.md` §4.1).
-- **Cantidad de incendios**: de `data/statistics/fire_counts_by_month.csv`, la base
-  vectorial, por **año calendario y mes de la fecha mediana**. Ahí cada incendio es un
-  objeto, así que **todo el incendio cae en un solo mes y un solo año**.
+De todo lo que se quemó en una ecorregión, qué porcentaje era bosque, qué porcentaje
+vegetación natural herbácea y arbustiva, qué porcentaje campo agrícola. Permite decir
+"en Yungas dos tercios de lo quemado es bosque; en la Estepa Patagónica, el 1 %".
 
-Los dos números no van a cerrar y no están pensados para cerrar.
+**No hace falta ningún cálculo nuevo**: el producto `annual_burned_coverage` del toolkit ya
+es área quemada × cobertura × ecorregión × año, y nuestra copia de la app ya cruza la
+cobertura del **año anterior** al fuego — que es justamente la capa correcta acá: lo que
+había para quemarse, no en qué quedó clasificado el píxel después de quemarse.
+Ver `09-statistics.md` §5.2.
+
+**OJO, y va en el epígrafe: esto NO es "qué porcentaje del bosque se quemó".** Son dos
+preguntas con el mismo par de palabras y distinto denominador. Acá el denominador es el área
+quemada de la región, que la tenemos. El de la otra pregunta sería el área de cada clase en la
+región, que el quemable constante no tiene — necesitaría un export más, y hay que decidirlo
+antes de prometer ese panel, no después (`09-statistics.md` §3.3).
+
+El gráfico es una barra apilada horizontal por ecorregión, ordenadas por proporción de
+bosque, con Argentina arriba como referencia, y los colores del lenguaje visual de MapBiomas
+(verde bosque, tostado herbácea y arbustiva, ámbar agropecuario). Acá **no** aplica el color
+por región: el color codifica la clase de cobertura, no el territorio. La variante de slide es
+el mapa pintado por un solo escalar — el % de lo quemado que era bosque.
+
+### 6. Qué porcentaje de cada cobertura se quema
+
+La otra mitad de la pregunta del análisis 5, y conviene tenerlas juntas porque se confunden
+con facilidad. El 5 dice **qué se quemó** (de lo quemado en el Chaco, el 43 % era bosque);
+el 6 dice **qué proporción de cada clase se quemó** (del bosque del Chaco, tanto por ciento
+por año). Denominadores distintos, números distintos, y en el epígrafe hay que decir cuál es.
+
+El caso que lo deja claro (medido): **Bosques Patagónicos es 55 % bosque de lo que se quema**
+y quema **0,16 % de su bosque por año**. Casi todo lo que se quema ahí es bosque porque casi
+todo lo que hay ahí *es* bosque, no porque su bosque se queme mucho. Campos y Malezales es el
+espejo: sólo 0,3 % de lo quemado es bosque, y sin embargo tiene la tasa herbácea más alta del
+país (5,15 % por año). Citar uno de estos números sin decir cuál es le da al lector lo
+contrario de lo que pasa.
+
+**Esto sí necesitó un cálculo nuevo**, el único de este bloque: el área de cada clase de
+cobertura por ecorregión y por año (`statistics/lulc_area_export.py`). El toolkit no lo puede
+dar, porque todos sus productos están enmascarados al fuego: sabe cuánto bosque se quemó y no
+cuánto bosque había.
+
+Dos cosas definen el número y las dos van dichas (`09-statistics.md` §5.3):
+
+- **El desfasaje de un año**: el numerador cruza el fuego del año Y con la cobertura de Y−1,
+  así que el denominador tiene que ser el área de la clase en Y−1.
+- **El promedio se toma al final**: se calcula el `%` año por año y después se promedia, nunca
+  `suma(quemado)/suma(área)`. Un cociente de sumas no es el promedio de los cocientes, y sumar
+  27 años de área quemada vuelve a contar cada requema.
+
+El gráfico es un *heatmap* ecorregión × clase (nivel 1) con el valor escrito en cada celda —
+una matriz se lee mejor así que como doce gráficos de barras — y la variante de slide es el
+mapa de un solo escalar: qué porcentaje del bosque se quema por año.
+
+Los números de referencia, promedio anual 1999–2025: a nivel país se quema **1,38 % del
+bosque**, 0,94 % de la vegetación herbácea y arbustiva y 0,43 % del área agropecuaria. Los
+máximos por clase son Espinal (2,96 % del bosque), Campos y Malezales (5,15 % de la herbácea)
+y Campos y Malezales otra vez (2,37 % de lo agropecuario). Tabla completa en
+`data/statistics/factsheet_lulc_pct_mean.csv`.

@@ -1,0 +1,561 @@
+---
+title: "Factsheet de fuego — MapBiomas Argentina, Colección 1"
+subtitle: "Las figuras del lanzamiento del 24 de septiembre de 2026"
+date: today
+lang: es
+params:
+  write_plots: true
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    embed-resources: true
+    fig-width: 7
+    fig-height: 4.6
+---
+
+Este cuaderno **dibuja**; no calcula nada. Todas las cifras salen de las tablas de
+`data/statistics/`, producidas por `statistics/fire_counts.R` (la pasada vectorial) y
+`statistics/factsheet_tables.R` (la pasada de análisis). El contenido de cada figura —
+qué dice y por qué — está en [`docs/10-factsheet_design.md`](../docs/10-factsheet_design.md);
+de dónde sale cada número, en [`docs/09-statistics.md`](../docs/09-statistics.md).
+
+Con `write_plots: true` (por defecto) cada figura se escribe en
+`data/statistics/figures/` en **PNG** (para el borrador en PowerPoint) y **PDF**
+vectorial (para el diseñador gráfico). Para re-renderizar sin escribir archivos:
+
+```bash
+quarto render collection-01/notebooks/factsheet.qmd -P write_plots:false
+```
+
+::: {.callout-important}
+## Tres cosas que hay que decir en los epígrafes
+
+1. **Todo es año calendario.** El año de fuego (1 may → 30 abr) es cómo está organizado el
+   *mapeo*, no cómo se reporta nada. El eje de meses se **dibuja** de mayo a abril para no
+   cortar la temporada al medio, pero los datos se agregan por año calendario.
+2. **El `%` es sobre el área quemable**, que es **constante**: el modo 1998–2024 de las
+   clases quemables de la colección 3 de cobertura. Se lee "del área que es quemable la
+   mayor parte del tiempo", así que la serie temporal es señal de **fuego**, no de cambio
+   de uso del suelo.
+3. **El área quemada y la cantidad de incendios no se cuentan igual.** El área viene de los
+   rásters y se parte **por píxel** según su fecha; los incendios vienen de los polígonos y
+   cada uno se archiva **entero** en el mes de su fecha mediana. Misma forma, distintos
+   valores. Además un incendio se cuenta en **todas** las ecorregiones que toca, así que la
+   suma por regiones supera el total nacional.
+:::
+
+```{r setup}
+#| message: false
+#| warning: false
+knitr::opts_knit$set(root.dir = normalizePath("../.."))
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, dev = "png", dpi = 150)
+```
+
+```{r style}
+#| message: false
+source("collection-01/statistics/factsheet_style.R")
+library(patchwork)
+
+WRITE <- isTRUE(params$write_plots)
+if (WRITE) dir.create(FIG_DIR, showWarnings = FALSE, recursive = TRUE)
+cat(if (WRITE) sprintf("Las figuras se escriben en %s\n", FIG_DIR) else
+    "write_plots = false: no se escribe ninguna figura\n")
+
+ann  <- fs$annual
+nat  <- ann[ecoregion == NAT]
+scal <- fs$scalars
+YEARS <- range(ann$year)
+```
+
+## 0. Las cifras del encabezado
+
+```{r headline}
+s0 <- scal[ecoregion_id == 0]
+peor <- nat[which.max(burned_ha)]
+mejor <- nat[which.min(burned_ha)]
+
+data.table(
+  cifra = c("Período", "Ecorregiones reportadas", "Área quemable (constante)",
+            "Área quemada, promedio anual", "Proporción quemada, promedio anual",
+            "Año de más fuego", "Año de menos fuego",
+            "Incendios mapeados (total)", "Incendios por año",
+            "Incendio más grande de la serie"),
+  valor = c(
+    sprintf("%d–%d (%d años)", YEARS[1], YEARS[2], length(unique(ann$year))),
+    sprintf("%d de 13", length(REGIONS)),
+    sprintf("%s Mha", fmt_mha(s0$burnable_ha)),
+    sprintf("%s Mha", fmt_mha(s0$mean_burned_ha)),
+    sprintf("%s %%", fmt_pct(s0$mean_pct)),
+    sprintf("%d — %s Mha (%s %%)", peor$year, fmt_mha(peor$burned_ha), fmt_pct(peor$pct)),
+    sprintf("%d — %s Mha (%s %%)", mejor$year, fmt_mha(mejor$burned_ha), fmt_pct(mejor$pct)),
+    fmt_ha(sum(fs$counts[ecoregion_id == 0, n_fires])),
+    fmt_ha(round(s0$fires_per_year)),
+    sprintf("%s ha", fmt_ha(s0$biggest_fire_ha))))
+```
+
+**Un equivalente tangible para el peor año.** El factsheet quiere una frase del tipo
+"casi la provincia de X". Las candidatas, con la cuenta hecha:
+
+```{r equivalencias}
+ref <- data.table(
+  referencia = c("Provincia de Buenos Aires", "Provincia de Corrientes",
+                 "Provincia de Entre Ríos", "Provincia de Misiones",
+                 "Provincia de Tucumán", "Uruguay"),
+  km2 = c(307571, 88199, 78781, 29801, 22524, 176215))
+ref[, veces_peor_ano := peor$burned_ha / (km2 * 100)]
+ref[, veces_ano_medio := s0$mean_burned_ha / (km2 * 100)]
+ref[order(-km2), .(referencia, Mha = round(km2 / 1e4, 2),
+                   `veces el peor año` = round(veces_peor_ano, 2),
+                   `veces un año medio` = round(veces_ano_medio, 2))]
+```
+
+## 1. Cuánto se quema
+
+La proporción quemada anual media: área quemada / área quemable, promediada sobre los
+`r length(unique(ann$year))` años. El mapa es la figura de la slide; la barra es para el
+análisis interno y para decidir a quién destacar.
+
+```{r fig01-mapa}
+#| fig-height: 6.5
+#| fig-width: 5
+f01 <- map_scalar(
+  "mean_pct", legend = "% del área\nquemable, por año",
+  title = "Cuánto se quema",
+  subtitle = sprintf("Proporción quemada anual media, %d–%d", YEARS[1], YEARS[2])) +
+  labs(caption = cap(sprintf(
+    "Argentina: %s %% por año — %s Mha quemadas de %s Mha quemables. El quemable es constante: el modo 1998–2024 de las clases quemables de cobertura col. 3.",
+    fmt_pct(s0$mean_pct), fmt_mha(s0$mean_burned_ha), fmt_mha(s0$burnable_ha)), width = 52))
+save_fig(f01, "fig01_mapa_pct_medio", w = 5, h = 6.5, write = WRITE)
+f01
+```
+
+```{r fig01-barras}
+d <- scal[ecoregion_id != 0][order(mean_pct)]
+d[, ecoregion := factor(ecoregion, levels = ecoregion)]
+f01b <- ggplot(d, aes(mean_pct, ecoregion, fill = ecoregion)) +
+  geom_col(width = 0.72) +
+  geom_text(aes(label = fmt_pct(mean_pct)), hjust = -0.18, size = 3.1, colour = "grey30") +
+  scale_fill_manual(values = REGION_COLORS, guide = "none") +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.13))) +
+  labs(x = "% del área quemable, por año", y = NULL,
+       title = "Cuánto se quema, por ecorregión",
+       subtitle = sprintf("Proporción quemada anual media, %d–%d", YEARS[1], YEARS[2])) +
+  theme(panel.grid.major.y = element_blank(),
+        panel.grid.major.x = element_line(colour = "grey92", linewidth = 0.3))
+save_fig(f01b, "fig01_barras_pct_medio", w = 7, h = 4.6, write = WRITE)
+f01b
+```
+
+::: {.callout-warning}
+## Delta e Islas del Paraná: el denominador es menor de lo que parece
+
+El 27 % de la superficie del Delta (1,53 Mha de 5,61) es **no observado** en la colección 3
+— la col. 3 no mapea el agua abierta del Paraná y del Río de la Plata — y queda fuera del
+denominador. El `%` del Delta corre sobre **3,49 Mha, no 5,61**, así que es ~60 % más alto
+que el que sacaría un lector dividiendo por el área del mapa. Si el Delta aparece en una
+slide, esa frase va en el epígrafe.
+:::
+
+## 2. Cómo cambió en el tiempo
+
+Un GAM normal de pocas bases (`k = 5`) por región. El escalar que resume la tendencia es la
+**pendiente media** de ese ajuste. Tres formas de leerla, y por qué la del mapa es la tercera:
+
+| métrica | unidad | sirve para |
+|---|---|---|
+| `b_abs` | puntos porcentuales por año | comparar sólo entre regiones que se queman parecido |
+| `b_rel` | fracción del año típico por año | comparable entre regiones — es `b_abs` / media |
+| `trend_ratio` | veces | el ajuste al final sobre el ajuste al principio: "la tendencia se multiplicó por X en `r diff(YEARS)` años" |
+
+`trend_ratio` es la que mejor se lee en un epígrafe y es la que pinta el mapa; `b_rel` dice
+lo mismo por unidad de tiempo y queda en la tabla.
+
+```{r fig02-mapa}
+#| fig-height: 6.5
+#| fig-width: 5
+f02 <- map_scalar(
+  "trend_ratio", midpoint = 0, trans = "log10",
+  legend = "veces", labels = function(x) formatC(x, format = "fg", digits = 2),
+  title = "Cómo cambió",
+  subtitle = sprintf("Tendencia ajustada: %d sobre %d", YEARS[2], YEARS[1])) +
+  labs(caption = cap(sprintf(
+    "Cociente entre el valor ajustado por el GAM al final y al principio de la serie. Rojo: se quema más que antes; azul, menos. Argentina: %s veces.",
+    formatC(s0$trend_ratio, format = "f", digits = 2, decimal.mark = ",")), width = 52))
+save_fig(f02, "fig02_mapa_tendencia", w = 5, h = 6.5, write = WRITE)
+f02
+```
+
+### 2.1 La serie nacional
+
+```{r fig02-nacional}
+tn <- fs$trend[ecoregion == NAT]
+f02n <- ggplot(nat, aes(year, pct)) +
+  geom_ribbon(data = tn, aes(year, ymin = lo, ymax = hi), inherit.aes = FALSE,
+              fill = "grey88") +
+  geom_line(data = tn, aes(year, fit), inherit.aes = FALSE,
+            colour = "grey35", linewidth = 0.9) +
+  geom_line(colour = ACCENT, linewidth = 0.5, alpha = 0.55) +
+  geom_point(colour = ACCENT, size = 1.9) +
+  geom_point(data = rbind(peor, mejor), size = 3.4, shape = 21, fill = "white",
+             colour = ACCENT, stroke = 1.1) +
+  geom_text(data = peor, aes(label = sprintf("%d — %s Mha", year, fmt_mha(burned_ha))),
+            vjust = -1.2, size = 3.2, colour = "grey25") +
+  geom_text(data = mejor, aes(label = sprintf("%d — %s Mha", year, fmt_mha(burned_ha))),
+            vjust = 2.1, size = 3.2, colour = "grey25") +
+  scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.12))) +
+  labs(x = NULL, y = "% del área quemable",
+       title = "Cuánto se quemó cada año en Argentina",
+       subtitle = "Proporción del área quemable, y la tendencia suavizada (GAM, k = 5)",
+       caption = cap("El denominador no cambia entre años, así que la serie es señal de fuego y no de cambio de uso del suelo."))
+save_fig(f02n, "fig02_serie_nacional", w = 7, h = 4.6, write = WRITE)
+f02n
+```
+
+### 2.2 Todas las regiones, normalizadas
+
+Dividida cada serie por su propia media, el eje Y lee "**veces el año típico de esa
+región**": 1 es un año normal, 4 es un año que quemó cuatro veces lo habitual. Sin
+normalizar, el Chaco aplasta a la Patagonia y no se ve la forma de las series chicas.
+
+```{r fig02-todas}
+f02a <- lines_all(ann, "year", "pct_rel", national = FALSE) +
+  geom_hline(yintercept = 1, colour = "grey60", linewidth = 0.3, linetype = "22") +
+  labs(x = NULL, y = "veces el año típico de la región",
+       title = "Los años pico, región por región",
+       subtitle = "Proporción quemada anual dividida por la media de cada región",
+       caption = cap("El mapa-leyenda (fig00_mapa_leyenda) dice qué color es cada ecorregión."))
+save_fig(f02a, "fig02_serie_todas_normalizada", w = 7.5, h = 4.6, write = WRITE)
+f02a
+```
+
+### 2.3 Las variantes focales
+
+Una por región: las demás en gris de fondo, la focal en su color. Es la variante que usa una
+slide; la de arriba sirve para decidir a quién destacar.
+
+```{r fig02-focales}
+#| fig-height: 9
+#| fig-width: 10
+focal_serie <- function(r) {
+  lines_focal(ann, "year", "pct_rel", r) +
+    geom_hline(yintercept = 1, colour = "grey70", linewidth = 0.3, linetype = "22") +
+    labs(x = NULL, y = "veces el año típico", title = r,
+         subtitle = sprintf("%s %% del quemable por año · tendencia %s veces en %d años",
+                            fmt_pct(scal[ecoregion == r, mean_pct]),
+                            formatC(scal[ecoregion == r, trend_ratio], format = "f",
+                                    digits = 2, decimal.mark = ","),
+                            diff(YEARS)))
+}
+for (r in REGIONS) save_fig(focal_serie(r), paste0("fig02_serie_focal_", slug(r)),
+                            w = 5.5, h = 3.6, write = WRITE)
+wrap_plots(lapply(REGIONS, function(r) focal_serie(r) +
+                    labs(subtitle = NULL, y = NULL) + theme_fs(9)), ncol = 4)
+```
+
+## 3. El pirograma: en qué meses ocurre el fuego
+
+Doble eje: el **área quemada** (barras, eje izquierdo) y la **cantidad de incendios de 10 ha
+o más** (línea, eje derecho), mes a mes, promediados sobre la serie. Las líneas suaves son
+GAM cíclicos (`k = 12`) ajustados sobre los 12 puntos resumidos — están para guiar el ojo,
+no para estimar nada. El eje corre de mayo a abril.
+
+```{r pirograma-fun}
+pirograma <- function(r, titulo = r) {
+  d <- fs$pirogram[ecoregion == r][order(month_fy)]
+  g <- fs$season[ecoregion == r][order(month_fy)]
+  k <- max(d$pct) / max(d$n_ge10)                 # el factor del segundo eje
+  col_area <- if (r == NAT) "grey45" else REGION_COLORS[[r]]
+  ggplot(d, aes(month_fy)) +
+    geom_col(aes(y = pct), fill = col_area, alpha = 0.32, width = 0.78) +
+    geom_line(data = g, aes(month_fy, pct), colour = col_area, linewidth = 1) +
+    geom_line(data = g, aes(month_fy, n_ge10 * k), colour = ACCENT, linewidth = 0.9,
+              linetype = "22") +
+    geom_point(aes(y = n_ge10 * k), colour = ACCENT, size = 1.8) +
+    scale_x_continuous(breaks = 1:12, labels = MONTH_FY_LAB, expand = c(0.02, 0)) +
+    scale_y_continuous(
+      name = "% del área quemable", limits = c(0, NA),
+      expand = expansion(mult = c(0, 0.08)),
+      sec.axis = sec_axis(~ . / k, name = "incendios ≥ 10 ha por año")) +
+    labs(x = NULL, title = titulo,
+         subtitle = "Área quemada (barras) e incendios ≥ 10 ha (línea punteada), promedio por mes") +
+    theme(axis.title.y.right = element_text(colour = ACCENT),
+          axis.text.y.right  = element_text(colour = ACCENT))
+}
+```
+
+```{r fig03-nacional}
+f03 <- pirograma(NAT, "Pirograma de Argentina") +
+  labs(caption = cap("El área se parte por píxel según su fecha; cada incendio se cuenta entero en el mes de su fecha mediana. El eje de meses se dibuja de mayo a abril (el año de fuego) para no cortar la temporada: los datos son por año calendario."))
+save_fig(f03, "fig03_pirograma_nacional", w = 7, h = 4.6, write = WRITE)
+f03
+```
+
+```{r fig03-regiones}
+#| fig-height: 9
+#| fig-width: 12
+for (r in REGIONS) save_fig(pirograma(r), paste0("fig03_pirograma_", slug(r)),
+                            w = 5.5, h = 3.8, write = WRITE)
+wrap_plots(lapply(REGIONS, function(r) pirograma(r) + labs(subtitle = NULL) + theme_fs(9)),
+           ncol = 4)
+```
+
+El mes pico de cada región, por área y por cantidad de incendios:
+
+```{r picos}
+scal[order(-mean_pct), .(ecorregión = ecoregion,
+                         `pico (área)` = peak_month_area_name,
+                         `% del año en ese mes` = round(peak_share_area, 1),
+                         `pico (incendios)` = peak_month_fires_name,
+                         `incendios ≥10 ha por año` = round(fires_per_year))]
+```
+
+## 4. Cuándo se quema cada región
+
+Misma forma que el análisis 2, pero el eje X es el año dentro del año, no la serie de años.
+**Por región, los 12 meses suman 100 %**: el eje Y lee "qué porcentaje de lo que se quema en
+esta región ocurre en cada mes". Es % de *lo que se quema*, no del área de la región ni de
+lo quemable — la magnitud está sacada a propósito, para poder comparar *formas*.
+
+Líneas rectas entre los 12 puntos, no un GAM: acá lo que se compara es la forma, y un
+suavizado cíclico sobre una serie de pico agudo la desplaza y la sobrepasa (el ajuste está
+igual en `factsheet_season_fits.csv`, y es el que acompaña al pirograma del análisis 3).
+
+```{r fig04-todas}
+f04 <- lines_all(fs$pirogram, "month_fy", "share_area", national = FALSE) +
+  geom_point(aes(colour = ecoregion), size = 1.3) +
+  scale_x_continuous(breaks = 1:12, labels = MONTH_FY_LAB, expand = c(0.02, 0)) +
+  scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.06))) +
+  labs(x = NULL, y = "% de lo que se quema en la región",
+       title = "Cuándo se quema cada ecorregión",
+       subtitle = "Reparto del área quemada de toda la serie entre los 12 meses; cada región suma 100 %",
+       caption = cap("El % depende de la resolución del eje: con binning quincenal en vez de mensual todos los números se partirían al medio."))
+save_fig(f04, "fig04_estacionalidad_todas", w = 7.5, h = 4.6, write = WRITE)
+f04
+```
+
+```{r fig04-focales}
+#| fig-height: 9
+#| fig-width: 10
+focal_season <- function(r) {
+  lines_focal(fs$pirogram, "month_fy", "share_area", r) +
+    geom_point(data = fs$pirogram[ecoregion == r], aes(month_fy, share_area),
+               colour = REGION_COLORS[[r]], size = 1.6) +
+    scale_x_continuous(breaks = 1:12, labels = MONTH_FY_LAB, expand = c(0.02, 0)) +
+    scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.06))) +
+    labs(x = NULL, y = "% de lo que se quema", title = r,
+         subtitle = sprintf("pico en %s (%s %% del año)",
+                            scal[ecoregion == r, peak_month_area_name],
+                            fmt_pct(scal[ecoregion == r, peak_share_area], 0)))
+}
+for (r in REGIONS) save_fig(focal_season(r), paste0("fig04_estacionalidad_focal_", slug(r)),
+                            w = 5.5, h = 3.6, write = WRITE)
+wrap_plots(lapply(REGIONS, function(r) focal_season(r) +
+                    labs(subtitle = NULL, y = NULL) + theme_fs(9)), ncol = 4)
+```
+
+## 5. Qué se quema en cada región
+
+La **composición** de lo quemado: de todo lo que se quemó en una ecorregión, qué porcentaje
+era bosque, qué porcentaje vegetación herbácea y arbustiva, qué porcentaje campo agrícola.
+Permite decir "en Yungas dos tercios de lo quemado es bosque; en la Estepa Patagónica, el
+1 %".
+
+::: {.callout-note}
+## Esto NO es "qué porcentaje del bosque se quemó"
+
+Son dos preguntas distintas y sólo una es contestable con estas tablas. El denominador acá es
+**el área quemada de la región**, que la tenemos. El de la otra pregunta sería el área de cada
+clase en la región, que el quemable constante no tiene — necesitaría un export más
+(`docs/09-statistics.md` §3.3).
+
+Además este cruce lee la cobertura del **año anterior** al fuego, no la del mismo año: lo que
+se quemó, no en qué se convirtió el píxel después de quemarse. Los productos publicados
+`*_coverage` usan el mismo año, así que **no dan lo mismo** — decir siempre cuál se usó.
+:::
+
+```{r fig05-composicion}
+#| fig-height: 5
+ordn <- fs$scalars[ecoregion_id != 0][order(share_bosques), ecoregion]
+d5 <- fs$lulc_share[level == "nivel1"]
+d5[, ecoregion := factor(ecoregion, levels = c(ordn, NAT))]
+d5[, clase := factor(clase, levels = rev(LULC_N1))]
+f05 <- ggplot(d5, aes(share, ecoregion, fill = clase)) +
+  geom_col(width = 0.74) +
+  scale_fill_manual(values = LULC_COLORS, breaks = LULC_N1, name = NULL) +
+  scale_x_continuous(expand = c(0, 0), labels = function(x) paste0(x, " %")) +
+  labs(x = NULL, y = NULL,
+       title = "Qué se quema en cada ecorregión",
+       subtitle = "Composición del área quemada 1999–2025, según la cobertura del año anterior al fuego",
+       caption = cap("Es el reparto de lo que SE QUEMÓ, no el porcentaje de cada clase que se quemó: el denominador es el área quemada de la región.")) +
+  theme(legend.position = "bottom", panel.grid.major.y = element_blank(),
+        panel.grid.major.x = element_line(colour = "grey92", linewidth = 0.3)) +
+  guides(fill = guide_legend(nrow = 2, reverse = FALSE))
+save_fig(f05, "fig05_composicion_quemado", w = 8, h = 5, write = WRITE)
+f05
+```
+
+Y el mismo escalar en el mapa, para la variante de slide:
+
+```{r fig05-mapa}
+#| fig-height: 6.5
+#| fig-width: 5
+f05m <- map_scalar("share_bosques", palette = "Greens", direction = 1,
+                   legend = "% de lo quemado",
+                   title = "Dónde el fuego quema bosque",
+                   subtitle = "Porcentaje del área quemada que era bosque") +
+  labs(caption = cap(sprintf(
+    "Cobertura del año anterior al fuego. En todo el país, el %s %% de lo quemado era bosque.",
+    fmt_pct(fs$scalars[ecoregion_id == 0, share_bosques], 0)), width = 52))
+save_fig(f05m, "fig05_mapa_bosque", w = 5, h = 6.5, write = WRITE)
+f05m
+```
+
+```{r fig05-tabla}
+dcast(fs$lulc_share[level == "nivel1"], ecoregion ~ clase, value.var = "share",
+      fill = 0)[order(-Bosques)][, lapply(.SD, function(x)
+        if (is.numeric(x)) round(x, 1) else x)]
+```
+
+## 6. Qué porcentaje de cada clase se quema
+
+La otra pregunta, y la que necesitaba el segundo export: no *qué* se quemó sino **qué
+porcentaje de cada clase de cobertura se quemó**. El denominador es el área de esa clase en
+esa ecorregión y ese año, de `statistics/lulc_area_export.py`.
+
+::: {.callout-important}
+## Dos cosas que definen este número
+
+**El desfasaje de un año.** El numerador cruza el fuego del año Y con la cobertura de
+**Y−1**, así que la etiqueta de clase de una hectárea quemada se refiere a Y−1 y su
+denominador es el área de esa clase en Y−1. Juntar Y con Y estaría mal en un año y ningún
+control lo detectaría.
+
+**El promedio se toma al final.** Se calcula el `%` año por año y recién después se
+promedia sobre los años — nunca `suma(quemado) / suma(área)`. Por dos razones, las dos
+reales: un cociente de sumas no es el promedio de los cocientes (Jensen), y sumar el área
+quemada de 27 años cuenta cada requema de nuevo, así que el numerario agrupado puede
+superar el área de la clase.
+:::
+
+```{r fig06-check}
+#| echo: false
+HAS6 <- !is.null(fs$lulc_pct_mean)
+if (!HAS6) cat("Falta `factsheet_lulc_pct_mean.csv`. Corré:\n",
+               "  $PYTHON collection-01/statistics/lulc_area_export.py --export --fetch\n",
+               "  Rscript collection-01/statistics/factsheet_tables.R\n", sep = "")
+```
+
+```{r fig06-heatmap}
+#| fig-height: 5
+#| fig-width: 8
+#| eval: !expr HAS6
+d6 <- fs$lulc_pct_mean[level == "nivel1"]
+d6[, ecoregion := factor(ecoregion, levels = c(rev(REGIONS), NAT))]
+d6[, clase := factor(clase, levels = LULC_N1)]
+f06 <- ggplot(d6[!is.na(clase)], aes(clase, ecoregion, fill = mean_pct)) +
+  geom_tile(colour = "white", linewidth = 1.2) +
+  geom_text(aes(label = fmt_pct(mean_pct, 2),
+                colour = mean_pct > 0.6 * max(mean_pct)), size = 3) +
+  scale_fill_distiller(palette = "YlOrRd", direction = 1, name = "% por año") +
+  scale_colour_manual(values = c(`TRUE` = "white", `FALSE` = "grey25"), guide = "none") +
+  scale_x_discrete(position = "top", labels = function(x)
+    vapply(x, function(z) paste(strwrap(z, 14), collapse = "\n"), "")) +
+  labs(x = NULL, y = NULL,
+       title = "Qué porcentaje de cada cobertura se quema por año",
+       subtitle = "Promedio 1999–2025 del % anual; cobertura del año anterior al fuego",
+       caption = cap("El % se calcula año por año y se promedia después: un cociente de sumas no es el promedio de los cocientes, y sumar 27 años de área quemada contaría cada requema de nuevo.")) +
+  theme(panel.grid = element_blank(), axis.line.x = element_blank(),
+        axis.ticks = element_blank(), legend.position = "right")
+save_fig(f06, "fig06_pct_por_cobertura", w = 8, h = 5, write = WRITE)
+f06
+```
+
+Y el escalar que mejor se lee en una slide — el bosque:
+
+```{r fig06-mapa}
+#| fig-height: 6.5
+#| fig-width: 5
+#| eval: !expr HAS6
+bos <- fs$lulc_pct_mean[level == "nivel1" & clase == "Bosques" & ecoregion_id != 0]
+gb <- merge(ECO_SF, bos[, .(ecoregion, value = mean_pct)], by = "ecoregion")
+nat_bos <- fs$lulc_pct_mean[level == "nivel1" & clase == "Bosques" & ecoregion_id == 0]
+f06m <- ggplot(gb) +
+  geom_sf(aes(fill = value), colour = "white", linewidth = 0.2) +
+  scale_fill_distiller(palette = "YlOrRd", direction = 1, name = "% por año") +
+  coord_sf(datum = NA) + theme_map() +
+  labs(title = "Qué porcentaje del bosque se quema",
+       subtitle = "Promedio anual 1999–2025 del bosque quemado en cada ecorregión",
+       caption = cap(sprintf(
+         "Bosque según la cobertura del año anterior al fuego. En todo el país, el %s %% del bosque por año.",
+         fmt_pct(nat_bos$mean_pct, 2)), width = 52))
+save_fig(f06m, "fig06_mapa_pct_bosque", w = 5, h = 6.5, write = WRITE)
+f06m
+```
+
+```{r fig06-tabla}
+#| eval: !expr HAS6
+dcast(fs$lulc_pct_mean[level == "nivel2"], ecoregion ~ clase,
+      value.var = "mean_pct")[, lapply(.SD, function(x)
+        if (is.numeric(x)) round(x, 2) else x)]
+```
+
+## 7. El mapa-leyenda
+
+Se exporta suelto para que el diseñador lo ubique donde quiera: dice qué color es cada
+ecorregión y, a diferencia de una leyenda de cuadraditos, también **dónde** está. La variante
+focal acompaña a cada gráfico focal de arriba.
+
+```{r fig00-mapa}
+#| fig-height: 6.5
+#| fig-width: 4.4
+f00 <- map_legend()
+save_fig(f00, "fig00_mapa_leyenda", w = 4.4, h = 6.5, write = WRITE)
+for (r in REGIONS) save_fig(map_legend(focal = r), paste0("fig00_mapa_focal_", slug(r)),
+                            w = 2.6, h = 3.9, write = WRITE)
+f00
+```
+
+```{r fig00-focales}
+#| fig-height: 7
+#| fig-width: 11
+wrap_plots(lapply(REGIONS, function(r) map_legend(focal = r) + labs(title = r) +
+                    theme(plot.title = element_text(size = 9))), ncol = 6)
+```
+
+## 8. Material de apoyo (no va al factsheet)
+
+### 8.1 Los absolutos por clase
+
+Las hectáreas detrás de la composición del análisis 5, a nivel nacional y por clase de
+nivel 2.
+
+```{r lulc}
+top <- fs$lulc[ecoregion_id == 0, .(Mha = sum(burned_ha) / 1e6), by = .(nivel1, nivel2)]
+setorder(top, -Mha)
+top[, `% del total` := round(100 * Mha / sum(Mha), 1)]
+top[, Mha := round(Mha, 3)]
+head(top, 12)
+```
+
+### 8.2 Tamaño de los incendios
+
+```{r tamanos}
+fs$scalars[order(-mean_pct), .(
+  ecorregión = ecoregion, `incendios/año` = round(fires_per_year),
+  `mediana ha` = round(median_ha, 1), `p95 ha` = round(p95_ha),
+  `mayor ha` = round(biggest_fire_ha),
+  `≥10 ha por 10.000 km²` = round(fires_ge10_per_10kkm2, 1))]
+```
+
+### 8.3 Las figuras escritas
+
+```{r indice}
+if (WRITE) {
+  f <- list.files(FIG_DIR, pattern = "\\.png$")
+  cat(sprintf("%d figuras en %s (PNG + PDF cada una)\n\n", length(f), FIG_DIR))
+  cat(paste(" -", sort(sub("\\.png$", "", f))), sep = "\n")
+} else cat("write_plots = false\n")
+```
