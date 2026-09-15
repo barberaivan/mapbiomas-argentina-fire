@@ -308,56 +308,21 @@ first item below is still the one that matters, and it is still ours.
       Chaco box) is **green on both years: `month-only 0`, `scar-only 0`**, and the 2020 pixel
       count is identical to the month mask's (26,303). The watcher is retired — its cron lines are
       gone and `C3.pause` is deleted.
-- [ ] **⚠️ THE LAST THING BETWEEN "EXPORTED" AND "PUBLISHABLE": reconcile the property sets
-      BEFORE anyone runs `audit_product_properties.py --apply`.** *(edit → run; re-measured 15 Sep,
-      all twelve v2 products now exist and their blocks are in **three** different states)*
+- [ ] **The product property blocks — DO NOTHING, and do not run `audit_product_properties.py
+      --apply`.** *(decided 15 Sep: not worth the launch week.)* The blocks are uneven — six of the
+      nine carry nothing, three carry the platform's `data_type`/`band_format`/`version`, our three
+      scar rasters carry ours — and that is **fine**: `data_type`/`version` are written at
+      PUBLICATION by the network's `ToPublish/3-toAsset-Public`, on the copy in
+      `mapbiomas-public`, which is Vera's step and a folder we cannot even read. Our **v1**
+      products never carried them either and published normally. **Two things to mention to Vera
+      when she publishes**: that script's `setAssetProperties` call is currently **commented out**,
+      and **`annual_burned_id` is missing from its `data_type_map`**, so it would publish as
+      `unknown`. Everything else here is cosmetic. One hazard only, and it is inert unless invoked:
+      `audit_product_properties.py --apply` would both REPLACE each dict (stripping the platform's
+      trio where it exists) and write a **false `band_format` for `year_last_fire`** — its spec says
+      `classification_{year}`, the real bands are `year_last_fire_2000 … year_last_fire_2026`. The
+      driver only ever runs it dry. Leave it that way.
 
-      | block | products |
-      |---|---|
-      | the platform's trio only (`data_type`, `band_format`, `version`) | `annual_burned`, `monthly_burned`, `annual_burned_coverage` |
-      | **completely EMPTY** | `monthly_burned_coverage`, `frequency_burned`, `frequency_burned_coverage`, `accumulated_burned`, `accumulated_burned_coverage`, `year_last_fire` |
-      | ours (`source`, `region`, `years`, `exclusion_rule_a/b`, `band_format`, …) but **no** `data_type`/`version` | the three scar rasters |
-
-      **`data_type` / `version` are NOT ours to set, and never were** (established 15 Sep from the
-      reference repo + our own v1). They are written at PUBLICATION by the network's
-      `4-Collection_anual_final_products/Reference/ToPublish/3-toAsset-Public`, which copies
-      `…/mapbiomas-argentina/…/FINAL_PRODUCTS/<name>` to
-      `projects/mapbiomas-public/assets/argentina/fire/collection1/<name>`, makes it world-readable
-      and *then* calls `setAssetProperties({data_type, band_format, version})` on **the public
-      copy**. We cannot do it: we have no read access to that folder, let alone write. Two facts
-      confirm it — our **v1** products carry our block (`band_format`, `source`, `region`, `years`,
-      `derived_from`, `lulc`) and have **never** carried `data_type`/`version`, and they went public
-      and entered the platform; and the three v2 assets that DO carry the trio are exactly the three
-      Vera has uncommented in that script's `rasters_names`. Its values are already tabulated there,
-      so nothing needs inventing: `annual_burned_area_ha` and `annual_burned_scar_size_range` are
-      both `data_type: annual`. **Two things to tell Vera:** the script's `setAssetProperties` call
-      is currently **commented out**, and **`annual_burned_id` is absent from `data_type_map`**, so
-      it would publish as `unknown`.
-
-      **⚠ A second trap, measured 15 Sep: our audit's canonical `band_format` is WRONG for
-      `year_last_fire`.** It says `classification_{year}`; the exported bands are
-      `year_last_fire_2000 … year_last_fire_2026`. `--apply` today would write a false band_format
-      onto a landed product — the platform reads that key to open the bands. (The reference's own
-      map is wrong the other way for the two frequency products: it says
-      `frequency_burned_{year1}_{year2}`, the bands are `fire_frequency_1999_1999 …`. Check every
-      value against `bandNames()`, trust neither table.) `audit_product_properties.py` also covers
-      only the **nine** — the three scar rasters are not in its `SPECS` at all. The two half-truths
-      that combine into a silent publication break:
-      1. **Vera's exports carry the PLATFORM's properties** — `data_type`, `band_format`, `version`
-         — on `annual_burned_v2`, `monthly_burned_v2` and `annual_burned_coverage_v2`.
-         **`monthly_burned_coverage_v2` carries none at all.**
-      2. **Our audit script's canonical set does not include `data_type` or `version`**, and it
-         writes with `updateFields=["properties"]`, which **REPLACES the whole dict** (its own
-         docstring says so). So `--apply` today would *strip* the platform's properties from the
-         three assets that have them — and `data_type`/`band_format`/`version` are exactly what the
-         platform reads to open the bands (docs/09 §10).
-      The 18:46 driver tick ran it **dry**, which is why nothing is broken yet; the driver never
-      passes `--apply`. Fix: add `data_type` and `version` to `SPECS`/`want` in
-      `audit_product_properties.py` so the canonical set is the UNION of ours and the platform's,
-      re-run dry, confirm the only remaining lines are `~ set` (no `- drop`), then apply once.
-      Keep `lulc_year = "same calendar year as the burn"` on the coverage assets — that property is
-      where the published product records the distinction from our own previous-year statistics
-      (docs/09 §4.1.1).
 - [ ] **Settle with Brazil which of the nine they export, then resume the rest.** *(run)* They are
       helping with 07d, so the first move is to agree the split explicitly — then
       `rm collection-01/logs/v2-driver/A2.pause` and the next tick resubmits **whatever is left to
