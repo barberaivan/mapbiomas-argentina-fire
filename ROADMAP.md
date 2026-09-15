@@ -63,7 +63,7 @@ RUNNING in `mapbiomas-argentina`.
 | **Fire-object polygon layer** (07e) | `FINAL_PRODUCTS/burned_area_polygons_v2` | ✅ exported, `--verify` green on all 28 fire-years, `--set-props` written. **1,012,648 rows / 63,328,585 ha** |
 | **Calendar scar packages** (07b, local) | `data/scars-upload-cache/` | ✅ 27 zips, 739 MB, gate green — **awaiting the manual ingest ("After")** |
 | **The nine subproducts** (07d) | `FINAL_PRODUCTS/` | 🟡 **4 of 9 landed — Vera is exporting them.** `annual_burned_v2`, `monthly_burned_v2`, `annual_burned_coverage_v2`, `monthly_burned_coverage_v2`, 27 bands each, verified 14 Sep. Our own launch stays paused; see "After" |
-| **The three scar rasters** (07c) | `FINAL_PRODUCTS/` | ⛔ gated on the ingest — "After" |
+| **The three scar rasters** (07c) | `FINAL_PRODUCTS/` | 🟡 **3 tasks in flight since 15 Sep 03:04**, launched by `watch_07c.py` over **all 27 calendar years** as comahue. Follow them on `logs/v2-driver/C3-watch.md`; the driver runs the C4 check when they land |
 
 Everything is **`_v2`, replaced in place**. There is no `_v3`; the asset paths and
 `C.PRODUCT_VERSION = 2` do not change. (Why v2 was rebuilt at all: the first run shipped an
@@ -294,8 +294,21 @@ first item below is still the one that matters, and it is still ours.
       list of their own. Completing them is a full re-export: a band cannot be added to a landed
       image.
 
-      Nothing was ingested from the broken run, so **there is nothing to delete in GEE here**.
-      When the three rasters have landed, remove the `*/2` watcher lines from `crontab -l`.
+      **It ran, and it ran complete — 15 Sep 03:04.** All 27 FCs ingested (2008 and 2009 were
+      cancelled and re-uploaded at 02:30 and landed at 03:02), all 27 stamped, the gate green on
+      **27/27 MATCH** against the local build with `scar_id` still numeric, and three tasks
+      submitted: `arg07c_annual_burned_id`, `arg07c_annual_burned_area_ha`,
+      `arg07c_annual_burned_scar_size_range`. No partial, so `C3-PARTIAL.md` does not exist —
+      **if you see that file, read it first.**
+
+      Nothing was ingested from the broken run, so **there was nothing to delete in GEE here**.
+
+- [ ] **Read `C4-check.out` when the three scar rasters land, then retire the watcher.** *(run)*
+      The 15-min driver runs the scar-vs-month agreement check by itself once the three assets
+      exist (stage C4, Chaco box, 2003 + 2020) — **it is not self-checking, someone has to read
+      it**: `month-only` and `scar-only` must both be 0. Then remove the two `*/2` watcher lines
+      from `crontab -l` (`watch_07c_tick.sh`), and delete `logs/v2-driver/C3.pause`, which exists
+      only to keep the driver from submitting 07c behind the watcher's back.
 - [ ] **⚠️ Reconcile the two property sets BEFORE anyone runs `audit_product_properties.py
       --apply`.** *(edit → run, checked 14 Sep)* Two half-truths that combine into a silent
       publication break:
