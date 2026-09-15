@@ -303,15 +303,24 @@ first item below is still the one that matters, and it is still ours.
 
       Nothing was ingested from the broken run, so **there was nothing to delete in GEE here**.
 
-- [ ] **Read `C4-check.out` when the three scar rasters land, then retire the watcher.** *(run)*
-      The 15-min driver runs the scar-vs-month agreement check by itself once the three assets
-      exist (stage C4, Chaco box, 2003 + 2020) — **it is not self-checking, someone has to read
-      it**: `month-only` and `scar-only` must both be 0. Then remove the two `*/2` watcher lines
-      from `crontab -l` (`watch_07c_tick.sh`), and delete `logs/v2-driver/C3.pause`, which exists
-      only to keep the driver from submitting 07c behind the watcher's back.
-- [ ] **⚠️ Reconcile the two property sets BEFORE anyone runs `audit_product_properties.py
-      --apply`.** *(edit → run, checked 14 Sep)* Two half-truths that combine into a silent
-      publication break:
+- [x] **The three scar rasters landed and verify.** 15 Sep, 06:30 / 07:10 / 09:03 local. 27 bands
+      each, 1999-2025, no gaps, `partial` absent, band naming per `band_format`. C4 (stage C4,
+      Chaco box) is **green on both years: `month-only 0`, `scar-only 0`**, and the 2020 pixel
+      count is identical to the month mask's (26,303). The watcher is retired — its cron lines are
+      gone and `C3.pause` is deleted.
+- [ ] **⚠️ THE LAST THING BETWEEN "EXPORTED" AND "PUBLISHABLE": reconcile the property sets
+      BEFORE anyone runs `audit_product_properties.py --apply`.** *(edit → run; re-measured 15 Sep,
+      all twelve v2 products now exist and their blocks are in **three** different states)*
+
+      | block | products |
+      |---|---|
+      | the platform's trio only (`data_type`, `band_format`, `version`) | `annual_burned`, `monthly_burned`, `annual_burned_coverage` |
+      | **completely EMPTY** | `monthly_burned_coverage`, `frequency_burned`, `frequency_burned_coverage`, `accumulated_burned`, `accumulated_burned_coverage`, `year_last_fire` |
+      | ours (`source`, `region`, `years`, `exclusion_rule_a/b`, `band_format`, …) but **no** `data_type`/`version` | the three scar rasters |
+
+      `audit_product_properties.py` covers only the **nine** — the three scar rasters are not in its
+      `SPECS` at all, and nobody has said what `data_type`/`version` should read on them (ask Brazil
+      with the docs/09 §13 list). The two half-truths that combine into a silent publication break:
       1. **Vera's exports carry the PLATFORM's properties** — `data_type`, `band_format`, `version`
          — on `annual_burned_v2`, `monthly_burned_v2` and `annual_burned_coverage_v2`.
          **`monthly_burned_coverage_v2` carries none at all.**
