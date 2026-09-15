@@ -231,6 +231,23 @@ def inflight_07c():
     return sorted(out)
 
 
+def failed_07c():
+    """Our scar-raster tasks that FAILED or were CANCELLED, with the reason.
+
+    Without this the board reads the same whether a task is still climbing or died at 04:00: "0/3
+    landed, none in flight". A task that failed is the one thing here nobody would otherwise see
+    until morning.
+    """
+    out = []
+    for o in ee.data.listOperations():
+        m = o.get("metadata", {})
+        if (m.get("state") in ("FAILED", "CANCELLED")
+                and str(m.get("description", "")).startswith(TASK_PREFIX)):
+            why = str((o.get("error") or {}).get("message", ""))[:160]
+            out.append(f"{m['description']} {m['state']}" + (f" — {why}" if why else ""))
+    return sorted(set(out))
+
+
 def scar_rasters_landed():
     try:
         have = {a["id"].split("/")[-1] for a in
@@ -418,6 +435,7 @@ running** (`crontab -l`, then `C3-watch.log`).
 | `exclusion_rule_*` stamped | {st['stamped_n']}/{len(st['present'])} |
 | 07c tasks in flight | {'<br>'.join(st['inflight']) or '— none'} |
 | 07c assets landed | {st['landed']}/3 |
+| 07c tasks FAILED | {'<br>'.join(st.get('failed') or []) or '— none'} |
 | launch | {verdict} |
 
 Driver stage C3 is paused (`C3.pause`) while this file owns the launch; C4 (the scar-vs-month
@@ -430,7 +448,7 @@ def tick(force_partial=False):
     init_ee()
     present = present_years()
     st = {"present": present, "ingesting": [], "stamped_n": 0, "inflight": [],
-          "landed": 0, "verdict": ""}
+          "landed": 0, "failed": [], "verdict": ""}
 
     if DONE.exists():
         # The launch has happened.  Keep refreshing the board so the tasks can be followed from
@@ -440,10 +458,11 @@ def tick(force_partial=False):
         if not fresh:
             st["inflight"] = inflight_07c()
             st["landed"] = scar_rasters_landed()
+            st["failed"] = failed_07c()
             st["verdict"] = f"✅ submitted — {DONE.read_text().strip()}"
             st["stamped_n"] = len(present)
             write_board(st)
-        return "done", len(present)
+        return ("done-failed" if st.get("failed") and st["landed"] < 3 else "done"), len(present)
 
     stamped, failed = stamp(present)
     st["stamped_n"] = len(present) - len(failed)
