@@ -31,7 +31,7 @@ quarto render collection-01/notebooks/factsheet.qmd -P write_plots:false
 ```
 
 ::: {.callout-important}
-## Tres cosas que hay que decir en los epígrafes
+## Cuatro cosas que hay que decir en los epígrafes
 
 1. **Todo es año calendario.** El año de fuego (1 may → 30 abr) es cómo está organizado el
    *mapeo*, no cómo se reporta nada. El eje de meses se **dibuja** de mayo a abril para no
@@ -40,7 +40,12 @@ quarto render collection-01/notebooks/factsheet.qmd -P write_plots:false
    clases quemables de la colección 3 de cobertura. Se lee "del área que es quemable la
    mayor parte del tiempo", así que la serie temporal es señal de **fuego**, no de cambio
    de uso del suelo.
-3. **El área quemada y la cantidad de incendios no se cuentan igual.** El área viene de los
+3. **La cobertura es la colección 3 integrada, a nivel país.** Todo cruce con cobertura
+   usa `LAND-COVER/COLLECTION-3/INTEGRATION/mapbiomas_argentina_collection3_pb` y la leyenda
+   nacional de MapBiomas, **nunca** las clasificaciones por región. Cada figura dice en el
+   subtítulo **qué nivel** de esa leyenda está mostrando: nivel 2 es la clase nativa, nivel 1
+   la familia (§5.1).
+4. **El área quemada y la cantidad de incendios no se cuentan igual.** El área viene de los
    rásters y se parte **por píxel** según su fecha; los incendios vienen de los polígonos y
    cada uno se archiva **entero** en el mes de su fecha mediana. Misma forma, distintos
    valores. Además un incendio se cuenta en **todas** las ecorregiones que toca, así que la
@@ -68,6 +73,62 @@ ann  <- fs$annual
 nat  <- ann[ecoregion == NAT]
 scal <- fs$scalars
 YEARS <- range(ann$year)
+```
+
+## El mapa-leyenda: las ecorregiones
+
+Todo el factsheet se reporta sobre las **ecorregiones de Burkart et al. (1999)**, el mismo
+corte territorial que usa la colección 3 de cobertura. Cada una tiene **un color fijo en
+todas las figuras** — cálido en el norte, frío en el sur —, así que este mapa es la leyenda
+de todo lo que sigue: un color aprendido acá significa lo mismo veinte figuras más adelante.
+Va al principio por eso, y se exporta suelto (`fig00_*`) para que el diseñador lo ubique
+donde quiera en la pieza final.
+
+> Burkart, R., Bárbaro, N. O., Sánchez, R. O. y Gómez, D. A. (1999). *Eco-regiones de la
+> Argentina*. Administración de Parques Nacionales, Buenos Aires. Asset:
+> `ARG-Political_Level_2-13Ecorregiones_3857`.
+
+De las 13 ecorregiones se reportan **`r length(REGIONS)`**: Islas del Atlántico Sur queda
+afuera de todas las tablas y mapas porque ninguna carta de la grilla de procesamiento la
+cubre — su cero es un hueco del mapeo, no un dato sobre el fuego (`docs/09-statistics.md`
+§3.2).
+
+Dos versiones. La primera es la que acompaña a un gráfico multi-región: no hace falta
+escribir los nombres, porque la identidad la carga la posición en el mapa. La segunda
+**agrega la leyenda en texto al lado**, en orden norte → sur, y es la que conviene usar una
+vez —la primera vez que el mapa aparece en el factsheet— para que el lector que no se sabe
+las ecorregiones las aprenda ahí.
+
+```{r fig00-mapa}
+#| fig-height: 6.5
+#| fig-width: 4.4
+f00 <- map_legend()
+save_fig(f00, "fig00_mapa_leyenda", w = 4.4, h = 6.5, write = WRITE)
+f00
+```
+
+```{r fig00-mapa-etiquetado}
+#| fig-height: 6.5
+#| fig-width: 7
+f00l <- map_legend(labels = TRUE) +
+  labs(title = "Las ecorregiones de Argentina",
+       subtitle = sprintf("Burkart et al. (1999); %d de 13 — el color es el mismo en todo el factsheet",
+                          length(REGIONS)),
+       caption = cap("Islas del Atlántico Sur no se reporta: queda fuera de la grilla de procesamiento, así que su cero sería un hueco del mapeo y no un dato.", width = 78))
+save_fig(f00l, "fig00_mapa_leyenda_texto", w = 7, h = 6.5, write = WRITE)
+f00l
+```
+
+La variante focal —el resto en gris, una región en su color— acompaña a cada gráfico focal
+de los análisis 2 y 4:
+
+```{r fig00-focales}
+#| fig-height: 7
+#| fig-width: 11
+for (r in REGIONS) save_fig(map_legend(focal = r), paste0("fig00_mapa_focal_", slug(r)),
+                            w = 2.6, h = 3.9, write = WRITE)
+wrap_plots(lapply(REGIONS, function(r) map_legend(focal = r) + labs(title = r) +
+                    theme(plot.title = element_text(size = 9))), ncol = 6)
 ```
 
 ## 0. Las cifras del encabezado
@@ -255,6 +316,55 @@ wrap_plots(lapply(REGIONS, function(r) focal_serie(r) +
                     labs(subtitle = NULL, y = NULL) + theme_fs(9)), ncol = 4)
 ```
 
+### 2.4 La alternativa: el % quemado de cada región, con su propia escala
+
+La misma grilla de paneles, pero con la variable **sin normalizar** —el % del área quemable
+que se quemó cada año— y con el **mismo GAM (`k = 5`) ajustado a esa variable**: es el
+ajuste de `factsheet_trend_fits.csv`, el mismo que pinta el mapa del análisis 2 y el mismo
+que dibuja la serie nacional. Acá cada panel tiene **su propia escala Y**, así que no hay
+región aplastada por otra y todos se leen: lo que se pierde es la comparación directa entre
+paneles, lo que se gana es la magnitud real de cada región. La versión normalizada de arriba
+sirve para comparar formas; ésta, para decir cuánto se quema.
+
+```{r fig02-pct-regiones}
+#| fig-height: 9
+#| fig-width: 12
+serie_pct <- function(r) {
+  d <- ann[ecoregion == r]
+  g <- fs$trend[ecoregion == r]
+  col <- REGION_COLORS[[r]]
+  ggplot(d, aes(year, pct)) +
+    # el intervalo del GAM se recorta en 0: un % quemado negativo no existe, y con
+    # límites en el eje la banda censurada dejaría un hueco en la cinta.
+    geom_ribbon(data = g, aes(year, ymin = pmax(0, lo), ymax = hi), inherit.aes = FALSE,
+                fill = "grey88") +
+    geom_line(data = g, aes(year, fit), inherit.aes = FALSE, colour = "grey35",
+              linewidth = 0.8) +
+    geom_line(colour = col, linewidth = 0.5, alpha = 0.6) +
+    geom_point(colour = col, size = 1.6) +
+    scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.12))) +
+    labs(x = NULL, y = "% del área quemable", title = r,
+         subtitle = sprintf("media %s %% por año · tendencia %s veces en %d años",
+                            fmt_pct(scal[ecoregion == r, mean_pct]),
+                            formatC(scal[ecoregion == r, trend_ratio], format = "f",
+                                    digits = 2, decimal.mark = ","),
+                            diff(YEARS)))
+}
+for (r in REGIONS) save_fig(serie_pct(r), paste0("fig02_serie_pct_", slug(r)),
+                            w = 5.5, h = 3.6, write = WRITE)
+f02p <- wrap_plots(lapply(REGIONS, function(r) serie_pct(r) +
+                            labs(subtitle = NULL, y = NULL) + theme_fs(9)), ncol = 4) +
+  plot_annotation(
+    title = "Cuánto se quemó cada año, región por región",
+    subtitle = "% del área quemable y su tendencia (GAM, k = 5). Cada panel tiene su propia escala Y.",
+    caption = cap("Los paneles NO son comparables entre sí en altura: cada uno está escalado a su propia región. Para comparar entre regiones, la versión normalizada (2.2 y 2.3) o el mapa del análisis 1."),
+    theme = theme(plot.title = element_text(face = "bold"),
+                  plot.subtitle = element_text(colour = "grey35"),
+                  plot.caption = element_text(colour = "grey45", hjust = 0)))
+save_fig(f02p, "fig02_serie_pct_multipanel", w = 12, h = 9, write = WRITE)
+f02p
+```
+
 ## 3. El pirograma: en qué meses ocurre el fuego
 
 Doble eje: el **área quemada** (barras, eje izquierdo) y la **cantidad de incendios de 10 ha
@@ -360,6 +470,8 @@ wrap_plots(lapply(REGIONS, function(r) focal_season(r) +
 
 La **composición** de lo quemado: de todo lo que se quemó en una ecorregión, qué porcentaje
 era bosque, qué porcentaje vegetación herbácea y arbustiva, qué porcentaje campo agrícola.
+Se muestra **primero por clase nativa (nivel 2 de la leyenda) y después por familia
+(nivel 1)** — la sección 5.1 dice exactamente qué leyenda es y cómo agrega.
 Permite decir "en Yungas dos tercios de lo quemado es bosque; en la Estepa Patagónica, el
 1 %".
 
@@ -376,9 +488,82 @@ se quemó, no en qué se convirtió el píxel después de quemarse. Los producto
 `*_coverage` usan el mismo año, así que **no dan lo mismo** — decir siempre cuál se usó.
 :::
 
+### 5.1 La leyenda: cuál es, qué nivel se usa y cómo agrega
+
+**Ninguna clase de este cuaderno es nuestra.** Todas salen de la leyenda de la
+**colección 3 de cobertura de MapBiomas Argentina**, y de la **integración nacional**
+(`LAND-COVER/COLLECTION-3/INTEGRATION/mapbiomas_argentina_collection3_pb`): una sola
+leyenda para todo el país, no las clasificaciones por región de MapBiomas —donde el
+mismo nombre puede querer decir cosas distintas según la región. Los dos lados del
+cociente usan ese mismo asset: el numerador lo cruza el toolkit de la red, el
+denominador lo exporta `statistics/lulc_area_export.py`.
+
+Esa leyenda tiene **tres niveles anidados**, y el toolkit decodifica los tres. El
+factsheet usa dos, y siempre en este orden:
+
+| nivel | qué es | cuántas clases aparecen | dónde se usa acá |
+|---|---|---|---|
+| **nivel 2** | **la clase nativa**, la que ve un usuario de la plataforma (`Bosque cerrado`, `Herbaceas`, `Pastura`) | `r length(LULC_N2)` con fuego | **5.2** y **6.1** — la versión detallada |
+| **nivel 1** | la **familia** (`Bosques`, `Vegetación natural herbácea y arbustiva`, …) | `r length(LULC_N1)` | **5.3** y **6.2** — la versión de slide |
+| nivel 0 | `Natural` / `Antrópico` | 2 | no se grafica; está en la tabla de abajo |
+
+La agregación **no la hacemos nosotros**: nivel 1 y nivel 0 son columnas de la propia
+leyenda, y los nombres están copiados textualmente del `00_Tools/Legends.js` de la red
+—incluso donde les faltan tildes (`Herbaceas`, `Mosaicos de arbustos y herbaceas`)—
+porque el numerador se decodifica con ese mismo diccionario y "arreglarlos" acá rompería
+el join en silencio (`statistics/legends.py`).
+
+Ésta es la agregación completa, leída del export del denominador, que es el único lado
+que trae el **código col-3** al lado de los tres niveles:
+
+```{r crosswalk}
+#| echo: false
+cw <- lulc_crosswalk()
+if (is.null(cw)) cat("Falta lulc_area_eco13.csv — corré statistics/lulc_area_export.py\n") else cw
+```
+
+Los códigos padre de la leyenda (`1` Bosques, `10` Vegetación natural herbácea y
+arbustiva, `14` Agropecuario, `22` Áreas sin vegetación, `26` Cuerpos de agua) existen en
+el diccionario pero **no aparecen en píxeles** de la integración, así que no están en la
+tabla. `No observado` (`0` y `27`) se descarta de todos los cocientes: son 0,24 ha en 27
+años, un píxel de 2025 (`docs/09-statistics.md` §8).
+
+### 5.2 La composición, por clase nativa (nivel 2)
+
+```{r fig05-composicion-n2}
+#| fig-height: 5.5
+#| fig-width: 10
+ordn <- fs$scalars[ecoregion_id != 0][order(share_bosques), ecoregion]
+d5n <- fs$lulc_share[level == "nivel2" & clase %in% LULC_N2]
+d5n[, ecoregion := factor(ecoregion, levels = c(ordn, NAT))]
+d5n[, clase := factor(clase, levels = rev(LULC_N2))]
+f05n <- ggplot(d5n, aes(share, ecoregion, fill = clase)) +
+  geom_col(width = 0.74) +
+  scale_fill_manual(values = LULC_N2_COLORS, breaks = LULC_N2, name = NULL) +
+  scale_x_continuous(expand = c(0, 0), labels = function(x) paste0(x, " %")) +
+  labs(x = NULL, y = NULL,
+       title = "Qué se quema en cada ecorregión, por clase nativa",
+       subtitle = "Composición del área quemada 1999–2025 — leyenda col. 3 integrada, NIVEL 2, según la cobertura del año anterior al fuego",
+       caption = cap("Cada tono es una clase nativa; el matiz es su familia de nivel 1 (verde = bosques, beige = herbácea y arbustiva, ámbar = agropecuario), ordenada de mayor a menor dentro de la familia. Los colores son nuestros: la leyenda de la red trae nombres, no paleta.")) +
+  theme(legend.position = "right", panel.grid.major.y = element_blank(),
+        legend.text = element_text(size = rel(0.75)),
+        panel.grid.major.x = element_line(colour = "grey92", linewidth = 0.3))
+save_fig(f05n, "fig05_composicion_quemado_nivel2", w = 10, h = 5.5, write = WRITE)
+f05n
+```
+
+```{r fig05-tabla-n2}
+dcast(fs$lulc_share[level == "nivel2"], ecoregion ~ clase, value.var = "share",
+      fill = 0)[, lapply(.SD, function(x)
+        if (is.numeric(x)) round(x, 1) else x)]
+```
+
+### 5.3 La composición, por familia (nivel 1)
+
+Las cinco familias de la misma leyenda — es la versión que entra en una slide.
+
 ```{r fig05-composicion}
 #| fig-height: 5
-ordn <- fs$scalars[ecoregion_id != 0][order(share_bosques), ecoregion]
 d5 <- fs$lulc_share[level == "nivel1"]
 d5[, ecoregion := factor(ecoregion, levels = c(ordn, NAT))]
 d5[, clase := factor(clase, levels = rev(LULC_N1))]
@@ -388,7 +573,7 @@ f05 <- ggplot(d5, aes(share, ecoregion, fill = clase)) +
   scale_x_continuous(expand = c(0, 0), labels = function(x) paste0(x, " %")) +
   labs(x = NULL, y = NULL,
        title = "Qué se quema en cada ecorregión",
-       subtitle = "Composición del área quemada 1999–2025, según la cobertura del año anterior al fuego",
+       subtitle = "Composición del área quemada 1999–2025 — leyenda col. 3 integrada, NIVEL 1 (familias), según la cobertura del año anterior al fuego",
        caption = cap("Es el reparto de lo que SE QUEMÓ, no el porcentaje de cada clase que se quemó: el denominador es el área quemada de la región.")) +
   theme(legend.position = "bottom", panel.grid.major.y = element_blank(),
         panel.grid.major.x = element_line(colour = "grey92", linewidth = 0.3)) +
@@ -423,7 +608,9 @@ dcast(fs$lulc_share[level == "nivel1"], ecoregion ~ clase, value.var = "share",
 
 La otra pregunta, y la que necesitaba el segundo export: no *qué* se quemó sino **qué
 porcentaje de cada clase de cobertura se quemó**. El denominador es el área de esa clase en
-esa ecorregión y ese año, de `statistics/lulc_area_export.py`.
+esa ecorregión y ese año, de `statistics/lulc_area_export.py`, sobre el **mismo asset
+integrado nacional** que el numerador. Otra vez en dos niveles: **clase nativa (nivel 2)
+primero, familia (nivel 1) después** (§5.1).
 
 ::: {.callout-important}
 ## Dos cosas que definen este número
@@ -448,6 +635,43 @@ if (!HAS6) cat("Falta `factsheet_lulc_pct_mean.csv`. Corré:\n",
                "  Rscript collection-01/statistics/factsheet_tables.R\n", sep = "")
 ```
 
+### 6.1 Por clase nativa (nivel 2)
+
+Mismo nivel 2 de la leyenda integrada que el 5.2, y mismas dos reglas del recuadro. Una
+celda vacía es una clase que no existe en esa ecorregión: su `%` no es cero, es
+indefinido.
+
+```{r fig06-heatmap-n2}
+#| fig-height: 5.5
+#| fig-width: 13
+#| eval: !expr HAS6
+d6n <- fs$lulc_pct_mean[level == "nivel2"]
+# Nada se cae en silencio: las clases que existen pero NUNCA se quemaron (glaciares) no
+# están en LULC_N2 —que se ordena por área quemada— y van al final con su 0,00 %.
+n2_lv <- c(LULC_N2, setdiff(sort(unique(d6n$clase)), LULC_N2))
+d6n[, ecoregion := factor(ecoregion, levels = c(rev(REGIONS), NAT))]
+d6n[, clase := factor(clase, levels = n2_lv)]
+f06n <- ggplot(d6n[!is.na(clase)], aes(clase, ecoregion, fill = mean_pct)) +
+  geom_tile(colour = "white", linewidth = 1.2) +
+  geom_text(aes(label = fmt_pct(mean_pct, 2),
+                colour = mean_pct > 0.6 * max(mean_pct)), size = 2.5) +
+  scale_fill_distiller(palette = "YlOrRd", direction = 1, name = "% por año") +
+  scale_colour_manual(values = c(`TRUE` = "white", `FALSE` = "grey25"), guide = "none") +
+  scale_x_discrete(position = "top", labels = function(x)
+    vapply(x, function(z) paste(strwrap(z, 12), collapse = "\n"), "")) +
+  labs(x = NULL, y = NULL,
+       title = "Qué porcentaje de cada clase nativa se quema por año",
+       subtitle = "Promedio 1999–2025 del % anual — leyenda col. 3 integrada, NIVEL 2; cobertura del año anterior al fuego",
+       caption = cap("Denominador: el área de ESA clase en ESA ecorregión en el año anterior, del export propio. El % se calcula año por año y se promedia después.")) +
+  theme(panel.grid = element_blank(), axis.line.x = element_blank(),
+        axis.ticks = element_blank(), legend.position = "right",
+        axis.text.x.top = element_text(size = rel(0.72)))
+save_fig(f06n, "fig06_pct_por_cobertura_nivel2", w = 13, h = 5.5, write = WRITE)
+f06n
+```
+
+### 6.2 Por familia (nivel 1)
+
 ```{r fig06-heatmap}
 #| fig-height: 5
 #| fig-width: 8
@@ -465,7 +689,7 @@ f06 <- ggplot(d6[!is.na(clase)], aes(clase, ecoregion, fill = mean_pct)) +
     vapply(x, function(z) paste(strwrap(z, 14), collapse = "\n"), "")) +
   labs(x = NULL, y = NULL,
        title = "Qué porcentaje de cada cobertura se quema por año",
-       subtitle = "Promedio 1999–2025 del % anual; cobertura del año anterior al fuego",
+       subtitle = "Promedio 1999–2025 del % anual — leyenda col. 3 integrada, NIVEL 1 (familias); cobertura del año anterior al fuego",
        caption = cap("El % se calcula año por año y se promedia después: un cociente de sumas no es el promedio de los cocientes, y sumar 27 años de área quemada contaría cada requema de nuevo.")) +
   theme(panel.grid = element_blank(), axis.line.x = element_blank(),
         axis.ticks = element_blank(), legend.position = "right")
@@ -495,6 +719,8 @@ save_fig(f06m, "fig06_mapa_pct_bosque", w = 5, h = 6.5, write = WRITE)
 f06m
 ```
 
+Y los números de la 6.1, clase nativa × ecorregión:
+
 ```{r fig06-tabla}
 #| eval: !expr HAS6
 dcast(fs$lulc_pct_mean[level == "nivel2"], ecoregion ~ clase,
@@ -502,32 +728,9 @@ dcast(fs$lulc_pct_mean[level == "nivel2"], ecoregion ~ clase,
         if (is.numeric(x)) round(x, 2) else x)]
 ```
 
-## 7. El mapa-leyenda
+## 7. Material de apoyo (no va al factsheet)
 
-Se exporta suelto para que el diseñador lo ubique donde quiera: dice qué color es cada
-ecorregión y, a diferencia de una leyenda de cuadraditos, también **dónde** está. La variante
-focal acompaña a cada gráfico focal de arriba.
-
-```{r fig00-mapa}
-#| fig-height: 6.5
-#| fig-width: 4.4
-f00 <- map_legend()
-save_fig(f00, "fig00_mapa_leyenda", w = 4.4, h = 6.5, write = WRITE)
-for (r in REGIONS) save_fig(map_legend(focal = r), paste0("fig00_mapa_focal_", slug(r)),
-                            w = 2.6, h = 3.9, write = WRITE)
-f00
-```
-
-```{r fig00-focales}
-#| fig-height: 7
-#| fig-width: 11
-wrap_plots(lapply(REGIONS, function(r) map_legend(focal = r) + labs(title = r) +
-                    theme(plot.title = element_text(size = 9))), ncol = 6)
-```
-
-## 8. Material de apoyo (no va al factsheet)
-
-### 8.1 Los absolutos por clase
+### 7.1 Los absolutos por clase
 
 Las hectáreas detrás de la composición del análisis 5, a nivel nacional y por clase de
 nivel 2.
@@ -540,7 +743,7 @@ top[, Mha := round(Mha, 3)]
 head(top, 12)
 ```
 
-### 8.2 Tamaño de los incendios
+### 7.2 Tamaño de los incendios
 
 ```{r tamanos}
 fs$scalars[order(-mean_pct), .(
@@ -550,7 +753,7 @@ fs$scalars[order(-mean_pct), .(
   `≥10 ha por 10.000 km²` = round(fires_ge10_per_10kkm2, 1))]
 ```
 
-### 8.3 Las figuras escritas
+### 7.3 Las figuras escritas
 
 ```{r indice}
 if (WRITE) {

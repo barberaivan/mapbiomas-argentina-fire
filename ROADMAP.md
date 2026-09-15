@@ -24,7 +24,7 @@ at **15 Sep 2026** for Brazil to copy them to `mapbiomas-public`.
 
 ### Revisar el factsheet y elegir qué va a las slides
 
-Los seis análisis están hechos, con sus tablas y sus 60 figuras
+Los seis análisis están hechos, con sus tablas y sus 76 figuras
 (`collection-01/docs/09-statistics.md`; `quarto render collection-01/notebooks/factsheet.qmd`).
 Lo que falta es **decidir**:
 
@@ -42,7 +42,7 @@ Lo que falta es **decidir**:
 
 ### Entregar los números y las figuras al diseñador (~mié 16 sep)
 
-`collection-01/data/statistics/figures/` — 60 figuras, PNG y PDF de cada una.
+`collection-01/data/statistics/figures/` — 76 figuras, PNG y PDF de cada una.
 
 ## After
 

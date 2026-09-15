@@ -49,7 +49,7 @@ collection-01/data/statistics/    every statistics input and output (Insync stor
   ecoregions13_meta.csv           id, nombre, centroide, área — the palette order
   ecoregions13_simple.gpkg        the 13 polygons simplified for plotting
   factsheet_*.csv                 the plot-ready tables (§5.1)
-  figures/                        120 files: 60 figures × PNG + PDF
+  figures/                        152 files: 76 figures × PNG + PDF
 ```
 
 The GEE JavaScript is in the **`fuego` repo**, not here:
@@ -452,17 +452,32 @@ map — stay apart); the **map as the legend**, exported loose; and the two vari
 
 `params$write_plots` (default `true`) writes every figure to `data/statistics/figures/` as
 **PNG** (the PowerPoint draft) and **PDF** (the designer). Render with
-`-P write_plots:false` to preview without writing. 60 figures:
+`-P write_plots:false` to preview without writing. 76 figures:
 
 | prefix | n | what |
 |---|---|---|
-| `fig00_mapa_leyenda`, `fig00_mapa_focal_*` | 13 | the map-as-legend and its focal variants |
+| `fig00_mapa_leyenda`, `fig00_mapa_leyenda_texto`, `fig00_mapa_focal_*` | 14 | the map-as-legend, the variant **with the names written next to it**, and the 12 focal ones |
 | `fig01_*` | 2 | análisis 1 — proporción quemada media: el mapa y las barras |
-| `fig02_*` | 15 | análisis 2 — el mapa de tendencia, la serie nacional, `all_regions` normalizada, 12 focales |
+| `fig02_*` | 28 | análisis 2 — el mapa de tendencia, la serie nacional, `all_regions` normalizada, 12 focales normalizadas, **12 paneles en % quemado + su multipanel** |
 | `fig03_pirograma_*` | 13 | análisis 3 — pirograma nacional y por ecorregión, doble eje |
 | `fig04_*` | 13 | análisis 4 — la forma intraanual, `all_regions` y 12 focales |
-| `fig05_*` | 2 | análisis 5 — la composición de lo quemado: barras apiladas y el mapa de `share_bosques` |
-| `fig06_*` | 2 | análisis 6 — qué % de cada clase se quema: el heatmap región × clase y el mapa del bosque |
+| `fig05_*` | 3 | análisis 5 — la composición de lo quemado, **en nivel 2 (clase nativa) y en nivel 1 (familia)**, y el mapa de `share_bosques` |
+| `fig06_*` | 3 | análisis 6 — qué % de cada clase se quema: los heatmaps región × clase **de nivel 2 y de nivel 1**, y el mapa del bosque |
+
+**The notebook opens with the map-legend, not with the headline numbers.** If the map *is* the
+legend of every other figure, it has to be on screen before the first figure that uses it — so
+the section moved to the top and carries the Burkart et al. (1999) citation and the reason
+Islas del Atlántico Sur is missing (§3.2). The `_texto` variant writes the names out; the plain
+one is what accompanies a multi-region chart.
+
+**Two levels of the land-cover legend, natives first.** Análisis 5 and 6 each draw twice: the
+**nivel-2 native classes** (17 of them burn) and then the **nivel-1 families** (5). Both come
+from the *integrated national* col-3 legend — `.../COLLECTION-3/INTEGRATION/mapbiomas_argentina_collection3_pb`
+decoded with the network's `lulc_argentina_nivel{0,1,2}` — never a per-region classification,
+where one name can mean different things in different MapBiomas regions. The aggregation is the
+legend's own; notebook §5.1 prints the whole crosswalk (código col-3 → nivel 2 → nivel 1 →
+nivel 0), read off `lulc_area_eco13.csv` rather than retyped, and every figure's subtitle names
+the level it is drawing.
 
 Análisis 4 draws **straight lines between the 12 points, not the GAM**: docs/10 asks for the
 same format as análisis 2, and a cyclic smooth over a sharply peaked share series displaces

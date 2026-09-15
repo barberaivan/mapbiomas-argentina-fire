@@ -58,6 +58,9 @@ fs <- local({
        scalars  = rd("factsheet_region_scalars.csv"),
        lulc_share = rd("factsheet_lulc_share.csv"),
        lulc_pct_mean = rd_opt("factsheet_lulc_pct_mean.csv"),
+       # the denominator export — the only table that carries the col-3 CLASS CODE
+       # next to the three legend levels, so the crosswalk is read, never retyped
+       lulc_area = rd_opt("lulc_area_eco13.csv"),
        counts   = rd("fire_counts_by_month.csv"),
        meta     = rd("ecoregions13_meta.csv"))
 })
@@ -88,6 +91,58 @@ REGION_COLORS[NAT] <- "#1A1A1A"
 LULC_N1 <- c("Bosques", "Vegetación natural herbácea y arbustiva",
              "Áreas de uso agropecuario", "Áreas sin vegetación", "Cuerpos de agua")
 LULC_COLORS <- setNames(c("#1F8D49", "#D6BC74", "#E0A81C", "#B85B3C", "#2532E4"), LULC_N1)
+
+# ── the NATIVE classes (nivel 2) ─────────────────────────────────────────────
+# Nothing in this factsheet invents a land-cover class. The col-3 legend is nested
+# and the network's toolkit decodes all three of ITS levels: nivel 2 is the class a
+# MapBiomas user knows ("Bosque cerrado", "Herbaceas"), nivel 1 the family, nivel 0
+# natural/antrópico. The figures show nivel 2 FIRST and the families after it.
+#
+# The order is family (LULC_N1) and, inside a family, by how much it burned
+# nationally, so the stacked bar puts the big class of each family at the edge.
+# The colours are OURS, not MapBiomas': the legend the toolkit ships carries names
+# and no palette. Each family keeps its nivel-1 colour and its classes are shades
+# of it, dark to light in that same order — so a nivel-2 bar still reads as the
+# same five families from across the room.
+mix_col <- function(a, b, p) {
+  m <- (1 - p) * grDevices::col2rgb(a) + p * grDevices::col2rgb(b)
+  grDevices::rgb(m[1], m[2], m[3], maxColorValue = 255)
+}
+LULC_N2_TBL <- local({
+  d <- fs$lulc[ecoregion_id == 0 & nivel1 %in% LULC_N1,
+               .(burned_ha = sum(burned_ha)), by = .(nivel1, nivel2)]
+  d[, nivel1 := factor(nivel1, levels = LULC_N1)]
+  setorder(d, nivel1, -burned_ha)
+  d[]
+})
+LULC_N2 <- LULC_N2_TBL$nivel2
+LULC_N2_COLORS <- local({
+  parts <- lapply(split(LULC_N2_TBL, LULC_N2_TBL$nivel1, drop = TRUE), function(d) {
+    base <- LULC_COLORS[[as.character(d$nivel1[1])]]
+    n <- nrow(d)
+    cols <- if (n == 1) base else
+      grDevices::colorRampPalette(c(mix_col(base, "#000000", 0.30),
+                                    mix_col(base, "#FFFFFF", 0.62)))(n)
+    setNames(cols, d$nivel2)
+  })
+  do.call(c, unname(parts))
+})
+
+# The aggregation itself, READ and not retyped: `lulc_area_eco13.csv` is written by
+# statistics/lulc_area_export.py through statistics/legends.py, which holds the col-3
+# legend copied verbatim from the network's 00_Tools/Legends.js — the same dictionary
+# the numerator was decoded with. A second, hand-typed copy here is exactly how the
+# two sides would stop matching.
+lulc_crosswalk <- function() {
+  if (is.null(fs$lulc_area)) return(NULL)
+  d <- unique(fs$lulc_area[, .(class_id, nivel0, nivel1, nivel2)])
+  d <- d[nivel1 != "No observado"]
+  d[, nivel1_f := factor(nivel1, levels = LULC_N1)]
+  d[, n2_f := factor(nivel2, levels = LULC_N2)]
+  setorder(d, nivel1_f, n2_f, class_id)
+  d[, .(`código col-3` = class_id, `nivel 2 (clase nativa)` = nivel2,
+        `nivel 1 (familia)` = nivel1, `nivel 0` = nivel0)]
+}
 
 GREY_LINE <- "grey82"     # the non-focal regions
 GREY_FILL <- "grey90"     # the non-focal polygons on a focal map
@@ -141,11 +196,20 @@ ECO_SF <- local({
 })
 
 # ── the map as legend ────────────────────────────────────────────────────────
-map_legend <- function(focal = NULL) {
+# `labels = TRUE` adds the classic key — the region NAMES, in palette order
+# (north -> south), next to the map. The map alone is the legend of every other
+# figure; this variant is the one place the names themselves are written down, so
+# a reader who does not know the ecorregiones can learn them once.
+map_legend <- function(focal = NULL, labels = FALSE) {
   g <- ECO_SF
   if (is.null(focal)) {
     p <- ggplot(g) + geom_sf(aes(fill = ecoregion), colour = "white", linewidth = 0.15) +
-      scale_fill_manual(values = REGION_COLORS, limits = REGIONS, guide = "none")
+      scale_fill_manual(
+        values = REGION_COLORS, limits = REGIONS, name = NULL,
+        guide = if (labels) guide_legend(ncol = 1, byrow = TRUE,
+                                         keywidth = grid::unit(0.9, "lines"),
+                                         keyheight = grid::unit(0.9, "lines"))
+                else "none")
   } else {
     g$focal <- g$ecoregion == focal
     p <- ggplot(g) +
@@ -153,7 +217,10 @@ map_legend <- function(focal = NULL) {
       geom_sf(data = g[g$focal, ], fill = REGION_COLORS[[focal]],
               colour = "white", linewidth = 0.2)
   }
-  p + coord_sf(datum = NA) + theme_map()
+  p + coord_sf(datum = NA) + theme_map() +
+    theme(legend.position = if (labels && is.null(focal)) "right" else "none",
+          legend.text = element_text(size = rel(0.8), colour = "grey20"),
+          legend.key.spacing.y = grid::unit(1, "pt"))
 }
 
 # ── a choropleth of any per-region scalar ────────────────────────────────────

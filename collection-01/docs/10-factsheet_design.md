@@ -126,6 +126,17 @@ quiera. La ventaja sobre la leyenda clásica es que no sólo dice qué color es
 cada región, sino *dónde* está: el lector no tiene que saberse las ecorregiones
 de memoria.
 
+**Va al principio, y una vez con los nombres escritos.** Si el mapa es la
+leyenda, tiene que aparecer *antes* del primer resultado que lo use —en el
+factsheet y en el cuaderno—, con una línea que diga que ése es el corte
+territorial de todo lo que sigue y la cita de Burkart et al. (1999). Hay dos
+variantes: `map_legend()`, el mapa solo, que es lo que acompaña a un gráfico
+multi-región (los nombres sobran: la identidad la carga la posición), y
+`map_legend(labels = TRUE)`, **el mapa con la leyenda en texto al lado** en orden
+norte → sur. La segunda se usa una sola vez, la primera vez que el mapa aparece,
+para que el lector que no se sabe las ecorregiones las aprenda ahí; después ya no
+hace falta repetir los nombres.
+
 **Paleta ordenada por latitud**, de tonos cálidos en el norte a fríos en el sur.
 Con 13 clases no hay paleta cualitativa que alcance — ninguna da 13 colores
 realmente distinguibles entre sí. Pero si el tono codifica latitud, el problema
@@ -218,6 +229,18 @@ promediaría ~3,6 %, un número que no le dice nada a nadie. En cambio "2020 que
 4 veces lo típico" se entiende sin explicación. En el eje mensual, con 12 bins y
 un pico estacional claro, el % sí funciona bien; por eso las dos normalizaciones
 son distintas a propósito.
+
+**Pero la normalización no es gratis, así que el multipanel va también sin
+normalizar.** "Veces el año típico" saca la magnitud a propósito, y con eso se
+pierde justamente lo que el lector quiere saber de una región: cuánto se quema.
+Cuando las series por región se muestran como *multipanel* —un panel por
+ecorregión— la normalización deja de ser necesaria, porque cada panel tiene su
+propia escala Y y ninguna región aplasta a otra. Entonces se dibujan las dos: la
+grilla normalizada (comparar formas) y la grilla en **% quemado anual**, con el
+**mismo GAM k = 5 ajustado a esa variable** —el de `factsheet_trend_fits.csv`, el
+mismo que pinta el mapa de tendencia y la serie nacional— y su banda. El epígrafe
+de la segunda tiene que decir que los paneles no son comparables en altura entre
+sí, que es el precio de que cada uno se lea bien.
 
 Este gráfico usa las convenciones multi-región de más arriba (color por región,
 mapa-leyenda, variantes `all_regions` y focal).
@@ -334,6 +357,22 @@ bosque, con Argentina arriba como referencia, y los colores del lenguaje visual 
 (verde bosque, tostado herbácea y arbustiva, ámbar agropecuario). Acá **no** aplica el color
 por región: el color codifica la clase de cobertura, no el territorio. La variante de slide es
 el mapa pintado por un solo escalar — el % de lo quemado que era bosque.
+
+**Qué leyenda, y en qué nivel: se dice explícitamente, y las nativas van primero.** Esto lo
+va a leer gente que conoce la leyenda de cobertura de memoria, así que no alcanza con mostrar
+las familias. La cobertura es siempre la **integración nacional de la colección 3**
+(`LAND-COVER/COLLECTION-3/INTEGRATION/mapbiomas_argentina_collection3_pb`), **nunca** las
+clasificaciones por región de MapBiomas —donde el mismo nombre puede querer decir cosas
+distintas según la región—, y la leyenda es la de la red (`00_Tools/Legends.js`,
+`lulc_argentina_nivel{0,1,2}`), con sus tres niveles anidados. Los análisis 5 y 6 se dibujan
+**dos veces**: primero por **clase nativa (nivel 2)**, que son pocas —17 con fuego— y son las
+que el lector reconoce, y después por **familia (nivel 1)**, que es la versión de slide. La
+agregación nivel 2 → nivel 1 → nivel 0 **es de la leyenda, no nuestra**, y el cuaderno imprime
+la tabla completa (código col-3 → los tres niveles) para que se pueda auditar de un vistazo.
+Cada figura dice en el subtítulo qué nivel está mostrando. Los colores de nivel 2 sí son
+nuestros —la leyenda de la red trae nombres y no paleta—: cada familia conserva su color de
+nivel 1 y sus clases son tonos de ése, así que la barra detallada se sigue leyendo como las
+mismas cinco familias.
 
 ### 6. Qué porcentaje de cada cobertura se quema
 
