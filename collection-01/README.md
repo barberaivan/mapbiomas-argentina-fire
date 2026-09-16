@@ -58,6 +58,7 @@ collection-01/
 │   ├── legends.py                   # burnable class list, status codes, the 13 ecoregion names (literals)
 │   ├── burnable_export.py           # the CONSTANT burnable denominator: one GEE export, 13 numbers
 │   ├── lulc_area_export.py          # the PER-CLASS denominator: área de cada clase col-3 x ecorregión x año
+│   ├── burn_perc_export.py          # THE ONE RASTER: % de los años con fuego, 480 m, para el mapa de apertura (docs/09 §5.5)
 │   ├── fire_counts.R                # THE VECTOR PASS — fire counts off the local polygons + the plotting geometry
 │   ├── factsheet_tables.R           # THE ANALYSIS PASS — the plot-ready tables, the GAMs, every per-region scalar
 │   └── factsheet_style.R            # the shared palette, theme, map-as-legend and figure variants
@@ -105,7 +106,7 @@ collection-01/
 | `objects-analysis/` | every reported table/plot from the scripts and the notebook | 2 MB |
 | `objects-inspect-cache/` | 28 QGIS layers + a `.qgz` project — **regenerable** | 6.3 GB |
 | `objects-upload-cache/` | the 28 GEE upload zips + loose Shapefile components — **regenerable** | 8.4 GB |
-| `statistics/` | step-09: the toolkit's burned-area CSVs, the burnable denominator, the fire tables, the `factsheet_*` tables and `figures/` (76 figures × PNG + PDF) | 86 MB |
+| `statistics/` | step-09: the toolkit's burned-area CSVs, the burnable denominator, the fire tables, the `factsheet_*` tables, the one raster (`arg_burn_perc_480m_mean.tif`) and `figures/` (93 figures × PNG + PDF) | 110 MB |
 
 A fire is an **object** (the layer is sparse, not an OBIA partition), and a **`-cache` suffix means
 regenerable**: delete it and re-run its launcher. Details: `docs/05-object_metrics.md` §4 and
@@ -430,7 +431,7 @@ says 53,263, iterating the table says 54,514 (docs/07 §13.6). `--verify` audits
 
 ### Step 09 — the statistics and the factsheet
 
-Every number the factsheet reports, and the 56 figures. Three sources: the **burned area** comes
+Every number the factsheet reports, and the 93 figures. Three sources: the **burned area** comes
 from the network's toolkit (run in the `fuego` GEE repo, downloaded from GCS into
 `data/statistics/`), the **burnable denominator** is one small export of ours, and the **fire
 counts** are local. Design, gates and decisions: `docs/09-statistics.md`; what each graphic says:
@@ -445,6 +446,12 @@ $PYTHON collection-01/statistics/lulc_area_export.py --test-rect
 $PYTHON collection-01/statistics/lulc_area_export.py --export      # 27 years in one task
 $PYTHON collection-01/statistics/lulc_area_export.py --fetch       # pull it down, decode, gate
 
+# el único ráster: % de los años con fuego a 480 m, para el mapa de apertura. Tarea batch
+# (la descarga interactiva mide el tamaño a 30 m y rebota), y --fetch corre la compuerta:
+# el promedio ponderado por área tiene que dar los 0,838 % que publican las tablas.
+$PYTHON collection-01/statistics/burn_perc_export.py --export      # ~5 min
+$PYTHON collection-01/statistics/burn_perc_export.py --fetch       # -> data/statistics/*.tif + gate
+
 # the vector pass: 1.01 M mapped fires -> calendar year/month, ecorregión tags, the plotting
 # geometry. ~20 s. Needs scripts/objects_region_tag.R and scripts/rule_a_aoi_tag.R to have run.
 Rscript collection-01/statistics/fire_counts.R
@@ -457,7 +464,7 @@ quarto render collection-01/notebooks/factsheet.qmd
 quarto render collection-01/notebooks/factsheet.qmd -P write_plots:false   # preview, writes nothing
 ```
 
-Only the two exports touch GEE. That is the whole point of the split: the geometry is read once,
+Only the three exports touch GEE. That is the whole point of the split: the geometry is read once,
 and every figure afterwards is a read of a CSV with at most a few thousand rows — so a new figure
 idea costs seconds.
 
@@ -510,7 +517,7 @@ were used in fitting (`fit == TRUE`) and a red asterisk for held-out dates
 | `logistic_regression_feature_engineering_ideas.qmd` | Feature engineering ideas for the LR model | — |
 | `burn_prob_ts_metrics.qmd` | Exploration of burn-probability time-series summary metrics | — |
 | `categorical_vs_bernoulli.qmd` | Categorical vs Bernoulli formulation notes | — |
-| `factsheet.qmd` | **Step 09 — the factsheet figures.** Draws only; every number comes from `data/statistics/`. The six analyses of `docs/10-factsheet_design.md` (proporción quemada media, la serie + tendencia GAM, el pirograma de doble eje, la forma intraanual, la composición de lo quemado, y qué % de cada clase se quema), each as an `all_regions` panel and 12 focal variants where that applies, plus the map-as-legend (which opens the notebook, with a names-alongside variant). Análisis 5 and 6 draw both legend levels, nivel-2 native classes first. `params$write_plots` (default `true`) writes 76 figures to `data/statistics/figures/` as PNG **and** PDF | `statistics/fire_counts.R` → `statistics/factsheet_tables.R` |
+| `factsheet.qmd` | **Step 09 — the factsheet figures.** Draws only; every number comes from `data/statistics/`. The five analyses of `docs/10-factsheet_design.md` (proporción quemada media; la serie + tendencia GAM; **el patrón intraanual entero — 3.1 el mapa del mes pico en paleta cíclica, 3.2 el pirograma de doble eje, 3.3 la forma intraanual comparada, 3.4 el pirograma normalizado con los totales en el panel**; la composición de lo quemado; y qué % de cada clase se quema), each as an `all_regions` panel and 12 focal variants where that applies, plus the map-as-legend (which opens the notebook, with a names-alongside variant). Análisis 4 and 5 draw both legend levels, nivel-2 native classes first. `params$write_plots` (default `true`) writes 93 figures to `data/statistics/figures/` as PNG **and** PDF | `statistics/fire_counts.R` → `statistics/factsheet_tables.R` |
 | `objects-analysis.qmd` | Step 06, the standing analysis: size distribution of all 1.69 M objects (6 display classes), the latitude-dependent pixel scale, labels vs population by size, `p_mean`/`p_width`/`% undecided` per class → the **minimum-fire-size** decision; the **per-size-band classification cuts** (Youden J, sens/spec, bootstrap intervals, ROC); the **per-year leak diagnostic** (§8 — the check that caught `fire_year`, plus §8.1 the residual time trend); and **§9 predictor importance + ALE curves** | step-05 metrics + `run_06_predict.sh` + `objects_threshold.R` + `objects_importance_ale.R` |
 
 Rendered `.html` versions are tracked alongside the `.qmd` so they can be read without a Quarto/R toolchain.

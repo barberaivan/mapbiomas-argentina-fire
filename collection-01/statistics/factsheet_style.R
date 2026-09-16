@@ -45,7 +45,7 @@ MONTH_FY_LAB <- MONTH_ES[c(5:12, 1:4)]
 # ── the tables ───────────────────────────────────────────────────────────────
 fs <- local({
   rd <- function(f) fread(file.path(STATS_DIR, f), encoding = "UTF-8")
-  # Optional: análisis 6 needs the second GEE export (docs/09 §5.3). A notebook
+  # Optional: análisis 5 needs the second GEE export (docs/09 §5.3). A notebook
   # rendered before that export has landed should skip the section, not die in the
   # setup chunk with an unrelated-looking file-not-found.
   rd_opt <- function(f) if (file.exists(file.path(STATS_DIR, f))) rd(f) else NULL
@@ -88,9 +88,12 @@ REGION_COLORS[NAT] <- "#1A1A1A"
 # The MapBiomas nivel-1 families, in the platform's own colour language so a reader
 # who has seen a land-cover map recognises the bars: green = bosque, tan = herbácea
 # y arbustiva, amber = agropecuario. Order is the stacking order.
+# TRES familias, no las cinco de la leyenda: agua, glaciar, ciudad y suelo desnudo no arden,
+# así que el área quemada que cae ahí es error de mapeo (0,09 % de lo quemado en el país) y
+# `factsheet_tables.R` ya la descartó. La composición suma 100 % sobre lo que puede arder.
 LULC_N1 <- c("Bosques", "Vegetación natural herbácea y arbustiva",
-             "Áreas de uso agropecuario", "Áreas sin vegetación", "Cuerpos de agua")
-LULC_COLORS <- setNames(c("#1F8D49", "#D6BC74", "#E0A81C", "#B85B3C", "#2532E4"), LULC_N1)
+             "Áreas de uso agropecuario")
+LULC_COLORS <- setNames(c("#1F8D49", "#D6BC74", "#E0A81C"), LULC_N1)
 
 # ── the NATIVE classes (nivel 2) ─────────────────────────────────────────────
 # Nothing in this factsheet invents a land-cover class. The col-3 legend is nested
@@ -136,7 +139,9 @@ LULC_N2_COLORS <- local({
 lulc_crosswalk <- function() {
   if (is.null(fs$lulc_area)) return(NULL)
   d <- unique(fs$lulc_area[, .(class_id, nivel0, nivel1, nivel2)])
-  d <- d[nivel1 != "No observado"]
+  # Las mismas exclusiones que las figuras: si una clase no aparece en ningún gráfico,
+  # listarla en el crosswalk sólo hace buscarla. `LULC_N1` ya son las tres quemables.
+  d <- d[nivel1 %in% LULC_N1]
   d[, nivel1_f := factor(nivel1, levels = LULC_N1)]
   d[, n2_f := factor(nivel2, levels = LULC_N2)]
   setorder(d, nivel1_f, n2_f, class_id)
@@ -195,6 +200,86 @@ ECO_SF <- local({
   st_transform(g, ALBERS)
 })
 
+# ── el ráster de "% de los años con fuego" ───────────────────────────────────
+# El ÚNICO ráster del factsheet (statistics/burn_perc_export.py, docs/09 §5.5). Es
+# `frequency_burned_v2 / 27` en porcentaje: el mismo número que la proporción quemada
+# media anual del análisis 1, pero por píxel en vez de por ecorregión — por eso el mapa
+# y el choropleth de al lado no pueden contradecirse.
+#
+# Opcional, como la tabla del análisis 5: un cuaderno renderizado antes de bajar el
+# GeoTIFF se saltea la figura en vez de morir en el chunk de setup.
+BURN_PERC_TIF <- file.path(STATS_DIR, "arg_burn_perc_480m_mean.tif")
+HAS_BURN_PERC <- file.exists(BURN_PERC_TIF)
+
+# Cortes de clase, no rampa continua: el grueso del país está por debajo de 1 % y una
+# rampa lineal lo manda todo al primer tono (que es lo que tienta a agregar con max() y
+# mentir). Las etiquetas van en % de los años; el epígrafe las traduce a "1 año de cada N".
+MIN_BURNABLE_FRAC <- 0.05   # celdas con menos del 5 % quemable: vacío, no un cociente de ruido
+BURN_BREAKS <- c(0, 0.2, 0.5, 1, 2, 5, 10, Inf)
+BURN_LABELS <- c("< 0,2", "0,2 – 0,5", "0,5 – 1", "1 – 2", "2 – 5", "5 – 10", "> 10")
+BURN_COLORS <- c("#F7F3E8", "#FBE3A2", "#F9C552", "#F09422",
+                 "#DD6A10", "#B23C06", "#7F2704")
+
+burn_perc_df <- function(res_m = 1000) {
+  stopifnot(requireNamespace("terra", quietly = TRUE))
+  # Banda 1 = % de los años con fuego; banda 2 = % de la celda que es quemable (la que hace
+  # verificable a la 1, docs/09 §5.5). Las dos son porcentajes guardados x 100 en uint16.
+  r <- terra::rast(BURN_PERC_TIF)
+  frac <- if (terra::nlyr(r) >= 2) r[[2]] / 100 / 100 else NULL
+  r <- r[[1]] / 100
+  # A EQUAL-AREA, como todos los mapas de acá. El ráster viene en EPSG:3857 —la grilla
+  # nativa de los productos v2—, donde el área de suelo de la celda cae con cos²(lat):
+  # dibujado así la Patagonia ocuparía de más, y cualquier promedio sub-pesaría el norte.
+  # En Albers la celda vale lo mismo en todo el país, así que el promedio simple de este
+  # ráster ES el número ponderado por área (0,838 %; docs/09 §5.5).
+  v <- terra::vect(ECO_SF)
+  if (!is.null(frac)) {
+    # Una celda que es 99 % laguna y 1 % pastizal tiene un cociente con denominador de 1 %:
+    # ruidoso, y pintado igual que una celda entera de pastizal. Se dibuja como vacío.
+    r <- terra::mask(r, frac >= MIN_BURNABLE_FRAC, maskvalue = FALSE)
+  }
+  r <- terra::project(r, ALBERS, res = res_m, method = "average")
+  r <- terra::mask(terra::crop(r, v), v)
+  d <- as.data.frame(r, xy = TRUE, na.rm = TRUE)
+  names(d) <- c("x", "y", "pct")
+  # `geom_raster` avisa "uneven horizontal intervals" por el ruido de coma flotante que
+  # deja la reproyección. Las celdas SON regulares: se las devuelve a su grilla — anclando
+  # en el primer centro, no en el múltiplo de `res_m` más cercano, que las correría medio
+  # píxel y llegaría a fusionar dos vecinas.
+  snap <- function(z) { z0 <- min(z); round((z - z0) / res_m) * res_m + z0 }
+  d$x <- snap(d$x)
+  d$y <- snap(d$y)
+  # ggplot igual avisa "uneven horizontal intervals" al dibujar: es cosmético — verificado
+  # que los espaciados son iguales y que no hay celdas repetidas. `geom_tile`, que es lo
+  # que sugiere, dibujaría 2,7 M de rectángulos y haría ilegible el PDF; `geom_raster`
+  # escribe una sola imagen. El cuaderno suprime warnings, así que sólo se ve en consola.
+  d$clase <- cut(d$pct, BURN_BREAKS, labels = BURN_LABELS, include.lowest = TRUE)
+  d
+}
+
+# `res_m` es la resolución de DIBUJO, no la del dato: el archivo son 480 m y una figura
+# de Argentina impresa a 20 cm y 300 dpi no resuelve mejor que ~1,6 km, así que 1 km ya
+# es más fino que el papel. Bajarlo sólo engorda la figura.
+map_burn_perc <- function(res_m = 1000, outline = TRUE, legend = TRUE) {
+  d <- burn_perc_df(res_m)
+  p <- ggplot(d, aes(x, y)) +
+    geom_raster(aes(fill = clase)) +
+    scale_fill_manual(values = setNames(BURN_COLORS, BURN_LABELS), drop = FALSE,
+                      name = "% de los años\ncon fuego",
+                      guide = if (legend) guide_legend(reverse = TRUE) else "none")
+  # Los bordes NO van en blanco: el 71 % del país cae en la clase más clara, que es un
+  # crema, y una línea blanca encima de un crema no existe. Gris medio se ve sobre las dos
+  # puntas de la rampa.
+  if (outline)
+    p <- p + geom_sf(data = ECO_SF, inherit.aes = FALSE, fill = NA,
+                     colour = "grey35", linewidth = 0.18)
+  p + coord_sf(datum = NA, expand = FALSE) + theme_map() +
+    theme(legend.position = if (legend) "right" else "none",
+          legend.key.width = grid::unit(0.8, "lines"),
+          legend.text = element_text(size = rel(0.8), colour = "grey20"),
+          legend.title = element_text(size = rel(0.8), colour = "grey20"))
+}
+
 # ── the map as legend ────────────────────────────────────────────────────────
 # `labels = TRUE` adds the classic key — the region NAMES, in palette order
 # (north -> south), next to the map. The map alone is the legend of every other
@@ -220,6 +305,39 @@ map_legend <- function(focal = NULL, labels = FALSE) {
   p + coord_sf(datum = NA) + theme_map() +
     theme(legend.position = if (labels && is.null(focal)) "right" else "none",
           legend.text = element_text(size = rel(0.8), colour = "grey20"),
+          legend.key.spacing.y = grid::unit(1, "pt"))
+}
+
+# ── el mes pico, con paleta CÍCLICA ──────────────────────────────────────────
+# Un mes no es una magnitud: diciembre y enero son vecinos, y cualquier rampa
+# secuencial los pinta en las dos puntas opuestas — el error clásico de estos mapas.
+# La paleta es entonces la rueda de tonos completa, 30° por mes a luminancia y croma
+# constantes, así que el color vuelve sobre sí mismo igual que el calendario.
+#
+# El anclaje no es arbitrario: enero cae en rojo y julio en cian, de modo que en el
+# hemisferio sur el color además se lee solo — cálido = pico de verano, frío = pico de
+# invierno. Es la misma familia `hcl()` que la paleta de regiones, por coherencia.
+MONTH_COLORS <- setNames(hcl(h = ((seq_len(12) - 1) * 30 + 20) %% 360, c = 75, l = 60),
+                         MONTH_ES)
+
+# La leyenda se ordena de mayo a abril, como el eje de meses de todo el análisis 3, y
+# muestra sólo los meses que existen en el mapa. Los nombres van en tres letras: un
+# número de mes obliga a traducir mentalmente, que es justo lo que un mapa no debe pedir.
+map_month <- function(column = "peak_month_area", title = NULL, subtitle = NULL,
+                      legend = NULL, caption = NULL) {
+  d <- fs$scalars[ecoregion_id != 0, .(ecoregion, .mes = get(column))]
+  g <- merge(ECO_SF, d, by = "ecoregion")
+  g$mes <- factor(MONTH_ES[g$.mes], levels = MONTH_FY_LAB)
+  ggplot(g) +
+    geom_sf(aes(fill = mes), colour = "white", linewidth = 0.15) +
+    scale_fill_manual(values = MONTH_COLORS, drop = TRUE, name = legend,
+                      guide = guide_legend(ncol = 1, keywidth = grid::unit(0.9, "lines"),
+                                           keyheight = grid::unit(0.9, "lines"))) +
+    coord_sf(datum = NA) + theme_map() +
+    labs(title = title, subtitle = subtitle, caption = caption) +
+    theme(legend.position = "right",
+          legend.text = element_text(size = rel(0.8), colour = "grey20"),
+          legend.title = element_text(size = rel(0.8), colour = "grey20"),
           legend.key.spacing.y = grid::unit(1, "pt"))
 }
 
@@ -287,6 +405,21 @@ save_fig <- function(p, name, w = 7, h = 4.6, write = TRUE) {
 slug <- function(x) {
   x <- iconv(x, to = "ASCII//TRANSLIT")
   gsub("_+", "_", gsub("[^a-z0-9]+", "_", tolower(x)))
+}
+
+# ── las tablas ───────────────────────────────────────────────────────────────
+# El cuaderno no imprime `data.table`s crudas. Varias de estas tablas se citan en el
+# factsheet y las lee gente que no vive en una consola, así que van como tablas HTML:
+# `knitr::kable` + las clases de Bootstrap que el tema ya trae — kableExtra no está
+# instalado y para esto no aporta nada.
+#
+# Los números salen en castellano (coma decimal, punto de miles), y eso impone UNA regla:
+# ninguna columna de AÑOS entra a una de estas tablas, porque `big.mark` la escribiría
+# "2.001". Si alguna vez hace falta un año en una columna, va como texto — o `es = FALSE`.
+tbl <- function(d, ..., digits = getOption("digits"), es = TRUE) {
+  knitr::kable(d, format = "html", digits = digits,
+               format.args = if (es) list(decimal.mark = ",", big.mark = ".") else list(),
+               table.attr = 'class="table table-sm table-striped table-hover"', ...)
 }
 
 fmt_ha <- function(x) formatC(x, format = "f", big.mark = ".", decimal.mark = ",", digits = 0)

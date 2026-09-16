@@ -24,17 +24,18 @@ at **15 Sep 2026** for Brazil to copy them to `mapbiomas-public`.
 
 ### Revisar el factsheet y elegir qué va a las slides
 
-Los seis análisis están hechos, con sus tablas y sus 76 figuras
+Los cinco análisis están hechos, con sus tablas y sus 93 figuras
 (`collection-01/docs/09-statistics.md`; `quarto render collection-01/notebooks/factsheet.qmd`).
 Lo que falta es **decidir**:
 
 - **Qué regiones se destacan en cada slide.** Las variantes `all_regions` están para eso; hay
   12 focales de cada análisis ya escritas, así que cambiar de región no cuesta nada.
-- **La frase de equivalencia del peor año** (2001, 5,08 Mha): la tabla de candidatas está en la
-  sección 0 del notebook.
-- **Selva Paranense: 60 % de lo quemado es agropecuario** (análisis 5). Mirarlo antes de que
+- **Las frases de equivalencia**, del peor año (2001, 5,08 Mha) y del **total de la serie**
+  (63,23 Mha con recurrencias = 2,06 provincias de Buenos Aires): la tabla de candidatas, con
+  las tres cuentas hechas, está en la sección 0 del notebook.
+- **Selva Paranense: 60 % de lo quemado es agropecuario** (análisis 4). Mirarlo antes de que
   vaya a una slide.
-- **Los análisis 5 y 6 se invierten entre sí** y hay que elegir cuál va (o los dos, juntos):
+- **Los análisis 4 y 5 se invierten entre sí** y hay que elegir cuál va (o los dos, juntos):
   Bosques Patagónicos es 55 % bosque de lo quemado pero quema 0,16 % de su bosque por año.
   Citar uno sin el otro da la lectura opuesta (docs/09 §5.3.1).
 - **Si el Delta aparece**, su epígrafe tiene que decir que el 27 % de la región es "no
@@ -42,7 +43,7 @@ Lo que falta es **decidir**:
 
 ### Entregar los números y las figuras al diseñador (~mié 16 sep)
 
-`collection-01/data/statistics/figures/` — 76 figuras, PNG y PDF de cada una.
+`collection-01/data/statistics/figures/` — 93 figuras, PNG y PDF de cada una.
 
 ## After
 

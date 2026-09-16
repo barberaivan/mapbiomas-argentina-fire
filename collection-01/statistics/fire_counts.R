@@ -41,7 +41,7 @@
 # polygon INTERSECTS (`terra::relate(..., "intersects")`, a true/false — never an
 # actual intersection geometry, which on 1.3 M polygons would cost hours for an
 # answer nothing needs). Regional counts therefore sum to MORE than the national
-# count, by design (docs/10, análisis 3). The national row is computed from the
+# count, by design (docs/10, análisis 3.2). The national row is computed from the
 # fire set itself, never by summing regions.
 #
 # Usage (from the repo ROOT):
@@ -74,7 +74,7 @@ RULE_A_MAX_HA <- 150                   # rule A: only fires BELOW this area
 T_AGRI        <- 0.40                  # rule B: frac_agri above this
 
 # Reporting size bands for the fire counts. The pirogram's count half is normally
-# read at >= 10 ha (docs/10, análisis 3); the others are there so a different cut
+# read at >= 10 ha (docs/10, análisis 3.2); the others are there so a different cut
 # is a column choice downstream and not a re-run of this script.
 SIZE_CUTS <- c(0, 10, 100, 1000)
 

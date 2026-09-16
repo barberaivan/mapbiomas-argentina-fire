@@ -58,8 +58,24 @@ NAT <- "Argentina"        # the national row's `ecoregion`, with ecoregion_id 0
 # maps and from the national denominator (252.25 -> 251.09 Mha burnable).
 UNMAPPED_REGIONS <- 13L
 
+# ── las clases NO QUEMABLES no entran a ningún análisis de cobertura ─────────
+# Area quemada sobre agua, glaciar, ciudad o suelo desnudo es ERROR DE MAPEO: esas clases
+# no arden. Medido, es ruido — 0.09 % de lo quemado en el país (32,122 ha en 'Áreas sin
+# vegetación' + 25,327 en 'Cuerpos de agua'), y 1.56 % en el peor caso (Estepa Patagónica).
+# Dejarlo dentro no agrega información y sí confunde: mete dos categorías de barra invisible
+# en cada gráfico y le roba un punto al 100 %.
+#
+# El corte va por FAMILIA (nivel 1) y es exacto, no una aproximación: las clases col-3 que
+# existen en Argentina dentro de estas dos familias son 24, 25, 33 y 34 — exactamente las de
+# `legends.py::NON_BURNABLE` que aparecen en el país (22 y 26 no ocurren). Verificado contra
+# `lulc_area_eco13.csv`, que es la única tabla que trae el CÓDIGO al lado de los nombres.
+#
+# Con esto, la composición del análisis 4 suma 100 % sobre lo que PUEDE arder, que es lo que
+# significa cuando se la lee.
+NON_BURNABLE_N1 <- c("Áreas sin vegetación", "Cuerpos de agua")
+
 K_TREND  <- 5      # docs/10 análisis 2 — a few bases, a smooth decadal shape
-# docs/10 análisis 3 asks for k = 12, so that the curve FOLLOWS the 12 summary
+# docs/10 análisis 3.2 asks for k = 12, so that the curve FOLLOWS the 12 summary
 # points. Measured, 12 does the opposite at the one place it matters: nationally
 # it overshoots the August peak by 8 % and the Chaco's by 10.5 %, drawing a curve
 # that is higher than any month actually is. k = 10 reproduces the national peak
@@ -166,6 +182,11 @@ n_obs <- lulc[nivel1 == "No observado", sum(burned_ha)]
 msg("LULC: se descartan %.2f ha de 'No observado' (%.1e %% de lo quemado)",
     n_obs, 100 * n_obs / sum(lulc$burned_ha))
 lulc <- lulc[nivel1 != "No observado"]
+n_nb <- lulc[nivel1 %in% NON_BURNABLE_N1, sum(burned_ha)]
+msg("LULC: se descartan %s ha en clases NO QUEMABLES (%.2f %% de lo quemado) — %s",
+    format(round(n_nb), big.mark = ","), 100 * n_nb / sum(lulc$burned_ha),
+    paste(NON_BURNABLE_N1, collapse = ", "))
+lulc <- lulc[!nivel1 %in% NON_BURNABLE_N1]
 lulc <- lulc[, .(burned_ha = sum(burned_ha)),
              by = .(ecoregion_id, year, nivel0, nivel1, nivel2)]
 lulc <- rbind(lulc, lulc[, .(ecoregion_id = 0L, burned_ha = sum(burned_ha)),
@@ -208,9 +229,11 @@ LULC_AREA <- file.path(DIR, "lulc_area_eco13.csv")
 if (!file.exists(LULC_AREA)) {
   msg("[skip] %s no está — corré statistics/lulc_area_export.py --export --fetch", LULC_AREA)
 } else {
+  # Las dos exclusiones, a los DOS lados del cociente: 'No observado' y las clases no
+  # quemables. El numerador ya viene filtrado de arriba; el denominador se filtra acá.
   area <- rd("lulc_area_eco13.csv")[!ecoregion_id %in% UNMAPPED_REGIONS &
-                                    !nivel1 %in% "No observado"]
-  burned <- lulc[!nivel1 %in% "No observado"]
+                                    !nivel1 %in% c("No observado", NON_BURNABLE_N1)]
+  burned <- lulc[!nivel1 %in% c("No observado", NON_BURNABLE_N1)]
 
   # One level at a time: at nivel1 several codes share a name, so the denominator has
   # to be aggregated by NAME before the join — the same aggregation the toolkit's
@@ -305,7 +328,7 @@ wr(trend_fits, "factsheet_trend_fits.csv")
 # ── 5. the pirogram: área e incendios por mes ────────────────────────────────
 # Both halves are MEANS OVER THE 27 YEARS of that month's value — "un mes de
 # septiembre típico", not a total. The count half is the >= 10 ha fires (docs/10
-# análisis 3); it comes from the polygons and is filed whole into the month of
+# análisis 3.2); it comes from the polygons and is filed whole into the month of
 # `date_median`, while the area half is split per pixel. Same shape, different
 # values — say which one a number came from.
 cnt <- rd("fire_counts_by_month.csv")[!ecoregion_id %in% UNMAPPED_REGIONS]
@@ -320,7 +343,7 @@ piro <- merge(mon[, .(burned_ha = sum(burned_ha) / nyears, pct = sum(pct) / nyea
               cnt[, .(n_fires = sum(n_fires) / nyears, n_ge10 = sum(n_ge10) / nyears,
                       n_ge100 = sum(n_ge100) / nyears), by = .(ecoregion_id, month)],
               by = c("ecoregion_id", "month"))
-# The intra-annual SHAPES (docs/10 análisis 4): each region's 12 months sum to
+# The intra-annual SHAPES (docs/10 análisis 3.3): each region's 12 months sum to
 # 100 %, so magnitude is divided out and only the season's shape is compared.
 piro[, share_area := 100 * burned_ha / sum(burned_ha), by = ecoregion_id]
 piro[, share_fires := 100 * n_ge10 / sum(n_ge10), by = ecoregion_id]
@@ -336,7 +359,7 @@ wr(piro[, .(ecoregion_id, ecoregion, month, month_fy, month_name, burned_ha, pct
 # ── 6. the cyclic GAM through the pirogram ───────────────────────────────────
 # Fitted on the 12 SUMMARY points, not on the raw year-by-month data: it is there
 # to follow the mean curve, an aesthetic device, and fitting it to the summary is
-# what makes it do that (docs/10 análisis 3).
+# what makes it do that (docs/10 análisis 3.2).
 season_one <- function(d, yname) {
   y <- d[[yname]]
   if (sum(y) <= 0) return(data.table(month = numeric(0), fit = numeric(0)))
@@ -354,8 +377,14 @@ season_fits <- rbindlist(lapply(split(piro, piro$ecoregion_id), function(d) {
     setnames(season_one(d, "n_ge10"),      "fit", "n_ge10")))
   out[, `:=`(ecoregion_id = d$ecoregion_id[1], ecoregion = d$ecoregion[1],
              month_fy = to_fy_month(month))]
-  out
+  # THE CURVE MUST NOT OUTLIVE THE DATA. The grid is a full cycle in CALENDAR
+  # month (1 -> 12.999), which in DISPLAY coordinates (mayo = 1 ... abril = 12)
+  # wraps to 12.999: drawn, the curve ran a whole extra month past abril, into a
+  # second mayo that has no point under it. The fit is cyclic, so that tail is a
+  # redrawing of mayo, not an extrapolation — but it reads as one. Cut at 12.
+  out[month_fy <= 12]
 }), fill = TRUE)
+setorder(season_fits, ecoregion_id, month_fy)
 setcolorder(season_fits, c("ecoregion_id", "ecoregion", "month", "month_fy"))
 wr(season_fits, "factsheet_season_fits.csv")
 
@@ -392,11 +421,10 @@ scal[, `:=`(peak_month_area_name = MONTH_ES[peak_month_area],
 # Keyed by the legend's own nivel-1 strings; a class absent from a region is 0, and
 # a class absent from THIS list is a legend change that must be noticed, not
 # silently dropped — hence the stopifnot.
+# Tres familias, no cinco: las no quemables ya no llegan hasta acá (§ arriba).
 N1_COL <- c("Bosques"                                 = "share_bosques",
             "Vegetación natural herbácea y arbustiva" = "share_herb_arbust",
-            "Áreas de uso agropecuario"               = "share_agro",
-            "Áreas sin vegetación"                    = "share_no_veg",
-            "Cuerpos de agua"                         = "share_agua")
+            "Áreas de uso agropecuario"               = "share_agro")
 n1 <- lulc_share[level == "nivel1"]
 stopifnot(all(n1$clase %in% names(N1_COL)))
 n1 <- dcast(n1, ecoregion_id ~ N1_COL[clase], value.var = "share", fill = 0)
@@ -407,7 +435,17 @@ fs <- rd("fire_region_summary.csv")[!ecoregion_id %in% UNMAPPED_REGIONS]
 scal[fs, on = "ecoregion_id",
      `:=`(fires_per_year = i.fires_per_year, median_ha = i.median_ha,
           p95_ha = i.p95_ha, biggest_fire_ha = i.max_ha,
-          fires_ge10_per_10kkm2 = i.fires_per_year_per_10kkm2)]
+          fires_ge10_per_10kkm2 = i.fires_per_year_per_10kkm2,
+          total_fires = i.n_fires, total_ge10 = i.n_ge10)]
+# The totals over the whole series, which the pirograma normalizado annotates (docs/10 análisis 3.4): a
+# PMF divides magnitude out, so the panel has to carry the magnitude in text or it
+# says nothing about how much burned. The area is the RASTER side (the sum of the
+# annual table, recurrences and all — a hectare that burned four times is in it four
+# times); the counts are the POLYGON side, and a fire is counted in every ecorregión
+# it touches, so the regional counts sum to MORE than the national one. Two different
+# kinds of number: stored apart, labelled apart.
+scal[ann[, .(total_burned_ha = sum(burned_ha)), by = ecoregion_id], on = "ecoregion_id",
+     total_burned_ha := i.total_burned_ha]
 scal <- merge(scal, rbind(meta[, .(ecoregion_id, lat, lon, area_km2, palette_order)],
                           data.table(ecoregion_id = 0L, lat = NA_real_, lon = NA_real_,
                                      area_km2 = sum(meta$area_km2), palette_order = 0L)),

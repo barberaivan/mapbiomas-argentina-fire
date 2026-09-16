@@ -259,7 +259,7 @@ every map and from the national denominator (252.25 → **251.09 Mha**) via one 
   region was forest. Denominator: the region's own burned area. **Análisis 5**,
   `factsheet_lulc_share.csv` (§5.2). *"¿Qué % del bosque se quemó?"* — denominator: the area of
   that class, in that region, in that year. That one needs a **second export**, which §5.3 is;
-  it is **análisis 6**, `factsheet_lulc_pct.csv`. The two must never be conflated in a caption:
+  it is **análisis 5**, `factsheet_lulc_pct.csv`. The two must never be conflated in a caption:
   Campos y Malezales is 0.3 % forest *of what burned* and burns a high share of the little
   forest it has.
 - **Everything is keyed on the 13-class ecorregión**, on both sides, because the join is on
@@ -287,7 +287,7 @@ database (`objects-pred/`, `objects-raw/*_raster_metrics.csv`, the territory tag
 - **A fire counts in EVERY ecorregión it intersects.** `terra::relate(..., "intersects")` —
   a true/false, never an actual intersection geometry, which on 1.3 M polygons would cost
   hours for an answer nothing needs. Regional counts therefore **sum to more than the national
-  count**, by design (docs/10 análisis 3); the national row is computed from the fire set
+  count**, by design (docs/10 análisis 3.2); the national row is computed from the fire set
   itself, never by summing regions. (The tags are precomputed by `objects_region_tag.R`,
   which writes both this `_multi` assignment and a centroid-based `_one`; the factsheet uses
   `_multi`.)
@@ -342,7 +342,7 @@ national peak to 0.2 % and is the compromise across the 12 regions.
 Every table is therefore built on a complete grid and filled with zeros — otherwise a mean
 over years silently divides by the number of years that happened to burn.
 
-### 5.2 Análisis 5 — the composition of what burned
+### 5.2 Análisis 4 — the composition of what burned
 
 **It needs no new export.** `annual_burned_coverage` is already burned area × LULC × ecorregión
 × year, it is already in `data/statistics/`, and our copy of the app already crosses the
@@ -366,7 +366,25 @@ Two traps, both of which belong in the caption:
 `share_bosques`, `share_herb_arbust`, `share_agro`, `share_no_veg` and `share_agua` are also
 written into `factsheet_region_scalars.csv`, so the map can paint any of them.
 
-### 5.3 Análisis 6 — what percentage of each class burned
+### 5.2.1 Non-burnable classes are dropped from BOTH land-cover analyses
+
+Burned area on water, glacier, city or bare ground is a **mapping error** — those classes do
+not burn — so neither análisis 4 nor análisis 5 reports them. Measured before dropping:
+**57,449 ha over 27 years, 0.09 % of everything that burned** (32,122 ha in *Áreas sin
+vegetación* + 25,327 ha in *Cuerpos de agua*), worst region Estepa Patagónica at 1.56 %.
+
+The cut is by **nivel-1 family** (`NON_BURNABLE_N1` in `factsheet_tables.R`) and it is exact,
+not an approximation: the col-3 classes that occur in Argentina inside those two families are
+**24, 25, 33, 34** — precisely the members of `legends.py::NON_BURNABLE` that exist in the
+country (22 and 26 never occur). Verified against `lulc_area_eco13.csv`, the only table that
+carries the class CODE next to the names.
+
+Two consequences worth stating in a caption: the composition now **sums to 100 % over what can
+actually burn**, which is what a reader assumes when they read "30 % of what burned was
+forest"; and `factsheet_region_scalars.csv` no longer carries `share_agua` / `share_no_veg`,
+because those families never reach it.
+
+### 5.3 Análisis 5 — what percentage of each class burned
 
 The other land-cover question, and the one that **does** need a second export:
 `statistics/lulc_area_export.py`, the area of every col-3 class per ecorregión per year,
@@ -429,8 +447,8 @@ Mean annual `%` burned, nivel 1, 1999–2025:
 | Estepa Patagónica | 0.14 | 0.05 | 0.22 |
 
 **The two land-cover analyses invert each other, and that is the point.** Bosques Patagónicos
-is **55 % forest of what burned** (análisis 5) and burns **0.16 % of its forest a year**
-(análisis 6): almost everything that burns there is forest, because almost everything there
+is **55 % forest of what burned** (análisis 4) and burns **0.16 % of its forest a year**
+(análisis 5): almost everything that burns there is forest, because almost everything there
 *is* forest — not because its forest burns a lot. Campos y Malezales is the mirror: 0.3 % of
 what burns is forest, yet it has the country's highest herbaceous burn rate at 5.15 %. Quote
 one of these without saying which, and the reader gets the opposite of the truth.
@@ -452,17 +470,24 @@ map — stay apart); the **map as the legend**, exported loose; and the two vari
 
 `params$write_plots` (default `true`) writes every figure to `data/statistics/figures/` as
 **PNG** (the PowerPoint draft) and **PDF** (the designer). Render with
-`-P write_plots:false` to preview without writing. 76 figures:
+`-P write_plots:false` to preview without writing. 93 figures:
 
 | prefix | n | what |
 |---|---|---|
 | `fig00_mapa_leyenda`, `fig00_mapa_leyenda_texto`, `fig00_mapa_focal_*` | 14 | the map-as-legend, the variant **with the names written next to it**, and the 12 focal ones |
+| `fig00_mapa_frecuencia`, `fig00_apertura`, `fig00_tres_mapas` | 3 | the % of years burned per pixel (§5.5): alone, beside the labelled map-legend, and the **three-panel opening** (names → `mean_pct` by region → per-pixel). The last two `%` are different quantities whose relation is exact: **averaging the per-pixel map over a region gives the region's `mean_pct`** — measured nationally, 0.932 % vs 0.933 % |
 | `fig01_*` | 2 | análisis 1 — proporción quemada media: el mapa y las barras |
 | `fig02_*` | 28 | análisis 2 — el mapa de tendencia, la serie nacional, `all_regions` normalizada, 12 focales normalizadas, **12 paneles en % quemado + su multipanel** |
-| `fig03_pirograma_*` | 13 | análisis 3 — pirograma nacional y por ecorregión, doble eje |
-| `fig04_*` | 13 | análisis 4 — la forma intraanual, `all_regions` y 12 focales |
-| `fig05_*` | 3 | análisis 5 — la composición de lo quemado, **en nivel 2 (clase nativa) y en nivel 1 (familia)**, y el mapa de `share_bosques` |
-| `fig06_*` | 3 | análisis 6 — qué % de cada clase se quema: los heatmaps región × clase **de nivel 2 y de nivel 1**, y el mapa del bosque |
+| `fig03_mapa_mes_pico` | 1 | análisis 3.1 — el mes con más área quemada por ecorregión, en paleta cíclica |
+| `fig03_pirograma_*` | 13 | análisis 3.2 — pirograma nacional y por ecorregión, doble eje |
+| `fig03_estacionalidad_*` | 13 | análisis 3.3 — la forma intraanual, `all_regions` y 12 focales |
+| `fig03_pirograma_pmf_*` | 13 | análisis 3.4 — el pirograma normalizado: las dos repartijas en un eje, con los totales de la serie en el panel |
+| `fig04_*` | 3 | análisis 4 — la composición de lo quemado, **en nivel 2 (clase nativa) y en nivel 1 (familia)**, y el mapa de `share_bosques` |
+| `fig05_*` | 3 | análisis 5 — qué % de cada clase se quema: los heatmaps región × clase **de nivel 2 y de nivel 1**, y el mapa del bosque |
+
+> **Los tres análisis intraanuales son uno solo** (docs/10 §3): el prefijo `fig03_` los cubre a
+> los tres, y por eso los que siguen se corrieron un número — `fig04_` es la composición y
+> `fig05_` el porcentaje por clase, no lo que decían las versiones anteriores de esta tabla.
 
 **The notebook opens with the map-legend, not with the headline numbers.** If the map *is* the
 legend of every other figure, it has to be on screen before the first figure that uses it — so
@@ -479,10 +504,78 @@ legend's own; notebook §5.1 prints the whole crosswalk (código col-3 → nivel
 nivel 0), read off `lulc_area_eco13.csv` rather than retyped, and every figure's subtitle names
 the level it is drawing.
 
-Análisis 4 draws **straight lines between the 12 points, not the GAM**: docs/10 asks for the
+Análisis 3.3 draws **straight lines between the 12 points, not the GAM**: docs/10 asks for the
 same format as análisis 2, and a cyclic smooth over a sharply peaked share series displaces
 and overshoots the peak. The fit is still in `factsheet_season_fits.csv`, and it *is* what
-accompanies the pirogram in análisis 3.
+accompanies the pirogram in análisis 3.2 and 3.4.
+
+**The seasonal fit stops at abril.** Its grid is a full cycle in calendar month (1 → 12.999),
+which in the display coordinate (mayo = 1 … abril = 12) wraps past 12 — drawn, the curve ran a
+whole extra month beyond the last point, into a second mayo. Being cyclic, that tail was a
+redrawing of mayo rather than an extrapolation, but it read as one. `factsheet_tables.R` now
+trims the fits at `month_fy <= 12`.
+
+### 5.5 `burn_perc_export.py` — the one raster, and the three traps in it
+
+The factsheet's opening figure is the ecoregion map beside **a national map of the % of the
+years each pixel burned**. It is the only *image* the factsheet downloads — everything else
+here is a table — and it is the same quantity as análisis 1 (mean annual burned proportion),
+resolved per pixel instead of per region. That equivalence is the point: **the map's own mean
+is the number the tables publish**, so the two cannot drift apart.
+
+**The source** is `frequency_burned_v2`, band `fire_frequency_1999_2025` — how many of the 27
+calendar years each pixel burned — divided by 27. The raw count is unpublishable: it is a
+function of how long the series happens to be, and it will mean something different in
+collection 2.
+
+Three traps, all of them measured, and the GEE tuning tool
+(`fuego:collection-01/visualization-misc/explore_burn_perc_display`) exists to show them:
+
+1. **The product is `selfMask`ed.** Never-burned pixels are *absent*, not 0 (`07-subproducts.py`:
+   "frequency is 1..N-or-absent, never 0"). Aggregate without `unmask(0)` first and the average
+   is taken over burned pixels only — a country on fire, with any reducer.
+2. **The reducer decides the map, not the scale.** Measured on a 2°×2° Chaco window (truth at
+   30 m: 1.71 % of years): `mean` gives 1.71 % at *every* scale — it has to, it is a mean of
+   means over equal-area cells — while `max` gives 3.69 % at 480 m (×2.2) and 7.56 % at 1920 m
+   (×4.4). `max` does not aggregate, it propagates the worst 30 m pixel of each cell. That is
+   the "zoomed out, everything looks burned", and no palette fixes it.
+3. **EPSG:3857 is a display grid, not a measurement grid.** The v2 products sit on
+   EPSG:3857 @ 30 m (v1 was on the 4326 SNIC lattice — check before comparing). There a cell's
+   *ground* area falls with cos²(lat), so a naive `mean()` over its cells under-weights the
+   north, which is where the fire is:
+
+   | | |
+   |---|---|
+   | plain mean of the cells | 0.759 % |
+   | weighted by ground area | **0.838 %** |
+   | expected (63.23 Mha / 279.5 Mha / 27 years) | **0.838 %** |
+
+   The map is right; the naive arithmetic is wrong. `--check` is that gate. On the R side the
+   raster is reprojected to the factsheet's equal-area Albers before anything is done with it,
+   which makes a plain mean honest again.
+
+**Scale: 480 m**, 16× the native grid — an integer factor on the product's own lattice, origin
+kept, so the coarse cells nest exactly in the fine ones: no resampling, no phase shift. The
+choice is set by print, not by data: Argentina is ~3,700 km north–south, and a 20 cm figure at
+300 dpi resolves ~1.6 km. 480 m is already three times finer than the paper, ~12 M pixels,
+~24 MB as uint16. 120 m would be 16× the data for nothing visible.
+
+**Why a batch task and not `getDownloadURL`.** Measured: the interactive download's size check
+is done at the *native* 30 m, not at the requested grid, so a 2° box already answers "Object
+too large (247 MB)" for a real result of 0.5 MB, and a 1° box exhausts memory on the burnable
+mask (27 LULC bands). The whole country in 0.75° tiles would be ~900 requests. The batch task
+has none of those limits.
+
+**The cell denominator is the burnable area** (the mode over 1998–2024 of the col-3 burnable
+classes — §3, the same denominator as every other `%` here), so a cell with nothing burnable in
+it — a lake, a salt flat, a glacier — comes out **empty, not 0**. "Not burnable" and "burnable
+and never burned" are different statements and the map keeps them apart.
+
+```bash
+$PYTHON collection-01/statistics/burn_perc_export.py --export    # one batch task -> Drive
+$PYTHON collection-01/statistics/burn_perc_export.py --status
+$PYTHON collection-01/statistics/burn_perc_export.py --fetch     # -> data/statistics/, + gate
+```
 
 ---
 
@@ -706,8 +799,9 @@ external sanity check available for a first collection.
 | 9 | Burnable is defined on **col-3 classes**, never on `veg_fire`. Col-3 **22 and 26 are non-burnable** | Iván, 2026-09-11 / 09-14 |
 | 10 | Ecoregions are **Burkart et al. 1999**, and **both sides run on the 13-class vector**. The 16-class layer and the exact 16 → 13 crosswalk stay for December | Iván, 2026-09-10 / 09-14 |
 | 11 | **Islas del Atlántico Sur is not reported**: it is outside the processing grid, so its zero is a mapping gap, not a finding | 2026-09-15 |
-| 12 | The factsheet makes **two** land-cover statements, with two denominators and never conflated: the **composition of what burned** (análisis 5), from the already-exported `annual_burned_coverage`; and **what % of each class burned** (análisis 6), which needed the second export `lulc_area_export.py`. Both read the **previous** year's cover | Iván, 2026-09-15 |
-| 12b | In análisis 6 the **mean over years is taken LAST** — per-year ratios, then averaged. `Σburned / Σarea` is a different number (Jensen) and double-counts every reburn | Iván, 2026-09-15 |
+| 12 | The factsheet makes **two** land-cover statements, with two denominators and never conflated: the **composition of what burned** (análisis 4), from the already-exported `annual_burned_coverage`; and **what % of each class burned** (análisis 5), which needed the second export `lulc_area_export.py`. Both read the **previous** year's cover | Iván, 2026-09-15 |
+| 12c | **Non-burnable classes are out of both land-cover analyses** (§5.2.1): fire on water/glacier/city/bare ground is mapping error — 0.09 % of what burned — and keeping it put two invisible bars in every chart and stole a point from the 100 % | Iván, 2026-09-16 |
+| 12b | In análisis 5 the **mean over years is taken LAST** — per-year ratios, then averaged. `Σburned / Σarea` is a different number (Jensen) and double-counts every reburn | Iván, 2026-09-15 |
 | 13 | **We do not use Looker Studio.** The network builds one per country off these CSVs; Argentina's analysis is ours, in R, straight off the tables | Iván, 2026-09-11 |
 | 14 | The object exclusion rules and their thresholds are **FINAL** (docs/07 §1.1) — not a parameter these statistics may vary | Iván + team, 2026-09-11 |
 | 15 | Statistics on our own **fire-year objects** (per-event size distributions, season-spanning fires) are worth a separate, clearly-unofficial output — but not before 24 September | Iván, 2026-09-11 |
