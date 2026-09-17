@@ -67,6 +67,9 @@ fs <- local({
        change_annual = rd_opt("factsheet_change_annual.csv"),
        change_sum    = rd_opt("factsheet_change_summary.csv"),
        change_q      = rd_opt("factsheet_change_q.csv"),
+       # sólo bosques, nacional, las cuatro ventanas (docs/09 §5.9)
+       bosques       = rd_opt("factsheet_bosques.csv"),
+       bosques_dest  = rd_opt("factsheet_bosques_destinos.csv"),
        counts   = rd("fire_counts_by_month.csv"),
        meta     = rd("ecoregions13_meta.csv"))
 })
@@ -590,7 +593,8 @@ lines_focal <- function(d, x, y, focal) {
 # transformó X hectáreas".  La col-3 puede estar reaccionando a la cicatriz misma, un año es
 # poco para la recuperación, y un píxel pudo cambiar por desmonte sin relación con el fuego.
 # Es una descripción de qué coberturas se suceden alrededor del fuego (docs/09 §5.7).
-HAS_CHANGE <- !is.null(fs$change)
+HAS_CHANGE  <- !is.null(fs$change)
+HAS_BOSQUES <- !is.null(fs$bosques)
 
 # La paleta: las tres familias quemables son las de siempre —una figura del análisis 6 tiene
 # que poder leerse con los colores aprendidos en el 4—; las clases que sólo aparecen del lado
@@ -678,16 +682,33 @@ bar_unchanged <- function(scope = NAT, lv = "nivel1", off = 1L) {
 
 # (b2) el Sankey (diagrama aluvial): de qué clase a qué clase va lo que SÍ cambió.
 #
-# `min_share` tira las transiciones por debajo de ese % del total que cambió.  No se las
+# `min_share` tira las transiciones por debajo de ese % del total dibujado.  No se las
 # junta en una categoría "otras": una clase inventada en el eje de una leyenda nested es peor
 # que una ausencia, y lo que se pierde se dice en el epígrafe — la función devuelve la
 # cobertura dibujada en `attr(p, "cobertura")`.
+#
+# ⚠️ EL UMBRAL ES POR TRANSICIÓN, Y ESO SESGA LA LECTURA POR DESTINO.  Una clase de llegada
+# alimentada por MUCHOS flujos chicos se dibuja mucho más flaca de lo que es, mientras que una
+# alimentada por uno grande se dibuja entera.  Medido, nacional, Y+1, hacia bosque: en nivel 1
+# son 0,891 Mha en DOS bandas y se dibuja el 100 %; las MISMAS 0,891 Mha en nivel 2 se reparten
+# entre 37 transiciones y con umbral 1,5 % sobrevive UNA (0,355 Mha, el 24 %).  De ahí la
+# impresión —falsa— de que en nivel 2 llega menos bosque que en nivel 1.  Por eso el nivel 2
+# quiere umbrales bajos, y por eso el subtítulo SIEMPRE imprime la cobertura.
+#
+# `keep_unchanged = TRUE` agrega la DIAGONAL (lo que permaneció en su clase).  Cambia la
+# pregunta y por lo tanto el denominador: el total pasa a ser todo lo quemado, no sólo lo que
+# cambió, y `min_share` se mide contra ése.  Sale una figura dominada por las bandas
+# horizontales —que es el hecho: la mayor parte de lo que arde sigue siendo lo que era—, con el
+# cambio como la cinta fina.  Es la versión honesta y la que NO se puede leer para comparar
+# transiciones entre sí.
 wrap_lab <- function(x, w = 16)
   vapply(as.character(x), function(z) paste(strwrap(z, w), collapse = "\n"), "")
 
-sankey_change <- function(scope = NAT, lv = "nivel1", min_share = 1, off = 1L) {
+sankey_change <- function(scope = NAT, lv = "nivel1", min_share = 1, off = 1L,
+                          keep_unchanged = FALSE) {
   stopifnot(requireNamespace("ggalluvial", quietly = TRUE))
-  d <- change_rows(scope, lv, off)[cambio == TRUE]
+  d <- change_rows(scope, lv, off)
+  if (!keep_unchanged) d <- d[cambio == TRUE]
   total <- sum(d$burned_ha)
   d[, share := 100 * burned_ha / total]
   keep <- d[share >= min_share]
@@ -713,16 +734,6 @@ sankey_change <- function(scope = NAT, lv = "nivel1", min_share = 1, off = 1L) {
   attr(p, "total_ha") <- total
   p
 }
-
-# La serie: ¿el % que cambia sube o baja con los años?  Sale gratis de la tabla anual y es la
-# única vista del análisis 6 que usa el eje del tiempo — por eso vive acá y no en el 2.
-lines_changed <- function(lv = "nivel1", focal = NULL, off = 1L, st = 1L) {
-  d <- fs$change_annual[level == lv & offset == off & state_id == st]
-  p <- if (is.null(focal)) lines_all(d, "year", "changed_pct")
-       else lines_focal(d, "year", "changed_pct", focal)
-  p + labs(x = NULL, y = "% de lo quemado ese año que cambió de cobertura")
-}
-
 
 # ── el control: q, y las dos figuras que lo muestran ─────────────────────────
 # `q = P(cambió | ardió) / P(cambió | no ardió)`, tratamiento = estado 1 y control = estado 0

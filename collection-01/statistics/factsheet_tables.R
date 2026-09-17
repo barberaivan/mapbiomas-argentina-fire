@@ -600,6 +600,163 @@ if (!length(have_off)) {
                   , dcast(.SD, ecoregion + q ~ state, value.var = "pct")][order(-q)])
 }
 
+
+# ── 6b. el caso patagónico: el corte latitudinal y la COHORTE FIJA ───────────
+# Un sub-análisis con nombre propio porque contesta una objeción concreta: en los bosques
+# andino-patagónicos el fuego es de alta severidad y la bibliografía habla de ~95 % de
+# mortalidad del rodal, contra el 44 % de cambio de cobertura que daba el análisis a un año.
+# La pregunta era si el mapa está mal o si TARDA. Resultó lo segundo, con un techo.
+#
+# Necesita dos cosas que el análisis general no tiene, y las dos salen de
+# `lulc_change_export.py` con banderas (docs/09 §5.7.3):
+#
+#   --lat-split -44   Bosques Patagónicos no es homogénea: el norte (de la mitad de Chubut
+#                     para arriba) concentra el 87 % de lo quemado y tiene otro régimen.
+#   --window 5        LA COHORTE FIJA. Sin esto, cada lag tiene su propia ventana de
+#                     exclusión y por lo tanto su propio rango de años focales: Y+5 se pierde
+#                     los incendios de 2021-2024 y Y+1 no, así que los cuatro números son
+#                     cuatro POBLACIONES y no una trayectoria. Con la ventana clavada en 5
+#                     los cuatro lags miran los MISMOS píxeles y los MISMOS años (1999-2020),
+#                     y recién ahí Y+1 -> Y+5 se puede leer como "cuánto tarda".
+#
+# Las dos cohortes se guardan, la móvil y la fija, porque la comparación entre ellas es parte
+# del resultado: la fija da números MÁS ALTOS en todos los lags (48,9 % contra 45,6 % en Y+1),
+# que es lo que tiene que pasar si los incendios recientes que la fija excluye todavía no
+# tuvieron tiempo de convertirse.
+PAT_REGION <- "Bosques Patagónicos"
+FOREST_N2  <- c("Bosques", "Bosque cerrado", "Bosque abierto", "Bosque inundable")
+PAT_LAGS   <- c(1L, 3L, 4L, 5L)
+
+pat_file <- function(lag, fixed) {
+  # Y+5 con ventana 5 ES la corrida `_y5_n44`: pedirle `_w5` sería pedir un archivo que no
+  # existe, porque el sufijo sólo se escribe cuando la ventana DIFIERE del lag.
+  f <- if (fixed && lag != 5L) sprintf("lulc_change_eco13_y%d_w5_n44.csv", lag)
+       else sprintf("lulc_change_eco13_y%d_n44.csv", lag)
+  if (file.exists(file.path(DIR, f))) f else NA_character_
+}
+
+pat_read <- function(fixed) {
+  fs_ <- vapply(PAT_LAGS, pat_file, "", fixed = fixed)
+  if (anyNA(fs_)) return(NULL)
+  rbindlist(lapply(seq_along(PAT_LAGS), function(i) {
+    x <- rd(fs_[i])[ecoregion == PAT_REGION & nivel2_prev %in% FOREST_N2 &
+                    state_id %in% c(0L, 1L)]
+    x[, .(area_ha = sum(area_ha)), by = .(north, state_id, nivel2_post)][
+      , `:=`(offset = PAT_LAGS[i], cohorte = if (fixed) "fija" else "móvil")][]
+  }))
+}
+
+pat <- rbindlist(Filter(Negate(is.null), list(pat_read(FALSE), pat_read(TRUE))))
+if (!nrow(pat)) {
+  msg("[.] no están los lulc_change_eco13_y*_n44.csv — el caso patagónico se saltea")
+} else {
+  pat[, zona := ifelse(north == 1L, "norte de -44", "sur de -44")]
+
+  # (a) la trayectoria: qué fracción DEJA DE SER BOSQUE en cada lag
+  traj <- pat[, .(kha = sum(area_ha) / 1e3,
+                  pct_sale = 100 * sum(area_ha[!nivel2_post %in% FOREST_N2]) / sum(area_ha)),
+              by = .(cohorte, zona, offset, state_id)]
+  q <- dcast(traj, cohorte + zona + offset ~ state_id, value.var = c("pct_sale", "kha"))
+  setnames(q, c("pct_sale_0", "pct_sale_1", "kha_1"), c("control", "ardio", "kha_ardio"))
+  q[, q_sale := ardio / control]
+  wr(q[, .(cohorte, zona, offset, kha_ardio, ardio, control, q_sale)],
+     "factsheet_patagonia_bosque.csv")
+
+  # (b) a qué se convierte — sólo lo quemado, que es de lo que habla el resultado
+  dest <- pat[state_id == 1L, .(area_ha = sum(area_ha)),
+              by = .(cohorte, zona, offset, nivel2_post)]
+  dest[, pct := 100 * area_ha / sum(area_ha), by = .(cohorte, zona, offset)]
+  setorder(dest, cohorte, zona, offset, -area_ha)
+  wr(dest, "factsheet_patagonia_destinos.csv")
+
+  msg("")
+  msg("bosques patagónicos al norte de -44: %% que deja de ser bosque")
+  print(dcast(q[zona == "norte de -44"], offset ~ cohorte, value.var = "ardio")[
+    , lapply(.SD, function(x) if (is.numeric(x)) round(x, 1) else x)])
+}
+
+# ── 6b. SÓLO BOSQUES, nacional, en las cuatro ventanas (docs/09 §5.9) ────────
+# El mismo aparato del bloque patagónico —`pat_file()` lee los `_n44`, que son el PAÍS ENTERO
+# con un bit norte/sur de más— pero sin filtrar por región y colapsando ese bit. Existe porque
+# la pregunta "¿cuánto más probable es que un bosque deje de serlo si se quema?" es la que va a
+# la lámina, y necesita cuatro cosas que las tablas del bloque 6 no dan juntas:
+#
+#   1. Y+4 e Y+5 NACIONALES. El análisis general sólo corre Y+1 e Y+3, pero los archivos
+#      `_n44` de lags 4 y 5 son país entero, así que los cuatro lags ya están exportados y no
+#      hace falta ninguna corrida nueva de GEE.
+#   2. LA CLASE DE ORIGEN DE NIVEL 2, con "salir de la FAMILIA" como evento. Son dos ejes
+#      distintos y hay que cruzarlos: "bosque cerrado deja de ser bosque cerrado" incluye
+#      pasar a bosque abierto, que NO es perder el bosque. El evento que se reporta es
+#      `nivel1_post != "Bosques"`, medido por clase de origen de nivel 2.
+#   3. EL PROMEDIO DE LA FAMILIA ESCONDE EL RESULTADO. Medido, Y+1: bosque cerrado q = 14,0;
+#      bosque abierto 2,2; bosque inundable **1,0**, es decir el fuego no le hace NADA
+#      medible. La familia entera da 6,4, que es un promedio sobre tres sistemas que no se
+#      comportan igual. Por eso la tabla trae las tres clases Y la familia, y nunca una sola.
+#   4. LAS DOS COHORTES, por lo mismo que en el bloque patagónico: sin la ventana clavada,
+#      cada lag mira años focales distintos y la serie Y+1..Y+5 no es una trayectoria.
+if (!nrow(pat)) {
+  msg("[.] sin los `_n44` tampoco sale el bloque de bosques nacional")
+} else {
+  bosq_read <- function(fixed) {
+    fs_ <- vapply(PAT_LAGS, pat_file, "", fixed = fixed)
+    if (anyNA(fs_)) return(NULL)
+    rbindlist(lapply(seq_along(PAT_LAGS), function(i) {
+      x <- rd(fs_[i])[!ecoregion_id %in% UNMAPPED_REGIONS & nivel1_prev == "Bosques" &
+                      state_id %in% c(0L, 1L, 3L)]
+      # el bit norte/sur se colapsa acá: este bloque es nacional
+      x[, .(area_ha = sum(area_ha)),
+        by = .(state_id, clase_prev = nivel2_prev, nivel1_post, nivel2_post)][
+        , `:=`(offset = PAT_LAGS[i], cohorte = if (fixed) "fija" else "móvil")][]
+    }))
+  }
+  bosq <- rbindlist(Filter(Negate(is.null), list(bosq_read(FALSE), bosq_read(TRUE))))
+  bosq[, sale := nivel1_post != "Bosques"]
+
+  # (a) el escalar: % que DEJA DE SER BOSQUE, con fuego y sin fuego, y q.
+  # `q` compara los dos estados LIMPIOS (0 y 1), igual que en todo el análisis 6; el titular
+  # "de lo quemado" son 1 + 3 y se guarda aparte para no mezclar las dos cuentas.
+  esc <- function(d, by_cols) {
+    a <- d[state_id %in% c(0L, 1L), .(area_ha = sum(area_ha),
+                                      sale_ha = sum(area_ha[sale])), by = c(by_cols, "state_id")]
+    a[, pct := 100 * sale_ha / area_ha]
+    w <- dcast(a, as.formula(paste(paste(by_cols, collapse = " + "), "~ state_id")),
+               value.var = c("pct", "area_ha"))
+    setnames(w, c("pct_0", "pct_1", "area_ha_1"), c("control", "ardio", "ha_ardio"))
+    b <- d[state_id %in% c(1L, 3L), .(ha_quemado = sum(area_ha),
+                                      pct_quemado = 100 * sum(area_ha[sale]) / sum(area_ha)),
+           by = by_cols]
+    w[b, on = by_cols, `:=`(ha_quemado = i.ha_quemado, pct_quemado = i.pct_quemado)]
+    w[, q_sale := ardio / control][]
+  }
+  por_clase  <- esc(bosq, c("cohorte", "offset", "clase_prev"))
+  familia    <- esc(bosq, c("cohorte", "offset"))[, clase_prev := "Bosques (familia)"][]
+  bosq_esc   <- rbind(por_clase, familia, use.names = TRUE)
+  setcolorder(bosq_esc, c("cohorte", "offset", "clase_prev"))
+  setorder(bosq_esc, cohorte, offset, -q_sale)
+  wr(bosq_esc, "factsheet_bosques.csv")
+
+  # (b) a dónde va el bosque quemado. Estados 1 + 3 (todo lo que ardió), porque es una
+  # descripción de lo quemado y no una comparación contra el control.
+  # SE GUARDA TAMBIÉN LO QUE SIGUE SIENDO BOSQUE (`sale == FALSE`), con dos porcentajes: el
+  # Sankey de la lámina necesita el pool entero —la banda gruesa que permanece es la mitad de
+  # la lectura— y la tabla de destinos necesita el reparto de lo que sale. Un solo archivo con
+  # las dos columnas evita que las dos figuras salgan de cuentas distintas.
+  bosq_dest <- bosq[state_id %in% c(1L, 3L),
+                    .(area_ha = sum(area_ha)),
+                    by = .(cohorte, offset, clase_prev, sale, nivel1_post, nivel2_post)]
+  bosq_dest[, pct := 100 * area_ha / sum(area_ha), by = .(cohorte, offset, clase_prev)]
+  bosq_dest[sale == TRUE, pct_sale := 100 * area_ha / sum(area_ha),
+            by = .(cohorte, offset, clase_prev)]
+  setorder(bosq_dest, cohorte, offset, clase_prev, -area_ha)
+  wr(bosq_dest, "factsheet_bosques_destinos.csv")
+
+  msg("")
+  msg("bosques, nacional: %% que DEJA DE SER BOSQUE (cohorte móvil, cada lag su ventana)")
+  print(dcast(bosq_esc[cohorte == "móvil"], clase_prev ~ offset,
+              value.var = c("ardio", "q_sale"))[
+        , lapply(.SD, function(x) if (is.numeric(x)) round(x, 1) else x)])
+}
+
 msg("")
 print(scal[, .(ecoregion, quemable_Mha = round(burnable_ha / 1e6, 2),
                media_Mha_ano = round(mean_burned_ha / 1e6, 3),

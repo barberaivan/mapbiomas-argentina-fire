@@ -22,6 +22,39 @@ tanto de qué se hizo y qué falta.
 > **Plan de producción: [`09-statistics.md`](09-statistics.md)** (de dónde sale cada
 > número: el área quemada del toolkit, el denominador quemable, el conteo de incendios) y
 
+---
+
+## ⚠️ Qué entra al lanzamiento de septiembre, y qué es exploratorio
+
+**Hay tres cuadernos `factsheet_*` y NO tienen el mismo estatus.** Confundirlos es el error
+caro de este momento del proyecto: son 306 figuras y sólo un puñado se publica el 24 de
+septiembre.
+
+| Cuaderno | Estatus | Para qué |
+|---|---|---|
+| **`factsheet.qmd`** | **EL ÚNICO QUE ALIMENTA LA VERSIÓN DE SEPTIEMBRE** | Análisis 1–5. De acá salen las 3–4 láminas del lanzamiento general |
+| `factsheet_veg.qmd` | **Exploratorio** | Análisis 6 entero: control, `q`, 12 ecorregiones, dos ventanas, el caso patagónico |
+| `factsheet_veg_short.qmd` | **Exploratorio** | El análisis 6 recortado + el bloque de bosques; el ensayo de cómo se diría en una lámina |
+
+**Exploratorio no quiere decir descartado — quiere decir que no se publica en septiembre.**
+Los dos cuadernos de vegetación son material de trabajo para:
+
+1. **el lanzamiento propio de fuego (Bariloche, 7-11/12/2026)**, donde el factsheet se
+   extiende y el análisis 6 es candidato natural a lámina propia; y
+2. **el paper**, donde el control, `q`, la trayectoria por ventana y el corte por clase de
+   bosque son el material que sostiene un resultado publicable.
+
+Por eso **no se borra nada y se sigue documentando con el mismo cuidado**, aunque no vaya a
+imprenta ahora.
+
+**Lo que falta, y es lo próximo**: un cuaderno que **especifique lámina por lámina** la
+versión de septiembre — qué figura va en cada una, con qué epígrafe, qué número se dice y de
+qué archivo sale. Hoy la selección vive en la cabeza y en este documento en prosa; ahí va a
+vivir explícita, y es lo que se le entrega al diseñador gráfico. Mientras no exista, **la
+fuente de verdad de qué se publica es esta tabla más las decisiones del `ROADMAP.md`**.
+
+---
+
 ## Enlaces/archivos relevantes
 
 - Carpeta de Drive de Argentina para el factsheet col 3: 
@@ -605,7 +638,17 @@ y Campos y Malezales otra vez (2,37 % de lo agropecuario). Tabla completa en
 
 El último análisis, y el único que mira **dos** mapas de cobertura por cada hectárea quemada:
 el del año **anterior** al fuego y el del año **siguiente**. De dónde salen los números:
-`09-statistics.md` §5.7.
+`09-statistics.md` §5.7. **Las figuras las dibuja `notebooks/factsheet_veg.qmd`**, no
+`factsheet.qmd`: el análisis 6 se mudó a un cuaderno propio para poder iterarlo en segundos
+en vez de en minutos. Escribe con el mismo prefijo `fig06_`, así que para el diseñador no
+cambia nada.
+
+⚠️ **La ventana no es neutral.** Y+1 es la de Ferro et al., calibrada en el Chaco, donde el
+fuego DESPEJA. Donde el fuego **mata pero no despeja** —los bosques andino-patagónicos— un
+año no alcanza: el bosque quemado que deja de ser bosque pasa de 49 % en Y+1 a 78 % en Y+5,
+y la arbustalización llega al mapa unos tres años tarde (`09-statistics.md` §5.7.3). Para
+vegetación natural leñosa, **Y+3 como mínimo**; para cualquier afirmación sobre bosque,
+**Y+4–5**.
 
 **El diseño es el de Ferro et al. (2026)** —el trabajo del grupo sobre el Chaco Seco— rehecho
 a 30 m y para todo el país. De ahí vienen la ventana Y−1 → Y+1, la regla de exclusión y el
@@ -658,6 +701,17 @@ la primera pregunta que hace cualquiera que conozca los datos.
   qué porcentaje quedó dibujado; no se las junta en una categoría "otras", porque una clase
   inventada en el eje de una leyenda anidada es peor que una ausencia.
 
+  ⚠️ **De un Sankey con umbral NO se lee el área de llegada de una clase.** El umbral se aplica
+  **por transición**, así que un destino alimentado por muchos flujos chicos se dibuja mucho más
+  flaco de lo que es, y uno alimentado por un flujo grande se dibuja entero. Medido, nacional,
+  Y+1: a bosque llegan **0,891 Mha desde fuera de la familia**, y ese número es **idéntico en los
+  dos niveles** —es la misma hectárea con dos leyendas—, pero en nivel 1 viene en **2 bandas**
+  (se dibuja el 100 %) y en nivel 2 se reparte entre **37** (con umbral 1,5 % sobrevive **una**,
+  el 24 %). De ahí la impresión, falsa, de que en nivel 2 llega menos bosque que en nivel 1. Dos
+  consecuencias: **el nivel 2 pide umbrales bajos** (0,5 % en la versión corta, que sube la
+  cobertura de 72 a 87 % y hace aparecer las tres clases de bosque), y **el subtítulo tiene que
+  imprimir la cobertura siempre**. Para área de llegada, el análisis 4.
+
 #### 6.4 Lo que hay que decir en el epígrafe
 
 > **Con fuego la cobertura cambia 3,7 veces más que sin fuego, y 10,9 veces más para bosque →
@@ -680,4 +734,95 @@ Cuatro decisiones de método más, todas visibles en las figuras:
 
 **Qué va al factsheet.** Está todo escrito para el país y para las 12 ecorregiones, en los dos
 niveles; lo más probable es que a la slide vaya **sólo lo nacional en nivel 1** — el dumbbell
-del control y la matriz de q, o el Sankey si se prefiere la historia de las transiciones.
+del control y la matriz de q, o el Sankey si se prefiere la historia de las transiciones. La
+versión ya recortada a eso es **§6.5**.
+
+#### 6.5 La versión de slide: tres frases y dos figuras
+
+`notebooks/factsheet_veg_short.qmd` (docs/09 §5.8) es este mismo análisis dicho en lo que entra
+en una lámina: **nacional, sin regiones, sin `q`, sin la trayectoria patagónica**. No recalcula
+nada —lee las mismas tablas y llama al mismo `sankey_change()`— y escribe con prefijo propio
+`fig06c_`. Existe porque la versión larga no se puede podar en la sala: hay que decidir antes qué
+frase se dice.
+
+**Regla de esta sección, y vale para toda la lámina: cada porcentaje va con su superficie.** Un
+porcentaje solo no se puede chequear contra nada y "¿cuántas hectáreas son?" es lo primero que
+pregunta cualquiera. Dos unidades, y hay que decir cuál es cuál: lo **quemado** se dice como
+**total de la serie** (26 años, recurrencias incluidas), lo que es **superficie del país** se dice
+**por año**.
+
+**Frase 1 — de lo que ardió, cuánto figura con otra cobertura.** De las **61,4 Mha quemadas**
+entre 1999 y 2024, **12,5 Mha (20 %)** aparecen con otra clase un año después; en familias,
+**9,1 Mha (15 %)**. Va con el **Sankey** de ese mismo nivel. ⚠️ **El número y el Sankey tienen que
+ser del mismo nivel de leyenda**: bosque cerrado → bosque abierto cambia en nivel 2 y no en nivel
+1, y poner el Sankey de nivel 2 con el 15 % de nivel 1 es el error fácil de esta lámina.
+
+**Frase 2 — cuánto cambia el país.** La superficie vegetal argentina son **252 Mha**, y cambian
+de familia **10,4 Mha por año (4,1 %)** en una ventana de dos años (17,4 Mha / 6,9 % por clase).
+Es el contexto sin el cual la frase 1 no se puede leer, y es lo más parecido al control que esta
+lámina se puede permitir.
+
+**Frase 3 — cuánto pesa el fuego en ese cambio.** Se queman **2,4 Mha/año, el 0,9 %** de esa
+superficie, pero de las 10,4 Mha que cambian cada año **0,35 Mha ardieron: el 3,4 % del cambio,
+3,6 veces** lo que le tocaría por tamaño. **La figura son dos barras con denominadores
+distintos** —superficie arriba, cambio abajo— y ésa es la comparación: si el fuego fuera
+indiferente al cambio, las dos medirían lo mismo. (3,4 / 0,9 = 3,6 y q = 3,7 son dos caminos al
+mismo hecho, no dos hallazgos; si en la sala preguntan "¿y eso es mucho?", la respuesta larga es
+q y está en §6.1.)
+
+**Variante, si se la quiere decir más ancha**: contando el fuego en cualquier año de la ventana
+—no sólo en el del medio— el 3,4 % sube a 8,0 %. Las dos son verdaderas; la estricta es la que se
+puede atribuir a un fuego con fecha, y es la que conviene poner.
+
+**El Sankey completo, con la permanencia** (`keep_unchanged = TRUE`): la misma figura sin sacar
+la diagonal. Sale **plana a propósito** —de lo quemado, el **85 %** sigue siendo lo que era en
+nivel 1, el 80 % en nivel 2— y ése es el punto: las figuras de la frase 1 son un **zoom** sobre la
+cinta fina del 15 %, y conviene mostrarlas después de la completa, no en lugar de ella. En nivel 1
+entran las 17 transiciones (umbral 0,1 % sólo para que las clases de área ~0 no apilen etiquetas
+sobre el eje; cuesta el 0,14 %), así que **el alto total es el área quemada y las proporciones se
+leen del dibujo**. Es la figura que contesta "¿y el fuego no transforma casi nada?" con el número
+correcto y no con una impresión: 15 % es mucho o poco **contra el 3,9 % que cambia sin fuego**, no
+contra cero.
+
+**Lo que esta versión NO puede decir**, y por eso el epígrafe de §6.4 sigue siendo obligatorio:
+no es "el fuego transformó 9,1 Mha" (es asociación, no causa), un año subestima la vegetación
+leñosa (§6 ⚠️), y parte del cambio a un año puede ser la cicatriz y no la conversión (§6.2).
+
+#### 6.6 Si la lámina es sólo de bosques
+
+La variante más fuerte del análisis 6, y la que más fácil se dice mal. Números en
+`09-statistics.md` §5.9; figuras en `factsheet_veg_short.qmd` §4.
+
+**Hay CUATRO números de bosque y no son intercambiables** (nacional, Y+1):
+
+| lo que se afirma | q |
+|---|---|
+| el **bosque** (familia) deja de ser bosque | **6,4** |
+| el **bosque cerrado** deja de ser bosque | **14,0** |
+| **bosque → agropecuario** (esa transición sola) | **10,9** |
+| el bosque cerrado deja de ser *bosque cerrado* (incluye pasar a bosque abierto) | 11,7 |
+
+La frase "la transformación de bosques a otras clases es N veces más probable" es **la primera
+fila: 6,4**. El 10,9 es *una* transición (el 61 % de lo que sale, no todo) y el 11,7 cuenta como
+transformación un cambio que **sigue siendo bosque**.
+
+⚠️ **El promedio de la familia no describe a ninguna de sus clases, y ésa es la razón para bajar
+a nivel 2 acá.** Bosque cerrado q = 14,0; bosque abierto 2,2; **bosque inundable q = 1,0 — el
+fuego no le hace nada medible**. El 6,4 promedia tres sistemas distintos. **Si va un solo número
+de bosque a la lámina, que sea el de una clase.**
+
+**La frase recomendada**, que es la más fuerte y a la vez la más defendible:
+
+> **Cuando se quema un bosque cerrado, el 44 % deja de ser bosque al año siguiente. Sin fuego, el
+> 3 %: 14 veces más probable.** (8,1 Mha de bosque cerrado quemadas entre 1999 y 2024.)
+
+**Las dos figuras**: el *dumbbell* de las tres clases (ardió vs no ardió, con `q` escrito al lado
+y la línea del promedio de la familia — es la figura que hace visible por qué el promedio no
+sirve), y el **Sankey del bosque quemado con su permanencia**: 18,6 Mha de bosque quemado, el
+70 % sigue siendo bosque y el 30 % se reparte 61 % agropecuario / 38 % herbácea-arbustiva. Desde
+bosque cerrado y en clases nativas, **la mitad de lo que sale va a cultivos temporarios**.
+
+**La ventana mueve los dos números en direcciones opuestas** y hay que saber cuál se dice: el
+porcentaje **sube** (bosque cerrado 44 % en Y+1 → 51 % en Y+5, la conversión tarda) y `q` **baja**
+(14,0 → 9,1, el control acumula su propio fondo). Y+4 e Y+5 nacionales **ya están exportados**
+(§5.9), así que reportar a cinco años no cuesta una corrida nueva.

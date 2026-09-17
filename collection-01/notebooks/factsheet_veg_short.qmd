@@ -1,0 +1,659 @@
+---
+title: "Fuego y cambio de cobertura — las tres frases"
+subtitle: "La versión corta del análisis 6: lo que entra en una slide"
+date: today
+lang: es
+params:
+  write_plots: true
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    embed-resources: true
+    fig-width: 7
+    fig-height: 4.6
+---
+
+**Este cuaderno existe para tres frases y dos figuras.** El análisis 6 completo
+—el control, `q`, las 12 ecorregiones, las dos ventanas, la trayectoria patagónica— está en
+[`factsheet_veg.qmd`](factsheet_veg.html) y no se repite acá. Acá van sólo los números
+nacionales que se pueden decir en una slide, con la frase exacta que los acompaña.
+
+**Cada porcentaje va con su superficie.** Un porcentaje solo no se puede chequear ni comparar
+contra nada, y en una slide es lo primero que alguien pregunta: *¿cuántas hectáreas son?*
+
+No calcula nada nuevo: lee las mismas tablas que produce
+`statistics/factsheet_tables.R` (`factsheet_change.csv` y `factsheet_change_annual.csv`), que
+salen de la exportación `statistics/lulc_change_export.py`. De dónde viene cada número:
+[`docs/09-statistics.md`](../docs/09-statistics.md) §5.7.
+
+Las figuras llevan el prefijo **`fig06c_`** (c de *corto*) para no pisar las `fig06_` del
+cuaderno largo: cada figura tiene un único productor.
+
+```{r setup}
+#| message: false
+#| warning: false
+knitr::opts_knit$set(root.dir = normalizePath("../.."))
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, dev = "png", dpi = 110)
+```
+
+```{r style}
+#| message: false
+source("collection-01/statistics/factsheet_style.R")
+library(patchwork)
+
+WRITE <- isTRUE(params$write_plots)
+if (WRITE) dir.create(FIG_DIR, showWarnings = FALSE, recursive = TRUE)
+stopifnot(HAS_CHANGE)
+
+OFF <- 1L   # la ventana Y-1 -> Y+1, la de Ferro et al.; el §3 dice qué pasa con Y+3
+
+# El umbral del Sankey de nivel 2. Es BAJO a propósito, y el §1.3 dice por qué: el umbral se
+# aplica POR TRANSICIÓN, así que un destino alimentado por muchos flujos chicos se dibuja
+# sistemáticamente más flaco de lo que es. Con 1,5 % se dibujaba UNA de las 37 bandas que
+# llegan a bosque, y la figura mentía por omisión.
+MIN_N2 <- 0.5
+```
+
+```{r numeros}
+# ── los escalares, los dos niveles, en un solo lugar ─────────────────────────
+# `factsheet_change_annual.csv` trae, por ecorregión x ventana x nivel x ESTADO DE FUEGO x
+# año, el área y cuánta de ella figura con otra clase al final de la ventana. Sumando sobre
+# los años y eligiendo estados salen las tres frases:
+#
+#   estados 1 + 3  = ardió en el año focal            -> el numerador de la frase 1
+#   estados 1+2+3  = ardió en algún año de la ventana -> la variante ancha de la frase 2
+#   los cuatro     = el país entero                   -> el denominador de la frase 2
+#
+# El denominador NO es el país completo: `factsheet_tables.R` ya sacó del lado "antes" las
+# clases no quemables (agua y áreas sin vegetación), en los cuatro estados. Lo que queda es
+# "superficie vegetal" en el sentido de este cuaderno, y es lo que hay que decir en la slide.
+#
+# DOS UNIDADES, y cada frase usa la que corresponde. Lo QUEMADO se dice como TOTAL DE LA SERIE
+# (así se quemó el país en 26 años, recurrencias incluidas). Lo que es superficie del PAÍS se
+# dice POR AÑO: "6.521 Mha" es hectárea-año y no significa nada para nadie; "251 Mha de
+# superficie vegetal" sí, porque es el país. Las dos salen de la misma suma dividida o no por
+# el número de años, y la columna dice cuál es cuál.
+cifras <- function(lv, off = OFF) {
+  x <- fs$change_annual[ecoregion == NAT & level == lv & offset == off,
+                        .(area = sum(area_ha), chg = sum(changed_ha)), by = state_id]
+  ny <- fs$change_annual[offset == off, uniqueN(year)]
+  tot    <- x[, sum(area)];                  chg     <- x[, sum(chg)]
+  b_area <- x[state_id %in% c(1L, 3L), sum(area)]
+  b_chg  <- x[state_id %in% c(1L, 3L), sum(chg)]
+  w_chg  <- x[state_id %in% c(1L, 2L, 3L), sum(chg)]
+  data.table(
+    level = lv, offset = off, n_años = ny,
+    # totales de la serie (hectárea-año sumada): lo quemado y lo que cambió
+    quemado_ha = b_area, quemado_cambio_ha = b_chg, cambio_ha = chg,
+    # el país, por año
+    area_anual_ha = tot / ny, cambio_anual_ha = chg / ny,
+    quemado_anual_ha = b_area / ny, quemado_cambio_anual_ha = b_chg / ny,
+    XX = 100 * b_chg / b_area,     # de lo quemado, cuánto cambió
+    CC = 100 * chg / tot,          # del país vegetal, cuánto cambió
+    FF = 100 * b_chg / chg,        # de ese cambio, cuánto tiene fuego en el medio
+    FF_ventana = 100 * w_chg / chg,
+    ventana_cambio_ha = w_chg,
+    sup = 100 * b_area / tot)      # cuánto del país es superficie quemada
+}
+CIF <- rbindlist(lapply(c("nivel1", "nivel2"), cifras))
+CIF[, sobrerep := FF / sup]                  # el fuego pesa `sobrerep` veces más en el
+                                             # cambio que en la superficie
+N1 <- CIF[level == "nivel1"]; N2 <- CIF[level == "nivel2"]
+AÑOS <- fs$change_annual[offset == OFF, range(year)]
+
+# "12,5 Mha" — un helper corto, porque en este cuaderno cada porcentaje lleva uno al lado.
+mha <- function(ha, d = 1) paste0(fmt_mha(ha, d), " Mha")
+```
+
+## 0. Las tres frases, con el número y la superficie puestos
+
+::: {.callout-note appearance="simple"}
+**1 — De lo que ardió, una quinta parte figura con otra cobertura.**
+De las **`r mha(N2$quemado_ha, 1)`** que se quemaron en la Argentina entre `r AÑOS[1]` y
+`r AÑOS[2]`, **`r mha(N2$quemado_cambio_ha, 1)`** —el **`r fmt_pct(N2$XX, 0)` %**— aparecen con
+**otra clase de cobertura** un año después. A nivel de *familia* (bosque, vegetación herbácea y
+arbustiva, uso agropecuario) son **`r mha(N1$quemado_cambio_ha, 1)`**, el
+**`r fmt_pct(N1$XX, 0)` %**.
+
+**2 — El país cambia poco, y donde hay fuego cambia mucho más.**
+La superficie vegetal argentina son **`r mha(N1$area_anual_ha, 0)`**, y de ellas cambian de
+clase **`r mha(N2$cambio_anual_ha, 1)` por año** (el **`r fmt_pct(N2$CC, 0)` %**) en una ventana
+de dos años; **`r mha(N1$cambio_anual_ha, 1)` por año** (**`r fmt_pct(N1$CC, 0)` %**) si se
+cuentan sólo los cambios de familia.
+
+**3 — El fuego pesa tres veces y media más en el cambio que en el mapa.**
+Se queman **`r mha(N1$quemado_anual_ha, 1)` por año**, el **`r fmt_pct(N1$sup, 1)` %** de la
+superficie vegetal — pero de las **`r mha(N1$cambio_anual_ha, 1)` que cambian de familia cada
+año**, **`r mha(N1$quemado_cambio_anual_ha, 2)`** son tierra que ardió: el
+**`r fmt_pct(N1$FF, 1)` %** del cambio, **`r fmt_pct(N1$sobrerep, 1)` veces más** de lo que le
+tocaría por superficie.
+:::
+
+Las cifras, en los dos niveles de la leyenda. **Las dos primeras columnas son totales de los
+`r N1$n_años` años** (una hectárea que ardió dos veces cuenta dos veces); **las tres del medio
+son por año**, porque son superficie del país y así se leen:
+
+```{r tabla}
+knitr::kable(
+  CIF[, .(Nivel = ifelse(level == "nivel1", "Familias (nivel 1)", "Clases (nivel 2)"),
+          `Quemado, serie` = mha(quemado_ha, 1),
+          `…que cambió, serie` = mha(quemado_cambio_ha, 1),
+          `Superficie vegetal, anual` = mha(area_anual_ha, 0),
+          `…que cambia, anual` = mha(cambio_anual_ha, 1),
+          `…que cambia y ardió, anual` = mha(quemado_cambio_anual_ha, 2),
+          `XX: de lo quemado, cambió` = paste0(fmt_pct(XX, 1), " %"),
+          `CC: del país, cambió` = paste0(fmt_pct(CC, 1), " %"),
+          `FF: del cambio, con fuego` = paste0(fmt_pct(FF, 1), " %"),
+          `Fuego / superficie` = paste0(fmt_pct(sobrerep, 1), "×"))],
+  align = "lrrrrrrrrr")
+```
+
+**Tres precisiones que hay que tener en la cabeza aunque no vayan a la slide.**
+
+1. **"De lo que ardió" es hectárea-año, no hectárea.** Las `r mha(N1$quemado_ha, 1)` son la suma
+   de los `r N1$n_años` años: una hectárea que ardió dos veces cuenta dos veces, y con la
+   cobertura de cada uno de sus dos fuegos. **No** es la superficie acumulada del país que alguna
+   vez se quemó, que es un número menor y **no** sale de esta tabla.
+2. **"Cambió de cobertura" depende del nivel de la leyenda con que se mire.** Bosque cerrado →
+   bosque abierto *cambia* en nivel 2 y *no cambia* en nivel 1. Por eso son dos números
+   (`r mha(N2$quemado_cambio_ha, 1)` / `r fmt_pct(N2$XX, 0)` % y
+   `r mha(N1$quemado_cambio_ha, 1)` / `r fmt_pct(N1$XX, 0)` %) y no uno mal redondeado — y por eso
+   **cada Sankey va con el número de su propio nivel**.
+3. **La ventana son dos años, no uno.** Se compara la cobertura de **Y−1** con la de **Y+1**,
+   porque en el año del fuego no se sabe si la clase que ve la col-3 es la de antes o la de
+   después de arder (docs/09 §5.7).
+
+## 1. Frase 1 — de lo que ardió, qué se convirtió en qué
+
+El Sankey dibuja **sólo las `r mha(N2$quemado_cambio_ha, 1)` que cambiaron** (el
+`r fmt_pct(N2$XX, 0)` % de lo quemado): el ancho de cada banda es el área sumada de la serie, y
+el eje y está en Mha. Lo que no cambió no está en la figura — está en el número del título.
+
+### 1.1 Clases nativas (nivel 2) — el que pidió la slide
+
+```{r fig06c-sankey-n2}
+#| fig-width: 9.5
+#| fig-height: 9
+# El subtítulo va ENVUELTO con `cap()`: ggplot no corta un título largo, lo DIBUJA FUERA DEL
+# LIENZO, y en nivel 2 esta línea mide más que el ancho de la figura.
+# La escala y se reemplaza sólo para darle aire ABAJO: el estrato más chico queda pegado al
+# eje y su etiqueta sale recortada. Es la única diferencia con `sankey_change()`.
+p <- sankey_change(NAT, "nivel2", min_share = MIN_N2, off = OFF)
+p2 <- p +
+  scale_y_continuous(labels = function(y) fmt_mha(y, 1),
+                     expand = expansion(mult = c(0.035, 0.03))) +
+  labs(
+    title = sprintf("%s Mha —el %s %% de lo que se quemó— figuran con otra cobertura un año después",
+                    fmt_mha(attr(p, "total_ha"), 1), fmt_pct(N2$XX, 0)),
+    subtitle = cap(sprintf("Argentina · %d-%d · clases nativas (nivel 2) · sobre %s Mha quemadas en la serie · se dibujan las transiciones ≥ %s %%, que son %s Mha, el %s %% de lo que cambió",
+                           AÑOS[1], AÑOS[2], fmt_mha(N2$quemado_ha, 1), fmt_pct(MIN_N2, 1),
+                           fmt_mha(attr(p, "total_ha") * attr(p, "cobertura") / 100, 1),
+                           fmt_pct(attr(p, "cobertura"), 0)), width = 105),
+    caption = cap("Sólo el área quemada, y sólo la parte que cambió de clase. La figura no lleva control: no dice cuánto habría cambiado sin fuego. Ese número —y el cociente q— están en el cuaderno largo."))
+save_fig(p2, "fig06c_sankey_nacional_nivel2", w = 9.5, h = 9, write = WRITE)
+p2
+```
+
+### 1.2 Familias (nivel 1) — la versión de seis bandas
+
+Seis transiciones cubren casi todo el cambio de familia, así que ésta es la que se lee de lejos.
+El número que la acompaña es **`r mha(N1$quemado_cambio_ha, 1)` / `r fmt_pct(N1$XX, 0)` %**, no el
+del nivel 2.
+
+```{r fig06c-sankey-n1}
+#| fig-width: 8
+#| fig-height: 6
+p <- sankey_change(NAT, "nivel1", min_share = 1, off = OFF)
+p1 <- p + labs(
+  title = sprintf("%s Mha —el %s %% de lo que se quemó— cambiaron de familia de cobertura",
+                  fmt_mha(attr(p, "total_ha"), 1), fmt_pct(N1$XX, 0)),
+  subtitle = cap(sprintf("Argentina · %d-%d · familias (nivel 1) · sobre %s Mha quemadas en la serie · las bandas dibujadas son %s Mha, el %s %% de lo que cambió",
+                         AÑOS[1], AÑOS[2], fmt_mha(N1$quemado_ha, 1),
+                         fmt_mha(attr(p, "total_ha") * attr(p, "cobertura") / 100, 1),
+                         fmt_pct(attr(p, "cobertura"), 0)), width = 95),
+  caption = cap("Sólo el área quemada, y sólo la parte que cambió de familia. Sin control: no dice cuánto habría cambiado sin fuego."))
+save_fig(p1, "fig06c_sankey_nacional_nivel1", w = 8, h = 6, write = WRITE)
+p1
+```
+
+El reparto de las bandas, en hectáreas y en porcentaje, para escribir el epígrafe sin leerlo del
+dibujo:
+
+```{r destinos}
+d <- fs$change[ecoregion == NAT & level == "nivel1" & offset == OFF & cambio == TRUE,
+               .(ha = sum(burned_ha)), by = .(clase_prev, clase_post)][order(-ha)]
+d[, `:=`(share = 100 * ha / sum(ha), share_quemado = 100 * ha / N1$quemado_ha)]
+knitr::kable(d[share >= 1, .(`Antes (Y−1)` = clase_prev, `Después (Y+1)` = clase_post,
+                             `Mha (serie)` = fmt_mha(ha, 2),
+                             `% de lo que cambió` = fmt_pct(share, 1),
+                             `% de lo quemado` = fmt_pct(share_quemado, 1))],
+             align = "llrrr")
+```
+
+### 1.3 Por qué el nivel 1 parece tener *más* bosque de llegada que el nivel 2
+
+Es la pregunta que hace cualquiera que mire los dos Sankeys uno al lado del otro, y la respuesta
+no es un error de los datos: **es el umbral**. Las dos figuras son exactamente consistentes.
+
+Dos cosas se cruzan:
+
+1. **La familia `Bosques` de nivel 1 son tres clases de nivel 2** — `Bosque cerrado`,
+   `Bosque abierto` y `Bosque inundable`. El estrato "Bosque abierto" del Sankey de nivel 2 es
+   **una** de las tres, no la familia.
+2. **El umbral se aplica por transición, no por destino.** Las mismas hectáreas que en nivel 1
+   entran a bosque por **dos** bandas gruesas, en nivel 2 se reparten entre **37** bandas finas —
+   y un umbral las mata casi todas. Ese es todo el fenómeno.
+
+La cuenta, que cierra al cuarto decimal:
+
+```{r reconciliacion}
+BOSQ_N2 <- LULC_N2_TBL[nivel1 == "Bosques", as.character(nivel2)]
+n1 <- fs$change[ecoregion == NAT & level == "nivel1" & offset == OFF]
+n2 <- fs$change[ecoregion == NAT & level == "nivel2" & offset == OFF]
+
+# lo que llega a bosque DESDE FUERA de la familia: tiene que ser el MISMO número en los dos
+# niveles, porque es la misma hectárea mirada con dos leyendas.
+desde_fuera_n1 <- n1[cambio == TRUE & clase_post == "Bosques", sum(burned_ha)]
+desde_fuera_n2 <- n2[clase_post %in% BOSQ_N2 & !clase_prev %in% BOSQ_N2, sum(burned_ha)]
+dentro_n2      <- n2[clase_post %in% BOSQ_N2 & clase_prev %in% BOSQ_N2 & cambio == TRUE,
+                     sum(burned_ha)]
+# cuánto de eso sobrevive al umbral de CADA figura
+drawn <- function(d, post, min_share) {
+  x <- d[cambio == TRUE, .(ha = sum(burned_ha)), by = .(clase_prev, clase_post)]
+  x[, sh := 100 * ha / sum(ha)]
+  list(n = x[clase_post %in% post & sh >= min_share, .N],
+       n_tot = x[clase_post %in% post, .N],
+       ha = x[clase_post %in% post & sh >= min_share, sum(ha)],
+       ha_tot = x[clase_post %in% post, sum(ha)])
+}
+d1 <- drawn(n1, "Bosques", 1); d2 <- drawn(n2, BOSQ_N2, MIN_N2)
+
+knitr::kable(data.table(
+  " " = c("Llega a bosque **desde fuera** de la familia",
+          "Llega a bosque **desde otro bosque** (no es cambio en nivel 1)",
+          "**Total** que llega a bosque",
+          "Transiciones en las que viene repartido",
+          "Se dibuja con el umbral de la figura"),
+  `Nivel 1` = c(mha(desde_fuera_n1, 3), "—", mha(desde_fuera_n1, 3),
+                paste(d1$n_tot, "bandas"),
+                sprintf("%s en %d bandas (%s %%)", mha(d1$ha, 3), d1$n,
+                        fmt_pct(100 * d1$ha / d1$ha_tot, 0))),
+  `Nivel 2` = c(mha(desde_fuera_n2, 3), mha(dentro_n2, 3),
+                mha(desde_fuera_n2 + dentro_n2, 3),
+                paste(d2$n_tot, "bandas"),
+                sprintf("%s en %d bandas (%s %%)", mha(d2$ha, 3), d2$n,
+                        fmt_pct(100 * d2$ha / d2$ha_tot, 0)))),
+  align = "lrr")
+stopifnot(abs(desde_fuera_n1 - desde_fuera_n2) < 1)   # la identidad, verificada al correr
+```
+
+Las dos primeras filas son la respuesta: **el flujo que entra a bosque desde fuera de la familia
+es idéntico en los dos niveles** —tiene que serlo, es la misma hectárea mirada con dos
+leyendas— y el nivel 2 además muestra el que el nivel 1 no puede mostrar, el de bosque a bosque.
+El nivel 2 tiene **más**, no menos. Lo que cambia es cuánto de eso **sobrevive al umbral**.
+
+⚠️ **La consecuencia práctica, y vale para cualquier Sankey con umbral**: un destino alimentado
+por muchos flujos chicos se dibuja más flaco de lo que es. En esta figura el umbral del nivel 2
+está en `r fmt_pct(MIN_N2, 1)` % justamente por eso; con el 1,5 % que usa el cuaderno largo se
+dibujaba **una sola** de las 37 bandas que llegan a bosque. **No se lee área de llegada de un
+Sankey con umbral** — para eso está esta tabla, o el análisis 4.
+
+### 1.4 El Sankey completo, con lo que **no** cambió
+
+La intuición es correcta: **sale plano**, y esa planitud es el resultado. De lo que se quema, la
+gran mayoría sigue siendo lo que era —`r fmt_pct(100 - N1$XX, 0)` % en familias— y el cambio es la
+cinta fina de arriba. Las figuras de §1.1 y §1.2 son un **zoom** sobre esa cinta: útiles para ver
+a qué va lo que cambia, engañosas si uno olvida que están mirando el `r fmt_pct(N1$XX, 0)` %.
+
+Acá el denominador es **todo lo quemado** (`r mha(N1$quemado_ha, 1)`), no sólo lo que cambió.
+
+```{r fig06c-sankey-completo-n1}
+#| fig-width: 8
+#| fig-height: 6
+# Umbral 0,1 %: NO es para simplificar, es porque las clases de destino de área ~0 (agua,
+# áreas sin vegetación, "No observado") entran como pelos invisibles pero con estrato y
+# ETIQUETA, y las tres etiquetas se pisan sobre el eje. Cuesta el 0,14 % del área, y el
+# subtítulo lo dice. Quedan 9 bandas y las 3 familias quemables de los dos lados.
+p <- sankey_change(NAT, "nivel1", min_share = 0.1, off = OFF, keep_unchanged = TRUE)
+pc <- p + labs(
+  title = sprintf("De cada %s Mha quemadas, %s siguen siendo lo que eran",
+                  fmt_mha(N1$quemado_ha, 1), fmt_mha(N1$quemado_ha - N1$quemado_cambio_ha, 1)),
+  subtitle = cap(sprintf("Argentina · %d-%d · familias (nivel 1) · las bandas horizontales son la permanencia (%s %%); el cambio es %s Mha, el %s %% · dibujado el %s %% del área quemada",
+                         AÑOS[1], AÑOS[2], fmt_pct(100 - N1$XX, 0),
+                         fmt_mha(N1$quemado_cambio_ha, 1), fmt_pct(N1$XX, 0),
+                         fmt_pct(attr(p, "cobertura"), 1)), width = 95),
+  caption = cap("El alto total es el área quemada: acá las proporciones sí se pueden leer del dibujo. Que la permanencia domine no quiere decir que el fuego no haga nada — quiere decir que la pregunta del análisis es la cinta fina, y que hay que mirarla contra lo que cambia SIN fuego (un 3,9 %), no contra cero."))
+save_fig(pc, "fig06c_sankey_completo_nacional_nivel1", w = 8, h = 6, write = WRITE)
+pc
+```
+
+```{r fig06c-sankey-completo-n2}
+#| fig-width: 9.5
+#| fig-height: 10.5
+# Nivel 2 son 222 transiciones. Acá el umbral es 0,25 % —más alto que el 0,1 % que la
+# cobertura pediría— por las ETIQUETAS: con 0,1 % entran clases de área ~0 cuyos estratos
+# miden un pelo y cuyos nombres se apilan unos sobre otros sobre el eje. Cuesta 3 puntos de
+# cobertura (97,5 -> 94,7 %) y los hace legibles. El subtítulo dice siempre cuánto quedó.
+p <- sankey_change(NAT, "nivel2", min_share = 0.25, off = OFF, keep_unchanged = TRUE)
+pc2 <- p +
+  scale_y_continuous(labels = function(y) fmt_mha(y, 0),
+                     expand = expansion(mult = c(0.035, 0.03))) +
+  labs(
+    title = sprintf("Lo mismo por clase nativa: %s Mha permanecen, %s cambian",
+                    fmt_mha(N2$quemado_ha - N2$quemado_cambio_ha, 1),
+                    fmt_mha(N2$quemado_cambio_ha, 1)),
+    subtitle = cap(sprintf("Argentina · %d-%d · clases nativas (nivel 2) · permanencia %s %% · se dibujan las transiciones ≥ 0,25 %% de lo quemado, que son %s Mha, el %s %% del total",
+                           AÑOS[1], AÑOS[2], fmt_pct(100 - N2$XX, 0),
+                           fmt_mha(attr(p, "total_ha") * attr(p, "cobertura") / 100, 1),
+                           fmt_pct(attr(p, "cobertura"), 0)), width = 105),
+    caption = cap("Acá el umbral se mide contra todo lo quemado, no contra lo que cambió, así que deja fuera muchas más transiciones de cambio que la figura de §1.1. Sirve para ver la proporción; para ver a qué va el cambio, §1.1."))
+save_fig(pc2, "fig06c_sankey_completo_nacional_nivel2", w = 9.5, h = 10.5, write = WRITE)
+pc2
+```
+
+## 2. Frases 2 y 3 — cuánto del cambio del país tiene fuego en el medio
+
+La pregunta se da vuelta: en vez de mirar lo quemado y preguntar cuánto cambió, se mira **todo
+el cambio de cobertura del país** y se pregunta qué parte ocurrió donde hubo fuego.
+
+Las dos barras tienen **denominadores distintos a propósito**, y es justamente la comparación:
+la de arriba es qué porción de las `r mha(N1$area_anual_ha, 0)` de superficie vegetal argentina
+se quema en un año típico, la de abajo qué porción de las `r mha(N1$cambio_anual_ha, 1)` que
+cambian de familia cada año llevan un fuego en el medio. Si el fuego no tuviera nada que ver con
+el cambio, las dos barras medirían lo mismo.
+
+```{r fig06c-peso}
+#| fig-width: 9
+#| fig-height: 3.4
+peso <- function(lv) {
+  x <- CIF[level == lv]
+  d <- data.table(
+    qué = factor(c(sprintf("De la superficie vegetal del país\n(%s Mha)", fmt_mha(x$area_anual_ha, 0)),
+                   sprintf("Del cambio de cobertura del país\n(%s Mha/año)", fmt_mha(x$cambio_anual_ha, 1))),
+                 levels = c(sprintf("Del cambio de cobertura del país\n(%s Mha/año)", fmt_mha(x$cambio_anual_ha, 1)),
+                            sprintf("De la superficie vegetal del país\n(%s Mha)", fmt_mha(x$area_anual_ha, 0)))),
+    pct = c(x$sup, x$FF),
+    lab = c(sprintf("%s %% ardió  ·  %s Mha/año", fmt_pct(x$sup, 1), fmt_mha(x$quemado_anual_ha, 1)),
+            sprintf("%s %% ocurre donde ardió  ·  %s Mha/año",
+                    fmt_pct(x$FF, 1), fmt_mha(x$quemado_cambio_anual_ha, 2))))
+  ggplot(d, aes(pct, qué)) +
+    geom_col(fill = "#B23C06", width = 0.52) +
+    geom_text(aes(label = lab), hjust = -0.08, size = 3.4, colour = "grey20") +
+    scale_x_continuous(expand = expansion(mult = c(0, 0.75))) +
+    labs(x = "% del total de cada fila", y = NULL) +
+    theme(panel.grid.major.y = element_blank(),
+          axis.text.y = element_text(size = rel(0.9)))
+}
+p <- peso("nivel1") +
+  labs(title = sprintf("El fuego pesa %s veces más en el cambio de cobertura que en el mapa",
+                       fmt_pct(N1$sobrerep, 1)),
+       subtitle = sprintf("Argentina · %d-%d · familias (nivel 1) · el país cambia de familia %s Mha por año, el %s %% de su superficie vegetal",
+                          AÑOS[1], AÑOS[2], fmt_mha(N1$cambio_anual_ha, 1), fmt_pct(N1$CC, 1)),
+       caption = cap("Las dos barras tienen denominadores distintos —superficie (arriba) y cambio de cobertura (abajo)—, y por eso la comparación significa algo: si el fuego fuera indiferente al cambio, serían iguales. Es una asociación, no una causa: los píxeles que arden no son una muestra al azar del país."))
+save_fig(p, "fig06c_peso_del_fuego_nivel1", w = 9, h = 3.4, write = WRITE)
+p
+```
+
+### 2.1 La variante ancha, si se la quiere decir de la otra manera
+
+"Con fuego en el medio" es estricto: el píxel ardió **en el año focal**. Contando el fuego en
+**cualquiera** de los años de la ventana —ardió en Y−1, en Y o en Y+1— el número sube de
+`r mha(N1$quemado_cambio_ha, 1)` a **`r mha(N1$ventana_cambio_ha, 1)`**, es decir del
+`r fmt_pct(N1$FF, 1)` % al **`r fmt_pct(N1$FF_ventana, 1)` %** del cambio de familia
+(**`r fmt_pct(N2$FF_ventana, 1)` %**, `r mha(N2$ventana_cambio_ha, 1)`, en nivel 2). Las dos
+frases son verdaderas y dicen cosas distintas; la estricta es la que se puede atribuir a un fuego
+fechado, y es la que conviene poner.
+
+## 4. Sólo bosques
+
+Todo lo anterior promedia el país entero. Esta sección mira **una sola familia**, que es la que
+tiene la historia más fuerte y la más fácil de contar mal. Todo nacional, ventana **Y+1** salvo
+donde diga otra cosa, y el evento es siempre **"deja de ser bosque"** — pasar a una clase de
+otra familia, no cambiar de clase de bosque.
+
+```{r bosques-setup}
+stopifnot(HAS_BOSQUES)
+B  <- fs$bosques[cohorte == "móvil"]          # cada lag con su propia ventana
+BD <- fs$bosques_dest[cohorte == "móvil"]
+ORD_B <- c("Bosque cerrado", "Bosque abierto", "Bosque inundable", "Bosques (familia)")
+B[, clase_prev := factor(clase_prev, levels = ORD_B)]
+b1 <- B[offset == 1L]                          # el año siguiente
+get1 <- function(cl, col) b1[clase_prev == cl][[col]]
+```
+
+### 4.1 Cuál es el número — porque hay cuatro y no dicen lo mismo
+
+La frase *"tras el fuego la transformación de bosques a otras clases es 11 veces más probable"*
+no corresponde a ninguno de los `q` de nivel 1: **el 11 viene de otra cuenta**. Las cuatro
+candidatas, todas nacionales, todas Y+1, todas medidas:
+
+```{r bosques-candidatas}
+cand <- data.table(
+  Afirmación = c(
+    "**Bosque** (familia) deja de ser bosque",
+    "**Bosque cerrado** deja de ser bosque",
+    "**Bosque** → **agropecuario** (esa transición sola)",
+    "**Bosque cerrado** deja de ser *bosque cerrado* (incl. pasar a bosque abierto)"),
+  Nivel = c("1", "2 → 1", "1", "2"),
+  `Si ardió` = c(fmt_pct(get1("Bosques (familia)", "ardio"), 1),
+                 fmt_pct(get1("Bosque cerrado", "ardio"), 1), "17,3", "49,4"),
+  `Si no ardió` = c(fmt_pct(get1("Bosques (familia)", "control"), 1),
+                    fmt_pct(get1("Bosque cerrado", "control"), 1), "1,6", "4,2"),
+  q = c(fmt_pct(get1("Bosques (familia)", "q_sale"), 1),
+        fmt_pct(get1("Bosque cerrado", "q_sale"), 1), "10,9", "11,7"))
+knitr::kable(cand, align = "lcrrr")
+```
+
+**La frase escrita —"los bosques se transforman"— es la primera fila: `q` = 6,4**, no 11. El
+10,9 es **una transición sola** (bosque → agropecuario, que es el 61 % de lo que sale pero no
+todo) y el 11,7 cuenta como transformación que un bosque cerrado pase a bosque abierto, que
+**sigue siendo bosque**.
+
+**La que recomiendo decir es la segunda**, porque es la más fuerte *y* la más defendible:
+
+> **Cuando se quema un bosque cerrado, el `r fmt_pct(get1("Bosque cerrado", "ardio"), 0)` % deja
+> de ser bosque al año siguiente. Sin fuego, el `r fmt_pct(get1("Bosque cerrado", "control"), 0)` %:
+> `r fmt_pct(get1("Bosque cerrado", "q_sale"), 0)` veces más probable.**
+
+Son `r mha(get1("Bosque cerrado", "ha_quemado"), 1)` de bosque cerrado quemadas en la serie.
+
+### 4.2 Por qué el promedio de la familia no sirve: las tres clases no se parecen
+
+Éste es el hallazgo de la sección, y obliga a elegir el nivel 2:
+
+```{r fig06c-bosques-q}
+#| fig-width: 8.5
+#| fig-height: 4
+d <- b1[clase_prev != "Bosques (familia)"]
+fam <- b1[clase_prev == "Bosques (familia)"]
+m <- melt(d[, .(clase_prev, ardió = ardio, `no ardió` = control)],
+          id.vars = "clase_prev", variable.name = "grp", value.name = "pct")
+w <- dcast(d, clase_prev ~ ., value.var = c("control", "ardio"))
+p <- ggplot(m, aes(pct, clase_prev)) +
+  geom_segment(data = d, aes(x = control, xend = ardio, y = clase_prev, yend = clase_prev),
+               inherit.aes = FALSE, colour = "grey78", linewidth = 1.2) +
+  geom_point(aes(colour = grp), size = 3) +
+  geom_text(data = d, aes(x = ardio, y = clase_prev,
+                          label = sprintf("q = %s", fmt_pct(q_sale, 1))),
+            inherit.aes = FALSE, hjust = -0.25, size = 3.2, colour = "grey25") +
+  geom_vline(xintercept = fam$ardio, linetype = "22", colour = "#B23C06", linewidth = 0.4) +
+  scale_colour_manual(values = c(`ardió` = "#B23C06", `no ardió` = "grey55"), name = NULL) +
+  scale_x_continuous(expand = expansion(mult = c(0.04, 0.22))) +
+  labs(x = "% que deja de ser bosque al año siguiente", y = NULL,
+       title = sprintf("El fuego transforma el bosque cerrado, y no toca el inundable"),
+       subtitle = cap(sprintf("Argentina · %d-%d · ventana Y+1 · el segmento es el efecto del fuego; el punto gris es lo que habría cambiado igual · la línea punteada es el promedio de la familia (%s %%), que no describe a ninguna de las tres",
+                              AÑOS[1], AÑOS[2], fmt_pct(fam$ardio, 0)), width = 108),
+       caption = cap("q = P(deja de ser bosque | ardió) / P(deja de ser bosque | no ardió). El bosque inundable da q = 1,0: su cobertura cambia lo mismo con fuego que sin él, y el promedio de la familia lo esconde.")) +
+  theme(legend.position = "top")
+save_fig(p, "fig06c_bosques_q_nivel2", w = 8.5, h = 4, write = WRITE)
+p
+```
+
+`r fmt_pct(get1("Bosque inundable", "q_sale"), 1)` es un `q` de **uno**: el bosque inundable
+cambia de cobertura exactamente lo mismo haya ardido o no. El bosque abierto está en
+`r fmt_pct(get1("Bosque abierto", "q_sale"), 1)`. **La familia entera da
+`r fmt_pct(get1("Bosques (familia)", "q_sale"), 1)` promediando los tres**, y ese promedio no
+describe a ninguno. Si va a la lámina un solo número de bosque, tiene que ser el de una clase,
+no el de la familia.
+
+### 4.3 A dónde va el bosque que se quema
+
+```{r fig06c-bosques-sankey}
+#| fig-width: 8
+#| fig-height: 5.5
+# El Sankey de esta sección se arma acá y no con `sankey_change()`: el origen está FIJADO a
+# una clase y el pool es el bosque quemado, no el país. Incluye la permanencia a propósito —
+# la banda gruesa que sigue siendo bosque es la mitad de la lectura.
+sankey_bosque <- function(origen, post_col, lv, min_pct = 1) {
+  # `factsheet_bosques_destinos.csv` está abierto por clase de NIVEL 2 (las tres clases de
+  # bosque); la fila "Bosques (familia)" sólo existe en la tabla de escalares. Para la figura
+  # de familia hay que SUMAR las tres — filtrar por ese nombre devuelve cero filas y un
+  # lienzo en blanco sin ningún error.
+  sel <- if (origen == "Bosques (familia)") BD[offset == 1L]
+         else BD[offset == 1L & clase_prev == origen]
+  stopifnot(nrow(sel) > 0)
+  d <- sel[, .(ha = sum(area_ha)), by = .(destino = get(post_col))]
+  d[, pct := 100 * ha / sum(ha)]
+  cob <- d[pct >= min_pct, sum(pct)]
+  d <- d[pct >= min_pct]
+  lvls <- change_levels(lv)
+  # La ETIQUETA del estrato de origen tiene que ser una clase de la leyenda: "Bosques
+  # (familia)" es el nombre de la FILA en `factsheet_bosques.csv`, no una clase, y
+  # `factor()` contra los niveles de la leyenda lo convierte en NA — con lo que el Sankey
+  # sale vacío y sin avisar. Se traduce acá, una vez.
+  org <- if (origen == "Bosques (familia)") "Bosques" else origen
+  stopifnot(org %in% lvls)
+  d[, `:=`(origen = factor(org, levels = lvls),
+           destino = factor(as.character(destino), levels = lvls))]
+  stopifnot(!anyNA(d$destino))
+  p <- ggplot(d, aes(y = ha, axis1 = origen, axis2 = destino)) +
+    ggalluvial::geom_alluvium(aes(fill = destino), width = 0.22, alpha = 0.8,
+                              curve_type = "sigmoid") +
+    ggalluvial::geom_stratum(width = 0.22, fill = "grey97", colour = "grey60",
+                             linewidth = 0.3) +
+    geom_text(stat = ggalluvial::StatStratum,
+              aes(label = after_stat(wrap_lab(stratum))), size = 2.7,
+              lineheight = 0.92, colour = "grey15") +
+    scale_fill_manual(values = change_colors(lv), guide = "none") +
+    scale_x_discrete(limits = c("antes del fuego", "un año después"), expand = c(0.18, 0.18)) +
+    scale_y_continuous(labels = function(y) fmt_mha(y, 1),
+                       expand = expansion(mult = c(0.03, 0.03))) +
+    labs(x = NULL, y = "Mha quemadas (suma de la serie)")
+  attr(p, "cobertura") <- cob
+  p
+}
+p <- sankey_bosque("Bosques (familia)", "nivel1_post", "nivel1")
+p1 <- p + labs(
+  title = sprintf("De cada 100 ha de bosque quemado, %s dejan de ser bosque",
+                  fmt_pct(get1("Bosques (familia)", "pct_quemado"), 0)),
+  subtitle = cap(sprintf("Argentina · %d-%d · familias (nivel 1) · %s Mha de bosque quemadas en la serie · el destino del que sale es agropecuario en primer lugar",
+                         AÑOS[1], AÑOS[2],
+                         fmt_mha(get1("Bosques (familia)", "ha_quemado"), 1)), width = 100),
+  caption = cap("Sólo bosque quemado (todo, haya cambiado o no). La banda que vuelve a Bosques es la que sigue siendo bosque un año después. Sin control en la figura: el q está en 4.1 y 4.2."))
+save_fig(p1, "fig06c_bosques_sankey_nivel1", w = 8, h = 5.5, write = WRITE)
+p1
+```
+
+El reparto exacto de lo que **sale**:
+
+```{r bosques-destinos-tabla}
+t1 <- BD[offset == 1L & sale == TRUE,        # las tres clases de bosque juntas = la familia
+         .(ha = sum(area_ha)), by = .(destino = nivel1_post)][order(-ha)]
+t1[, pct := 100 * ha / sum(ha)]
+knitr::kable(t1[, .(`Destino (nivel 1)` = destino, Mha = fmt_mha(ha, 2),
+                    `% de lo que sale` = fmt_pct(pct, 1))], align = "lrr")
+```
+
+Y lo mismo desde **bosque cerrado**, en clases nativas — que es donde la historia se ve:
+
+```{r fig06c-bosques-sankey-n2}
+#| fig-width: 8.5
+#| fig-height: 7
+# 3 % deja 5 destinos y el 90 %: con 1 % entran siete bandas de entre 1 y 3 % que se apilan
+# en el mismo tramo del eje y sus nombres se pisan. Los cinco que quedan son los que se leen
+# en una lámina, y el subtítulo dice la cobertura.
+p <- sankey_bosque("Bosque cerrado", "nivel2_post", "nivel2", min_pct = 3)
+p2 <- p + labs(
+  title = sprintf("El bosque cerrado que se quema: %s %% deja de ser bosque",
+                  fmt_pct(get1("Bosque cerrado", "pct_quemado"), 0)),
+  subtitle = cap(sprintf("Argentina · %d-%d · clases nativas (nivel 2) · %s Mha de bosque cerrado quemadas · se dibujan los destinos ≥ 3 %%, el %s %% del total",
+                         AÑOS[1], AÑOS[2], fmt_mha(get1("Bosque cerrado", "ha_quemado"), 1),
+                         fmt_pct(attr(p, "cobertura"), 0)), width = 105),
+  caption = cap("La mitad de lo que sale va a cultivos temporarios. Es la lectura del desmonte: el fuego como herramienta de una conversión decidida, no como su causa — la figura no puede distinguirlas."))
+save_fig(p2, "fig06c_bosques_sankey_cerrado_nivel2", w = 8.5, h = 7, write = WRITE)
+p2
+```
+
+### 4.4 Sí tenemos Y+4 e Y+5 nacionales — y cambian la frase
+
+Los archivos `lulc_change_eco13_y{4,5}_n44.csv` **son el país entero**: el `--lat-split` agrega
+un bit norte/sur al código, no recorta la reducción. Colapsando ese bit salen los cuatro lags
+nacionales sin ninguna corrida nueva de GEE. Lo que muestran:
+
+```{r bosques-ventanas}
+tab <- dcast(B, clase_prev ~ offset, value.var = c("ardio", "q_sale"))
+knitr::kable(
+  tab[, .(Clase = clase_prev,
+          `Y+1` = paste0(fmt_pct(ardio_1, 1), " % · q ", fmt_pct(q_sale_1, 1)),
+          `Y+3` = paste0(fmt_pct(ardio_3, 1), " % · q ", fmt_pct(q_sale_3, 1)),
+          `Y+4` = paste0(fmt_pct(ardio_4, 1), " % · q ", fmt_pct(q_sale_4, 1)),
+          `Y+5` = paste0(fmt_pct(ardio_5, 1), " % · q ", fmt_pct(q_sale_5, 1)))],
+  align = "lrrrr")
+```
+
+**Los dos números se mueven en direcciones opuestas, y hay que saber cuál se está diciendo.**
+El porcentaje **sube** con la ventana (el bosque cerrado va de
+`r fmt_pct(B[clase_prev == "Bosque cerrado" & offset == 1L, ardio], 0)` % a
+`r fmt_pct(B[clase_prev == "Bosque cerrado" & offset == 5L, ardio], 0)` %): la conversión tarda
+y a un año todavía no se ve entera. `q` **baja**
+(`r fmt_pct(B[clase_prev == "Bosque cerrado" & offset == 1L, q_sale], 0)` →
+`r fmt_pct(B[clase_prev == "Bosque cerrado" & offset == 5L, q_sale], 0)`) porque el control
+acumula su propio cambio de fondo en una ventana más larga. Responden preguntas distintas:
+*"¿cuánto bosque se convirtió?"* y *"¿fue cosa del fuego?"*.
+
+⚠️ Esta tabla es la **cohorte móvil**: cada lag tiene su propia ventana de exclusión y por lo
+tanto su propio rango de años focales (Y+1 llega a 2024, Y+5 sólo a 2020), así que son cuatro
+poblaciones y no una trayectoria. `factsheet_bosques.csv` trae también la **cohorte fija**
+(`cohorte == "fija"`, ventana clavada en 5, los mismos píxeles en los cuatro lags), que es la
+que hay que usar si se quiere decir *"tarda N años"*:
+
+```{r bosques-cohorte-fija}
+BF <- fs$bosques[cohorte == "fija" & clase_prev == "Bosque cerrado"]
+knitr::kable(BF[order(offset), .(Ventana = paste0("Y+", offset),
+                                 `% que deja de ser bosque` = fmt_pct(ardio, 1),
+                                 Control = fmt_pct(control, 1), q = fmt_pct(q_sale, 1),
+                                 `Mha quemadas` = fmt_mha(ha_ardio, 2))], align = "lrrrr")
+```
+
+Mismas `r fmt_mha(BF[offset == 1L, ha_ardio], 2)` Mha en las cuatro filas — es la misma cohorte
+mirada a distintos plazos, y por eso esta tabla sí se lee como trayectoria.
+
+## 3. Lo que no se puede decir con estos números
+
+Tres límites, en una línea cada uno. Están acá para que no se escriban en la slide por
+descuido, no para ponerlos en ella.
+
+1. **No es "el fuego transformó `r mha(N1$quemado_cambio_ha, 1)`".** Los píxeles que arden no son
+   una muestra al azar del país: parte de la asociación es fuego ocurriendo donde el cambio ya
+   iba a ocurrir. En `bosque → agropecuario` —la banda más gruesa del Sankey de nivel 1— la
+   lectura más probable es el fuego como **herramienta de un desmonte ya decidido**, no como su
+   causa (docs/10 §6.4).
+2. **Un año es poco para la vegetación leñosa.** La ventana Y+1 está calibrada en el Chaco,
+   donde el fuego *despeja*. Donde mata pero no despeja, el cambio llega al mapa más tarde: a
+   Y+3 el número de la frase 1 sube de `r fmt_pct(N1$XX, 1)` % a **17,9 %** (nivel 1), y en el
+   bosque patagónico va de 49 % a 78 % entre Y+1 e Y+5 (docs/09 §5.7.3). **Estas frases
+   subestiman**, no exageran.
+3. **Parte del cambio a un año puede ser la cicatriz y no la conversión.** La col-3 se construye
+   con las mismas imágenes que ven la quemadura. El cuaderno largo mide cuánto de esto hay
+   —la tasa *sube* con la ventana en vez de volver al control, así que las transiciones son
+   persistentes— pero el artefacto existe y no está eliminado.
+
+**El número que falta acá, y que el cuaderno largo sí tiene**: cuánto cambia la tierra **sin**
+fuego (un `r fmt_pct(fs$change_sum[ecoregion == NAT & level == "nivel1" & offset == OFF & state == "control", changed_pct], 1)` %,
+contra el `r fmt_pct(N1$XX, 1)` % de lo quemado), y el cociente
+`q = P(cambió | ardió) / P(cambió | no ardió)` =
+**`r fmt_pct(fs$change_sum[ecoregion == NAT & level == "nivel1" & offset == OFF & state == "control", q_changed], 1)`**
+nacional. Si en la presentación alguien pregunta "¿y eso es mucho?", la respuesta es ésa.

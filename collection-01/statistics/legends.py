@@ -167,6 +167,13 @@ def decode(code):
 CHANGE_CODE_BASE = 10000
 CHANGE_STATE_BASE = 1000000
 
+# Dimensión OPCIONAL: el corte latitudinal (`--lat-split` en `lulc_change_export.py`).  Cuando
+# está, el código lleva un dígito más adelante — `north * 10000000 + state * 1000000 + ...` —
+# y el decode lo detecta por magnitud.  Existe para una pregunta concreta que el corte por
+# ecorregión no puede contestar: los Bosques Patagónicos del norte (Chubut arriba) no se
+# comportan como los del sur, y la ecorregión es una sola (docs/09 §5.7.3).
+CHANGE_NORTH_BASE = 10000000
+
 # LOS CUATRO ESTADOS DE FUEGO (docs/09 §5.7.1).  Son cuatro y no dos porque la regla de
 # exclusión de Ferro et al. (2026) —"sólo píxeles que NO ardieron en el año anterior ni en el
 # siguiente, para evitar errores de clasificación de la cobertura"— se aplica a LOS DOS
@@ -190,15 +197,18 @@ FIRE_STATE_NAMES = {
 
 
 def decode_lulc_change(code):
-    """`state * 1000000 + eco * 10000 + prev * 100 + post`
-    -> (state_id, state_name, eco_id, eco_name, prev_id, post_id).
+    """`[north * 10000000 +] state * 1000000 + eco * 10000 + prev * 100 + post`
+    -> (north, state_id, state_name, eco_id, eco_name, prev_id, post_id).
+
+    `north` es 0 en las corridas sin `--lat-split`; con corte, 1 = al norte del paralelo.
 
     Los nombres de cada clase se resuelven con `LULC_NIVEL_{0,1,2}` como siempre; acá sólo
     se desempaqueta, y se valida con la misma dureza que `decode_lulc`: una clase que no
     está en la leyenda es un error, nunca un default.
     """
     code = int(code)
-    state, rest = divmod(code, CHANGE_STATE_BASE)
+    north, rest = divmod(code, CHANGE_NORTH_BASE)   # 0 si la corrida no llevó corte
+    state, rest = divmod(rest, CHANGE_STATE_BASE)
     eco, rest = divmod(rest, CHANGE_CODE_BASE)
     prev, post = divmod(rest, 100)
     if state not in FIRE_STATE_NAMES:
@@ -215,4 +225,7 @@ def decode_lulc_change(code):
                 f"code {code} decodes to {name} land-cover class {cls}, which is NOT in the "
                 "col-3 legend. A class that falls through into a decode default is a silent "
                 "error; add it to all three levels (from the network's Legends.js) first")
-    return state, FIRE_STATE_NAMES[state], eco, ECO13_NAMES[eco], prev, post
+    if north not in (0, 1):
+        raise ValueError(
+            f"code {code} decodes to north={north}, which is not 0/1 — the packing is wrong")
+    return north, state, FIRE_STATE_NAMES[state], eco, ECO13_NAMES[eco], prev, post

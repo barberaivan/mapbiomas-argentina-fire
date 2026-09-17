@@ -139,16 +139,29 @@ TASK_PREFIX = "arg09_lulc_change_eco13"
 TOLERANCE_PCT = 2.0                                # ver `check()`
 
 
-def years_for(offset: int) -> list:
-    return list(range(FIRST_YEAR, LULC_LAST_YEAR - offset + 1))
+def years_for(offset: int, window: int | None = None) -> list:
+    """Los años focales.  El tope lo pone el MAYOR de los dos: la cobertura "después" tiene
+    que existir (Y+offset <= 2025) y la ventana de exclusión tiene que caber (Y+window)."""
+    return list(range(FIRST_YEAR, LULC_LAST_YEAR - max(offset, window or offset) + 1))
 
 
-def raw_csv(offset: int) -> Path:
-    return OUT_DIR / f"lulc_change_eco13_y{offset}_raw.csv"    # como lo dio GEE
+def suffix(args) -> str:
+    """`_y1`, `_y3_n44`, `_y1_w5_n44`: el lag, la ventana de exclusión si NO coincide con el
+    lag, y el corte latitudinal si lo hubo.  Los tres van en el NOMBRE porque los tres
+    cambian qué población describe el archivo, no sólo sus números."""
+    lat = getattr(args, "lat_split", None)
+    win = getattr(args, "window", None) or args.offset
+    return (f"_y{args.offset}"
+            + (f"_w{win}" if win != args.offset else "")
+            + (f"_n{abs(int(lat))}" if lat else ""))
 
 
-def tidy_csv(offset: int) -> Path:
-    return OUT_DIR / f"lulc_change_eco13_y{offset}.csv"        # decodificado
+def raw_csv(args) -> Path:
+    return OUT_DIR / f"lulc_change_eco13{suffix(args)}_raw.csv"    # como lo dio GEE
+
+
+def tidy_csv(args) -> Path:
+    return OUT_DIR / f"lulc_change_eco13{suffix(args)}.csv"        # decodificado
 
 
 # ---------------------------------------------------------------------------
@@ -172,16 +185,16 @@ def burned(year: int) -> ee.Image:
             .rename("burned"))
 
 
-def fire_state(year: int, offset: int) -> ee.Image:
+def fire_state(year: int, window: int) -> ee.Image:
     """Los cuatro estados de `legends.FIRE_STATE_NAMES`, como banda 0/1/2/3.
 
-    La ventana de exclusión es [Y-1, Y+offset] RECORTADA a los años que el producto tiene
+    La ventana de exclusión es [Y-1, Y+window] RECORTADA a los años que el producto tiene
     (1999-2025).  Para Y = 1999 no hay 1998 y la ventana empieza en 1999: el control de ese
     año es por lo tanto un poco más laxo que el de los demás, y se dice acá en vez de
     fabricar un año de fuego que no existe.
     """
     lo = max(year - 1, FIRE_FIRST_YEAR)
-    hi = min(year + offset, FIRE_LAST_YEAR)
+    hi = min(year + window, FIRE_LAST_YEAR)
     others = [y for y in range(lo, hi + 1) if y != year]
     yr = burned(year)
     win = ee.ImageCollection([burned(y) for y in others]).max()
@@ -191,28 +204,39 @@ def fire_state(year: int, offset: int) -> ee.Image:
                          {"y": yr, "w": win})
 
 
-def code_image(year: int, offset: int) -> ee.Image:
-    """`state * 1e6 + eco * 1e4 + clase(Y-1) * 100 + clase(Y+offset)`, int32, TODO el país.
+def code_image(year: int, offset: int, lat_split: float | None = None,
+               window: int | None = None) -> ee.Image:
+    """`[north * 1e7 +] state * 1e6 + eco * 1e4 + clase(Y-1) * 100 + clase(Y+offset)`, int32,
+    TODO el país.
 
     La única capa que manda sobre la máscara es la ecorregión (que tesela el país): acá ya no
     hay máscara de fuego — el fuego es una dimensión del código, que es lo que hace posible
     el control (ver la cabecera).
+
+    `lat_split` agrega una dimensión más: 1 al norte del paralelo, 0 al sur.  Sirve para
+    partir una ecorregión que no es homogénea sin inventar una ecorregión nueva — el caso es
+    Bosques Patagónicos, donde el norte (Chubut arriba) tiene un régimen de fuego distinto
+    del sur (docs/09 §5.7.3).
     """
     lulc = ee.Image(C.PRODUCT_LULC)
     prev = lulc.select(f"classification_{year - 1}").unmask(0)
     post = lulc.select(f"classification_{year + offset}").unmask(0)
-    return (fire_state(year, offset).multiply(legends.CHANGE_STATE_BASE)
+    code = (fire_state(year, window or offset).multiply(legends.CHANGE_STATE_BASE)
             .add(eco_image().multiply(legends.CHANGE_CODE_BASE))
             .add(prev.multiply(100))
-            .add(post)
-            .toInt32()
-            .rename("code"))
+            .add(post))
+    if lat_split is not None:
+        north = ee.Image.pixelLonLat().select("latitude").gt(lat_split)
+        code = code.add(north.multiply(legends.CHANGE_NORTH_BASE))
+    return code.toInt32().rename("code")
 
 
-def grouped_area(year: int, offset: int, geometry: ee.Geometry) -> ee.Dictionary:
+def grouped_area(year: int, offset: int, geometry: ee.Geometry,
+                 lat_split: float | None = None,
+                 window: int | None = None) -> ee.Dictionary:
     return (
         ee.Image.pixelArea().divide(1e4)                       # m2 -> ha
-        .addBands(code_image(year, offset))
+        .addBands(code_image(year, offset, lat_split, window))
         .reduceRegion(
             reducer=ee.Reducer.sum().group(groupField=1, groupName="code"),
             geometry=geometry,
@@ -223,9 +247,10 @@ def grouped_area(year: int, offset: int, geometry: ee.Geometry) -> ee.Dictionary
     )
 
 
-def year_features(year: int, offset: int, geometry: ee.Geometry) -> ee.List:
+def year_features(year: int, offset: int, geometry: ee.Geometry,
+                  lat_split: float | None = None, window: int | None = None) -> ee.List:
     """Una feature por código, llevando el año — así todos los años comparten una tarea."""
-    groups = ee.List(grouped_area(year, offset, geometry).get("groups"))
+    groups = ee.List(grouped_area(year, offset, geometry, lat_split, window).get("groups"))
     return groups.map(lambda d: ee.Feature(None, ee.Dictionary(d).set("year", year)))
 
 
@@ -236,10 +261,12 @@ def national_bounds() -> ee.Geometry:
 def rows_from(groups, year: int) -> list[dict]:
     out = []
     for g in groups:
-        state, state_name, eco, eco_name, prev, post = legends.decode_lulc_change(g["code"])
+        (north, state, state_name, eco, eco_name,
+         prev, post) = legends.decode_lulc_change(g["code"])
         out.append({
             "year": year,
             "code": int(g["code"]),
+            "north": north,
             "state_id": state,
             "state": state_name,
             "ecoregion_id": eco,
@@ -272,10 +299,11 @@ def check_rect(args) -> int:
     print(f"\ntest rectangle  {w},{s} .. {e},{n}   (Córdoba: chaco seco / espinal)")
     print(f"  area del rectángulo: {rect_ha:,.1f} ha   |   offset Y+{args.offset}")
     ok, burnt = True, False
-    for year in (FIRST_YEAR, years_for(args.offset)[-1]):
+    for year in (FIRST_YEAR, years_for(args.offset, args.window)[-1]):
         t0 = time.time()
         rows = rows_from(
-            ee.List(grouped_area(year, args.offset, rect).get("groups")).getInfo(), year)
+            ee.List(grouped_area(year, args.offset, rect, args.lat_split,
+                                 args.window).get("groups")).getInfo(), year)
         total = sum(r["area_ha"] for r in rows)
         print(f"\n  {year}   {len(rows)} combinaciones   {time.time() - t0:.1f} s   "
               f"{total:,.1f} ha   ({100 * total / rect_ha:.2f} % del recuadro)")
@@ -295,10 +323,10 @@ def check_rect(args) -> int:
 # ---------------------------------------------------------------------------
 # la exportación nacional
 # ---------------------------------------------------------------------------
-def desc_for(offset: int, year: int | None = None) -> str:
-    ys = years_for(offset)
-    return (f"{TASK_PREFIX}_y{offset}_{ys[0]}_{ys[-1]}" if year is None
-            else f"{TASK_PREFIX}_y{offset}_{year}")
+def desc_for(args, year: int | None = None) -> str:
+    ys = years_for(args.offset, getattr(args, "window", None))
+    return (f"{TASK_PREFIX}{suffix(args)}_{ys[0]}_{ys[-1]}" if year is None
+            else f"{TASK_PREFIX}{suffix(args)}_{year}")
 
 
 def launch(fc: ee.FeatureCollection, desc: str, dry: bool) -> None:
@@ -319,15 +347,16 @@ def launch(fc: ee.FeatureCollection, desc: str, dry: bool) -> None:
 
 def export(args) -> int:
     bounds = national_bounds()
-    years = years_for(args.offset)
+    years = years_for(args.offset, args.window)
+    lat, win = args.lat_split, args.window
     if args.split:
         for y in years:
-            launch(ee.FeatureCollection(year_features(y, args.offset, bounds)),
-                   desc_for(args.offset, y), args.dry_run)
+            launch(ee.FeatureCollection(year_features(y, args.offset, bounds, lat, win)),
+                   desc_for(args, y), args.dry_run)
         return 0
     fc = ee.FeatureCollection(
-        ee.List([year_features(y, args.offset, bounds) for y in years]).flatten())
-    launch(fc, desc_for(args.offset), args.dry_run)
+        ee.List([year_features(y, args.offset, bounds, lat, win) for y in years]).flatten())
+    launch(fc, desc_for(args), args.dry_run)
     return 0
 
 
@@ -335,7 +364,7 @@ def status(args) -> int:
     found = 0
     for op in ee.data.listOperations():
         md = op.get("metadata", {})
-        if f"{TASK_PREFIX}_y{args.offset}" in md.get("description", ""):
+        if f"{TASK_PREFIX}{suffix(args)}" in md.get("description", ""):
             found += 1
             print(f"{md.get('description')}  {md.get('state')}  "
                   f"{md.get('startTime', '')}  {md.get('updateTime', '')}")
@@ -349,8 +378,8 @@ def status(args) -> int:
 # ---------------------------------------------------------------------------
 def fetch(args) -> int:
     drive = drive_client(args)
-    names = ([desc_for(args.offset)] if not args.split
-             else [desc_for(args.offset, y) for y in years_for(args.offset)])
+    names = ([desc_for(args)] if not args.split
+             else [desc_for(args, y) for y in years_for(args.offset, args.window)])
     blobs = []
     for name in names:
         q = f"name = '{name}.csv' and trashed = false"
@@ -363,7 +392,7 @@ def fetch(args) -> int:
         blobs.append(drive.files().get_media(fileId=f0["id"]).execute().decode("utf-8"))
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    raw = raw_csv(args.offset)
+    raw = raw_csv(args)
     if len(blobs) == 1:
         raw.write_text(blobs[0], encoding="utf-8")
     else:
@@ -374,8 +403,8 @@ def fetch(args) -> int:
     return check(args)
 
 
-def read_raw_csv(offset: int) -> list[dict]:
-    raw = raw_csv(offset)
+def read_raw_csv(args) -> list[dict]:
+    raw = raw_csv(args)
     if not raw.exists():
         raise SystemExit(f"{raw} no existe — corré --export y después --fetch")
     rows = []
@@ -387,14 +416,16 @@ def read_raw_csv(offset: int) -> list[dict]:
     return rows
 
 
-def write_tidy(rows: list[dict], offset: int) -> None:
+def write_tidy(rows: list[dict], args) -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    cols = ["year", "state_id", "state", "ecoregion_id", "ecoregion",
+    cols = ["year", "north", "state_id", "state", "ecoregion_id", "ecoregion",
             "class_prev", "class_post",
             "nivel1_prev", "nivel1_post", "nivel2_prev", "nivel2_post", "area_ha"]
-    rows = sorted(rows, key=lambda r: (r["year"], r["state_id"], r["ecoregion_id"],
-                                       r["class_prev"], r["class_post"]))
-    out = tidy_csv(offset)
+    if args.lat_split is None:
+        cols.remove("north")        # sin corte la columna sería 0 en todas las filas
+    rows = sorted(rows, key=lambda r: (r["year"], r["north"], r["state_id"],
+                                       r["ecoregion_id"], r["class_prev"], r["class_post"]))
+    out = tidy_csv(args)
     with out.open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore")
         w.writeheader()
@@ -417,9 +448,9 @@ def check(args) -> int:
     Y el informe: cuánta superficie cae en cada estado, y el cociente q de Ferro et al. para
     "cambió de clase", que es el número que el análisis existe para producir.
     """
-    rows = read_raw_csv(args.offset)
-    write_tidy(rows, args.offset)
-    years = years_for(args.offset)
+    rows = read_raw_csv(args)
+    write_tidy(rows, args)
+    years = years_for(args.offset, getattr(args, "window", None))
 
     # --- 1. el área quemada contra el toolkit ---------------------------------
     mine = defaultdict(float)
@@ -495,8 +526,16 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--test-rect", action="store_true", help="el recuadro de Córdoba")
-    ap.add_argument("--offset", type=int, default=1, choices=(1, 3),
+    ap.add_argument("--offset", type=int, default=1, choices=(1, 2, 3, 4, 5),
                     help="años después del fuego para la cobertura DESPUÉS (1 = Ferro et al.)")
+    ap.add_argument("--window", type=int, default=None, choices=(1, 2, 3, 4, 5),
+                    help="años de la VENTANA DE EXCLUSIÓN, si no es igual a --offset. "
+                         "Fijarla para todos los lags da la MISMA cohorte de píxeles y de "
+                         "años focales, que es la única forma de leer Y+1..Y+5 como una "
+                         "trayectoria y no como cuatro poblaciones distintas (docs/09 §5.7.2)")
+    ap.add_argument("--lat-split", type=float, default=None, metavar="LAT",
+                    help="parte cada ecorregión en norte/sur de ese paralelo (ej. -44), "
+                         "como dimensión extra del código (docs/09 §5.7.3)")
     ap.add_argument("--export", action="store_true", help="la corrida nacional")
     ap.add_argument("--split", action="store_true", help="una tarea por año")
     ap.add_argument("--status", action="store_true")

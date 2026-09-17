@@ -1,0 +1,660 @@
+---
+title: "Cambio de cobertura alrededor del fuego"
+subtitle: "Análisis 6 — el cuaderno de trabajo, separado para poder iterarlo rápido"
+date: today
+lang: es
+params:
+  write_plots: true
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    embed-resources: true
+    fig-width: 7
+    fig-height: 4.6
+---
+
+**Este cuaderno es el análisis 6 completo, fuera del factsheet.** Vive aparte por una razón
+práctica: `factsheet.qmd` tarda varios minutos en renderizar —los mapas de píxel son millones
+de celdas— y esta parte todavía se está decidiendo. Acá se dibuja sólo lo que sale de tres
+CSV chicos, así que un render son segundos.
+
+Las figuras que escribe siguen llevando el prefijo **`fig06_`**: el análisis sigue siendo el
+6 (`docs/10-factsheet_design.md` §6), sólo cambió de cuaderno. `factsheet.qmd` ya no lo
+dibuja, así que cada figura tiene un único productor.
+
+De dónde salen los números: [`docs/09-statistics.md`](../docs/09-statistics.md) §5.7.
+
+```{r setup}
+#| message: false
+#| warning: false
+knitr::opts_knit$set(root.dir = normalizePath("../.."))
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, dev = "png", dpi = 110)
+```
+
+```{r style}
+#| message: false
+source("collection-01/statistics/factsheet_style.R")
+library(patchwork)
+
+WRITE <- isTRUE(params$write_plots)
+if (WRITE) dir.create(FIG_DIR, showWarnings = FALSE, recursive = TRUE)
+stopifnot(HAS_CHANGE)
+
+OFFS <- sort(unique(fs$change_sum$offset))          # 1 y 3
+off_lab <- function(x) paste0("Y+", x)
+cat(sprintf("ventanas: %s · niveles: %s · ámbitos: %d\n",
+            paste(off_lab(OFFS), collapse = ", "),
+            paste(unique(fs$change_sum$level), collapse = ", "),
+            uniqueN(fs$change_sum$ecoregion)))
+```
+
+## 1. Qué se compara, en dos párrafos
+
+Para cada píxel-año del país se cruzan **la cobertura del año anterior al fuego** (Y−1) y la
+de **Y+1 o Y+3**, y se lo clasifica en uno de cuatro estados según su historia de fuego en
+esa ventana (`legends.py::FIRE_STATE_NAMES`). Dos importan y los dos están *limpios* en el
+mismo sentido — sin fuego en ningún otro año de la ventana:
+
+- **`burned_clean`** — ardió en el año focal y en ningún otro. Es **el tratamiento**.
+- **`control`** — no ardió en ningún año de la ventana. Es **el control**.
+
+Los otros dos (`window_fire`, `burned_repeat`) se apartan porque tienen fuego en la ventana
+pero no en el año focal, o fuego repetido: en los dos casos la cobertura "antes" o la de
+"después" está mirando una cicatriz que no es la del año que se analiza. La regla es de
+Ferro et al. (2026); acá se aplica a los dos grupos.
+
+Todo lo que sigue es, entonces, **la misma cuenta hecha dos veces** —con fuego y sin fuego— y
+su cociente:
+
+$$q = \frac{P(\text{cambió} \mid \text{ardió})}{P(\text{cambió} \mid \text{no ardió})}$$
+
+`q > 1`: el fuego promueve el cambio. `q < 1`: lo limita. `q = 1`: pasa lo mismo con fuego
+que sin él. **El porcentaje solo no se puede leer**; el par (porcentaje, q) sí.
+
+```{r datos}
+# ── la tabla condicionada a la CLASE DE ORIGEN ───────────────────────────────
+# `factsheet_change_q.csv` trae, por ámbito x ventana x nivel x estado, la probabilidad de
+# cada transición CONDICIONADA a la clase de origen (dentro de cada origen, las p suman 1).
+# Sumando las p de los destinos distintos del origen queda P(cambió | origen, estado), que es
+# exactamente lo que este cuaderno pide — y no se puede sacar del promedio marginal.
+FROM <- fs$change_q[, .(
+  area_burned = sum(area_burned), area_control = sum(area_control),
+  p_burn = sum(p_burned[clase_post != clase_prev]),
+  p_ctrl = sum(p_control[clase_post != clase_prev])
+), by = .(ecoregion_id, ecoregion, offset, level, clase = clase_prev)]
+FROM[, q := p_burn / p_ctrl]
+FROM[, `:=`(pct_burn = 100 * p_burn, pct_ctrl = 100 * p_ctrl)]
+
+# Umbral de superficie: un porcentaje sobre 200 ha quemadas es ruido con tres decimales.
+# Se aplica al AREA QUEMADA de esa clase en ese ámbito, y se dice siempre cuál es.
+MIN_HA <- 5000
+
+# El marginal, para el bloque 2: estados 0 (control), 1 (tratamiento) y 13 (todo lo quemado).
+MARG <- fs$change_sum[ecoregion %in% c(NAT, REGIONS)]
+MARG[, grp := c("0" = "no ardió", "1" = "ardió", "13" = "ardió (todo)")[as.character(state_id)]]
+
+# Orden de regiones: por q en Y+1, nivel 1 — el mismo en todas las figuras del cuaderno, así
+# que la posición vertical significa lo mismo en todas.
+ORD <- MARG[state_id == 1L & level == "nivel1" & offset == 1L & ecoregion %in% REGIONS][
+  order(q_changed), ecoregion]
+ord_f <- function(x) factor(x, levels = ORD)
+```
+
+## 2. El marginal: cuánto cambia y cuánto permanece
+
+Promediado sobre **todas** las clases de origen. Es el número que resume, y es también el que
+más engaña: mezcla sistemas que se convierten con sistemas que no pueden convertirse porque
+ya eran lo que iban a ser. El bloque 3 lo abre por clase.
+
+### 2.1 Lo que cambia con fuego y sin fuego, en las dos ventanas
+
+```{r fig06-dumbbell}
+#| fig-height: 5.2
+#| fig-width: 11
+dumb2 <- function(lv) {
+  d <- MARG[level == lv & state_id %in% c(0L, 1L) & ecoregion %in% REGIONS]
+  d[, ecoregion := ord_f(ecoregion)]
+  w <- dcast(d, ecoregion + offset ~ grp, value.var = "changed_pct")
+  ggplot(d, aes(changed_pct, ecoregion)) +
+    geom_segment(data = w, aes(x = `no ardió`, xend = `ardió`, y = ecoregion, yend = ecoregion),
+                 inherit.aes = FALSE, colour = "grey78", linewidth = 1.1) +
+    geom_point(aes(colour = grp), size = 2.4) +
+    facet_wrap(~ offset, labeller = as_labeller(function(x) off_lab(x))) +
+    scale_colour_manual(values = c(`ardió` = "#B23C06", `no ardió` = "grey55"), name = NULL) +
+    scale_x_continuous(expand = expansion(mult = c(0.03, 0.08))) +
+    labs(x = "% que figura con otra cobertura", y = NULL) +
+    theme(legend.position = "top")
+}
+p <- dumb2("nivel1") +
+  plot_annotation(title = "Cuánto cambia la cobertura, con fuego y sin fuego",
+                  subtitle = "Familias (nivel 1) · el segmento es el efecto del fuego; el punto gris, lo que habría cambiado igual",
+                  theme = theme(plot.title = element_text(face = "bold"),
+                                plot.subtitle = element_text(colour = "grey35")))
+save_fig(p, "fig06_dumbbell_ventanas_nivel1", w = 11, h = 5.2, write = WRITE)
+p2 <- dumb2("nivel2") + plot_annotation(title = "Lo mismo, por clase nativa (nivel 2)")
+save_fig(p2, "fig06_dumbbell_ventanas_nivel2", w = 11, h = 5.2, write = WRITE)
+p; p2
+```
+
+### 2.2 Cambia / permanece, como reparto
+
+La misma información dicha al revés, que es como se lee en una slide: de 100 hectáreas,
+cuántas conservan su cobertura y cuántas no.
+
+```{r fig06-stack}
+#| fig-height: 6.5
+#| fig-width: 11
+stack2 <- function(lv) {
+  d <- MARG[level == lv & state_id %in% c(0L, 1L) & ecoregion %in% c(NAT, REGIONS)]
+  d[, ecoregion := factor(ecoregion, levels = c(ORD, NAT))]
+  m <- melt(d[, .(ecoregion, offset, grp, cambió = changed_pct,
+                  permaneció = 100 - changed_pct)],
+            id.vars = c("ecoregion", "offset", "grp"), variable.name = "qué")
+  m[, `qué` := factor(`qué`, levels = c("permaneció", "cambió"))]
+  ggplot(m, aes(value, grp, fill = `qué`)) +
+    geom_col(width = 0.68) +
+    geom_text(data = m[`qué` == "cambió" & value >= 4],
+              aes(label = fmt_pct(value, 0)), hjust = 1.15, size = 2.7, colour = "white") +
+    facet_grid(ecoregion ~ offset, switch = "y",
+               labeller = labeller(offset = function(x) off_lab(x),
+                                   ecoregion = function(x) wrap_lab(x, 16))) +
+    scale_fill_manual(values = c(permaneció = "grey80", cambió = "#B23C06"), name = NULL) +
+    scale_x_continuous(expand = c(0, 0)) +
+    labs(x = "% del área", y = NULL) +
+    theme(legend.position = "top", panel.grid.major.y = element_blank(),
+          strip.text.y.left = element_text(angle = 0, hjust = 1, size = rel(0.7)),
+          axis.text.y = element_text(size = rel(0.75)))
+}
+p <- stack2("nivel1")
+save_fig(p, "fig06_reparto_cambio_nivel1", w = 11, h = 6.5, write = WRITE)
+p2 <- stack2("nivel2")
+save_fig(p2, "fig06_reparto_cambio_nivel2", w = 11, h = 6.5, write = WRITE)
+p; p2
+```
+
+### 2.3 q, y qué le hace la ventana
+
+```{r fig06-q}
+#| fig-height: 5
+#| fig-width: 8
+qwin <- function(lv) {
+  d <- MARG[level == lv & state_id == 1L & ecoregion %in% REGIONS]
+  d[, ecoregion := ord_f(ecoregion)]
+  nat <- MARG[level == lv & state_id == 1L & ecoregion == NAT]
+  ggplot(d, aes(q_changed, ecoregion, colour = factor(offset))) +
+    geom_vline(xintercept = 1, colour = "grey25", linewidth = 0.4) +
+    geom_vline(data = nat, aes(xintercept = q_changed, colour = factor(offset)),
+               linetype = "22", linewidth = 0.4, show.legend = FALSE) +
+    geom_line(aes(group = ecoregion), colour = "grey80", linewidth = 0.8,
+              orientation = "y") +
+    geom_point(size = 2.6) +
+    scale_colour_manual(values = c(`1` = "#E08214", `3` = "#542788"),
+                        labels = off_lab, name = NULL) +
+    scale_x_continuous(trans = "log10", expand = expansion(mult = c(0.1, 0.1))) +
+    labs(x = "q  —  veces que el fuego multiplica la probabilidad de cambio", y = NULL,
+         caption = cap("Escala logarítmica: q es un cociente, y 0,5 y 2 tienen que estar a la misma distancia de 1. A la izquierda de la línea, el fuego LIMITA el cambio. Punteadas: el país en cada ventana.")) +
+    theme(legend.position = "top")
+}
+p <- qwin("nivel1") + labs(title = "q por ecorregión, en las dos ventanas",
+                           subtitle = "Familias (nivel 1)")
+save_fig(p, "fig06_q_ventanas_nivel1", w = 8, h = 5, write = WRITE)
+p2 <- qwin("nivel2") + labs(title = "q por ecorregión, en las dos ventanas",
+                            subtitle = "Clases nativas (nivel 2)")
+save_fig(p2, "fig06_q_ventanas_nivel2", w = 8, h = 5, write = WRITE)
+p; p2
+```
+
+### 2.4 Los dos escalares, en el mapa
+
+```{r fig06-mapa}
+#| fig-height: 6.5
+#| fig-width: 11
+mapa_cambio <- function(lv, off, what = c("pct", "q")) {
+  what <- match.arg(what)
+  d <- copy(fs$change_sum[level == lv & offset == off & state == "burned_clean"])
+  # q va en log: es un cociente, y el punto neutro del degradado divergente tiene que caer
+  # en q = 1, no en el promedio. Con la columna ya transformada, `midpoint = 0` ES q = 1.
+  d[, val := if (what == "q") log10(pmax(q_changed, 1e-3)) else changed_pct]
+  map_scalar("val", data = d,
+             legend = if (what == "q") "q (log)" else "% del área\nquemada",
+             midpoint = if (what == "q") 0 else NULL,
+             palette = "BuPu", direction = 1,
+             labels = if (what == "q") function(x) formatC(10^x, format = "fg", digits = 2)
+                      else waiver(),
+             title = if (what == "q") "Cuántas veces multiplica el fuego el cambio"
+                     else "Cuánto de lo quemado cambió de cobertura",
+             subtitle = off_lab(off))
+}
+p <- (mapa_cambio("nivel1", 1) | mapa_cambio("nivel1", 3)) +
+  plot_annotation(title = "Cuánto de lo quemado cambia de cobertura",
+                  subtitle = "Familias (nivel 1) · las dos ventanas",
+                  theme = theme(plot.title = element_text(face = "bold"),
+                                plot.subtitle = element_text(colour = "grey35")))
+save_fig(p, "fig06_mapa_cambio_nivel1", w = 11, h = 6.5, write = WRITE)
+pq <- (mapa_cambio("nivel1", 1, "q") | mapa_cambio("nivel1", 3, "q")) +
+  plot_annotation(title = "q — el efecto del fuego sobre el cambio de cobertura",
+                  subtitle = "Familias (nivel 1) · azul: el fuego lo limita (q < 1)",
+                  theme = theme(plot.title = element_text(face = "bold"),
+                                plot.subtitle = element_text(colour = "grey35")))
+save_fig(pq, "fig06_mapa_q_nivel1", w = 11, h = 6.5, write = WRITE)
+save_fig((mapa_cambio("nivel2", 1) | mapa_cambio("nivel2", 3)),
+         "fig06_mapa_cambio_nivel2", w = 11, h = 6.5, write = WRITE)
+save_fig((mapa_cambio("nivel2", 1, "q") | mapa_cambio("nivel2", 3, "q")),
+         "fig06_mapa_q_nivel2", w = 11, h = 6.5, write = WRITE)
+pq
+```
+
+```{r tabla-marginal}
+knitr::kable(
+  dcast(MARG[level == "nivel1" & state_id %in% c(0L, 1L)],
+        ecoregion + offset ~ grp, value.var = "changed_pct")[
+    MARG[level == "nivel1" & state_id == 1L, .(ecoregion, offset, q_changed)],
+    on = .(ecoregion, offset), q := i.q_changed][
+    order(-q), .(Ecorregión = ecoregion, Ventana = off_lab(offset),
+                 `% cambió (ardió)` = fmt_pct(`ardió`, 1),
+                 `% cambió (control)` = fmt_pct(`no ardió`, 1),
+                 q = formatC(q, format = "f", digits = 1, decimal.mark = ","))],
+  align = "llrrr")
+```
+
+## 3. Condicionado a la clase de ORIGEN
+
+**Acá está el análisis.** El marginal del bloque 2 mezcla orígenes: en Bosques Patagónicos,
+por ejemplo, el 44,5 % de lo que ardió ya era matorral o pastizal, y un matorral que sigue
+siendo matorral no "cambia" — así que el promedio diluye lo que le pasa al bosque. La
+pregunta que se puede contestar es siempre *por clase de origen*.
+
+### 3.1 El país, clase por clase
+
+```{r fig06-from-nacional}
+#| fig-height: 7
+#| fig-width: 11
+from_plot <- function(scope, lv, min_ha = MIN_HA) {
+  d <- FROM[ecoregion == scope & level == lv]
+  # Las clases se eligen por la UNIÓN de las ventanas: si una clase llega al umbral en Y+1
+  # pero no en Y+5, igual tiene que aparecer en los dos paneles — si no, los dos ejes dejan
+  # de ser el mismo eje y las alturas no se pueden comparar de un panel al otro.
+  keep <- d[area_burned >= min_ha, unique(clase)]
+  d <- d[clase %in% keep]
+  if (!nrow(d)) return(NULL)
+  ord <- d[offset == min(d$offset)][order(pct_burn), clase]
+  d[, clase := factor(clase, levels = ord)]
+  m <- melt(d[, .(clase, offset, q, `ardió` = pct_burn, `no ardió` = pct_ctrl)],
+            id.vars = c("clase", "offset", "q"), variable.name = "grp", value.name = "pct")
+  # La q se escribe UNA vez, sobre la barra de "ardió": el texto viaja con el mismo dodge que
+  # las barras, así que queda pegado a la suya y no hay que calcular desplazamientos a mano.
+  m[, lab := ifelse(grp == "ardió" & is.finite(q),
+                    paste0("q ", formatC(q, format = "f", digits = 1, decimal.mark = ",")), "")]
+  DODGE <- 0.72
+  ggplot(m, aes(pct, clase, fill = grp)) +
+    geom_col(position = position_dodge(width = DODGE), width = DODGE) +
+    geom_text(aes(label = lab), position = position_dodge(width = DODGE),
+              hjust = -0.12, size = 2.6, colour = "grey30") +
+    # `scales = "free_y"` es lo que repite las etiquetas de clase en LOS DOS paneles. Las
+    # clases son las mismas en ambos (ver `keep`), así que no cambia qué se muestra: sólo
+    # evita tener que cruzar la figura entera con la vista para saber qué fila se está leyendo.
+    facet_wrap(~ offset, scales = "free_y",
+               labeller = as_labeller(function(x) off_lab(x))) +
+    scale_fill_manual(values = c(`ardió` = "#B23C06", `no ardió` = "grey65"), name = NULL) +
+    scale_x_continuous(expand = expansion(mult = c(0, 0.20))) +
+    scale_y_discrete(labels = function(x) wrap_lab(x, 26)) +
+    labs(x = "% de esa clase que figura con otra cobertura", y = NULL,
+         caption = cap(sprintf("Sólo clases con al menos %s ha quemadas. La barra roja es lo que ardió, la gris el control; q es el cociente entre las dos.",
+                               formatC(min_ha, format = "d", big.mark = ".")))) +
+    theme(legend.position = "top", panel.grid.major.y = element_blank(),
+          panel.grid.major.x = element_line(colour = "grey92", linewidth = 0.3))
+}
+
+p <- from_plot(NAT, "nivel2") +
+  plot_annotation(title = "Qué le pasa a cada clase cuando se quema — Argentina",
+                  subtitle = "Clases nativas (nivel 2), condicionado a la cobertura ANTES del fuego",
+                  theme = theme(plot.title = element_text(face = "bold"),
+                                plot.subtitle = element_text(colour = "grey35")))
+save_fig(p, "fig06_desde_clase_nacional_nivel2", w = 11, h = 7, write = WRITE)
+p
+```
+
+Y por familia, que es la versión que va a una slide:
+
+```{r fig06-from-nacional-n1}
+#| fig-height: 4
+#| fig-width: 11
+p1 <- from_plot(NAT, "nivel1") +
+  plot_annotation(title = "Qué le pasa a cada familia cuando se quema — Argentina",
+                  subtitle = "Familias (nivel 1), condicionado a la cobertura ANTES del fuego",
+                  theme = theme(plot.title = element_text(face = "bold"),
+                                plot.subtitle = element_text(colour = "grey35")))
+save_fig(p1, "fig06_desde_clase_nacional_nivel1", w = 11, h = 4, write = WRITE)
+p1
+```
+
+
+### 3.2 Cada región, por familia (nivel 1)
+
+```{r fig06-from-regiones-n1}
+#| fig-height: 4.5
+#| fig-width: 11
+#| results: asis
+# Se DIBUJAN todas, no sólo se guardan: este cuaderno se lee en pantalla, y una figura que
+# sólo existe en `figures/` es una figura que no está.
+#
+# Un chunk POR NIVEL, porque el alto del chunk es el que recorta: nivel 1 son 3-5 clases y
+# nivel 2 hasta 14, y con una altura sola las de nivel 2 salen con la leyenda y el eje x y
+# nada en el medio.
+draw_from <- function(lv, h) {
+  for (r in REGIONS) {
+    p <- from_plot(r, lv)
+    if (is.null(p)) next
+    p <- p + labs(title = r,
+      subtitle = if (lv == "nivel1") "Familias (nivel 1)" else "Clases nativas (nivel 2)")
+    save_fig(p, paste0("fig06_desde_clase_", slug(r), "_", lv), w = 11, h = h, write = WRITE)
+    cat("\n\n##### ", r, "\n\n", sep = "")
+    print(p)
+  }
+}
+draw_from("nivel1", 4.5)
+```
+
+### 3.3 Cada región, por clase nativa (nivel 2)
+
+```{r fig06-from-regiones-n2}
+#| fig-height: 8
+#| fig-width: 11
+#| results: asis
+draw_from("nivel2", 8)
+```
+
+
+
+### 3.4 El mapa de calor: dónde y en qué clase cambia más
+
+```{r fig06-heat}
+#| fig-height: 6
+#| fig-width: 10
+heat_from <- function(lv, off, what = c("pct_burn", "q"), min_ha = MIN_HA) {
+  what <- match.arg(what)
+  d <- FROM[level == lv & offset == off & ecoregion %in% REGIONS & area_burned >= min_ha]
+  cl <- if (lv == "nivel1") LULC_N1 else LULC_N2
+  d <- d[clase %in% cl]
+  d[, clase := factor(clase, levels = cl)]
+  d[, ecoregion := ord_f(ecoregion)]
+  d[, val := get(what)]
+  ggplot(d, aes(clase, ecoregion, fill = if (what == "q") log10(pmax(val, 1e-3)) else val)) +
+    geom_tile(colour = "white", linewidth = 0.6) +
+    geom_text(aes(label = if (what == "q") fmt_pct(val, 1) else fmt_pct(val, 0)),
+              size = 2.7, colour = "grey15") +
+    (if (what == "q")
+       scale_fill_gradient2(low = "#2166AC", mid = "grey93", high = "#B23C06", midpoint = 0,
+                            name = "q", labels = function(x) formatC(10^x, format = "fg", digits = 2))
+     else scale_fill_distiller(palette = "YlOrRd", direction = 1, name = "%")) +
+    scale_x_discrete(labels = function(x) wrap_lab(x, 14), position = "top") +
+    labs(x = NULL, y = NULL,
+         caption = cap(sprintf("Celda vacía: esa clase no llega a %s ha quemadas en esa ecorregión.",
+                               formatC(min_ha, format = "d", big.mark = ".")))) +
+    theme(panel.grid = element_blank(), axis.text.x.top = element_text(size = rel(0.75)),
+          axis.text.y = element_text(size = rel(0.8)))
+}
+for (lv in c("nivel1", "nivel2")) for (off in OFFS) for (w in c("pct_burn", "q")) {
+  ttl <- if (w == "q") "q — cuántas veces multiplica el fuego el cambio" else
+                       "% de lo quemado de esa clase que cambió de cobertura"
+  save_fig(heat_from(lv, off, w) +
+             labs(title = ttl, subtitle = sprintf("%s · ventana %s",
+                  if (lv == "nivel1") "familias (nivel 1)" else "clases nativas (nivel 2)",
+                  off_lab(off))),
+           sprintf("fig06_heat_%s_%s_y%d", if (w == "q") "q" else "pct", lv, off),
+           w = 10, h = 6, write = WRITE)
+}
+heat_from("nivel2", 3, "pct_burn") +
+  labs(title = "% de lo quemado de esa clase que cambió de cobertura",
+       subtitle = "Clases nativas (nivel 2) · ventana Y+3")
+```
+
+### 3.5 La tabla para elegir los sistemas
+
+Ordenada por cuánto cambia lo quemado. `q` al lado, porque un porcentaje alto con `q ≈ 1` es
+un sistema que cambia mucho *igual* — no es una historia sobre el fuego.
+
+```{r tabla-from}
+tb <- FROM[ecoregion != NAT & area_burned >= 2e4 & level == "nivel2"][order(-pct_burn)]
+knitr::kable(
+  head(tb[, .(Ecorregión = ecoregion, Clase = clase, Ventana = off_lab(offset),
+              `kha quemadas` = formatC(area_burned / 1e3, format = "f", digits = 0,
+                                       big.mark = "."),
+              `% cambió` = fmt_pct(pct_burn, 1),
+              `% control` = fmt_pct(pct_ctrl, 1),
+              q = formatC(q, format = "f", digits = 1, decimal.mark = ","))], 30),
+  align = "llrrrrr")
+```
+
+## 4. De qué a qué: las transiciones
+
+Lo anterior dice *cuánto* cambia cada clase. Esto dice *a qué*. Cada tipo de figura tiene su
+subsección, y dentro de cada una van el país y las 12 ecorregiones, en las dos ventanas.
+
+```{r sankey-fun}
+sankey_titled <- function(scope, lv, off = 1L, min_share = if (lv == "nivel1") 1 else 1.5) {
+  p <- sankey_change(scope, lv, min_share, off)
+  p + labs(title = sprintf("De qué cobertura a qué cobertura: %s", scope),
+           subtitle = sprintf("%s · ventana %s · %s Mha que cambiaron · las transiciones dibujadas son el %s %% de ese total",
+                              if (lv == "nivel1") "familias (nivel 1)" else "clases nativas (nivel 2)",
+                              off_lab(off), fmt_mha(attr(p, "total_ha"), 2),
+                              fmt_pct(attr(p, "cobertura"), 0)),
+           caption = cap("Sólo el área que CAMBIÓ de clase, y sólo lo quemado — no hay control en esta figura, así que las bandas no se pueden leer como efecto del fuego. Para eso están los bloques 2 y 3."))
+}
+# Un solo lugar decide el tamaño de cada familia de figuras, y los chunks lo repiten en sus
+# opciones `fig-width`/`fig-height`. Tienen que COINCIDIR: el chunk recorta, `save_fig` no —
+# y un nivel 2 dibujado con la altura de un nivel 1 sale con la leyenda y el eje x y nada más.
+DIM <- list(tile   = list(nivel1 = c(7, 5.5),  nivel2 = c(12, 9)),
+            sankey = list(nivel1 = c(8, 6),    nivel2 = c(9, 7.5)),
+            perm   = list(nivel1 = c(9, 3.2),  nivel2 = c(9, 6.5)))
+draw_all <- function(fn, kind, lv, tag) {
+  d <- DIM[[kind]][[lv]]
+  for (off in OFFS) for (r in c(NAT, REGIONS)) {
+    p <- fn(r, lv, off)
+    save_fig(p, sprintf("fig06_%s_%s_%s_y%d", tag,
+                        if (r == NAT) "nacional" else slug(r), lv, off),
+             w = d[1], h = d[2], write = WRITE)
+    cat("\n\n##### ", r, " — ", off_lab(off), "\n\n", sep = "")
+    print(p)
+  }
+}
+```
+
+### 4.1 Matriz de q por transición — familias (nivel 1)
+
+Cada celda es P(esa transición | ardió) / P(esa transición | no ardió), condicionada a la
+cobertura **antes**. Rojo: el fuego la promueve. Azul: la limita. La diagonal es la
+persistencia.
+
+```{r fig06-tile-n1}
+#| fig-width: 7
+#| fig-height: 5.5
+#| results: asis
+draw_all(function(r, lv, off) tile_q(r, lv, off) +
+           labs(title = sprintf("q por transición — %s", r), subtitle = off_lab(off)),
+         "tile", "nivel1", "q_transiciones")
+```
+
+### 4.2 Matriz de q por transición — clases nativas (nivel 2)
+
+```{r fig06-tile-n2}
+#| fig-width: 12
+#| fig-height: 9
+#| results: asis
+draw_all(function(r, lv, off) tile_q(r, lv, off) +
+           labs(title = sprintf("q por transición — %s", r), subtitle = off_lab(off)),
+         "tile", "nivel2", "q_transiciones")
+```
+
+### 4.3 Sankey — familias (nivel 1)
+
+```{r fig06-sankey-n1}
+#| fig-width: 8
+#| fig-height: 6
+#| results: asis
+draw_all(sankey_titled, "sankey", "nivel1", "sankey")
+```
+
+### 4.4 Sankey — clases nativas (nivel 2)
+
+```{r fig06-sankey-n2}
+#| fig-width: 9
+#| fig-height: 7.5
+#| results: asis
+draw_all(sankey_titled, "sankey", "nivel2", "sankey")
+```
+
+### 4.5 Lo que permanece — familias (nivel 1)
+
+De lo que ardió y **no** cambió de cobertura, cómo se reparte entre clases. Suma 100 %.
+
+```{r fig06-perm-n1}
+#| fig-width: 9
+#| fig-height: 3.2
+#| results: asis
+draw_all(function(r, lv, off) bar_unchanged(r, lv, off) +
+           labs(title = sprintf("Lo que ardió y NO cambió — %s", r), subtitle = off_lab(off)),
+         "perm", "nivel1", "sin_cambio")
+```
+
+### 4.6 Lo que permanece — clases nativas (nivel 2)
+
+```{r fig06-perm-n2}
+#| fig-width: 9
+#| fig-height: 6.5
+#| results: asis
+draw_all(function(r, lv, off) bar_unchanged(r, lv, off) +
+           labs(title = sprintf("Lo que ardió y NO cambió — %s", r), subtitle = off_lab(off)),
+         "perm", "nivel2", "sin_cambio")
+```
+
+## 5. El caso patagónico: el mapa no se equivoca, tarda
+
+Este bloque existe por una objeción concreta. En los bosques andino-patagónicos el fuego es
+de alta severidad y la bibliografía habla de **~95 % de mortalidad del rodal**: casi todo lo
+que arde se arbustaliza o se pastizaliza. El análisis general daba **44 %** de cambio de
+cobertura a un año. O el mapa está mal, o tarda en verlo.
+
+Contestarlo necesita dos cosas que el análisis general no tiene (`docs/09 §5.7.3`):
+
+- **El corte latitudinal.** Bosques Patagónicos no es homogénea. El norte —de la mitad de
+  Chubut para arriba— concentra el **87 %** de lo quemado y tiene otro régimen de fuego que
+  el sur. `--lat-split -44`.
+- **La cohorte fija.** Sin ella, cada lag trae su propia ventana de exclusión y por lo tanto
+  su propio rango de años: Y+5 se pierde los incendios de 2021–2024 y Y+1 no, así que los
+  cuatro números son cuatro **poblaciones** y no una trayectoria. Con `--window 5` los cuatro
+  lags miran los **mismos píxeles** y los **mismos años focales** (1999–2020), y recién ahí
+  Y+1 → Y+5 se puede leer como "cuánto tarda".
+
+```{r pat-datos}
+PAT_OK <- file.exists(file.path(STATS_DIR, "factsheet_patagonia_bosque.csv"))
+if (PAT_OK) {
+  PAT  <- fread(file.path(STATS_DIR, "factsheet_patagonia_bosque.csv"), encoding = "UTF-8")
+  PDES <- fread(file.path(STATS_DIR, "factsheet_patagonia_destinos.csv"), encoding = "UTF-8")
+}
+```
+
+### 5.1 La trayectoria, con la cohorte fija
+
+```{r fig06-pat-traj}
+#| fig-height: 4.6
+#| fig-width: 8
+#| eval: !expr PAT_OK
+d <- melt(PAT[cohorte == "fija"], id.vars = c("cohorte", "zona", "offset"),
+          measure.vars = c("ardio", "control"), variable.name = "grp", value.name = "pct")
+d[, grp := ifelse(grp == "ardio", "ardió", "no ardió (control)")]
+f5 <- ggplot(d, aes(offset, pct, colour = grp, linetype = zona)) +
+  geom_line(linewidth = 0.9) + geom_point(size = 2.4) +
+  scale_colour_manual(values = c(`ardió` = "#B23C06", `no ardió (control)` = "grey55"),
+                      name = NULL) +
+  scale_linetype_manual(values = c(`norte de -44` = "solid", `sur de -44` = "22"), name = NULL) +
+  scale_x_continuous(breaks = c(1, 3, 4, 5), labels = off_lab) +
+  labs(x = "cobertura 'después' leída a", y = "% del bosque quemado que deja de ser bosque",
+       title = "Cuánto tarda la colección de cobertura en ver la arbustalización",
+       subtitle = "Bosques Patagónicos · cohorte FIJA: mismos píxeles y mismos años focales (1999–2020) en los cuatro lags",
+       caption = cap("Condicionado a que la cobertura ANTES del fuego fuera bosque. 'Deja de ser bosque' es cualquier destino fuera de la familia Bosques. El control son píxeles sin fuego en toda la ventana [Y−1, Y+5].")) +
+  theme(legend.position = "top", legend.box = "vertical", legend.spacing.y = unit(1, "pt"))
+save_fig(f5, "fig06_patagonia_trayectoria", w = 8, h = 4.6, write = WRITE)
+f5
+```
+
+```{r tabla-pat}
+#| eval: !expr PAT_OK
+knitr::kable(
+  PAT[zona == "norte de -44"][order(cohorte, offset),
+      .(Cohorte = cohorte, Ventana = off_lab(offset),
+        `kha quemadas` = formatC(kha_ardio, format = "f", digits = 1, decimal.mark = ","),
+        `% sale de bosque` = fmt_pct(ardio, 1),
+        `% control` = fmt_pct(control, 1),
+        q = formatC(q_sale, format = "f", digits = 1, decimal.mark = ","))],
+  align = "llrrrr")
+```
+
+**Lo que dice.** Con la cohorte fija —44,1 kha idénticas en los cuatro lags— el bosque quemado
+que deja de ser bosque pasa de **48,9 %** a un año a **78,4 %** a cinco. Los incrementos se
+derrumban (+22,2, +5,1, +2,2 puntos), así que la curva converge cerca del **80 %**, no del
+95 %. El control se mueve de 1,6 % a 3,7 %: el efecto es inequívoco, lo que estaba escondido
+era el **tiempo**.
+
+La cohorte fija da números **más altos** que la móvil en los lags cortos (48,9 contra 45,6 en
+Y+1), que es exactamente lo que tiene que pasar si los incendios recientes que la fija excluye
+todavía no tuvieron tiempo de convertirse.
+
+**Lo que NO explica el 17 % que falta.** No es el rearde (el estado `burned_repeat` son
+0,3–0,7 kha, despreciable) ni la cohorte (acabamos de fijarla). Quedan dos candidatos, los
+dos verificables y ninguno verificado acá: que nuestro conjunto de bosque quemado incluya
+bordes de baja severidad e incendios chicos que la bibliografía de severidad no cuenta, y que
+la integración temporal de la col-3 —que está construida para resistir cambios de un año—
+nunca llegue a soltar una fracción de los rodales muertos.
+
+### 5.2 A qué se convierte, lag por lag
+
+```{r fig06-pat-destinos}
+#| fig-height: 4.6
+#| fig-width: 9
+#| eval: !expr PAT_OK
+top <- PDES[cohorte == "fija" & zona == "norte de -44"]
+keep <- top[, .(t = sum(area_ha)), by = nivel2_post][order(-t)][1:6, nivel2_post]
+top <- top[nivel2_post %in% keep]
+top[, nivel2_post := factor(nivel2_post, levels = rev(keep))]
+f5d <- ggplot(top, aes(factor(offset), pct, fill = nivel2_post)) +
+  geom_col(width = 0.7) +
+  geom_text(data = top[pct >= 6], aes(label = fmt_pct(pct, 0)),
+            position = position_stack(vjust = 0.5), size = 2.9, colour = "white") +
+  scale_fill_manual(values = change_colors("nivel2"), name = NULL) +
+  scale_x_discrete(labels = off_lab) +
+  scale_y_continuous(expand = c(0, 0)) +
+  labs(x = "cobertura 'después' leída a", y = "% del bosque quemado",
+       title = "En qué se convierte el bosque patagónico quemado",
+       subtitle = "Norte de -44 · cohorte fija · las seis clases de destino más grandes",
+       caption = cap("`Bosque cerrado` es la persistencia: cae de 51 % a 22 % mientras `Matorrales y arbustales abiertos` sube de 36 % a 57 %. Eso es la arbustalización, llegando al mapa con unos tres años de atraso.")) +
+  theme(legend.position = "right", legend.text = element_text(size = rel(0.75)))
+save_fig(f5d, "fig06_patagonia_destinos", w = 9, h = 4.6, write = WRITE)
+f5d
+```
+
+### 5.3 Qué le hace esto al resto del análisis
+
+La ventana **Y+1 es la de Ferro et al., calibrada en el Chaco**, donde la conversión es rápida
+y deliberada: se quema para desmontar y el cultivo aparece al año siguiente. En un sistema
+donde el fuego **mata pero no despeja**, un año no alcanza — y el análisis general, que corre
+a Y+1, subestima estructuralmente a esos sistemas.
+
+Dos consecuencias para lo que se reporte:
+
+- **Y+3 como mínimo** para cualquier lectura sobre vegetación natural leñosa; Y+4–5 si la
+  afirmación es sobre bosque.
+- **q baja cuando la ventana se alarga** (30,5 → 21,2 acá) aunque el efecto crezca, porque el
+  control acumula su propio cambio de fondo. `q` y el porcentaje responden preguntas
+  distintas: `q` es "¿esto lo hace el fuego?", el porcentaje es "¿cuánto de este bosque se
+  convirtió?". Para la slide sobre Patagonia, el número es el porcentaje.
+
+## 6. Las figuras escritas
+
+```{r indice}
+f <- sort(sub("\\.png$", "", list.files(FIG_DIR, pattern = "^fig06_.*\\.png$")))
+knitr::kable(data.table(figura = f), align = "l")
+```

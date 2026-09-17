@@ -395,8 +395,8 @@ def stats_read(years, csv_path=None):
         And the bias is not uniform across months: Patagonian fires (lat ~45 deg, 0.064 ha/px)
         peak in summer while Chaco fires (lat ~25 deg, 0.082 ha/px) peak in late winter, so
         even the PIROGRAM'S SHAPE is skewed toward the southern months by this.
-        Use these counts for RELATIVE structure; use `11-burned_area_stats.py`, which sums
-        `ee.Image.pixelArea()`, for anything quoted in hectares.
+        Use these counts for RELATIVE structure only. Anything quoted in hectares comes
+        from the network's toolkit (docs/09 §2), which sums `ee.Image.pixelArea()`.
       * They describe the CURRENT, UNFILTERED map — no agriculture filter (docs/11 §2).
     """
     local_dir = REPO_ROOT / "collection-01/data/objects-scars"

@@ -41,8 +41,14 @@ collection-01/statistics/         all statistics + factsheet code
   factsheet_tables.R  THE ANALYSIS PASS (§5) — the plot-ready tables and the GAMs
   factsheet_style.R   the shared palette, theme, map-as-legend and figure variants
 
-collection-01/notebooks/
-  factsheet.qmd       THE FIGURES (§5.2) — draws only; writes PNG + PDF
+collection-01/notebooks/          ⚠️ THREE notebooks, ONE ships in September — see §5.0
+  factsheet.qmd       THE FIGURES (§5.2) — draws only; writes PNG + PDF. Análisis 1-5.
+                      **THE ONLY ONE THAT FEEDS THE SEPTEMBER LAUNCH.**
+  factsheet_veg.qmd   EXPLORATORY. Análisis 6, on its own (§5.7): it moved out because
+                      factsheet.qmd takes minutes (millions of raster cells) and this one
+                      reads three small CSVs. Prefix `fig06_`, one producer per figure
+  factsheet_veg_short EXPLORATORY. Análisis 6 cut to three sentences and two figures (§5.8)
+        .qmd          plus §4 FOREST ONLY (§5.9). Prefix `fig06c_`
 
 collection-01/data/statistics/    every statistics input and output (Insync store)
   burnable_eco13{,_raw}.csv       the burnable denominator, decoded and as GEE returned it
@@ -58,6 +64,12 @@ collection-01/data/statistics/    every statistics input and output (Insync stor
   ecoregions13_simple.gpkg        the 13 polygons simplified for plotting
   lulc_change_eco13_y{1,3}{,_raw}.csv  análisis 6: estado de fuego x eco x clase ANTES x
                                   clase DESPUÉS x año, las dos ventanas (§5.7)
+  lulc_change_eco13_y*_[w5_]n44*.csv   idem con el corte latitudinal, y con la ventana de
+                                  exclusión fijada en 5 (`_w5`) — el caso patagónico (§5.7.3)
+  factsheet_patagonia_{bosque,destinos}.csv  la trayectoria Y+1..Y+5 y su mezcla de destinos
+  factsheet_bosques.csv           sólo bosques, nacional: % que deja de ser bosque, control
+                                  y q, por clase de nivel 2 x 4 ventanas x 2 cohortes (§5.9)
+  factsheet_bosques_destinos.csv  a dónde va el bosque quemado (permanencia incluida, §5.9)
   arg_burn_perc_480m_{mean,max}.tif  the frequency raster, the two reducers (§5.5)
   arg_last_fire_480m_mean.tif     the year-of-last-fire raster (§5.6)
   factsheet_*.csv                 the plot-ready tables (§5.1), incl. the four
@@ -85,7 +97,9 @@ $PYTHON collection-01/statistics/last_fire_export.py --export    # §5.6
 # ...--fetch each of the three when the tasks land (each one runs its own gate)
 Rscript collection-01/statistics/fire_counts.R                   # §4, ~20 s
 Rscript collection-01/statistics/factsheet_tables.R              # §5, ~10 s
-quarto render collection-01/notebooks/factsheet.qmd              # §5.4, ~60 s
+quarto render collection-01/notebooks/factsheet.qmd              # §5.4, ~5 min
+quarto render collection-01/notebooks/factsheet_veg.qmd          # análisis 6, ~2 min
+quarto render collection-01/notebooks/factsheet_veg_short.qmd    # §5.8, ~10 s
 ```
 
 Only the exports touch GEE (five scripts, seven tasks: two denominators, three rasters, two crossings). The point of the split is that **everything the factsheet draws
@@ -329,6 +343,28 @@ in no ecorregión**. 18 s end to end.
 ---
 
 ## 5. The analysis pass and the figures
+
+### 5.0 ⚠️ Three notebooks, one of them ships in September
+
+**`factsheet.qmd` is the only notebook that feeds the September launch.** `factsheet_veg.qmd`
+and `factsheet_veg_short.qmd` are **exploratory**: they are real analysis, fully documented and
+regularly re-run, but nothing they draw goes to the designer for 24 Sep 2026.
+
+| notebook | status | figures | covers |
+|---|---|---|---|
+| `factsheet.qmd` | **ships (Sep)** | `fig00`–`fig05` | análisis 1–5 |
+| `factsheet_veg.qmd` | exploratory | `fig06_` (202 files) | análisis 6, whole |
+| `factsheet_veg_short.qmd` | exploratory | `fig06c_` (8 files) | análisis 6 short + forest |
+
+Exploratory means **not published in September**, not discarded. The two vegetation notebooks
+are the working material for the **December fire launch** (Bariloche, 7–11 Dec 2026) and for
+**the paper** — the control, `q`, the window trajectory and the per-forest-class split are the
+part that can carry a publishable result. They keep being documented to the same standard.
+
+**What does not exist yet**: a notebook that pins the September deck **slide by slide** — which
+figure, which caption, which number, from which file. Until it does, what ships is defined by
+`docs/10` §"Qué entra al lanzamiento de septiembre" and the decisions still open in
+`ROADMAP.md`. Writing that notebook is the next step, and it is what the graphic designer gets.
 
 ### 5.1 `factsheet_tables.R` — the plot-ready tables
 
@@ -887,7 +923,224 @@ $PYTHON collection-01/statistics/lulc_change_export.py --fetch  --offset 1    # 
 $PYTHON collection-01/statistics/lulc_change_export.py --fetch  --offset 3
 ```
 
+### 5.7.3 Two flags the general analysis does not use: `--lat-split` and `--window`
+
+Both were added on 17 Sep 2026 to answer one objection, and both are general.
+
+**The objection.** In the Andean-Patagonian forests fire is high-severity and the literature
+puts stand mortality near **95 %**: what burns turns to shrubland or grassland. The general
+analysis said **44 %** of burned forest changed cover at Y+1. Either the map is wrong or it
+is slow.
+
+**`--lat-split LAT`** adds a north/south bit to the code (`north * 10⁷ + …`, §5.7) so an
+ecoregion that is not homogeneous can be split without inventing a new ecoregion. Bosques
+Patagónicos is the case: north of −44 (from the middle of Chubut up) holds **87 %** of its
+burned area and a different fire regime. Measured at Y+1, north 45.6 % against south 32.2 %,
+with controls of 1.6 % and 4.3 % — two different systems inside one polygon.
+
+**`--window N`** separates the fire-free **exclusion window** from the post-fire **lag**, and
+without it the lag series cannot be read at all. By default the window equals the offset, so
+each lag carries its own exclusion window *and therefore its own range of focal years*: Y+1
+runs 1999–2024 and Y+5 runs 1999–2020, so Y+5 is missing every fire from 2021–2024. The four
+numbers are then four **populations**, not a trajectory. Pinning `--window 5` makes all lags
+share the same pixels and the same focal years, and only then does Y+1 → Y+5 mean "how long
+does it take".
+
+⚠️ `--offset 5 --window 5` **is** the plain `--offset 5` run — the `_wN` suffix is only
+written when the window differs from the lag, so asking for `_y5_w5_…` asks for a file that
+by construction does not exist.
+
+**The result** (burned forest north of −44, fixed cohort, 44.1 kha identical at every lag):
+
+| window | leaves forest | control | q |
+|---|---|---|---|
+| Y+1 | 48.9 % | 1.6 % | 30.5 |
+| Y+3 | 71.1 % | 2.8 % | 25.4 |
+| Y+4 | 76.2 % | 3.3 % | 23.4 |
+| Y+5 | **78.4 %** | 3.7 % | 21.2 |
+
+The increments collapse (+22.2, +5.1, +2.2 points), so it converges near **80 %**, not 95 %.
+The destination is unambiguous: `Bosque cerrado` falls 51 → 22 % while `Matorrales y
+arbustales abiertos` rises 36 → 57 %. **That is the arbustalización, reaching the map about
+three years late.** The fixed cohort also reads *higher* than the shifting one at short lags
+(48.9 vs 45.6 at Y+1), which is what must happen if the recent fires it excludes simply have
+not had time.
+
+**What does not explain the remaining ~17 points**: not reburn (`burned_repeat` is 0.3–0.7 kha,
+negligible) and not the cohort (now fixed). Two candidates survive, both testable and neither
+tested: our burned-forest set includes low-severity edge and small fires that severity mapping
+does not count, and col-3's temporal integration — built to resist one-year flips — may never
+release a fraction of killed stands.
+
+**The consequence for the whole analysis, and it is not local to Patagonia.** Y+1 is Ferro et
+al.'s window, calibrated on the Chaco, where fire *clears*: burn to deforest, crop next year.
+Where fire **kills but does not clear**, one year is not enough, and the general analysis
+understates those systems structurally. Read woody natural vegetation at **Y+3 minimum**, and
+anything claimed about forest at **Y+4–5**.
+
+Note also that **`q` falls as the window lengthens** (30.5 → 21.2) while the effect grows,
+because the control accumulates its own background change. `q` answers "is this fire's doing?"
+and the percentage answers "how much of this forest converted". They are different questions
+and the window changes them in opposite directions.
+
+`factsheet_tables.R` writes `factsheet_patagonia_bosque.csv` (the trajectory, both cohorts)
+and `factsheet_patagonia_destinos.csv` (the destination mix); `notebooks/factsheet_veg.qmd` §5
+draws them.
+
+```bash
+# el corte latitudinal, cada lag con su propia ventana (cuatro poblaciones)
+$PYTHON collection-01/statistics/lulc_change_export.py --export --offset 5 --lat-split -44
+# la cohorte FIJA: la ventana clavada en 5 para todos los lags (una trayectoria)
+$PYTHON collection-01/statistics/lulc_change_export.py --export --offset 1 --window 5 --lat-split -44
+```
+
 ---
+
+### 5.8 `factsheet_veg_short.qmd` — análisis 6 cut down to what fits on a slide
+
+`factsheet_veg.qmd` answers the question properly: a control, `q`, 12 ecoregions, two windows,
+the Patagonian trajectory. **A slide holds none of that.** This notebook is the other end of the
+same analysis — three sentences and two figures, national, and the exact wording each number
+travels with. It recomputes nothing: it reads `factsheet_change.csv` and
+`factsheet_change_annual.csv`, the same tables `factsheet_tables.R` already writes, and calls the
+same `sankey_change()` from `factsheet_style.R`. Renders in ~10 s. The figure prefix is
+**`fig06c_`** so it cannot collide with the long notebook's `fig06_` — one producer per figure.
+
+**The three claims, measured (Argentina, 1999–2024, window Y−1 → Y+1):**
+
+| | nivel 1 (familias) | nivel 2 (clases) |
+|---|---|---|
+| burned, series total | 61.4 Mha | 61.4 Mha |
+| …of which changed class | **9.1 Mha — 14.8 %** | **12.5 Mha — 20.3 %** |
+| vegetated surface, annual | 252 Mha | 252 Mha |
+| …that changes class per year | **10.4 Mha — 4.1 %** | 17.4 Mha — 6.9 % |
+| …that changes *and* burned | 0.35 Mha — **3.4 % of the change** | 0.48 Mha — 2.8 % |
+| burned share of the surface | 0.9 % | 0.9 % |
+| fire's weight in change / in area | **3.6×** | 2.9× |
+
+**Every percentage carries its area.** A bare percentage cannot be checked against anything, and
+"how many hectares is that?" is the first question a slide gets. Two units, and the notebook says
+which is which in the column header: what **burned** is the **series total** (26 years,
+recurrences included), what is **country surface** is **per year** — "6,521 Mha" is hectare-years
+and means nothing to anyone, "252 Mha of vegetated surface" is the country.
+
+**Four things this notebook has to say and the long one can take for granted:**
+
+1. **"Of what burned" is hectare-years, not hectares.** 61.4 Mha is the sum over 26 years: a
+   hectare that burned twice counts twice, with the cover of each of its two fires. It is **not**
+   the accumulated area of the country that ever burned, which is smaller and does **not** come
+   out of this table.
+2. **"Changed cover" is a property of the hectare *and of the legend level*.** Bosque cerrado →
+   bosque abierto changes at nivel 2 and does not at nivel 1, hence 20.3 % and 14.8 %. **Each
+   Sankey must be captioned with its own level's number** — pairing the nivel-2 Sankey with the
+   nivel-1 percentage is the easy mistake here.
+3. **The window is two years, not one.** Y−1 against Y+1 (§5.7).
+4. **The third claim's two bars have different denominators on purpose** — surface and change —
+   and that is the comparison: if fire were indifferent to cover change the two would be equal.
+   3.4 / 0.9 = 3.6 is the same thing `q` = 3.74 says on the clean states; they are close because
+   they are two routes to one fact, not two findings.
+
+**Five figures**: the two Sankeys of the change (nivel 2 and nivel 1, §1.1–1.2), the two complete
+Sankeys with the diagonal (§1.4), and the two-bar weight-of-fire figure (§2). §1.3 is a table, not
+a figure: the level reconciliation above, computed and asserted at render time.
+
+**What the short notebook deliberately drops, and where to get it back**: the control itself
+(the country changes 3.9 % without any fire) and `q`. §3 of the notebook says so, so that
+"¿y eso es mucho?" from the audience has an answer that is one click away in
+`factsheet_veg.qmd`.
+
+**The Sankey threshold is per TRANSITION, and that makes arrival area unreadable.** Found by
+Iván asking the right question of the two figures: the nivel-1 Sankey appeared to send *more* area
+into forest than the nivel-2 one, which is impossible. The data is exactly consistent — the
+identity is asserted in the notebook — and the whole effect is the threshold:
+
+| | nivel 1 | nivel 2 |
+|---|---|---|
+| arrives at forest **from outside the family** | 0.891 Mha | **0.891 Mha** (identical, as it must be) |
+| arrives at forest **from another forest class** | — (not a change at nivel 1) | 0.594 Mha |
+| **total** arriving at forest | 0.891 Mha | **1.485 Mha** |
+| spread over | 2 bands | **37 bands** |
+| survives the figure's threshold | 0.891 Mha, 2 bands (**100 %**) | at ≥1.5 %: 0.355 Mha, **1 band (24 %)** |
+
+Two separate things stack: the nivel-1 family `Bosques` is **three** nivel-2 classes (cerrado,
+abierto, inundable), and a destination fed by many small flows is systematically under-drawn while
+one fed by a single large flow is drawn whole. **Never read a class's arrival area off a
+thresholded Sankey** — that is análisis 4's job. The fixes: nivel 2 now cuts at **0.5 %** (34
+flows, 10.9 Mha, **87 %** of the change instead of 72 %, and the three forest classes actually
+appear), the warning lives in `sankey_change()`'s header so the long notebook inherits it, and the
+subtitle prints the coverage on every figure.
+
+**`keep_unchanged = TRUE` — the complete Sankey, diagonal included** (new argument on
+`sankey_change()`, default `FALSE`, so the long notebook is unaffected). It changes the question
+and therefore the denominator: the total becomes all burned area and `min_share` is measured
+against that. It comes out **flat, which is the finding** — 85 % of what burns is still what it
+was at nivel 1, 80 % at nivel 2 — and it is the honest frame for the two zoomed figures above it.
+At nivel 1 all 17 transitions fit (the 0.1 % cut is only so that the ~0-area destination classes
+do not stack labels on the axis; it costs 0.14 % of the area), so the total height *is* the burned
+area and proportions can be read off the drawing. At nivel 2, 0.25 % keeps 29 flows and 94.7 %.
+
+Two figure-mechanics notes, both learned by looking: a long ggplot subtitle is **not** wrapped, it
+is drawn off-canvas, so the subtitles go through `cap()`; and the nivel-2 y scale is re-declared
+purely to add bottom expansion, because the smallest stratum otherwise sits on the axis with its
+label clipped.
+
+```bash
+quarto render collection-01/notebooks/factsheet_veg_short.qmd     # ~10 s
+```
+
+### 5.9 Forest only — `factsheet_bosques.csv`, and the four windows we already have
+
+The slide question is *"how much more likely is a forest to stop being a forest if it burns?"*.
+`factsheet_tables.R` block 6b answers it nationally, reusing the Patagonian block's machinery
+(`pat_file()` reads the `_n44` files), and writes `factsheet_bosques.csv` (the scalars) and
+`factsheet_bosques_destinos.csv` (where the burned forest goes). The event is always **"leaves the
+`Bosques` family"** — `nivel1_post != "Bosques"` — measured **by nivel-2 origin class**.
+
+**⚠️ Y+4 and Y+5 ARE national.** `--lat-split` adds a north/south bit to the packed code; it does
+**not** clip the reduction. `lulc_change_eco13_y{4,5}_n44.csv` are the whole country (13
+ecoregions, 280.7 Mha/yr) and collapsing `north` recovers the plain national table. So all four
+lags exist in both cohorts — **no new GEE run is needed** to report Y+4 or Y+5. (Lag 2 is the only
+one never exported.)
+
+**There are four different "forest" numbers and they are not interchangeable.** Measured, national,
+Y+1, moving cohort:
+
+| claim | level | burned | control | q |
+|---|---|---|---|---|
+| `Bosques` (family) stops being forest | 1 | 29.3 % | 4.6 % | **6.4** |
+| **`Bosque cerrado` stops being forest** | 2 → 1 | 43.6 % | 3.1 % | **14.0** |
+| `Bosques` → `agropecuario` (that one transition) | 1 | 17.3 % | 1.6 % | **10.9** |
+| `Bosque cerrado` leaves its own nivel-2 class | 2 | 49.4 % | 4.2 % | **11.7** |
+
+The sentence *"tras el fuego la transformación de bosques a otras clases es 11 veces más probable"*
+reads as **row 1, which is 6.4**. The 10.9 is one transition out of the family's several (it is
+61 % of what leaves, not all of it), and the 11.7 counts closed → open forest as a transformation
+although it is **still forest**. Row 2 is the recommended headline: strongest *and* soundest.
+
+**The family average is the trap, and this is the finding of the section.** The three forest
+classes do not behave alike at all — `Bosque cerrado` q = 14.0, `Bosque abierto` 2.2, and
+**`Bosque inundable` q = 1.0: fire does nothing measurable to it**. The 6.4 is an average over
+three systems, describing none of them. **If one forest number goes on a slide it has to be a
+class, not the family**, and `factsheet_bosques.csv` always carries the three classes *and* the
+family row so the average can never be quoted alone.
+
+**Window: the two numbers move in opposite directions** (closed forest, moving cohort): the
+percentage rises 43.6 → 51.4 % from Y+1 to Y+5 (conversion takes time and one year does not see it
+all) while q falls 14.0 → 9.1 (the control accumulates its own background over a longer window).
+They answer "how much forest converted?" and "was it the fire?" — different questions. For a
+*"it takes N years"* claim use the **fixed cohort** (`cohorte == "fija"`, window pinned at 5, the
+same pixels at every lag), which the same file carries.
+
+**Where the burned forest goes** (Y+1, states 1+3): of the 18.6 Mha of burned forest, 30 % leaves,
+and of that **60.9 % goes to agropecuario** and 38.5 % to natural herbaceous/shrub. From closed
+forest specifically, **50.9 % of what leaves goes to `Cultivos temporarios`** — the clearing
+reading, which the figure cannot separate from fire *causing* it (docs/10 §6.4).
+
+**Two traps in the tables, both of which fail silently:** `"Bosques (familia)"` is a **row label in
+the scalar table, not a legend class** — `factor()`ing it against the legend levels yields `NA` and
+the Sankey renders as an empty panel with no error; and that label **does not exist at all** in
+`factsheet_bosques_destinos.csv`, which is opened by nivel-2 class, so filtering for it returns
+zero rows (the family figure has to sum the three classes). The notebook asserts against both.
 
 ## 6. Everything is calendar-year — and the three divergences
 
