@@ -58,7 +58,9 @@ collection-01/
 │   ├── legends.py                   # burnable class list, status codes, the 13 ecoregion names (literals)
 │   ├── burnable_export.py           # the CONSTANT burnable denominator: one GEE export, 13 numbers
 │   ├── lulc_area_export.py          # the PER-CLASS denominator: área de cada clase col-3 x ecorregión x año
-│   ├── burn_perc_export.py          # THE ONE RASTER: % de los años con fuego, 480 m, para el mapa de apertura (docs/09 §5.5)
+│   ├── burn_perc_export.py          # RÁSTER 1: % de los años con fuego, 480 m, para el mapa de apertura (docs/09 §5.5); `--reducer max` da el mapa de conteos enteros (§5.5.1)
+│   ├── last_fire_export.py          # RÁSTER 2: el año del último fuego, 480 m, la figura del análisis 2 (docs/09 §5.6)
+│   ├── lulc_change_export.py        # ANÁLISIS 6: el PAÍS ENTERO x estado de fuego x cobertura de Y-1 x Y+offset — con control (docs/09 §5.7)
 │   ├── fire_counts.R                # THE VECTOR PASS — fire counts off the local polygons + the plotting geometry
 │   ├── factsheet_tables.R           # THE ANALYSIS PASS — the plot-ready tables, the GAMs, every per-region scalar
 │   └── factsheet_style.R            # the shared palette, theme, map-as-legend and figure variants
@@ -106,7 +108,7 @@ collection-01/
 | `objects-analysis/` | every reported table/plot from the scripts and the notebook | 2 MB |
 | `objects-inspect-cache/` | 28 QGIS layers + a `.qgz` project — **regenerable** | 6.3 GB |
 | `objects-upload-cache/` | the 28 GEE upload zips + loose Shapefile components — **regenerable** | 8.4 GB |
-| `statistics/` | step-09: the toolkit's burned-area CSVs, the burnable denominator, the fire tables, the `factsheet_*` tables, the one raster (`arg_burn_perc_480m_mean.tif`) and `figures/` (93 figures × PNG + PDF) | 110 MB |
+| `statistics/` | step-09: the toolkit's burned-area CSVs, the burnable denominator, the fire tables, the `factsheet_*` tables (incl. the four `factsheet_change*` of análisis 6), the **three rasters** (`arg_burn_perc_480m_{mean,max}.tif`, `arg_last_fire_480m_mean.tif`) and `figures/` (PNG + PDF of every figure) | ~160 MB |
 
 A fire is an **object** (the layer is sparse, not an OBIA partition), and a **`-cache` suffix means
 regenerable**: delete it and re-run its launcher. Details: `docs/05-object_metrics.md` §4 and
@@ -431,7 +433,7 @@ says 53,263, iterating the table says 54,514 (docs/07 §13.6). `--verify` audits
 
 ### Step 09 — the statistics and the factsheet
 
-Every number the factsheet reports, and the 93 figures. Three sources: the **burned area** comes
+Every number the factsheet reports, and its figures. Three sources: the **burned area** comes
 from the network's toolkit (run in the `fuego` GEE repo, downloaded from GCS into
 `data/statistics/`), the **burnable denominator** is one small export of ours, and the **fire
 counts** are local. Design, gates and decisions: `docs/09-statistics.md`; what each graphic says:
@@ -446,11 +448,23 @@ $PYTHON collection-01/statistics/lulc_area_export.py --test-rect
 $PYTHON collection-01/statistics/lulc_area_export.py --export      # 27 years in one task
 $PYTHON collection-01/statistics/lulc_area_export.py --fetch       # pull it down, decode, gate
 
-# el único ráster: % de los años con fuego a 480 m, para el mapa de apertura. Tarea batch
-# (la descarga interactiva mide el tamaño a 30 m y rebota), y --fetch corre la compuerta:
-# el promedio ponderado por área tiene que dar los 0,838 % que publican las tablas.
-$PYTHON collection-01/statistics/burn_perc_export.py --export      # ~5 min
+# el cruce del análisis 6: el país entero x estado de fuego x cobertura de Y-1 x Y+offset.
+# Dos ventanas: Y+1 (el análisis) e Y+3 (la prueba del artefacto de la cicatriz, docs/09 §5.7.2).
+$PYTHON collection-01/statistics/lulc_change_export.py --test-rect
+$PYTHON collection-01/statistics/lulc_change_export.py --export --offset 1   # 26 años, una tarea
+$PYTHON collection-01/statistics/lulc_change_export.py --export --offset 3   # 24 años, una tarea
+$PYTHON collection-01/statistics/lulc_change_export.py --fetch  --offset 1   # decode + 2 compuertas
+$PYTHON collection-01/statistics/lulc_change_export.py --fetch  --offset 3
+
+# los tres rásters, a 480 m. Tareas batch (la descarga interactiva mide el tamaño a 30 m y
+# rebota), y cada --fetch corre su compuerta: la del mapa de frecuencia tiene que dar los
+# 0,838 % que publican las tablas.
+$PYTHON collection-01/statistics/burn_perc_export.py --export      # ~5 min; el de apertura
 $PYTHON collection-01/statistics/burn_perc_export.py --fetch       # -> data/statistics/*.tif + gate
+$PYTHON collection-01/statistics/burn_perc_export.py --export --reducer max   # conteos enteros
+$PYTHON collection-01/statistics/burn_perc_export.py --fetch  --reducer max
+$PYTHON collection-01/statistics/last_fire_export.py --export      # el año del último fuego
+$PYTHON collection-01/statistics/last_fire_export.py --fetch
 
 # the vector pass: 1.01 M mapped fires -> calendar year/month, ecorregión tags, the plotting
 # geometry. ~20 s. Needs scripts/objects_region_tag.R and scripts/rule_a_aoi_tag.R to have run.
@@ -464,7 +478,7 @@ quarto render collection-01/notebooks/factsheet.qmd
 quarto render collection-01/notebooks/factsheet.qmd -P write_plots:false   # preview, writes nothing
 ```
 
-Only the three exports touch GEE. That is the whole point of the split: the geometry is read once,
+Only the exports touch GEE (five scripts, six tasks: two denominators, one crossing, three rasters). That is the whole point of the split: the geometry is read once,
 and every figure afterwards is a read of a CSV with at most a few thousand rows — so a new figure
 idea costs seconds.
 
@@ -517,7 +531,7 @@ were used in fitting (`fit == TRUE`) and a red asterisk for held-out dates
 | `logistic_regression_feature_engineering_ideas.qmd` | Feature engineering ideas for the LR model | — |
 | `burn_prob_ts_metrics.qmd` | Exploration of burn-probability time-series summary metrics | — |
 | `categorical_vs_bernoulli.qmd` | Categorical vs Bernoulli formulation notes | — |
-| `factsheet.qmd` | **Step 09 — the factsheet figures.** Draws only; every number comes from `data/statistics/`. The five analyses of `docs/10-factsheet_design.md` (proporción quemada media; la serie + tendencia GAM; **el patrón intraanual entero — 3.1 el mapa del mes pico en paleta cíclica, 3.2 el pirograma de doble eje, 3.3 la forma intraanual comparada, 3.4 el pirograma normalizado con los totales en el panel**; la composición de lo quemado; y qué % de cada clase se quema), each as an `all_regions` panel and 12 focal variants where that applies, plus the map-as-legend (which opens the notebook, with a names-alongside variant). Análisis 4 and 5 draw both legend levels, nivel-2 native classes first. `params$write_plots` (default `true`) writes 93 figures to `data/statistics/figures/` as PNG **and** PDF | `statistics/fire_counts.R` → `statistics/factsheet_tables.R` |
+| `factsheet.qmd` | **Step 09 — the factsheet figures.** Draws only; every number comes from `data/statistics/`. The six analyses of `docs/10-factsheet_design.md` (proporción quemada media; la serie + tendencia GAM, abierta por **el mapa del año del último fuego**; **el patrón intraanual entero — 3.1 el mapa del mes pico en paleta cíclica, 3.2 el pirograma de doble eje, 3.3 la forma intraanual comparada, 3.4 el pirograma normalizado con los totales en el panel**; la composición de lo quemado; qué % de cada clase se quema; y **6 — cómo cambia la cobertura alrededor del fuego, con CONTROL: el dumbbell quemado-vs-no-quemado, `q` en escala log, la matriz de q por transición, la ventana Y+3 y el Sankey de-hacia**), each as an `all_regions` panel and 12 focal variants where that applies, plus the map-as-legend (which opens the notebook, with a names-alongside variant). Análisis 4, 5 and 6 draw both legend levels, nivel-2 native classes first. The three pixel maps share one convention: **el cero es blanco y es una clase aparte**, magma for the frequency pair, plasma for the years (`docs/10 §0.1`). `params$write_plots` (default `true`) writes every figure to `data/statistics/figures/` as PNG **and** PDF | `statistics/fire_counts.R` → `statistics/factsheet_tables.R` |
 | `objects-analysis.qmd` | Step 06, the standing analysis: size distribution of all 1.69 M objects (6 display classes), the latitude-dependent pixel scale, labels vs population by size, `p_mean`/`p_width`/`% undecided` per class → the **minimum-fire-size** decision; the **per-size-band classification cuts** (Youden J, sens/spec, bootstrap intervals, ROC); the **per-year leak diagnostic** (§8 — the check that caught `fire_year`, plus §8.1 the residual time trend); and **§9 predictor importance + ALE curves** | step-05 metrics + `run_06_predict.sh` + `objects_threshold.R` + `objects_importance_ale.R` |
 
 Rendered `.html` versions are tracked alongside the `.qmd` so they can be read without a Quarto/R toolchain.
@@ -552,4 +566,4 @@ Export status across regions: `python collection-01/scripts/status.py`.
 | 06 — object model (R, BART) | **Done.** 20 predictors, fitted on 5255 labels, grid-blocked OOF AUC 0.891 (within-year 0.845); per-size-band cuts deployed; all 28 fire-years scored (1 689 419 objects, 36 unscored); 28 QGIS layers built and inspected (`docs/06-object_model.md`). |
 | 07 — calendar-year products | **All 12 images + 27 scar FCs landed and verified on the exported assets** (2026-07-30): **07a** month-of-burn collection 27/27, **07b** calendar-year scars 27/27 built, gated and ingested, **07c** scar rasters 3/3, **07d** the nine derived subproducts 9/9. **07e** the fire-object polygon layer for early users is exporting. Delivery checklist: `docs/08-postprocessing.md` §7; detail and verification numbers: `docs/07-vector_to_raster.md`. Still owed: the whole-country month-histogram cross-check (its local half needs regenerating) and the network's visual validation pass. |
 | 08 — network post-processing & published subproducts | Not started; design notes only (`docs/08-postprocessing.md`). Assets due **31 Jul 2026** |
-| 09 — statistics & factsheet | **Numbers and figures done.** Burned area from the network's toolkit run on our ecorregiones; burnable denominator exported (251.09 Mha over the 12 mapped ecorregiones); 1,012,645 mapped fires counted locally; the ten `factsheet_*` tables and 76 figures built (`docs/09-statistics.md`). Gate 6 — toolkit vs object database — closes at **63.23 vs 63.25 Mha, 0.03 %**. Still owed: the staging cross-check, the ATBD, Workspace registration. Launch **24 Sep 2026** |
+| 09 — statistics & factsheet | **Numbers and figures done.** Burned area from the network's toolkit run on our ecorregiones; burnable denominator exported (251.09 Mha over the 12 mapped ecorregiones); 1,012,645 mapped fires counted locally; the `factsheet_*` tables and 170 figures built (`docs/09-statistics.md`), including **análisis 6** — how land cover changes around fire, with a control: q = 3.74 nationally, 10.9 for bosque → agropecuario. Gate 6 — toolkit vs object database — closes at **63.23 vs 63.25 Mha, 0.03 %**. Still owed: the staging cross-check, the ATBD, Workspace registration. Launch **24 Sep 2026** |

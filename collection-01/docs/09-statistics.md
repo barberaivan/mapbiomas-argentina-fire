@@ -29,6 +29,14 @@ collection-01/statistics/         all statistics + factsheet code
                       names, the 16->13 crosswalk kept for December (§7.2)
   burnable_export.py  the constant burnable layer (§3): --test-rect, --regions, --export
   lulc_area_export.py the per-class area, ecorregión x clase x año (§5.3), same route
+  burn_perc_export.py THE FIRST RASTER (§5.5): % of the years each pixel burned, 480 m.
+                      `--reducer max` is a SECOND run of the same script and a second
+                      file — the integer-count map (§5.5.1)
+  last_fire_export.py THE SECOND RASTER (§5.6): the year of the last fire, 480 m. Reuses
+                      this one's OAuth/Drive/GCS plumbing, and NOT its grid (§5.6)
+  lulc_change_export.py  ANÁLISIS 6 (§5.7): the WHOLE COUNTRY, crossed by fire state and
+                      the land cover of Y-1 and Y+offset. The third and last GEE reduction,
+                      and the only one with a control (§5.7.1)
   fire_counts.R       THE VECTOR PASS (§4) — the fire tables + the plotting geometry
   factsheet_tables.R  THE ANALYSIS PASS (§5) — the plot-ready tables and the GAMs
   factsheet_style.R   the shared palette, theme, map-as-legend and figure variants
@@ -48,8 +56,13 @@ collection-01/data/statistics/    every statistics input and output (Insync stor
   fire_region_summary.csv         per ecorregión: incendios/año, área/año, cuantiles
   ecoregions13_meta.csv           id, nombre, centroide, área — the palette order
   ecoregions13_simple.gpkg        the 13 polygons simplified for plotting
-  factsheet_*.csv                 the plot-ready tables (§5.1)
-  figures/                        152 files: 76 figures × PNG + PDF
+  lulc_change_eco13_y{1,3}{,_raw}.csv  análisis 6: estado de fuego x eco x clase ANTES x
+                                  clase DESPUÉS x año, las dos ventanas (§5.7)
+  arg_burn_perc_480m_{mean,max}.tif  the frequency raster, the two reducers (§5.5)
+  arg_last_fire_480m_mean.tif     the year-of-last-fire raster (§5.6)
+  factsheet_*.csv                 the plot-ready tables (§5.1), incl. the four
+                                  `factsheet_change*` of análisis 6
+  figures/                        PNG + PDF of every figure
 ```
 
 The GEE JavaScript is in the **`fuego` repo**, not here:
@@ -62,12 +75,20 @@ The GEE JavaScript is in the **`fuego` repo**, not here:
 $PYTHON collection-01/statistics/burnable_export.py --export     # §3, once
 $PYTHON collection-01/statistics/lulc_area_export.py --export    # §5.4, once
 $PYTHON collection-01/statistics/lulc_area_export.py --fetch     # ...then pull it down
+$PYTHON collection-01/statistics/lulc_change_export.py --export --offset 1  # §5.7
+$PYTHON collection-01/statistics/lulc_change_export.py --export --offset 3  # §5.7.2
+$PYTHON collection-01/statistics/lulc_change_export.py --fetch  --offset 1
+$PYTHON collection-01/statistics/lulc_change_export.py --fetch  --offset 3
+$PYTHON collection-01/statistics/burn_perc_export.py --export    # §5.5, the raster
+$PYTHON collection-01/statistics/burn_perc_export.py --export --reducer max   # §5.5.1
+$PYTHON collection-01/statistics/last_fire_export.py --export    # §5.6
+# ...--fetch each of the three when the tasks land (each one runs its own gate)
 Rscript collection-01/statistics/fire_counts.R                   # §4, ~20 s
 Rscript collection-01/statistics/factsheet_tables.R              # §5, ~10 s
 quarto render collection-01/notebooks/factsheet.qmd              # §5.4, ~60 s
 ```
 
-Only the two exports touch GEE. The point of the split is that **everything the factsheet draws
+Only the exports touch GEE (five scripts, seven tasks: two denominators, three rasters, two crossings). The point of the split is that **everything the factsheet draws
 is cheap**: the geometry is read once, in `fire_counts.R`, and every figure afterwards is a
 read of a CSV with at most a few thousand rows — so a new figure idea costs seconds, not a
 re-run.
@@ -244,6 +265,11 @@ gap, not a finding**: **no carta of the processing grid overlaps the layer** (me
 hole in the map as a fact about fire. `factsheet_tables.R` drops it from every table, from
 every map and from the national denominator (252.25 → **251.09 Mha**) via one constant,
 `UNMAPPED_REGIONS`. The 13 rows stay in `burnable_eco13.csv`, so nothing is lost.
+
+**It is still drawn on every map, unpainted** (docs/10, the box before §0.1): outside the
+processing grid means no data, not no territory, and an empty outline says both at once.
+`MALVINAS_SF` + `geom_malvinas()` in `factsheet_style.R`; `ECO_SF` stays the 12 reported
+ones, because that is the geometry the numbers join to.
 
 ### 3.3 What a constant denominator changes — read before quoting a `%`
 
@@ -470,12 +496,13 @@ map — stay apart); the **map as the legend**, exported loose; and the two vari
 
 `params$write_plots` (default `true`) writes every figure to `data/statistics/figures/` as
 **PNG** (the PowerPoint draft) and **PDF** (the designer). Render with
-`-P write_plots:false` to preview without writing. 93 figures:
+`-P write_plots:false` to preview without writing. 170 figures:
 
 | prefix | n | what |
 |---|---|---|
 | `fig00_mapa_leyenda`, `fig00_mapa_leyenda_texto`, `fig00_mapa_focal_*` | 14 | the map-as-legend, the variant **with the names written next to it**, and the 12 focal ones |
 | `fig00_mapa_frecuencia`, `fig00_apertura`, `fig00_tres_mapas` | 3 | the % of years burned per pixel (§5.5): alone, beside the labelled map-legend, and the **three-panel opening** (names → `mean_pct` by region → per-pixel). The last two `%` are different quantities whose relation is exact: **averaging the per-pixel map over a region gives the region's `mean_pct`** — measured nationally, 0.932 % vs 0.933 % |
+| `fig00_mapa_veces`, `fig00_mapa_veces_max` | 2 | the same frequency raster read in *times burned* — the cell mean, and the integer version off `--reducer max` (§5.5.1) |
 | `fig01_*` | 2 | análisis 1 — proporción quemada media: el mapa y las barras |
 | `fig02_*` | 28 | análisis 2 — el mapa de tendencia, la serie nacional, `all_regions` normalizada, 12 focales normalizadas, **12 paneles en % quemado + su multipanel** |
 | `fig03_mapa_mes_pico` | 1 | análisis 3.1 — el mes con más área quemada por ecorregión, en paleta cíclica |
@@ -515,11 +542,11 @@ whole extra month beyond the last point, into a second mayo. Being cyclic, that 
 redrawing of mayo rather than an extrapolation, but it read as one. `factsheet_tables.R` now
 trims the fits at `month_fy <= 12`.
 
-### 5.5 `burn_perc_export.py` — the one raster, and the three traps in it
+### 5.5 `burn_perc_export.py` — the first raster, and the three traps in it
 
 The factsheet's opening figure is the ecoregion map beside **a national map of the % of the
-years each pixel burned**. It is the only *image* the factsheet downloads — everything else
-here is a table — and it is the same quantity as análisis 1 (mean annual burned proportion),
+years each pixel burned**. It is the first of the **three images** the factsheet downloads
+(the other two are §5.5.1 and §5.6; everything else here is a table) — and it is the same quantity as análisis 1 (mean annual burned proportion),
 resolved per pixel instead of per region. That equivalence is the point: **the map's own mean
 is the number the tables publish**, so the two cannot drift apart.
 
@@ -575,6 +602,289 @@ and never burned" are different statements and the map keeps them apart.
 $PYTHON collection-01/statistics/burn_perc_export.py --export    # one batch task -> Drive
 $PYTHON collection-01/statistics/burn_perc_export.py --status
 $PYTHON collection-01/statistics/burn_perc_export.py --fetch     # -> data/statistics/, + gate
+```
+
+---
+
+### 5.5.1 The same raster in *times burned*, and the integer version
+
+"3 % of the years" does not read on its own. The **same file** × 27 / 100 is "how many times
+the average pixel of this cell burned", drawn with the same breaks and the same tones — one
+`labs()` apart, and therefore unable to contradict the frequency map. That is
+`map_burn_count(stat = "mean")` on the R side; no new download.
+
+The number is **fractional**, because the cell is a mean of its 256 pixels. To get the
+integer counts that let a legend start at 1 you need the cell's **maximum** — "somewhere in
+this 480 m cell there is a pixel that burned N times" — which is a second file:
+
+```bash
+$PYTHON collection-01/statistics/burn_perc_export.py --export --reducer max
+$PYTHON collection-01/statistics/burn_perc_export.py --fetch  --reducer max
+```
+
+It is a different quantity, not a different rendering, and it is the trap of §5.5 (2) applied
+on purpose: it exaggerates. The worst pixel paints its whole 23 ha cell, which is exactly why
+**the opening plate uses the mean version** and this one is the alternative. `--check` knows:
+for any reducer other than `mean` it prints the numbers and explicitly declines to gate, so a
+`max` run does not look broken.
+
+---
+
+### 5.6 `last_fire_export.py` — the second raster: the year of the last fire
+
+The figure that opens **análisis 2** (docs/10 §2.1): where it burned recently and where it
+last burned twenty years ago. It is the exact complement of the opening map — that one says
+*how much* each place burned in 27 years, this one says *when it last did* — and it comes from
+the same family of products.
+
+**The source** is `year_last_fire_v2`, band **`year_last_fire_2026`**. The `+1` is not a typo:
+the band naming is `<subproduct>_<year+1>` in the reference and the platform expects it
+(docs/07 §12.3.1), so `…_2026` is the complete 1999–2025 series and `…_2025` would stop at
+2024. (The publish map's `band_format` says `classification_{year}`; the exported **asset**
+carries the subproduct name. Verified 17 Sep 2026 on the v2.)
+
+The product is `selfMask`ed, and here that is what we want: **never burned is absent, so it is
+white on the map**, not the first tone of the ramp. Unlike `burn_perc_export.py` there is no
+`unmask(0)` — adding zeros to the mean of a *date* means nothing.
+
+**The reducer is `mean`** (decided with Iván, 17 Sep 2026): the value of a cell is the average
+year-of-last-fire over the pixels that burned, and a cell where nothing burned comes out
+masked. The two alternatives were measured against the map they produce, not against a number:
+
+| reducer | what the cell would say | why not |
+|---|---|---|
+| `max` | "the most recent year anything in this cell burned" | saturates — in the Chaco nearly every 480 m cell has some pixel burned in the last two years, so the map goes flat |
+| `mode` | the most common last-fire year among burned pixels | unstable when a cell has a handful of scattered burned pixels |
+| **`mean`** | the average year over the burned pixels | fractional years (2011.4), which the class breaks absorb: the legend is a period, not a year |
+
+**⚠️ The grid is NOT the frequency raster's, and that is the finding worth keeping.** Measured
+17 Sep 2026, the nine v2 subproducts **do not share a lattice**:
+
+| asset | CRS | origin |
+|---|---|---|
+| `frequency_burned_v2`, `annual_burned_v2` | EPSG:3857 @ 30 m | −8189460 / −2483190 |
+| `year_last_fire_v2` | EPSG:4326, SNIC step | −73.56770985602505 / −21.73446880468659 |
+| `PRODUCT_LULC` (col-3) | EPSG:4326, SNIC step | −73.5666318776841 / −21.780821873347158 |
+
+The last two share a lattice: the origins differ by **exactly 4 columns and 172 rows** of the
+same step, so an integer factor nests without resampling. The first does not. So this raster
+aggregates on **its own asset's lattice** — asking for 3857 would resample both the year *and*
+the mask of where fire happened, and that mask is the footprint the map draws.
+
+The consequence, stated so nobody looks for it: **the two factsheet rasters cannot be crossed
+cell by cell.** The gate crosses *national numbers* instead (the burned footprint), which no
+lattice can move. For drawing it changes nothing — R reprojects both to Albers anyway.
+
+**Two bands, two different encodings** (uint16 with an explicit 65535 nodata, because in
+uint16 the default fill for masked is 0, which here would read as "1998" and as "never
+burned", two different lies):
+
+1. `last_fire` = (mean year − 1998) × 100. The offset exists because 2025 × 100 does not fit
+   in uint16.
+2. `burned_pct` = % of the cell's burnable pixels that ever burned, × 100. Built from **the
+   same asset** as band 1 (`selfMask`ed ⇒ "has a year" *is* "ever burned"), not from
+   `frequency_burned`, which lives on the other lattice — so the two bands count exactly the
+   same pixels and gate 2 below is an identity, not an approximation.
+
+Band 2 is not decoration: a cell where 0.4 % of the ground burned carries a year just like one
+that burned whole, and drawn identically the map overstates the footprint. R decides with it
+(`min_denom` in `map_last_fire()`, 0 by default — see docs/10 §2.1 for why nothing is hidden).
+
+**The gate** (`--check`) is three checks, none of them "the published number", because a date
+has no published number:
+
+1. every decoded year falls in [1999, 2025] — a mean of years cannot leave the range, so a
+   value outside it exposes the encoding, which is the error you cannot see on the map;
+2. band 1 has a value **iff** band 2 > 0 (the identity above);
+3. **the two rasters together**, via the average number of fires per ever-burned pixel.
+
+⚠️ **Check 3 cannot be "the same footprint on both rasters", and the first version of it was
+wrong in a way worth recording.** The frequency raster gives the *mean* number of times a
+cell burned, and a mean does not recover what fraction of pixels ever burned: a cell averaging
+0.25 can be a quarter of its pixels burning once or an eighth burning twice. The first version
+compared **14.68 %** (fraction of burnable *pixels* that ever burned, band 2 here) against
+**26.45 %** (fraction of burnable area falling in 480 m *cells* that contain at least one
+burned pixel, off the frequency raster) and failed by 11.8 pp while measuring two different
+things. The second number is larger by construction — it is a dilation to cell size — and
+neither raster is wrong.
+
+What *does* tie them together:
+
+```
+fires per ever-burned pixel = (times the average pixel burned) / (fraction that ever burned)
+```
+
+The numerator comes from the frequency raster (`burn_perc` × 27 / 100, weighted by burnable
+area); the denominator is band 2 here. The ratio **must** fall in [1, 27] — a pixel that
+burned, burned at least once, and no more times than the series has years. Measured:
+
+| | |
+|---|---|
+| burnable area that ever burned (band 2, area-weighted) | **14.68 %** |
+| times the average burnable pixel burned (frequency raster) | 0.2515 |
+| **fires per ever-burned pixel** | **1.71** |
+
+and it reconciles with the published totals: 63.23 Mha burned with recurrences over ~36.9 Mha
+ever burned is 1.71. The area-weighted quartiles of the year itself are 2004.0 / 2013.8 /
+2019.7.
+
+**The class breaks are regular four-year periods** (`1999 – 2002` … `2023 – 2025`), not
+quantile cuts. Measured on the raster, the year of last fire is close to uniform over
+1999–2025 (quartiles 2004.8 / 2011.4 / 2018.0), so constant width already gives even classes
+*and* the legend reads without translating — a quantile cut would have produced
+"2009.4 – 2013.7", which means nothing on a map.
+
+```bash
+$PYTHON collection-01/statistics/last_fire_export.py --export
+$PYTHON collection-01/statistics/last_fire_export.py --status
+$PYTHON collection-01/statistics/last_fire_export.py --fetch    # -> data/statistics/, + gate
+```
+
+---
+
+### 5.7 `lulc_change_export.py` — análisis 6: what was there before, what is there after
+
+The third and last GEE reduction, and the only question in the factsheet that needs **two**
+land-cover maps per hectare. For each calendar year Y, the **whole country** crossed by
+
+```
+code = state * 1000000 + ecoregion13 * 10000 + col3_class(Y-1) * 100 + col3_class(Y+offset)
+```
+
+— the full area × fire state × ecorregión × class-before × class-after table, annual. One
+integer, one `groupField`, one sweep: the same programming strategy copied from the network's
+app (§2.1).
+
+**⚠️ The packing does not fit in uint16** (3·10⁶ + 13·10⁴ + 7777 = 3,137,777). The band is
+**int32**. Copying `lulc_area_export.py`'s `toUint16()` would overflow silently and the
+classes would decode to something plausible; `legends.decode_lulc_change` validates the
+state, the ecoregion and both classes, so an overflow raises instead of publishing.
+
+**The design is Ferro et al. (2026)**, *"Why are you burning? The interplay between land
+cover, climatic variability and fire activity in the dry forests of Argentina"*, Int. J.
+Wildland Fire 35: WF25126 — this group's own Dry Chaco paper. What is copied verbatim is what
+defines the analysis: the Y−1 → Y+1 window, the exclusion rule (§5.7.1) and the ratio `q`.
+What differs: our 30 m fire product instead of MCD64A1 at 500 m, the whole country instead of
+the Dry Chaco, and **exhaustive area accounting** instead of a multinomial GLM on sampled
+points — they get probabilities with confidence intervals, we get hectares with none.
+
+**Why Y−1 and not Y.** Because you cannot know whether the cover of the fire year is the
+pre- or the post-fire one (their words). Y−1 is also, exactly, the one the network's numerator
+assigns to the burned hectare (`annual_burned_coverage` crosses with `classification_<Y-1>`,
+§2.2), so the "before" column reproduces análisis 4 class by class — and the gate checks it.
+Y+offset is the "after", which caps the series: col-3 reaches 2025, so Y+1 ends at 2024
+(26 years) and Y+3 at 2022 (24 years).
+
+**The grid, and the trap it carries.** `annual_burned_v2` is EPSG:3857 and col-3 is on the
+SNIC lattice (4326) — see the table in §5.6. Crossing them resamples one of the two, and the
+one resampled is **the fire**: the reduction runs on `C.SNIC_CRS` + `C.SNIC_TRANSFORM`, the
+native lattice of the *categorical* layer, where half a pixel of shift changes the class, and
+the same lattice `lulc_area_export.py` already used. Measured, it costs nothing: the gate
+closes at **0.00 % in every one of the 26 years**, because the toolkit reduces on that lattice
+too.
+
+**Masking: exactly one layer drives the mask** — the ecoregions, which tile the country. There
+is no fire mask any more (§5.7.1). Both land-cover bands are `unmask(0)`ed, so a pixel the
+collection does not map becomes a **visible "No observado"** row instead of vanishing.
+
+---
+
+### 5.7.1 The control, and why the reduction covers the whole country
+
+**"15 % of what burned changed cover" means nothing without knowing how much cover changes
+when there is no fire.** That is the entire reason the reduction is no longer masked to fire:
+it sweeps the country and the fire state is one more dimension of the code.
+
+It is nearly free. What costs is **reading** three 30 m bands over 279 Mha, and that happened
+with the mask on too — `reduceRegion` does not read less because pixels are masked. What grows
+is the number of groups, which is reducer memory and CSV rows (129 k rows for 26 years).
+
+**The exclusion rule**, from Ferro et al.: use only pixels that did not burn in the previous
+or the next year, to avoid land-cover classification errors — which is exactly the scar
+artifact. Here it applies to **both** groups, and the two contaminated ones are kept as their
+own states rather than dropped in silence:
+
+| state | definition | share of country-years | changed nivel 1 |
+|---|---|---|---|
+| 0 `control` | no fire anywhere in [Y−1, Y+offset] | 97.63 % | **3.88 %** |
+| 1 `burned_clean` | burned in Y, no other year of the window | 0.77 % | **14.51 %** |
+| 2 `window_fire` | did not burn in Y, burned elsewhere in the window | 1.53 % | 11.39 % |
+| 3 `burned_repeat` | burned in Y *and* elsewhere in the window | 0.07 % | 17.99 % |
+
+The headline of análisis 6 ("of everything that burned, how much changed") is **1 + 3**; `q`
+compares **1 against 0**, the two clean ones.
+
+**That state 2 lands at 11.39 %, between the control and the burned group, is the check that
+the rule does something**: it is a mixture of both, and it behaves like one.
+
+The ratio is
+
+```
+q = P(changed | burned) / P(changed | not burned)
+```
+
+`q` > 1 fire promotes the change, `q` < 1 it limits it, `q` = 1 the same happens either way.
+Nationally, **q = 3.74** at nivel 1 (14.51 % / 3.88 %) and 3.16 at nivel 2.
+
+**`q` is conditioned on the origin class** in the per-transition table
+(`factsheet_change_q.csv`): the transition probability is P(prev → post | prev, state), so
+within each origin class the probabilities sum to 1. Unconditioned, `q` would mostly measure
+*which classes burn*, which is análisis 4 and not this one.
+
+**Why the control changes the reading, with the measured numbers.** Pampa has the highest raw
+change (33.9 %) and also the highest background (6.9 %), so it drops from first to third.
+**Campos y Malezales (q = 0.7) and Altos Andes (q = 0.8) come out below 1**: burned land there
+changes cover *less* than unburned land — the raw number said "almost nothing changes", the
+control says "less than nothing". And Bosques Patagónicos goes to the top (q = 7.3) on a
+middling raw number.
+
+### 5.7.2 Is it the scar or is it conversion? The Y+3 window
+
+The standing objection to the whole analysis: col-3 is built from the same Landsat imagery
+that sees the burn scar, so a burned forest can be classified as herbaceous in Y+1 **without
+the forest having gone**, and be back to forest in Y+3.
+
+`--offset 3` measures it. If the Y+1 signal were mostly that, the burned rate would fall back
+toward the control by Y+3 and `q` would collapse toward 1:
+
+| window | burned | control | q |
+|---|---|---|---|
+| Y+1 | 14.51 % | 3.88 % | **3.74** |
+| Y+3 | 17.63 % | 5.81 % | **3.04** |
+
+The burned rate **rises** (14.5 → 17.6), it does not fall. The mild `q` decline is the control
+accumulating its own background change over a longer window, not burned pixels reverting.
+**The transitions are persistent.** The artifact exists and is not eliminated, but it is not
+what produces the bulk of the signal.
+
+Note that the Y+3 window demands five fire-free years for the clean states, so considerably
+less area feeds that number. That is the price of the question.
+
+**What R does with it** (`factsheet_tables.R`, five decisions, all printed when it runs): the
+level is aggregated *before* comparing (bosque cerrado → bosque abierto changes at nivel 2 and
+not at nivel 1, so the two tables are built separately from the class code); the "before" side
+is filtered like análisis 4 **in all four states** (filtering the treatment and not the control
+would make `q` compare two different populations); `q` is conditioned on the origin class;
+"No observado" stays visible; and the table is annual while the figures sum.
+
+Four tables come out: `factsheet_change.csv` (burned only, the tidy annual source the Sankey
+and the composition draw), `factsheet_change_annual.csv` (per state and year),
+`factsheet_change_summary.csv` (the scalars, including `q_changed`) and
+`factsheet_change_q.csv` (`q` per transition).
+
+**And the caveat that belongs in the caption.** With a control and a persistence test this
+says much more than it did without them, but it stays **observational**: pixels that burn are
+not a random sample of the country, so part of `q` may be fire happening where the change was
+going to happen anyway — fire as the tool of an already-decided clearing is in fact the most
+likely reading of bosque → agropecuario (q = 10.9). docs/10 §6 carries the same box for the
+slide.
+
+```bash
+$PYTHON collection-01/statistics/lulc_change_export.py --test-rect            # seconds
+$PYTHON collection-01/statistics/lulc_change_export.py --export --offset 1
+$PYTHON collection-01/statistics/lulc_change_export.py --export --offset 3
+$PYTHON collection-01/statistics/lulc_change_export.py --fetch  --offset 1    # decode + gates
+$PYTHON collection-01/statistics/lulc_change_export.py --fetch  --offset 3
 ```
 
 ---

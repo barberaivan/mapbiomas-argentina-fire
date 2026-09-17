@@ -2,8 +2,9 @@
 """
 collection-01/statistics/burn_perc_export.py — EL MAPA DE "% DE LOS AÑOS CON FUEGO"
 
-El único ráster que el factsheet descarga.  Todo lo demás son tablas; esto es una
-imagen, porque la figura de apertura quiere el mapa nacional al lado del mapa de
+El primero de los tres rásters que baja el factsheet (los otros dos son la corrida
+`--reducer max` de acá mismo y `last_fire_export.py`).  Todo lo demás son tablas; esto es
+una imagen, porque la figura de apertura quiere el mapa nacional al lado del mapa de
 ecorregiones (docs/10 §0).
 
 QUÉ COMPUTA
@@ -42,6 +43,11 @@ USO (desde la RAÍZ del repo), en el orden en que se corre
     --fetch      la baja de Drive a data/statistics/ y corre la compuerta.
     --check      re-corre la compuerta sobre el archivo ya bajado (sin red).
 Opciones: --factor 16 (480 m, por defecto) | --reducer mean|max|p90 | --denom burnable|land.
+
+`--reducer max` es una SEGUNDA corrida y un SEGUNDO archivo, no una variante de dibujo: es el
+mapa de conteos ENTEROS del factsheet ("el píxel que más ardió de esta celda ardió N veces",
+docs/09 §5.5.1).  Es otra cuenta y exagera a propósito, así que `--check` informa los números
+y NO cierra compuerta: el 0,933 % nacional sólo lo conserva `mean`.
 `--credentials ~/.config/earthengine/credentials.comahue --project mapbiomas-argentina`
 corre como la segunda cuenta (la cola de tareas es por usuario).
 """
@@ -277,12 +283,15 @@ def oauth_credentials(args):
     )
 
 
-def fetch_gcs(args) -> int:
-    """Baja de GCS por HTTPS con el mismo token. Sin API de Drive y sin rodeos."""
+def download_from_gcs(args, desc: str, out_dir: Path = OUT_DIR) -> Path:
+    """Baja `desc.tif` de GCS por HTTPS con el mismo token. Sin API de Drive y sin rodeos.
+
+    GENÉRICA a propósito (`desc` es argumento, no `name_of(args)`): `last_fire_export.py`
+    baja su propio ráster con esta misma función en vez de copiar cuarenta líneas de OAuth.
+    """
     import requests
     from google.auth.transport.requests import Request
 
-    desc = name_of(args)
     creds = oauth_credentials(args)
     creds.refresh(Request())
     obj = f"{GCS_PREFIX}/{desc}.tif"
@@ -294,8 +303,8 @@ def fetch_gcs(args) -> int:
     head.raise_for_status()
     print(f"[gcs] {obj}  {int(head.json()['size'])/1e6:.1f} MB  {head.json()['updated']}")
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    out = OUT_DIR / f"{desc}.tif"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / f"{desc}.tif"
     with requests.get(url, params={"alt": "media"}, stream=True,
                       headers={"Authorization": f"Bearer {creds.token}"}, timeout=600) as r:
         r.raise_for_status()
@@ -303,16 +312,14 @@ def fetch_gcs(args) -> int:
             for chunk in r.iter_content(8 << 20):
                 fh.write(chunk)
     print(f"wrote {out.relative_to(REPO_ROOT)}")
-    return check(args)
+    return out
 
 
-def fetch(args) -> int:
+def download_from_drive(args, desc: str, out_dir: Path = OUT_DIR) -> Path:
+    """Lo mismo, desde Drive. También genérica, y por la misma razón."""
     from googleapiclient.http import MediaIoBaseDownload
     import io
 
-    if args.to_gcs:
-        return fetch_gcs(args)
-    desc = name_of(args)
     drive = drive_client(args)
     q = f"name = '{desc}.tif' and trashed = false"
     files = drive.files().list(q=q, fields="files(id,name,modifiedTime,size)",
@@ -322,8 +329,8 @@ def fetch(args) -> int:
     f0 = files[0]
     print(f"[drive] {f0['name']}  {int(f0.get('size', 0))/1e6:.1f} MB  {f0.get('modifiedTime')}")
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    out = OUT_DIR / f"{desc}.tif"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out = out_dir / f"{desc}.tif"
     buf = io.FileIO(out, "wb")
     dl = MediaIoBaseDownload(buf, drive.files().get_media(fileId=f0["id"]),
                              chunksize=32 * 1024 * 1024)
@@ -333,6 +340,15 @@ def fetch(args) -> int:
         print(f"  {int(st.progress() * 100):>3d} %", end="\r")
     buf.close()
     print(f"\nwrote {out.relative_to(REPO_ROOT)}")
+    return out
+
+
+def fetch(args) -> int:
+    desc = name_of(args)
+    if args.to_gcs:
+        download_from_gcs(args, desc)
+    else:
+        download_from_drive(args, desc)
     return check(args)
 
 
@@ -384,6 +400,15 @@ def check(args) -> int:
                      / np.where(m, weights, 0).sum())
     expected = EXPECTED[args.denom]
     print(f"  celdas con dato          {int(ok.sum()):,} de {a.size:,}")
+    if args.reducer != "mean":
+        # Sólo `mean` conserva el número nacional (TRAMPA 2): el max de la celda es otra
+        # cuenta y no tiene contra qué cerrar.  Se informa y no se falla — si no, la corrida
+        # de `--reducer max` (el mapa de conteo entero, docs/09 §5.5.1) parece rota.
+        print(f"  promedio simple          {np.nanmean(a):.3f} %")
+        print(f"  máximo                   {np.nanmax(a):.3f} %")
+        print(f"\n  SIN COMPUERTA: `--reducer {args.reducer}` no conserva el número nacional "
+              f"({expected:.3f} %) — es otra cuenta, a propósito.")
+        return 0
     print(f"  promedio simple          {np.nanmean(a):.3f} %   (Mercator: sub-pesa el norte)")
     print(f"  ponderado por área       {wmean(W):.3f} %   (celda, no lo quemable de la celda)")
     got = wmean(W)

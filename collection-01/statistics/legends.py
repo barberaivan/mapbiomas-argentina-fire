@@ -153,3 +153,66 @@ def decode(code):
             "valid combination — the packing or the paint is wrong, do not use the table"
         )
     return eco, ECO13_NAMES[eco], status, STATUS_NAMES[status]
+
+
+# --- el cruce estado x ecorregión x cobertura ANTES x cobertura DESPUÉS (docs/09 §5.7) ---
+# El empaquetado de `lulc_change_export.py`:
+#
+#     state * 1000000 + eco * 10000 + prev * 100 + post
+#
+# `prev` es la clase col-3 del año Y-1 y `post` la de Y+offset.  Tope
+# 3*1000000 + 13*10000 + 77*100 + 77 = 3137777: NO entra en uint16, así que la banda es
+# int32 — el error silencioso de este análisis sería empaquetarlo como el de
+# `lulc_area_export` (eco*100 + clase) y ver el desbordamiento como clases inexistentes.
+CHANGE_CODE_BASE = 10000
+CHANGE_STATE_BASE = 1000000
+
+# LOS CUATRO ESTADOS DE FUEGO (docs/09 §5.7.1).  Son cuatro y no dos porque la regla de
+# exclusión de Ferro et al. (2026) —"sólo píxeles que NO ardieron en el año anterior ni en el
+# siguiente, para evitar errores de clasificación de la cobertura"— se aplica a LOS DOS
+# grupos, no sólo al control:
+#
+#   * un píxel del control que ardió en Y+1 tiene la cobertura de Y+1 mirando una cicatriz
+#     igual que uno tratado, y meterlo en el control lo acerca al tratamiento por
+#     construcción — el cociente q saldría atenuado;
+#   * un píxel tratado que además ardió en Y-1 tiene la cobertura "antes" YA alterada por
+#     fuego, así que su transición no es "de lo que había a lo que quedó".
+#
+# Los dos contaminados se apartan como estados propios en vez de descartarse en silencio: la
+# tabla los trae, `factsheet_tables.R` informa cuánta superficie es cada uno, y el titular del
+# análisis 6 (que es "de TODO lo que ardió, cuánto cambió") suma 1 + 3.
+FIRE_STATE_NAMES = {
+    0: "control",          # sin fuego en TODA la ventana [Y-1, Y+offset]
+    1: "burned_clean",     # ardió en Y y en NINGÚN otro año de la ventana — el tratamiento
+    2: "window_fire",      # no ardió en Y, pero sí en otro año de la ventana (control sucio)
+    3: "burned_repeat",    # ardió en Y y TAMBIÉN en otro año de la ventana (tratamiento sucio)
+}
+
+
+def decode_lulc_change(code):
+    """`state * 1000000 + eco * 10000 + prev * 100 + post`
+    -> (state_id, state_name, eco_id, eco_name, prev_id, post_id).
+
+    Los nombres de cada clase se resuelven con `LULC_NIVEL_{0,1,2}` como siempre; acá sólo
+    se desempaqueta, y se valida con la misma dureza que `decode_lulc`: una clase que no
+    está en la leyenda es un error, nunca un default.
+    """
+    code = int(code)
+    state, rest = divmod(code, CHANGE_STATE_BASE)
+    eco, rest = divmod(rest, CHANGE_CODE_BASE)
+    prev, post = divmod(rest, 100)
+    if state not in FIRE_STATE_NAMES:
+        raise ValueError(
+            f"code {code} decodes to fire state {state}, which does not exist — the packing "
+            "is wrong, do not use the table")
+    if eco not in ECO13_NAMES:
+        raise ValueError(
+            f"code {code} decodes to ecoregion {eco}, which does not exist — the packing "
+            "or the paint is wrong, do not use the table")
+    for name, cls in (("prev", prev), ("post", post)):
+        if cls not in LULC_NIVEL_2:
+            raise ValueError(
+                f"code {code} decodes to {name} land-cover class {cls}, which is NOT in the "
+                "col-3 legend. A class that falls through into a decode default is a silent "
+                "error; add it to all three levels (from the network's Legends.js) first")
+    return state, FIRE_STATE_NAMES[state], eco, ECO13_NAMES[eco], prev, post

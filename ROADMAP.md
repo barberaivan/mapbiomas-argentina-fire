@@ -22,9 +22,37 @@ at **15 Sep 2026** for Brazil to copy them to `mapbiomas-public`.
 
 ## Next
 
+### Terminar el análisis 6 y los dos mapas nuevos (17 sep)
+
+**Análisis 6 hecho y verificado**, con control y prueba de persistencia
+(`docs/09-statistics.md` §5.7/§5.7.1/§5.7.2, `docs/10-factsheet_design.md` §6). El diseño es
+el de Ferro et al. (2026) rehecho a 30 m para todo el país: q = 3,74 nacional, 10,9 para
+bosque → agropecuario, y el control reordena las regiones (Pampa baja al tercer puesto,
+Campos y Malezales y Altos Andes quedan por debajo de 1). Las dos compuertas cierran: área
+quemada 0,00 % contra el toolkit los 26 años, y 280,72 Mha/año de cobertura espacial.
+
+Los mapas de frecuencia en veces (promedio y máximo) también están bajados y dibujados.
+
+**Falta**: el ráster del año del último fuego, que sigue corriendo en GEE
+(`arg_last_fire_480m_mean`, >1 h — la cuenta gmail). Cuando aterrice:
+
+```bash
+$PYTHON collection-01/statistics/last_fire_export.py --fetch   # corre su compuerta
+quarto render collection-01/notebooks/factsheet.qmd
+```
+
+Y tres decisiones que sólo se pueden tomar mirando la figura:
+
+- **Los cortes de clase del mapa del año del último fuego** — siete períodos puestos a ojo
+  antes de ver la distribución, hay que ajustarlos al histograma real.
+- **Si la magma invertida del mapa de frecuencia reemplaza a la naranja** en la lámina de
+  apertura: el cero blanco deja 60 % del país en blanco y es un cambio grande.
+- **Del análisis 6, qué figura va a la slide**: el dumbbell del control (la honesta) o la
+  matriz de q (la que tiene el 10,9). Las dos, nacionales, en nivel 1.
+
 ### Revisar el factsheet y elegir qué va a las slides
 
-Los cinco análisis están hechos, con sus tablas y sus 93 figuras
+Los seis análisis están hechos, con sus tablas y sus 170 figuras
 (`collection-01/docs/09-statistics.md`; `quarto render collection-01/notebooks/factsheet.qmd`).
 Lo que falta es **decidir**:
 
@@ -40,10 +68,14 @@ Lo que falta es **decidir**:
   Citar uno sin el otro da la lectura opuesta (docs/09 §5.3.1).
 - **Si el Delta aparece**, su epígrafe tiene que decir que el 27 % de la región es "no
   observado" en col-3 y queda fuera del denominador (docs/09 §3.1).
+- **Del análisis 6, qué va**: lo más probable es sólo lo nacional en nivel 1. El epígrafe
+  **tiene** que decir que es observacional — los píxeles que arden no son una muestra al azar
+  del país, y el fuego como herramienta de un desmonte ya decidido es la lectura más probable
+  de bosque → agropecuario (docs/10 §6.4).
 
 ### Entregar los números y las figuras al diseñador (~mié 16 sep)
 
-`collection-01/data/statistics/figures/` — 93 figuras, PNG y PDF de cada una.
+`collection-01/data/statistics/figures/` — 170 figuras, PNG y PDF de cada una.
 
 ## After
 

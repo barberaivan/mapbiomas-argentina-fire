@@ -195,6 +195,80 @@ tienen denominadores distintos y conviene decirlo en el epígrafe, porque la rel
 ellos es exacta y es lo que hace honesta a la lámina: **el promedio del mapa de píxeles sobre
 una región es el valor que pinta el mapa del medio**.
 
+#### Las Islas Malvinas van en TODOS los mapas, sin pintar
+
+**Todo mapa de la Argentina de este factsheet dibuja las Islas Malvinas**, y las dibuja
+**sin pintar**: contorno y nada más, en los coropletas, en los mapas de píxel y en el
+mapa-leyenda de las ecorregiones.
+
+Que estén vacías no es una omisión: es lo que dicen los datos. La ecorregión 13 (Islas del
+Atlántico Sur) está **fuera de la grilla de procesamiento** —ninguna de las 248 cartas la
+toca—, así que no hay mapeo de fuego ahí. Su "0 % quemado" sería un agujero del mapeo
+presentado como un hecho sobre el fuego, y por eso no entra en ninguna tabla ni en el
+denominador nacional (`09-statistics.md` §3.2). Dibujarlas vacías dice las dos cosas a la
+vez: **el territorio está, el dato no**.
+
+Si un epígrafe habla de cobertura nacional, esa es la frase: *las Malvinas se muestran como
+territorio; la colección 1 no las mapea*.
+
+Tres detalles de implementación, en `factsheet_style.R`:
+
+- **`ECO_SF` sigue siendo las 12 reportadas** —es la geometría de los DATOS, a la que se unen
+  los escalares y con la que se recortan los rásters— y las islas son una capa aparte
+  (`MALVINAS_SF`, `geom_malvinas()`) que se suma a cada mapa.
+- **La capa va dentro del `ggplot`, nunca después de `coord_sf`**: al ser una capa más, es lo
+  que extiende el lienzo hacia el sudeste. Agregarla afuera dibuja el mapa con el encuadre
+  continental y recorta las islas — el modo de fallar que no se nota, porque el resto del
+  mapa sigue bien.
+- **El trazo va más fino que el del continente** (0,1 contra 0,18–0,25). El archipiélago son
+  451 partes en ~250 km: al grosor del continente los islotes se tocan y el conjunto se
+  imprime como una mancha gris. A 0,1 se lee la silueta de Soledad y Gran Malvina. No se
+  descarta ningún islote — el problema es el trazo, no la geometría.
+
+Verificado sobre la capa (17 sep 2026): la ecorregión 13 de este asset es **sólo las
+Malvinas** (bbox −61,46/−52,95 a −57,72/−51,00). No trae Georgias ni Sandwich del Sur, que a
+−36° de longitud habrían estirado el lienzo de todos los mapas por un archipiélago que no se
+vería.
+
+#### 0.1 El cero es blanco, y es una clase aparte (vale para los tres rásters)
+
+Convención de todos los mapas de píxel del factsheet, decidida el 17/9/2026: **"no se quemó
+nunca" va en blanco y no es el primer tono de la rampa**. Son dos lecturas distintas —"acá no
+hubo fuego" y "acá hubo poco fuego"— y una rampa continua las pega en el mismo crema. No es un
+detalle de gusto: el 60 % de las celdas dibujadas son ese cero, así que la decisión *es* el
+mapa. La rampa empieza en el primer valor mayor que cero, con un tono claramente distinto del
+blanco.
+
+Hay una tercera cosa, que tampoco es 0: las celdas **sin nada quemable** (lagos, salares,
+glaciares) quedan fuera de la máscara y no se dibujan. "No es quemable", "es quemable y nunca
+se quemó" y "se quemó" son tres estados y el mapa los muestra como tres.
+
+Las paletas son **viridis**, y son dos porque son dos variables:
+
+| mapa | paleta | sentido |
+|---|---|---|
+| frecuencia / veces | **magma** invertida, recortada en `end = 0,84` | más fuego = más oscuro; lo quemado termina en negro, que es lo que es. El recorte evita que la primera clase se confunda con el blanco del cero |
+| año del último fuego | **viridis C (plasma)** invertida, `begin = 0,05`, `end = 0,92` | más reciente = más oscuro. Distinta a propósito: compartir paleta haría leer dos variables como una |
+
+Sobre papel blanco lo oscuro es lo que salta, y en los dos casos lo que tiene que saltar es el
+valor alto. Invertir cualquiera de las dos es un argumento (`direction`) en
+`factsheet_style.R`.
+
+#### 0.2 El mismo mapa en veces, y la versión de conteos enteros
+
+"El 3 % de los años" no se lee solo. **El mismo dato × 27/100** es "cuántas veces ardió el
+píxel promedio de la celda", con los mismos cortes y los mismos tonos: lo único que cambia es
+la leyenda, así que las dos figuras no pueden contradecirse. Va la que se prefiera.
+
+El número es **fraccionario**, porque la celda de 480 m promedia sus 256 píxeles: 0,54 veces
+es "un píxel típico de esa celda ardió una vez cada dos series". Por eso esa escala **no
+empieza en 1**.
+
+La versión que sí empieza en 1 necesita el **máximo** de la celda ("en algún lugar de estos
+480 m hubo un píxel que ardió N veces"), que es un segundo archivo y **otra cuenta**:
+exagera a propósito — el peor píxel pinta sus 23 hectáreas. Está escrita y exportada
+(`09-statistics.md` §5.5.1) como alternativa; **la lámina de apertura usa la del promedio**.
+
 ### 1. Proporción quemada anual media: cuánto se quema
 
 La proporción quemada anual media es el cociente área quemada / área quemable
@@ -219,6 +293,34 @@ suelo desnudo, hielo y "otras áreas no vegetadas" son no quemables). La clase
 **no observado se ignora**: no suma ni al numerador ni al denominador.
 
 ### 2. Serie temporal de proporción quemada: cómo cambió en el tiempo
+
+#### 2.1 El mapa del año del último fuego — la figura de la sección
+
+La figura principal del análisis 2 no es un escalar de tendencia pintado por ecorregión: es
+**el año del último fuego, píxel a píxel**. Dónde ardió hace poco y dónde hace veinte años.
+
+Es el complemento exacto de la lámina de apertura. Aquél dice **cuánto** ardió cada lugar en
+27 años; éste dice **cuándo fue la última vez**. Juntos son las dos preguntas que un lector le
+hace a un mapa de fuego, y salen del mismo conjunto de productos (`09-statistics.md` §5.6).
+
+Tres cosas para el epígrafe, y las tres son la figura:
+
+- **Blanco es "no ardió nunca"** en los 27 años, no una clase baja de la rampa (§0.1). Es el
+  60 % del país.
+- **La clase es un período, no un año.** La celda de 480 m promedia el año de los píxeles que
+  ardieron, así que el valor es fraccionario: una celda "2009 – 2013" puede ser una que ardió
+  entera en 2011 o una que ardió mitad en 2004 y mitad en 2017. Se eligió el promedio y no el
+  máximo porque el máximo satura — en el Chaco casi toda celda tiene algún píxel quemado en
+  los últimos dos años y el mapa queda plano (§5.6 de `09-statistics.md` tiene la tabla de las
+  tres opciones).
+- **Lo oscuro es lo reciente**, en plasma (§0.1).
+
+Una decisión más, que se puede revertir con un argumento: **no se esconde nada**. Una celda
+donde ardió el 0,4 % de la superficie lleva su año igual que una que ardió entera, y eso
+ensancha visualmente la huella. Se deja así porque acá el color codifica una **fecha**, no una
+magnitud: esa celda no miente sobre *cuánto* ardió — de eso habla el mapa de al lado — sólo
+dice *cuándo*. `map_last_fire(min_denom = ...)` sube el umbral si alguna vez se prefiere lo
+contrario.
 
 La proporción quemada anual en función del año calendario. 
 Ajustar un modelo que suavice el patrón en función del tiempo.
@@ -498,3 +600,84 @@ bosque**, 0,94 % de la vegetación herbácea y arbustiva y 0,43 % del área agro
 máximos por clase son Espinal (2,96 % del bosque), Campos y Malezales (5,15 % de la herbácea)
 y Campos y Malezales otra vez (2,37 % de lo agropecuario). Tabla completa en
 `data/statistics/factsheet_lulc_pct_mean.csv`.
+
+### 6. Cómo cambia la cobertura alrededor del fuego
+
+El último análisis, y el único que mira **dos** mapas de cobertura por cada hectárea quemada:
+el del año **anterior** al fuego y el del año **siguiente**. De dónde salen los números:
+`09-statistics.md` §5.7.
+
+**El diseño es el de Ferro et al. (2026)** —el trabajo del grupo sobre el Chaco Seco— rehecho
+a 30 m y para todo el país. De ahí vienen la ventana Y−1 → Y+1, la regla de exclusión y el
+cociente q.
+
+#### 6.1 La figura es el CONTROL, no el porcentaje
+
+La tentación es la barra de "el 15 % de lo quemado cambió de cobertura". **Sola, esa barra no
+se puede leer**: el país cambia un 3,9 % sin fuego alguno. El análisis existe por el
+cociente
+
+> **q = P(cambió | ardió) / P(cambió | no ardió)**
+
+y la figura que va a la slide es la que muestra **los dos números juntos**: un punto gris (lo
+que cambia sin fuego) y uno rojo (lo que cambia con fuego) por ecorregión, unidos por un
+segmento. El segmento ES el efecto del fuego; el punto gris dice cuánto habría pasado igual.
+
+Por qué importa, con los números medidos:
+
+- **Pampa tiene el porcentaje más alto del país (33,9 %) y cae al tercer puesto por q**,
+  porque es además donde más cambia todo lo demás (6,9 % sin fuego).
+- **Campos y Malezales (q = 0,7) y Altos Andes (q = 0,8) quedan por debajo de 1**: ahí lo
+  quemado cambia MENOS que lo no quemado. Con el porcentaje solo, la lectura era "casi no
+  cambia"; con el control, es "menos que nada" — el fuego no es una vía de conversión en esas
+  regiones.
+- **Bosques Patagónicos pasa a primero (q = 7,3)** con un porcentaje del medio de la tabla.
+
+q va en **escala logarítmica** siempre: es un cociente, y 0,5 y 2 tienen que estar a la misma
+distancia de 1. En lineal, todo el lado "el fuego limita el cambio" se aplasta contra el eje.
+
+#### 6.2 La prueba de la cicatriz (Y+3)
+
+La objeción de fondo: la colección de cobertura se construye con las mismas imágenes que ven
+la quemadura, así que un bosque quemado puede clasificarse como herbáceas en Y+1 sin que el
+bosque haya desaparecido. Si eso dominara, a tres años la tasa de lo quemado caería hacia el
+control. **No pasa**: sube de 14,5 % a 17,6 % mientras el control sube de 3,9 % a 5,8 %, y q
+se mantiene en ~3. Las transiciones son persistentes.
+
+Esto no va a una slide del factsheet; va al epígrafe, en una línea, porque es la respuesta a
+la primera pregunta que hace cualquiera que conozca los datos.
+
+#### 6.3 Las otras tres vistas
+
+- **q por transición** (matriz antes × después, color log(q)): donde el promedio deja de
+  servir. Nacional, nivel 1: bosque → agropecuario **q = 10,9**, bosque que sigue siendo
+  bosque **q = 0,7**. Ahí está todo el análisis en dos números.
+- **De lo que NO cambió, qué es**: barra apilada que suma 100 %, con la paleta del análisis 4.
+- **De lo que SÍ cambió, de qué a qué**: el **Sankey** (aluvial), ancho = área sumada de la
+  serie. Se dibujan las transiciones que llegan al 1 % de lo que cambió y el subtítulo dice
+  qué porcentaje quedó dibujado; no se las junta en una categoría "otras", porque una clase
+  inventada en el eje de una leyenda anidada es peor que una ausencia.
+
+#### 6.4 Lo que hay que decir en el epígrafe
+
+> **Con fuego la cobertura cambia 3,7 veces más que sin fuego, y 10,9 veces más para bosque →
+> agropecuario.** Pero es observacional: los píxeles que arden no son una muestra al azar del
+> país. Parte de q puede ser que el fuego ocurre donde el cambio ya iba a ocurrir — el fuego
+> como herramienta de un desmonte decidido de antemano es, de hecho, la lectura más probable
+> de bosque → agropecuario. Y q es un cociente de superficies, sin intervalo de confianza.
+
+Cuatro decisiones de método más, todas visibles en las figuras:
+
+1. **"Cambió" depende del nivel de leyenda.** Bosque cerrado → bosque abierto cambia en nivel
+   2 y no en nivel 1. Se muestran los dos; **para la slide, nivel 1** — con 20+ clases el
+   Sankey se vuelve ilegible.
+2. **El filtro del lado "antes" va en los cuatro estados, control incluido.** Si el
+   tratamiento se filtra y el control no, q compara dos poblaciones distintas.
+3. **El lado "después" no se filtra**: herbácea inundable → agua es una transición legítima.
+   Consecuencia deliberada: el Sankey tiene más categorías a la derecha que a la izquierda.
+4. **La serie llega a 2024 (Y+1) y a 2022 (Y+3)**, así que los totales de esta sección no
+   coinciden con los del resto del factsheet. Decirlo si aparece un absoluto.
+
+**Qué va al factsheet.** Está todo escrito para el país y para las 12 ecorregiones, en los dos
+niveles; lo más probable es que a la slide vaya **sólo lo nacional en nivel 1** — el dumbbell
+del control y la matriz de q, o el Sankey si se prefiere la historia de las transiciones.

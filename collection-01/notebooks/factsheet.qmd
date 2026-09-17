@@ -131,10 +131,12 @@ de este mapa es la proporción quemada media anual del país (0,838 % sobre el �
 0,93 % sobre lo quemable). Por eso las dos figuras no pueden contradecirse — y si alguna vez
 lo hacen, la compuerta de `statistics/burn_perc_export.py --check` dice cuál se rompió.
 
-Dos cosas del dibujo, ambas deliberadas y ambas explicadas en `docs/09 §5.5`: se agrega
-promediando (no con el máximo, que a 480 m ya duplica y a 2 km cuadruplica lo que el país
-quema), y se muestra en clases y no en rampa continua, porque el grueso del país está por
-debajo de 1 % y una rampa lineal no muestra nada.
+Tres cosas del dibujo, las tres deliberadas y las tres explicadas en `docs/09 §5.5` y
+`docs/10 §0.1`: se agrega **promediando** (no con el máximo, que a 480 m ya duplica y a 2 km
+cuadruplica lo que el país quema); se muestra **en clases** y no en rampa continua, porque el
+grueso del país está por debajo de 1 % y una rampa lineal no muestra nada; y **el cero es
+blanco y es una clase aparte**, porque "acá no hubo fuego" y "acá hubo poco fuego" son dos
+cosas distintas y una rampa continua las pega. El 60 % de las celdas dibujadas son ese cero.
 
 ```{r fig00-frecuencia}
 #| fig-height: 6.5
@@ -146,6 +148,47 @@ f00f <- map_burn_perc() +
        caption = cap("Frecuencia de fuego de la colección 1 dividida por los 27 años de la serie, promediada a 480 m. 1 % es un año de cada cien: en 27 años, algo más de una cuarta parte de un año. Las celdas sin nada quemable —lagos, salares, glaciares— no son 0, son vacío.", width = 52))
 save_fig(f00f, "fig00_mapa_frecuencia", w = 5, h = 6.5, write = WRITE)
 f00f
+```
+
+### El mismo mapa en veces
+
+La frecuencia es un porcentaje porque así se compara con cualquier otro período — pero "el
+3 % de los años" no se lee solo. **Es el mismo dato en veces** (× 27 / 100), con los mismos
+cortes y los mismos tonos, y lo único que cambia es la leyenda. Va la que se prefiera; no
+pueden contradecirse porque son el mismo archivo.
+
+La celda de 480 m es un **promedio** de sus 256 píxeles, así que el número es fraccionario:
+0,54 veces quiere decir que un píxel típico de esa celda ardió una vez cada dos series. Por
+eso la escala no empieza en 1.
+
+```{r fig00-veces}
+#| fig-height: 6.5
+#| fig-width: 5
+#| eval: !expr HAS_BURN_PERC
+f00v <- map_burn_count(stat = "mean") +
+  labs(title = "Cuántas veces ardió",
+       subtitle = "Veces que ardió el píxel promedio, 1999–2025",
+       caption = cap("Frecuencia de fuego de la colección 1, promediada a 480 m. Es el mapa anterior multiplicado por 27/100: mismos cortes, misma paleta, otra unidad. Blanco: ningún píxel de la celda ardió en los 27 años.", width = 52))
+save_fig(f00v, "fig00_mapa_veces", w = 5, h = 6.5, write = WRITE)
+f00v
+```
+
+Y la versión con **conteos enteros**, que es la que empieza en 1. Para que una celda tenga un
+número entero de fuegos hay que quedarse con **el píxel que más ardió** de la celda
+(`--reducer max`, un segundo archivo): entonces la clase dice "en algún lugar de esta celda
+hubo un píxel que ardió N veces". Es otra cuenta, no otro corte — exagera a propósito, y por
+eso **no** es la que va en la lámina de apertura (`docs/09 §5.5`, trampa 2).
+
+```{r fig00-veces-max}
+#| fig-height: 6.5
+#| fig-width: 5
+#| eval: !expr HAS_BURN_MAX
+f00vm <- map_burn_count(stat = "max") +
+  labs(title = "Cuántas veces ardió, como máximo",
+       subtitle = "Veces que ardió el píxel que más ardió de cada celda, 1999–2025",
+       caption = cap("El máximo de la celda de 480 m, no el promedio: la escala empieza en 1 porque el valor es un conteo entero. Sobreestima la superficie de las clases altas — el peor píxel pinta sus 23 hectáreas. Blanco: ningún píxel de la celda ardió.", width = 52))
+save_fig(f00vm, "fig00_mapa_veces_max", w = 5, h = 6.5, write = WRITE)
+f00vm
 ```
 
 Y la lámina de apertura, las dos juntas:
@@ -340,6 +383,36 @@ slide, esa frase va en el epígrafe.
 :::
 
 ## 2. Cómo cambió en el tiempo
+
+**La figura de la sección es el mapa del año del último fuego**: dónde ardió hace poco y
+dónde hace veinte años, píxel por píxel. Es el complemento exacto del mapa de apertura — aquél
+dice *cuánto* ardió cada lugar en 27 años, éste dice *cuándo fue la última vez* — y las dos
+salen del mismo conjunto de productos (`year_last_fire`, `docs/09 §5.6`).
+
+Tres cosas que hay que decir en el epígrafe:
+
+- **Blanco es "no ardió nunca"** en los 27 años. No es una clase baja de la rampa: no hay año
+  que mostrar. Es el 60 % del país.
+- **La celda de 480 m promedia el año de los píxeles que ardieron**, así que el valor es
+  fraccionario y la clase es un período, no un año. Una celda "2009 – 2013" puede ser una que
+  ardió entera en 2011 o una que ardió mitad en 2004 y mitad en 2017.
+- **Lo oscuro es lo reciente.** La paleta es viridis C (plasma) invertida, distinta a
+  propósito de la magma del mapa de frecuencia: son dos variables distintas, y compartir
+  paleta las haría leer como la misma.
+
+```{r fig02-mapa-ultimo-fuego}
+#| fig-height: 6.5
+#| fig-width: 5
+#| eval: !expr HAS_LAST_FIRE
+f02uf <- map_last_fire() +
+  labs(title = "Cuándo ardió por última vez",
+       subtitle = "Año del último fuego, 1999–2025",
+       caption = cap("Promedio a 480 m del año del último fuego sobre los píxeles que ardieron. Blanco: no ardió nunca en la serie. La clase es un período porque el promedio de una celda es fraccionario.", width = 52))
+save_fig(f02uf, "fig02_mapa_ultimo_fuego", w = 5, h = 6.5, write = WRITE)
+f02uf
+```
+
+Y el resto de la sección, que es el escalar de tendencia por región.
 
 Un GAM normal de pocas bases (`k = 5`) por región. El escalar que resume la tendencia es la
 **pendiente media** de ese ajuste. Tres formas de leerla, y por qué la del mapa es la tercera:
@@ -977,8 +1050,12 @@ Y el escalar que mejor se lee en una slide — el bosque:
 bos <- fs$lulc_pct_mean[level == "nivel1" & clase == "Bosques" & ecoregion_id != 0]
 gb <- merge(ECO_SF, bos[, .(ecoregion, value = mean_pct)], by = "ecoregion")
 nat_bos <- fs$lulc_pct_mean[level == "nivel1" & clase == "Bosques" & ecoregion_id == 0]
+# El único mapa que NO sale de `map_scalar()` — la escala es por clase, no por región —, así
+# que la capa de las Malvinas se agrega a mano. Si en algún momento este mapa se muda a
+# `map_scalar(data = ...)`, esta línea se va con él.
 f05m <- ggplot(gb) +
   geom_sf(aes(fill = value), colour = "white", linewidth = 0.2) +
+  geom_malvinas(colour = "grey45") +
   scale_fill_distiller(palette = "YlOrRd", direction = 1, name = "% por año") +
   coord_sf(datum = NA) + theme_map() +
   labs(title = "Qué porcentaje del bosque se quema",
@@ -999,9 +1076,320 @@ tbl(dcast(fs$lulc_pct_mean[level == "nivel2"], ecoregion ~ clase,
             if (is.numeric(x)) round(x, 2) else x)])
 ```
 
-## 6. Material de apoyo (no va al factsheet)
+## 6. Cómo cambia la cobertura alrededor del fuego
 
-### 6.1 Los absolutos por clase
+La última pregunta, y la única del factsheet que mira **dos** mapas de cobertura por cada
+hectárea quemada: la del año **anterior** al fuego y la del año **siguiente**. De todo lo que
+ardió entre 1999 y 2024, ¿qué proporción figura con otra cobertura un año después, y cuáles
+son las transiciones?
+
+Las tablas salen de `statistics/lulc_change_export.py` (docs/09 §5.7): el país entero cruzado
+por estado de fuego × ecorregión × `classification_<Y-1>` × `classification_<Y+offset>`, por
+año. La serie llega hasta **2024** con Y+1 y hasta **2022** con Y+3, porque el "después" tiene
+que existir: son 26 y 24 años, no 27, y por eso los totales de esta sección no coinciden con
+los del resto del factsheet.
+
+**El diseño es el de Ferro et al. (2026)** —el trabajo del grupo sobre el Chaco Seco—, acá a
+30 m y para todo el país en vez de 500 m y el Chaco. De ahí vienen las tres decisiones que lo
+definen: la ventana Y−1 → Y+1, la regla de exclusión de §6.1, y el cociente **q** como
+resumen.
+
+**Por qué Y−1 y no Y**: porque no se sabe si la cobertura del año del fuego es la de antes o
+la de después. Y−1 es además la que el numerador de la red le adjudica a la hectárea quemada
+(docs/09 §2.2), así que la columna "antes" reproduce el análisis 4 clase por clase.
+
+::: {.callout-important}
+## Esto NO dice "el fuego transformó X hectáreas"
+
+Hay un control (§6.1) y una prueba de persistencia (§6.2), así que se puede decir bastante
+más que al principio — pero sigue siendo **observacional**, y el epígrafe de cualquier slide
+tiene que decirlo:
+
+- **No hay asignación al azar.** Los píxeles que arden no son una muestra aleatoria del país:
+  arden donde hay combustible, pendiente, frontera agrícola y gente. Parte de q puede ser que
+  el fuego ocurre donde el cambio ya iba a ocurrir — el fuego como herramienta de un desmonte
+  decidido de antemano es, de hecho, la lectura más probable de bosque → agropecuario.
+- **La colección de cobertura ve la misma imagen que la cicatriz.** §6.2 muestra que no es lo
+  que domina la señal, pero no la elimina.
+- **q es un cociente de proporciones de superficie, sin intervalo de confianza.** Acá se
+  cuentan hectáreas, no se ajusta un modelo con error.
+
+Lo que sí dice: **con fuego, la cobertura cambia 3,7 veces más que sin fuego**, y ese factor
+llega a 10,9 para bosque → agropecuario.
+:::
+
+Dos aclaraciones de método, las dos con consecuencias visibles en las figuras:
+
+- **"Cambió" depende del nivel de leyenda.** Bosque cerrado → bosque abierto cambia en nivel 2
+  y no cambia en nivel 1. Por eso hay dos tablas, construidas por separado desde el código de
+  clase, y los dos números son distintos a propósito.
+- **El lado "antes" se filtra como el análisis 4 y el lado "después" no** — y el filtro va en
+  los cuatro estados, control incluido: si el tratamiento se filtra y el control no, q compara
+  dos poblaciones distintas. Una hectárea que ya era agua o ciudad antes no entra; una que era
+  herbácea inundable y figura como agua después es una transición legítima y se queda.
+  Consecuencia: el Sankey tiene más categorías a la derecha que a la izquierda.
+
+### 6.1 El control: ¿cuánto de esto habría pasado igual?
+
+**Es la mitad del análisis, y sin ella el resto no se puede leer.** "El 15 % de lo quemado
+figura con otra cobertura al año siguiente" no significa nada hasta saber cuánto cambia la
+cobertura *cuando no hay fuego*. La respuesta, para el país: **3,9 %**.
+
+La exportación barre el país entero y clasifica cada píxel-año en cuatro estados
+(`legends.py::FIRE_STATE_NAMES`). Dos son los que importan y los dos están **limpios** en el
+mismo sentido — sin fuego en ningún otro año de la ventana:
+
+| estado | qué es | superficie |
+|---|---|---|
+| `burned_clean` (1) | ardió en Y y en ningún otro año de la ventana — **el tratamiento** | 0,77 % |
+| `control` (0) | sin fuego en toda la ventana — **el control** | 97,63 % |
+| `window_fire` (2) | no ardió en Y pero sí en otro año de la ventana — control sucio, apartado | 1,53 % |
+| `burned_repeat` (3) | ardió en Y y también en otro año — tratamiento sucio, apartado | 0,07 % |
+
+La regla de exclusión es la de Ferro et al. (2026) y existe por el artefacto de la cicatriz:
+un píxel del control que ardió en Y+1 tiene la cobertura de Y+1 mirando una quemadura igual
+que uno tratado, y meterlo en el control acercaría el control al tratamiento por
+construcción. **Comprobación de que la regla hace algo**: el estado 2 cambia un 11,4 %, justo
+entre el control (3,9 %) y lo quemado (14,5 %) — que es lo que tiene que pasar si es una
+mezcla de los dos.
+
+El cociente es entonces **q = P(cambió | ardió) / P(cambió | no ardió)**. q > 1, el fuego
+promueve el cambio; q < 1, lo limita; q = 1, pasa lo mismo con fuego que sin él.
+
+```{r fig06-dumbbell}
+#| fig-height: 4.8
+#| fig-width: 8
+#| eval: !expr HAS_CHANGE
+f06d <- dumbbell_change("nivel1") +
+  labs(title = "Lo que cambia con fuego y lo que cambia sin fuego",
+       subtitle = "% del área que figura con otra familia de cobertura un año después · suma de 1999–2024",
+       caption = cap("Gris: píxeles sin fuego en toda la ventana [Y−1, Y+1]. Rojo: píxeles que ardieron en Y y en ningún otro año de la ventana. La distancia entre los dos puntos es el efecto del fuego; el punto gris es cuánto habría cambiado igual. Ordenado por q."))
+save_fig(f06d, "fig06_dumbbell_control_nivel1", w = 8, h = 4.8, write = WRITE)
+save_fig(dumbbell_change("nivel2") +
+           labs(title = "Lo mismo, por clase nativa",
+                subtitle = "leyenda col. 3 nivel 2 · suma de 1999–2024"),
+         "fig06_dumbbell_control_nivel2", w = 8, h = 4.8, write = WRITE)
+f06d
+```
+
+```{r fig06-q}
+#| fig-height: 4.6
+#| fig-width: 8
+#| eval: !expr HAS_CHANGE
+f06q <- bars_q("nivel1") +
+  labs(title = "Cuántas veces multiplica el fuego la probabilidad de cambio",
+       subtitle = "q = P(cambió | ardió) / P(cambió | no ardió) · familias (nivel 1) · escala logarítmica",
+       caption = cap("Escala logarítmica porque q es un cociente: 0,5 y 2 están a la misma distancia de 1. Azul, q < 1: lo quemado cambia MENOS que lo no quemado. La línea punteada es el país."))
+save_fig(f06q, "fig06_q_regiones_nivel1", w = 8, h = 4.6, write = WRITE)
+save_fig(bars_q("nivel2") +
+           labs(title = "Lo mismo, por clase nativa",
+                subtitle = "q por ecorregión · leyenda col. 3 nivel 2 · escala logarítmica"),
+         "fig06_q_regiones_nivel2", w = 8, h = 4.6, write = WRITE)
+f06q
+```
+
+### 6.2 ¿Es la cicatriz o es conversión? La ventana Y+3
+
+La objeción de fondo a todo el análisis: la colección de cobertura se construye con las
+mismas imágenes Landsat que ven la quemadura, así que un bosque quemado puede clasificarse
+como herbáceas en Y+1 **sin que el bosque haya desaparecido**, y volver a bosque en Y+3.
+
+Se puede medir. Si lo que se ve a un año fuera sobre todo eso, a tres años la tasa de lo
+quemado tendría que caer hacia el control y **q desplomarse hacia 1**. No pasa:
+
+| | ardió | control | q |
+|---|---|---|---|
+| Y+1 | 14,5 % | 3,9 % | **3,7** |
+| Y+3 | 17,6 % | 5,8 % | **3,0** |
+
+La tasa de lo quemado **sube** (14,5 → 17,6), no baja. La leve caída de q es el control, que
+acumula su propio cambio de fondo en una ventana más larga — no son píxeles quemados
+volviendo a su clase. **Las transiciones son persistentes.** El artefacto existe y no se
+puede descartar del todo, pero no es lo que produce el grueso de la señal.
+
+(La ventana de Y+3 exige cinco años sin otro fuego para los estados limpios, así que hay
+bastante menos superficie de la que sale el número.)
+
+```{r fig06-ventana}
+#| fig-height: 4.6
+#| fig-width: 6.5
+#| eval: !expr HAS_CHANGE
+f06w <- lines_window("nivel1") +
+  labs(title = "A tres años el cambio no volvió atrás",
+       subtitle = "% que cambió de familia de cobertura, leído a un año y a tres años del fuego",
+       caption = cap("Líneas gruesas: el país. Finas: las 12 ecorregiones. Si lo de Y+1 fuera la colección de cobertura mirando la cicatriz, la línea roja bajaría hacia la gris en Y+3."))
+save_fig(f06w, "fig06_ventana_y1_y3_nivel1", w = 6.5, h = 4.6, write = WRITE)
+f06w
+```
+
+### 6.3 q por transición: dónde está el efecto
+
+q promediado sobre todas las transiciones esconde lo que importa. Condicionado a la clase de
+origen —dentro de cada columna las probabilidades suman 1— el efecto del fuego se concentra
+en un lugar muy concreto.
+
+```{r fig06-tile-q}
+#| fig-height: 5.5
+#| fig-width: 7
+#| eval: !expr HAS_CHANGE
+f06t <- tile_q(NAT, "nivel1") +
+  labs(title = "Qué transiciones promueve el fuego",
+       subtitle = "q por transición · Argentina · familias (nivel 1) · Y+1 · suma de 1999–2024",
+       caption = cap("Cada celda es P(esta transición | ardió) / P(esta transición | no ardió), condicionada a la cobertura ANTES. Rojo: el fuego la promueve; azul: la limita. La diagonal es la persistencia. Se omiten las transiciones con menos de 1.000 ha quemadas."))
+save_fig(f06t, "fig06_q_transiciones_nacional_nivel1", w = 7, h = 5.5, write = WRITE)
+for (r in REGIONS)
+  save_fig(tile_q(r, "nivel1") + labs(title = r, subtitle = "q por transición · nivel 1 · Y+1"),
+           paste0("fig06_q_transiciones_", slug(r), "_nivel1"), w = 7, h = 5.5, write = WRITE)
+f06t
+```
+
+### 6.4 Cuánto cambia: el país y las regiones
+
+```{r fig06-mapa}
+#| fig-height: 6.5
+#| fig-width: 10
+#| eval: !expr HAS_CHANGE
+f06m <- wrap_plots(lapply(c("nivel1", "nivel2"), function(lv) {
+  map_scalar("changed_pct", palette = "BuPu", direction = 1,
+             legend = "% de lo\nquemado",
+             data = fs$change_sum[level == lv],
+             title = if (lv == "nivel1") "Por familia (nivel 1)" else "Por clase nativa (nivel 2)",
+             subtitle = NULL)
+}), ncol = 2) +
+  plot_annotation(
+    title = "Qué proporción de lo quemado figura con otra cobertura al año siguiente",
+    subtitle = "Suma de 1999–2024 · el mismo dato con las dos leyendas",
+    theme = theme(plot.title = element_text(face = "bold"),
+                  plot.subtitle = element_text(colour = "grey35")))
+save_fig(f06m, "fig06_mapa_cambio", w = 10, h = 6.5, write = WRITE)
+f06m
+```
+
+```{r fig06-barras}
+#| fig-height: 4.6
+#| fig-width: 8
+#| eval: !expr HAS_CHANGE
+f06b <- bars_changed("nivel1") +
+  labs(title = "Cuánto de lo quemado cambia de cobertura",
+       subtitle = "Leyenda col. 3 nivel 1 · suma de 1999–2024 · la línea punteada es el país",
+       caption = cap("Área quemada en el año Y cuya clase de nivel 1 en Y+1 difiere de la de Y−1, sobre el total quemado. NO es atribución al fuego: mide coincidencia temporal (docs/09 §5.7)."))
+save_fig(f06b, "fig06_barras_cambio_nivel1", w = 8, h = 4.6, write = WRITE)
+save_fig(bars_changed("nivel2") +
+           labs(title = "Cuánto de lo quemado cambia de clase nativa",
+                subtitle = "Leyenda col. 3 nivel 2 · suma de 1999–2024"),
+         "fig06_barras_cambio_nivel2", w = 8, h = 4.6, write = WRITE)
+f06b
+```
+
+```{r fig06-serie}
+#| fig-height: 4.6
+#| fig-width: 8
+#| eval: !expr HAS_CHANGE
+f06s <- lines_changed("nivel1") +
+  labs(title = "¿Cambia más que antes?",
+       subtitle = "% de lo quemado de cada año que figura con otra familia de cobertura al año siguiente",
+       caption = cap("La línea negra punteada es el país. Un salto en un año puede ser un cambio real o una revisión de la colección de cobertura en ese año: la serie se lee como contexto, no como tendencia."))
+save_fig(f06s, "fig06_serie_cambio_nivel1", w = 8, h = 4.6, write = WRITE)
+f06s
+```
+
+### 6.5 Lo que NO cambió: de qué es
+
+El primer zoom. De la parte que conserva su cobertura, cómo se reparte entre clases — suma
+100 %.
+
+```{r fig06-sin-cambio}
+#| fig-height: 3.2
+#| fig-width: 9
+#| eval: !expr HAS_CHANGE
+f06u <- bar_unchanged(NAT, "nivel1") +
+  labs(title = "De lo que ardió y NO cambió de cobertura, qué es",
+       subtitle = "Argentina · leyenda col. 3 nivel 1 · suma de 1999–2024",
+       caption = cap("Porcentaje del área quemada que figura con la MISMA familia de cobertura antes y después del fuego. Las etiquetas se escriben desde el 6 %."))
+save_fig(f06u, "fig06_sin_cambio_nacional_nivel1", w = 9, h = 3.2, write = WRITE)
+save_fig(bar_unchanged(NAT, "nivel2") +
+           labs(title = "De lo que ardió y NO cambió de clase nativa, qué es",
+                subtitle = "Argentina · leyenda col. 3 nivel 2 · suma de 1999–2024"),
+         "fig06_sin_cambio_nacional_nivel2", w = 9, h = 5.6, write = WRITE)
+f06u
+```
+
+```{r fig06-sin-cambio-regiones}
+#| fig-height: 9
+#| fig-width: 11
+#| eval: !expr HAS_CHANGE
+for (lv in c("nivel1", "nivel2")) for (r in REGIONS)
+  save_fig(bar_unchanged(r, lv) + labs(title = r, subtitle = NULL),
+           paste0("fig06_sin_cambio_", slug(r), "_", lv),
+           w = if (lv == "nivel1") 7 else 9, h = if (lv == "nivel1") 2.8 else 5.2,
+           write = WRITE)
+wrap_plots(lapply(REGIONS, function(r)
+  bar_unchanged(r, "nivel1") + labs(title = r, x = NULL) + theme_fs(9) +
+    theme(legend.position = "none", axis.text.y = element_blank(),
+          axis.ticks.y = element_blank())), ncol = 3)
+```
+
+### 6.6 Lo que SÍ cambió: de qué a qué
+
+El segundo zoom, y la figura de la sección. Cada banda es una transición; el ancho es el área
+sumada sobre los 26 años. Se dibujan las transiciones que llegan al 1 % de lo que cambió — el
+subtítulo dice qué porcentaje del total quedó dibujado, para que nadie lea el diagrama como si
+fuera todo.
+
+```{r fig06-sankey}
+#| fig-height: 6
+#| fig-width: 8
+#| eval: !expr HAS_CHANGE
+sankey_titled <- function(scope, lv, min_share = 1) {
+  p <- sankey_change(scope, lv, min_share)
+  p + labs(title = sprintf("De qué cobertura a qué cobertura: %s", scope),
+           subtitle = sprintf("%s · %s Mha que cambiaron en 1999–2024 · las transiciones dibujadas son el %s %% de ese total",
+                              if (lv == "nivel1") "familias (nivel 1)" else "clases nativas (nivel 2)",
+                              fmt_mha(attr(p, "total_ha"), 2),
+                              fmt_pct(attr(p, "cobertura"), 0)),
+           caption = cap("Sólo el área que CAMBIÓ de clase. El ancho de la banda es el área sumada de la serie, con recurrencias. Izquierda: la cobertura del año anterior al fuego; derecha: la del año siguiente. No es atribución al fuego (ver la advertencia de la sección)."))
+}
+f06k <- sankey_titled(NAT, "nivel1")
+save_fig(f06k, "fig06_sankey_nacional_nivel1", w = 8, h = 6, write = WRITE)
+save_fig(sankey_titled(NAT, "nivel2", min_share = 1.5),
+         "fig06_sankey_nacional_nivel2", w = 9, h = 7.5, write = WRITE)
+f06k
+```
+
+```{r fig06-sankey-regiones}
+#| fig-height: 6
+#| fig-width: 8
+#| eval: !expr HAS_CHANGE
+for (r in REGIONS) {
+  save_fig(sankey_titled(r, "nivel1"), paste0("fig06_sankey_", slug(r), "_nivel1"),
+           w = 8, h = 6, write = WRITE)
+  save_fig(sankey_titled(r, "nivel2", min_share = 1.5),
+           paste0("fig06_sankey_", slug(r), "_nivel2"), w = 9, h = 7.5, write = WRITE)
+}
+sankey_titled("Chaco", "nivel1")
+```
+
+### 6.7 La tabla
+
+```{r fig06-tabla}
+#| eval: !expr HAS_CHANGE
+# Y+1, nivel 1: lo quemado (estados 1+3), el control (0) y el cociente entre los limpios.
+tb6 <- dcast(fs$change_sum[offset == 1 & level == "nivel1" &
+                           state %in% c("burned_any", "control")],
+             ecoregion + q_changed ~ state, value.var = c("area_ha", "changed_pct"))
+knitr::kable(
+  tb6[order(-q_changed),
+      .(Ecorregión = ecoregion,
+        `Mha quemadas 1999–2024` = fmt_mha(area_ha_burned_any, 2),
+        `% que cambió` = fmt_pct(changed_pct_burned_any, 1),
+        `% sin fuego (control)` = fmt_pct(changed_pct_control, 1),
+        q = formatC(q_changed, format = "f", digits = 1, decimal.mark = ","))],
+  align = "lrrrr")
+```
+
+## 7. Material de apoyo (no va al factsheet)
+
+### 7.1 Los absolutos por clase
 
 Las hectáreas detrás de la composición del análisis 4, a nivel nacional y por clase de
 nivel 2.
@@ -1014,7 +1402,7 @@ top[, Mha := round(Mha, 3)]
 tbl(head(top, 12), align = "llrr")
 ```
 
-### 6.2 Tamaño de los incendios
+### 7.2 Tamaño de los incendios
 
 ```{r tamanos}
 tbl(fs$scalars[order(-mean_pct), .(
@@ -1025,7 +1413,7 @@ tbl(fs$scalars[order(-mean_pct), .(
     align = "lrrrrr")
 ```
 
-### 6.3 Las figuras escritas
+### 7.3 Las figuras escritas
 
 ```{r indice}
 if (WRITE) {

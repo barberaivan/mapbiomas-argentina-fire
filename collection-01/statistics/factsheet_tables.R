@@ -17,6 +17,9 @@
 #                    classes. It does NOT vary by year (docs/09 §4).
 #   the fire counts  fire_counts_by_month.csv, from statistics/fire_counts.R —
 #                    events, not pixels, off the local polygons.
+#   el cambio        lulc_change_eco13.csv, de statistics/lulc_change_export.py: lo
+#                    quemado cruzado por la cobertura de Y-1 y la de Y+1 (análisis 6,
+#                    docs/09 §5.7). OPCIONAL: si no está, la sección se saltea.
 #
 # WHAT IT WRITES  (all into data/statistics/)
 #   factsheet_annual.csv        ecorregión x año: burned, burnable, %, % / media
@@ -29,6 +32,9 @@
 #   factsheet_pirogram.csv      ecorregión x mes: área e incendios por año
 #   factsheet_season_fits.csv   the cyclic GAM through the pirogram points
 #   factsheet_region_scalars.csv one row per ecorregión — every scalar a map paints
+#   factsheet_change.csv        ecorregión x nivel x año x clase ANTES x clase DESPUÉS
+#   factsheet_change_annual.csv idem, resumido: cuánto ardió y cuánto cambió de clase
+#   factsheet_change_summary.csv el escalar del análisis 6: % de lo quemado que cambió
 #
 # ALL CALENDAR YEAR. The fire year (1 May -> 30 Apr) is how the mapping is
 # organised, never how anything is reported. The month axis is nonetheless
@@ -452,6 +458,147 @@ scal <- merge(scal, rbind(meta[, .(ecoregion_id, lat, lon, area_km2, palette_ord
               by = "ecoregion_id")
 setorder(scal, -mean_pct)
 wr(scal, "factsheet_region_scalars.csv")
+
+# ── 6. el cambio de cobertura alrededor del fuego (docs/09 §5.7, docs/10 §6) ──
+# La fuente son `lulc_change_eco13_y{1,3}.csv` (statistics/lulc_change_export.py): el país
+# entero cruzado por estado de fuego x ecorregión x clase col-3 de Y-1 x clase de Y+offset,
+# por año. OPCIONAL, como el análisis 5: un factsheet regenerado antes de que aterrice esa
+# exportación se saltea la sección en vez de morir acá.
+#
+# EL DISEÑO ES EL DE FERRO ET AL. (2026) — el trabajo del grupo sobre el Chaco Seco—, acá a
+# 30 m y para todo el país. De ahí vienen la ventana Y-1 -> Y+1, la regla de exclusión y el
+# cociente q; docs/09 §5.7 dice qué se copia y qué cambia.
+#
+# LOS CUATRO ESTADOS, y qué usa cada figura (legends.py::FIRE_STATE_NAMES):
+#   1 burned_clean + 3 burned_repeat = TODO lo que ardió en Y -> el titular del análisis
+#     ("de lo que ardió, cuánto figura con otra cobertura") y las figuras de composición.
+#   1 contra 0 (los dos LIMPIOS, sin fuego en el resto de la ventana) -> el cociente q, que
+#     es la única forma de saber si ese titular es mucho o poco.
+#
+# CINCO DECISIONES, todas visibles en la salida de este bloque:
+#
+#   1. EL NIVEL SE AGREGA ANTES DE COMPARAR. "Cambió de cobertura" no es una propiedad de la
+#      hectárea, es una propiedad de la hectárea Y DEL NIVEL con que se la mira: bosque
+#      cerrado -> bosque abierto CAMBIA en nivel 2 y NO cambia en nivel 1. Por eso las dos
+#      tablas se construyen por separado desde el código de clase, y nunca una de la otra.
+#
+#   2. EL LADO "ANTES" SE FILTRA COMO EL ANÁLISIS 4 — EN LOS CUATRO ESTADOS. Una hectárea
+#      que ya era agua o ciudad ANTES es error de mapeo (si ardió) o no es tierra quemable
+#      (si no), y en los dos casos no pertenece a este análisis. Va el mismo NON_BURNABLE_N1
+#      que la composición, y va en el control TAMBIÉN: si el tratamiento se filtra y el
+#      control no, q compara dos poblaciones distintas y el número no significa nada.
+#      El lado "después" NO se filtra: una herbácea inundable que figura como agua después es
+#      una transición legítima —el Delta se inunda—, y el destino no tiene por qué ser
+#      quemable. Consecuencia deliberada: el Sankey tiene más categorías a la derecha.
+#
+#   3. q SE CONDICIONA A LA CLASE DE ORIGEN. La probabilidad de transición es
+#      P(prev -> post | prev, estado): dentro de cada clase de origen las probabilidades
+#      suman 1. Sin condicionar, q mediría sobre todo qué clases arden, que es el análisis 4
+#      y no éste.
+#
+#   4. "NO OBSERVADO" SE QUEDA, VISIBLE. Es una categoría de la leyenda, no un NA.
+#
+#   5. LA TABLA ES ANUAL, LAS FIGURAS SUMAN.
+CHANGE_OFFSETS <- c(1L, 3L)
+change_file <- function(off) sprintf("lulc_change_eco13_y%d.csv", off)
+have_off <- CHANGE_OFFSETS[file.exists(file.path(DIR, sapply(CHANGE_OFFSETS, change_file)))]
+
+if (!length(have_off)) {
+  msg("[.] lulc_change_eco13_y*.csv no está — análisis 6 salteado "
+      %+% "(corré statistics/lulc_change_export.py)")
+} else {
+  # Un offset a la vez; todo lo que sale lleva la columna `offset`, así que las tablas de
+  # Y+1 y de Y+3 conviven y una figura elige con un filtro.
+  parts <- lapply(have_off, function(off) {
+    raw <- rd(change_file(off))[!ecoregion_id %in% UNMAPPED_REGIONS]
+    tot0 <- sum(raw$area_ha)
+    msg("")
+    msg("análisis 6, Y+%d: %s filas, %d-%d, %.2f Mha/año de país",
+        off, format(nrow(raw), big.mark = ","), min(raw$year), max(raw$year),
+        tot0 / length(unique(raw$year)) / 1e6)
+    msg("  lado ANTES no quemable (descartado en los 4 estados): %.3f %%",
+        100 * raw[nivel1_prev %in% NON_BURNABLE_N1, sum(area_ha)] / tot0)
+    raw <- raw[!nivel1_prev %in% NON_BURNABLE_N1]
+
+    # los dos niveles, cada uno agregado desde el código de clase (decisión 1)
+    long <- rbindlist(lapply(c("nivel1", "nivel2"), function(lv) {
+      d <- raw[, .(burned_ha = sum(area_ha)),
+               by = .(ecoregion_id, state_id, year,
+                      clase_prev = get(paste0(lv, "_prev")),
+                      clase_post = get(paste0(lv, "_post")))]
+      d <- add_national(d, c("state_id", "year", "clase_prev", "clase_post"))
+      d[, `:=`(level = lv, offset = off)][]
+    }))
+    long[burn, on = "ecoregion_id", ecoregion := i.ecoregion]
+    long[, cambio := clase_prev != clase_post]
+    long[]
+  })
+  change_all <- rbindlist(parts)
+
+  # ── lo que ardió: la tabla que dibujan las figuras ─────────────────────────
+  # Estados 1 + 3 = "ardió en Y". El estado se colapsa acá: para la composición y el Sankey
+  # la pregunta es qué le pasa a lo quemado, no si además ardió en otro año de la ventana.
+  change <- change_all[state_id %in% c(1L, 3L),
+                       .(burned_ha = sum(burned_ha)),
+                       by = .(ecoregion_id, ecoregion, offset, level, year,
+                              clase_prev, clase_post, cambio)]
+  setcolorder(change, c("ecoregion_id", "ecoregion", "offset", "level", "year",
+                        "clase_prev", "clase_post", "cambio", "burned_ha"))
+  setorder(change, offset, level, ecoregion_id, year, -burned_ha)
+  wr(change, "factsheet_change.csv")
+
+  # ── (a) el escalar, por estado: cuánto cambió ──────────────────────────────
+  # Con los cuatro estados adentro, porque el control es la mitad del análisis.
+  chg_annual <- change_all[, .(area_ha = sum(burned_ha),
+                               changed_ha = sum(burned_ha[cambio])),
+                           by = .(ecoregion_id, ecoregion, offset, level, state_id, year)]
+  chg_annual[, changed_pct := 100 * changed_ha / area_ha]
+  setorder(chg_annual, offset, level, state_id, ecoregion_id, year)
+  wr(chg_annual, "factsheet_change_annual.csv")
+
+  chg_sum <- chg_annual[, .(area_ha = sum(area_ha), changed_ha = sum(changed_ha)),
+                        by = .(ecoregion_id, ecoregion, offset, level, state_id)]
+  chg_sum[, changed_pct := 100 * changed_ha / area_ha]
+  # El titular: lo quemado son 1 + 3; el control limpio es 0. `q` compara los dos LIMPIOS.
+  burned_row <- chg_annual[state_id %in% c(1L, 3L),
+                           .(area_ha = sum(area_ha), changed_ha = sum(changed_ha)),
+                           by = .(ecoregion_id, ecoregion, offset, level)]
+  burned_row[, `:=`(state_id = 13L, changed_pct = 100 * changed_ha / area_ha)]
+  chg_sum <- rbind(chg_sum, burned_row, use.names = TRUE)
+  chg_sum[, state := ifelse(state_id == 13L, "burned_any",
+                            c("control", "burned_clean", "window_fire",
+                              "burned_repeat")[state_id + 1L])]
+  qq <- dcast(chg_sum[state_id %in% c(0L, 1L)],
+              ecoregion_id + ecoregion + offset + level ~ state,
+              value.var = "changed_pct")
+  qq[, q_changed := burned_clean / control]
+  chg_sum[qq, on = .(ecoregion_id, offset, level), q_changed := i.q_changed]
+  setorder(chg_sum, offset, level, state_id, -changed_pct)
+  wr(chg_sum, "factsheet_change_summary.csv")
+
+  # ── (b) q por TRANSICIÓN, condicionado a la clase de origen (decisión 3) ───
+  qtab <- change_all[state_id %in% c(0L, 1L),
+                     .(area_ha = sum(burned_ha)),
+                     by = .(ecoregion_id, ecoregion, offset, level, state_id,
+                            clase_prev, clase_post)]
+  qtab[, p := area_ha / sum(area_ha), by = .(ecoregion_id, offset, level, state_id, clase_prev)]
+  qtab <- dcast(qtab, ecoregion_id + ecoregion + offset + level + clase_prev + clase_post ~
+                  state_id, value.var = c("area_ha", "p"), fill = 0)
+  setnames(qtab, c("area_ha_0", "area_ha_1", "p_0", "p_1"),
+           c("area_control", "area_burned", "p_control", "p_burned"))
+  # q = P(transición | ardió) / P(transición | no ardió). Sin control la transición existe
+  # SÓLO con fuego: `Inf` es la respuesta correcta y no se la reemplaza por un número.
+  qtab[, q := p_burned / p_control]
+  setorder(qtab, offset, level, ecoregion_id, clase_prev, -p_burned)
+  wr(qtab, "factsheet_change_q.csv")
+
+  msg("")
+  msg("cuánto cambió de cobertura, y el cociente q (nivel 1, Y+%d)", have_off[1])
+  print(chg_sum[offset == have_off[1] & level == "nivel1" & state_id %in% c(0L, 1L, 13L),
+                .(ecoregion, state, pct = round(changed_pct, 1),
+                  q = round(q_changed, 1))][order(-q)][
+                  , dcast(.SD, ecoregion + q ~ state, value.var = "pct")][order(-q)])
+}
 
 msg("")
 print(scal[, .(ecoregion, quemable_Mha = round(burnable_ha / 1e6, 2),
