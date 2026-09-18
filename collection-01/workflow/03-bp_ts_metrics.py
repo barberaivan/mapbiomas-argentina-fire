@@ -138,7 +138,7 @@ def load_all_coefficients(models_dir=None, classes=None):
     ----------
     models_dir : Path or str, optional — defaults to ``C.COEF_DIR`` (the deployed
                  model folder, currently ``models/P050`` — the reduced P=50 set,
-                 52 terms; see docs/03-bpts.md §11).  Pass an explicit per-model
+                 52 terms; see docs/03-bpts.md "Key decisions").  Pass an explicit
                  folder (e.g. ``C.MODELS_DIR / "P129"``) to load another variant.
     classes    : list[int], optional   — defaults to ``C.FITTABLE_VEG_FIRE``
 
@@ -472,7 +472,7 @@ def compute_bp_ts_metrics(focal_arr, prev_arr, next_arr):
 
     # Note: the per-pixel inter-observation gap bands (timediff_med / timediff_max)
     # were dropped to save storage — they were largely redundant with `n` as an
-    # image-density / quality signal.  See docs/03-bpts.md §3.7.
+    # image-density / quality signal.  See docs/notes/03-dropped_timediff_bands.md.
 
     return ee.Image.cat([
         delta3_peak, minfore3_peak, jumpgap3, prevwidth3, postwidth3, date_post3,
@@ -488,7 +488,8 @@ NON_N_BANDS = [
     "pmax3", "pmax2", "pmax1",
 ]
 
-# Integer-encoding band groups for export (see docs/03-bpts.md §3.7).  Every band is
+# Integer-encoding band groups for export (docs/03-bpts.md "Output bands and
+# encoding").  Every band is
 # stored as signed int16: probabilities are scaled by PROB_SCALE (decode: value /
 # PROB_SCALE) and delta* are signed (range −1..1); day-widths/gaps, inter-obs gaps and
 # date_post* (day-of-year 1..366) are whole numbers stored as-is; `n` keeps its -1/-2

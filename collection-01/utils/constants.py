@@ -190,7 +190,8 @@ VEG_FIRE_NON_OBSERVED = 25   # outside the remap / non-observed                �
 #   models/P129/  full fit (130 terms incl. intercept)
 #   models/P030/ … P080/   reduced term-pruning variants (P = top-P percentile cut;
 #                          rows = intercept + kept terms, so P050 = 52 rows, etc.)
-# All variants use CV scheme K=3 (not in the folder name; see docs/03-bpts.md §11).
+# All variants use the same step-02 CV (not in the folder name; see
+# docs/notes/02-lr_term_reduction.md — the K3 token there is the area weighting).
 # The CSVs are git-tracked (models/.gitignore re-includes *_coefficients.csv at any
 # depth) so the Colab multi-account export clones them directly — do NOT depend on
 # the models-store symlink for deployment.  Each folder is (re)produced by
@@ -198,7 +199,7 @@ VEG_FIRE_NON_OBSERVED = 25   # outside the remap / non-observed                �
 MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
 
 # The single deployed model used by ALL production prediction/export, across every
-# year and worker account.  Chosen P=50 (see docs/03-bpts.md §11 for rationale).
+# year and worker account.  Chosen P=50 (docs/03-bpts.md "Key decisions").
 # load_all_coefficients() reads this by default; change this ONE line to redeploy.
 DEPLOYED_MODEL = "P050"
 COEF_DIR       = MODELS_DIR / DEPLOYED_MODEL
@@ -257,7 +258,7 @@ def bpts_target_col(year):
 #
 # Most years need only 2 months to harvest the 3+2 padding obs, and a narrower window
 # is much cheaper (fewer scenes → less per-image LR/cloud-mask/plumbing; see
-# docs/03-bpts.md §8).  The early Landsat era is sparse (L7 launched mid-1999), so the
+# docs/notes/03-performance_profile.md).  The early Landsat era is sparse (L7 launched mid-1999), so the
 # first focal years pad wider to still gather enough context: 1999 → 4 months,
 # 2000 → 3 months, 2001+ → 2 months.
 PAD_MONTHS_DEFAULT = 2

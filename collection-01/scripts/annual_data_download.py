@@ -34,8 +34,8 @@ What it does, per training fire (from that region's `training_fires`):
      the unburned points.
 
 Band values are the RAW int16-encoded `bpts` bands (probabilities ×10000, days
-as-is; see docs/03-bpts.md §3.7) — decoding is done in R, keeping this export
-simple and compact.
+as-is; see docs/03-bpts.md "Output bands and encoding") — decoding is done in R,
+keeping this export simple and compact.
 
 NOTE ON COVERAGE: `bpts` is still exporting.  A fire whose year(s) are not yet
 exported contributes nothing (its points fall on masked/absent tiles).  We

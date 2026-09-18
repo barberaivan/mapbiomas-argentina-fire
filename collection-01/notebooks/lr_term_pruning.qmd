@@ -33,7 +33,7 @@ block_lvls <- c("focal", "prev", "pairs", "sameband", "cross_idx", "cross_band")
 
 **Why prune.** The burn-probability model is applied per Landsat observation over ~150
 date-mosaicked scenes per tile in the GEE prediction step (`workflow/03-bp_ts_metrics.py`).
-Profiling (`docs/03-bpts.md §8`) showed the **130-term elastic-net LR dominates per-tile compute** —
+Profiling (`docs/notes/03-performance_profile.md`) showed the **130-term elastic-net LR dominates per-tile compute** —
 the per-term band selects / multiplies / sums, and the computation-graph "plumbing" they generate,
 scale with the term count, while the clever time-series array metrics are <1% of cost. So fewer
 terms ⇒ cheaper prediction across all 248 tiles × 27 years. This notebook decides *which* terms to

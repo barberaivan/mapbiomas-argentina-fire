@@ -403,7 +403,36 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
 > history, or the live algorithm?* — and this doc as the worked precedent. **Do not cut a live rule
 > out of a step doc to hit a number.**
 
-- [ ] `03-bpts.md` (5.7 k) — §§9–11 are status/handoff/decision records.
+- [x] `03-bpts.md` (5,766 → 2,746 words) — §6 (validation), §7's two answered bullets →
+      `notes/03-validation_2015.md`; §7's cost bullets + §8 + §8.1 + §9 (the pruning handoff and
+      the EECU A/B/C test) → `notes/03-performance_profile.md`; §10 →
+      `notes/03-tile_merge_test.md`; the two `timediff_*` drop boxes + §5 gotcha 4 →
+      `notes/03-dropped_timediff_bands.md`. 2.3 k words moved verbatim. §11 was **not** history —
+      it is what production runs, so it became one `Key decisions` bullet. 19 inbound `§N`
+      citations repointed across 11 files. **A live rule was missing from the doc entirely — see
+      the box.**
+
+> **What the step-03 pass found (2026-09-18).**
+>
+> **(a) A doc can be missing a live rule that every consumer already depends on.** The step-03
+> output does **not** live in one collection: the `mapbiomas-argentina` asset home ran out of
+> space, so **1999–2009 export to `mapbiomas-chaco`** (`C.bpts_target_col`, a legacy-rooted
+> project whose paths carry no `/assets/` segment). That landed in `bd7b033` in the code and the
+> constants' comments, and the doc — which states the output collection in its second paragraph —
+> was never updated. The step-04 lesson was *an open question the code has since answered*; this
+> is its sibling: **a change the code made that the doc never heard about**. Both are found the
+> same way, by reading `git log` for the step's script before trusting the doc's facts.
+>
+> **(b) The `n` band's twin rule survived reduction because it is the product contract.** The
+> band table, the decode column and the −1/−2 sentinels stay in the doc at full length: they are
+> what a downstream reader needs to interpret the asset, and no code file states them in one
+> place. What left was every *measurement* of those bands.
+>
+> **(c) 2,746 words, the largest step doc so far, and it stays** (`TEMPLATE.md` §1). Step 03 is
+> two algorithms in one export — a per-observation model and a per-pixel time-series reduction —
+> and after the four extractions what remains is mechanism: the coefficient-to-band construction,
+> the window definitions, the padding, the two arrays, the argmax bundle, the encoding, and five
+> GEE array rules that are still load-bearing in the code. There is no history left to move.
 
 - [x] `04-snic.md` (2,694 → 2,115 words) — §1 (the shelved SNIC-3D) →
       `notes/04-snic3d_firebreaks.md`; §5c (the FY2000 vectorize benchmark) →
@@ -555,6 +584,11 @@ Append one line per completed item: date — what — commit.
   (3 of 5 items already answered by the code, 2 promoted to `Gotchas`); six headings shortened so
   they can be cited by name; ~35 citations repointed across 13 files, including three that named
   long-deleted sections; CLAUDE.md's step-04 index row rewritten.
+- 2026-09-18 — **Phase 2, `03-bpts.md`**: 5,766 → 2,746 words; four `notes/` entries extracted
+  verbatim (`03-performance_profile.md`, `03-tile_merge_test.md`, `03-validation_2015.md`,
+  `03-dropped_timediff_bands.md`); 19 `§N` citations repointed across 11 files; the two-collection
+  routing (1999–2009 → `mapbiomas-chaco`) documented for the first time; CLAUDE.md's step-03 index
+  row rewritten.
 - 2026-09-18 — **Phase 0 done**: 3 `git mv`s, `docs/notes/` + `docs/external/` created with
   their conventions, ~120 citations rewritten across 30 files, ROADMAP pointed here.
   Uncommitted at time of writing.

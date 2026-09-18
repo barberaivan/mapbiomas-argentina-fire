@@ -24,7 +24,8 @@
 #      metrics as step 03 (delta{2,3}_peak, minfore{2,3}_peak, pmax{1,2,3},
 #      jumpgap, widths, date_post), plus an annualised obs density `n`.
 #
-# Min-obs quality gate (mirrors the step-03 padded-array length rule, 03-bpts §3.5):
+# Min-obs quality gate (mirrors the step-03 padded-array length rule, docs/03-bpts.md
+# "Two padded arrays, one per window"):
 #   K=3 family needs >= 6 obs, K=2 family needs >= 4 obs (that is exactly the
 #   window each delta needs: 3 back + 2 fwd, resp. 2 back + 1 fwd). Points below
 #   the bar get that family's metrics = NA (a quality flag, not an error).
@@ -139,7 +140,8 @@ process_region <- function(region, remap, only_fire = NULL) {
   d <- tf[d, on = "fire_id"]
   d[, fire_year := year(as.IDate(post_lwr_day))]
 
-  # (3) veg_fire = production's FOCAL-year rule (03-bpts §2.1, §3.4): ONE veg_fire
+  # (3) veg_fire = production's FOCAL-year rule (docs/03-bpts.md "The deployed logistic
+  # regression" + "Padding the focal year"): ONE veg_fire
   # per point = MapBiomas(fire_year-1), applied to the WHOLE series (production
   # uses the focal year's prev-year land cover for every obs, incl. padding — NOT
   # each obs's own prev-year). Take it from the point's obs in fire_year (the

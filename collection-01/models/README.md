@@ -21,7 +21,7 @@ adaptive at `min(10, n_fires_with_positives)` — so the fold count is not in th
 
 `P` is the top-P percentile cut on the global term ranking, **not** the term count (e.g. `P050`
 has 52 rows). The reduced folders hold only `intercept + kept terms` (trimmed at write time) so GEE
-prediction builds only the deployed bands — see `docs/03-bpts.md` §9/§11. Each folder is
+prediction builds only the deployed bands — see `docs/03-bpts.md` "Key decisions". Each folder is
 (re)produced by `02-model_fitting.R` writing to `models/<COEF_TAG>/` (`COEF_TAG` defaults to
 `P129`; `scripts/refit_pruning_sweep.R` sets `P030`…`P080`). Only `*_coefficients.csv` are tracked
 (see `.gitignore`); heavy artifacts stay in `models-store/`.

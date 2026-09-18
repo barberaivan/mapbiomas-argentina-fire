@@ -1,7 +1,8 @@
 """
 collection-01/scripts/profile_bpts.py
 
-Profile where the per-tile time goes in step 03 (see docs/03-bpts.md §8).
+Profile where the per-tile time goes in step 03
+(see docs/notes/03-performance_profile.md).
 
 You cannot profile an Export task (it runs async server-side and only reports a
 single total EECU at the end).  Instead use GEE's built-in profiler,
@@ -55,6 +56,6 @@ print(f"=== TRUE EE PROFILER — full bpts graph over 6 km box @30 m "
       f"({TILE}, {YEAR}) ===")
 print("Cost is dominated by the per-image LR + cloud-mask + plumbing over ~150 "
       "mosaicked\nscenes; the array/time-series metrics are < 1%.  See "
-      "docs/03-bpts.md §8.\n")
+      "docs/notes/03-performance_profile.md.\n")
 with ee.profilePrinting():
     img.reduceRegion(ee.Reducer.mean(), box, 30, maxPixels=int(1e9)).getInfo()

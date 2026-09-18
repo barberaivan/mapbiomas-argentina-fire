@@ -104,7 +104,7 @@ Memory is auto-sized per class to a RAM budget; `FIT_CORES` overrides.
   **percentile cut on that ranking, not a term count** — P=50 keeps 51 terms. The route
   — two separate reductions, from 427 terms and then from 129 — is in
   [`notes/02-lr_term_reduction.md`](notes/02-lr_term_reduction.md); the decision record is
-  [`03-bpts.md`](03-bpts.md) §9/§11.
+  [`03-bpts.md`](03-bpts.md) "Key decisions".
 - **Every variant keeps its own tracked folder** rather than the chosen one being promoted into
   a single `models/`. The deployed coefficients then travel with the repo, which is what the
   Colab multi-account export of step 03 needs.

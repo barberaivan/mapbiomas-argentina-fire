@@ -44,7 +44,7 @@ A different motivation from reduction 1. `notebooks/lr_term_pruning.qmd` states 
 
 > **Why prune.** The burn-probability model is applied per Landsat observation over ~150
 > date-mosaicked scenes per tile in the GEE prediction step (`workflow/03-bp_ts_metrics.py`).
-> Profiling (`docs/03-bpts.md §8`) showed the **130-term elastic-net LR dominates per-tile compute** —
+> Profiling (`docs/notes/03-performance_profile.md`) showed the **130-term elastic-net LR dominates per-tile compute** —
 > the per-term band selects / multiplies / sums, and the computation-graph "plumbing" they generate,
 > scale with the term count, while the clever time-series array metrics are <1% of cost. So fewer
 > terms ⇒ cheaper prediction across all 248 tiles × 27 years.
@@ -73,7 +73,7 @@ Almost the whole focal block survives; the prev-year blocks are cut to a fifth o
 set is **common to all 23 classes** — the ranking is global, so only the coefficients differ per
 class, which is what lets the GEE prediction build one band set for everything.
 
-**Why P=50** (from `docs/03-bpts.md` §11, decided 2026-06-27): area-weighted mean ΔAUC is ~0 at
+**Why P=50** (from `docs/03-bpts.md` "Key decisions", decided 2026-06-27): area-weighted mean ΔAUC is ~0 at
 P≥50 under all three weightings, with a real drop only below it.
 
 **How it was deployed.** Rather than promoting the chosen variant into a single `models/`
@@ -90,4 +90,5 @@ deployed set travels with the repo for the Colab multi-account export, and
 | `scripts/refit_pruning_sweep.R` | refits every P through `02-model_fitting.R`'s hooks |
 | `config/pruning_terms.csv` | the kept-term list per P (scheme `area_cbrt_K3`) |
 | `models-store/pruning/metrics_by_P.csv` | the OOF metrics the choice was made on |
-| `docs/03-bpts.md` §9/§11 | the decision record and the profiling that motivated it |
+| `docs/03-bpts.md` "Key decisions" | the deployed-model decision |
+| `docs/notes/03-performance_profile.md` | the profiling that motivated it, and the EECU A/B test |
