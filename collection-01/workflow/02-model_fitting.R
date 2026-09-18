@@ -396,8 +396,8 @@ fit_one_class <- function(sub, code, name, name2code, pure_neg) {
     data.table(block = rep(names(BLOCKS), BLOCKS), term = all_terms,
                coefficient = as.numeric(raw$beta[all_terms]), coef_std = as.numeric(coef_std)))
   # Reduced fit: trim the exported CSV to (intercept + kept terms) so the deployed folder holds
-  # ONLY the deployed bands — GEE prediction is term-count-driven (docs/03-bpts.md
-  # "Key decisions"), so a
+  # ONLY the deployed bands — GEE prediction is term-count-driven
+  # (docs/02-burn_probability.md "From CSV rows to coefficient bands"), so a
   # zero-padded full-length CSV would compute like the full model.  Row ORDER is preserved.
   if (length(KEEP_TERMS)) coef_dt <- coef_dt[block == "(intercept)" | term %chin% KEEP_TERMS]
 

@@ -11,7 +11,7 @@ Checks:
      and returns the expected term count (52 for P050).
   2. The coefficient image builds exactly one band per loaded term — i.e. GEE
      computes the reduced graph, NOT a full-129 graph with zeroed coefficients
-     (docs/03-bpts.md "Key decisions").
+     (docs/02-burn_probability.md "From CSV rows to coefficient bands").
   3. bpts_image() assembles without error for one tile-year.
 
     $PYTHON collection-01/scripts/test-03-model_load.py

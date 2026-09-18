@@ -140,8 +140,9 @@ process_region <- function(region, remap, only_fire = NULL) {
   d <- tf[d, on = "fire_id"]
   d[, fire_year := year(as.IDate(post_lwr_day))]
 
-  # (3) veg_fire = production's FOCAL-year rule (docs/03-bpts.md "The deployed logistic
-  # regression" + "Padding the focal year"): ONE veg_fire
+  # (3) veg_fire = production's FOCAL-year rule:
+  #     docs/02-burn_probability.md "Which model judges the pixel"
+  #     + docs/03-bpts.md "Padding the focal year".  ONE veg_fire
   # per point = MapBiomas(fire_year-1), applied to the WHOLE series (production
   # uses the focal year's prev-year land cover for every obs, incl. padding — NOT
   # each obs's own prev-year). Take it from the point's obs in fire_year (the

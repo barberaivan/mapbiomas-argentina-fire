@@ -199,7 +199,8 @@ VEG_FIRE_NON_OBSERVED = 25   # outside the remap / non-observed                â
 MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
 
 # The single deployed model used by ALL production prediction/export, across every
-# year and worker account.  Chosen P=50 (docs/03-bpts.md "Key decisions").
+# year and worker account.  Chosen P=50 (docs/02-model_fitting.md "Key decisions";
+# how the CSV becomes bands: docs/02-burn_probability.md).
 # load_all_coefficients() reads this by default; change this ONE line to redeploy.
 DEPLOYED_MODEL = "P050"
 COEF_DIR       = MODELS_DIR / DEPLOYED_MODEL

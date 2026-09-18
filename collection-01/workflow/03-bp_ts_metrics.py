@@ -9,11 +9,12 @@ segmentation step.
 For each focal year × MapBiomas carta tile this exports a 16-band image
 ``bpts_YYYY_<tile-id>`` to ``C.BP_TS_METRICS_COL``.
 
-This is a large step BY NECESSITY: it is really two processes — (a) per-observation
-burn probability, then (b) the per-pixel time-series metrics — but the intermediate
-per-observation probability collection is far too large to export as an asset, so both
-must run inside one graph / one export. All of that machinery lives HERE (not in
-utils/functions.py) so this step is self-contained; only the truly cross-step helpers
+This is a large file BY NECESSITY: it holds two conceptual stages — (a) the
+per-observation burn probability (docs/02-burn_probability.md) and (b) the per-pixel
+time-series metrics (docs/03-bpts.md) — because the intermediate per-observation
+probability collection is far too large to export as an asset, so both must run inside
+one graph / one export. All of that machinery lives HERE (not in utils/functions.py)
+so this step is self-contained; only the truly cross-step helpers
 (Landsat/indices/MB-mosaic/veg_fire) are imported from ``utils.functions``.
 
 To drive these functions interactively (maps, sanity checks) import them by PATH —
@@ -138,7 +139,7 @@ def load_all_coefficients(models_dir=None, classes=None):
     ----------
     models_dir : Path or str, optional — defaults to ``C.COEF_DIR`` (the deployed
                  model folder, currently ``models/P050`` — the reduced P=50 set,
-                 52 terms; see docs/03-bpts.md "Key decisions").  Pass an explicit
+                 52 terms; see docs/02-burn_probability.md).  Pass an explicit
                  folder (e.g. ``C.MODELS_DIR / "P129"``) to load another variant.
     classes    : list[int], optional   — defaults to ``C.FITTABLE_VEG_FIRE``
 
@@ -181,8 +182,9 @@ def load_all_coefficients(models_dir=None, classes=None):
 
 def build_coeff_image(veg_fire_img, terms, classes=None):
     """
-    Build a 130-band image where each band holds, per pixel, the coefficient of
-    one term for that pixel's veg_fire class.
+    Build an image with ONE BAND PER LOADED TERM (52 for the deployed P050 set),
+    each holding, per pixel, that term's coefficient for the pixel's veg_fire
+    class.  The band count is the compute cost — see docs/02-burn_probability.md.
 
     Implemented as one ``remap`` per term: veg_fire class → coefficient, with a
     default of 0.0 for any non-fittable class (so non-fittable pixels contribute
@@ -488,8 +490,8 @@ NON_N_BANDS = [
     "pmax3", "pmax2", "pmax1",
 ]
 
-# Integer-encoding band groups for export (docs/03-bpts.md "Output bands and
-# encoding").  Every band is
+# Integer-encoding band groups for export.
+# See docs/03-bpts.md "Output bands and encoding".  Every band is
 # stored as signed int16: probabilities are scaled by PROB_SCALE (decode: value /
 # PROB_SCALE) and delta* are signed (range −1..1); day-widths/gaps, inter-obs gaps and
 # date_post* (day-of-year 1..366) are whole numbers stored as-is; `n` keeps its -1/-2

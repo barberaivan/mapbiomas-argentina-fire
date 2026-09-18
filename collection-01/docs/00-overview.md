@@ -19,7 +19,10 @@ which selects *which* model judges the pixel, and the previous year's MapBiomas 
 supplies the pixel's own baseline. Both are read from `y−1` so that the fire being detected
 cannot influence the context used to detect it.
 
-The output is a **burn probability per observation**. Nothing is decided here.
+The output is a **burn probability per observation**. Nothing is decided here — and nothing is
+stored either: the probability is computed inside step 03's graph and consumed there
+([`02-burn_probability.md`](02-burn_probability.md)). The stage boundary is conceptual, not
+computational.
 
 ## 2. Temporal — was this pixel burned this year, and when?
 
@@ -72,7 +75,7 @@ next stage needs.
 
 | Stage | Steps | Produces |
 |---|---|---|
-| **Spectral** | [01 training data](01-training_data.md); 02 [vegetation remap](02-vegetation_remap.md), [cleaning](02-data_cleaning.md), [model fitting](02-model_fitting.md) | burn probability per observation |
+| **Spectral** | [01 training data](01-training_data.md); 02 [vegetation remap](02-vegetation_remap.md), [cleaning](02-data_cleaning.md), [model fitting](02-model_fitting.md), [burn probability](02-burn_probability.md) | burn probability per observation |
 | **Temporal** | [03 burn-probability time-series metrics](03-bpts.md) | annual per-pixel metrics + burn date |
 | **Spatial (1)** | [04 SNIC segmentation](04-snic.md) | scar objects, grown from seeds through candidates |
 | **Spatial (2)** | [05 object metrics](05-object_metrics.md); [06 object model](06-object_model.md) | a fire probability and a fire call per object |

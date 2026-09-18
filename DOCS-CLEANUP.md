@@ -223,7 +223,7 @@ Not every file in `docs/` is a step doc. Proposed:
 | file | is it a step doc? | proposal |
 |---|---|---|
 | `01`, `02-*` (×3) | yes | already near-template — they become the model |
-| `03-bpts` | yes | |
+| `03-bpts` | yes, but it was **two stages in one file** | **split** — see below |
 | `03-colab_multi_export` | **no** — pure how-to, admin | keep, but mark as a how-to, not a step |
 | `04-snic`, `05-object_metrics`, `06-object_model`, `07-vector_to_raster` | yes | |
 | `08-postprocessing` | **half** — §6 is our step 08; §§1–5 are a reading of the network's repo | **split**, see below |
@@ -259,6 +259,38 @@ So: **split `08-postprocessing.md` in two.**
 
 The same rule applies to any future doc of this kind (the network's statistics toolkit in
 `2-Statistics/toolkit/v03/` is the next candidate, currently described inside `docs/09`).
+
+### A fifth genre problem: one file, two stages of the method
+
+`03-bpts.md` documented **two conceptual stages**: the per-observation burn probability (the
+spectral stage's product) and the reduction of that series to annual metrics (the temporal
+stage). They share one file because they must share one GEE graph — the intermediate probability
+collection is an order of magnitude larger than the summary it produces, so it is never
+materialized. **A computational necessity had become a documentation structure.**
+
+The tell was in `00-overview.md`: its Spectral row already promised "burn probability per
+observation" as that stage's product, and listed four `02-*` docs, **none of which described how
+that quantity is produced**. The doc was missing, and step 03 was carrying it.
+
+So: **split `03-bpts.md` in two** (Iván, 2026-09-18).
+
+- `docs/02-burn_probability.md` — the fitted model in GEE: which model judges the pixel, the
+  coefficient-remap that turns 23 per-class models into one branchless expression, the raw-scale
+  dot product, and why nothing is materialized.
+- `docs/03-bpts.md` — the temporal stage: the series, the padding, the arrays, the metrics, the
+  export and the launcher.
+
+**The join lives in 03, not in 02**, and the reason generalises: the optimisation that fuses them
+— precomputing the previous-year half of the linear predictor once per tile-year instead of ~150
+times — exploits an invariance ("constant within a focal year") that is *a statement about the
+series*. It is not even expressible until a focal year has been defined, so it is temporal-stage
+machinery that happens to reach into the model's terms. `02-burn_probability.md` describes the
+model for one observation and points at `03-bpts.md` "What is precomputed per year" for what
+actually runs.
+
+**The general rule this gives Phase 2**: when a stage named in `00-overview.md` has no doc of its
+own, find the step doc that is carrying it. A doc that documents two stages will read as one long
+"how it works" and nothing in a per-doc pass will flag it, because nothing in it is history.
 
 ---
 
@@ -411,6 +443,11 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
       it is what production runs, so it became one `Key decisions` bullet. 19 inbound `§N`
       citations repointed across 11 files. **A live rule was missing from the doc entirely — see
       the box.**
+- [x] **`03-bpts.md` split into two docs** (same day, Iván's call): `02-burn_probability.md`
+      (1.3 k words, new) takes the spectral stage — the deployed model in GEE; `03-bpts.md`
+      (2.7 k) keeps the temporal stage and **the join**. Rationale and the general rule: §3 "A
+      fifth genre problem". `00-overview.md`'s Spectral row and CLAUDE.md's index updated; 7 of
+      the citations repointed hours earlier moved again, to the new doc.
 
 > **What the step-03 pass found (2026-09-18).**
 >
@@ -589,6 +626,10 @@ Append one line per completed item: date — what — commit.
   `03-dropped_timediff_bands.md`); 19 `§N` citations repointed across 11 files; the two-collection
   routing (1999–2009 → `mapbiomas-chaco`) documented for the first time; CLAUDE.md's step-03 index
   row rewritten.
+- 2026-09-18 — **`03-bpts.md` split**: `02-burn_probability.md` written (the spectral stage's
+  product had no doc, though `00-overview.md` already promised it); the join — the per-year
+  precomputation — stays in 03 as "What is precomputed per year"; §3 of this plan amended with
+  the general rule.
 - 2026-09-18 — **Phase 0 done**: 3 `git mv`s, `docs/notes/` + `docs/external/` created with
   their conventions, ~120 citations rewritten across 30 files, ROADMAP pointed here.
   Uncommitted at time of writing.

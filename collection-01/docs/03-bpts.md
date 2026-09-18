@@ -1,11 +1,12 @@
 # 03 — Burn-probability time-series metrics (`bpts`)
 
-For every focal year × MapBiomas *carta* tile, this step applies the step-02 logistic
-regression to **every Landsat observation** of every pixel, then reduces that per-pixel
-probability series to a **16-band annual summary** — how high the probability got, how
+For every focal year × MapBiomas *carta* tile, this step reads the **burn probability of every
+Landsat observation** of every pixel ([`02-burn_probability.md`](02-burn_probability.md)) and
+reduces that per-pixel series to a **16-band annual summary** — how high the probability got, how
 persistently it stayed there, how sharply it jumped, when, and on how many observations the
 answer rests. It is the temporal stage of the method: it never decides that a pixel burned, it
-measures the evidence that step 04 segments and step 06 classifies.
+measures the evidence that step 04 segments and step 06 classifies. The summary is the asset;
+the probabilities it is computed from are never written anywhere.
 
 ## Foundations
 
@@ -24,22 +25,23 @@ probability that then *holds*. `minforeK` is the post-jump floor (minimum of the
 window is what stops a noisy low observation inside an already-burned scar from manufacturing a
 second detection.
 
-**Why one graph and one export.** The step is really two processes — per-observation
-probability, then the per-pixel reduction — but the intermediate probability collection
-(hundreds of images per tile) is far too large to store, so both run inside one computation and
-only the annual summary is written. That is also why all the machinery lives in the one script.
+**Why the spectral model runs inside this step.** Conceptually these are two stages — a
+per-observation probability, then a per-pixel reduction of the series — but the intermediate
+probability collection is an order of magnitude larger than the summary it produces, so it is
+never materialized: both run inside one graph and only the annual metrics are exported. That is
+why `workflow/03-bp_ts_metrics.py` also holds the model code documented in
+[`02-burn_probability.md`](02-burn_probability.md), and why the per-year precomputation below is
+required rather than cosmetic.
 
 ## Inputs → Outputs
 
-`Landsat C2 SR (padded window) + prev-year MB mosaic + veg_fire + P050 coefficients` →
-**`bpts`** → `one 16-band int16 image per year × carta`
+`burn probability per observation (over a padded Landsat window)` → **`bpts`** →
+`one 16-band int16 image per year × carta`
 
 | Input / Output | What it is | Where |
 |---|---|---|
-| Landsat C2 SR | L5/L7/L8/L9, cloud-masked, deduped by date (`mosaic_by_date`) | `F.get_landsat`, `F.add_indices` |
-| MapBiomas annual mosaic | previous-year spectral summaries (`med`/`wet`/`dry`/`sd`) | `F.get_mb_mosaic_bands` |
-| `veg_fire` | previous-year LULC × region, the class that selects the coefficients | `F.veg_fire_image`, `C.REGION_RASTER` |
-| Coefficients | the deployed model, one CSV per fittable class | `models/P050/` (`C.COEF_DIR`) |
+| Burn probability | one `[prob, day_num]` image per observation, in memory | [`02-burn_probability.md`](02-burn_probability.md) |
+| Landsat C2 SR | L5/L7/L8/L9 over the padded window, cloud-masked, deduped by date (`mosaic_by_date`) | `F.get_landsat`, `F.add_indices` |
 | Tiles | the 248 cartas intersecting the buffered-Argentina FC | `C.CARTAS_FC`, `C.ARG_BUFFER_FC` |
 | **Output** | `bpts_YYYY_<tile-id>`, 16 bands, int16, EPSG:4326 @ 30 m | `C.bpts_target_col(year)` |
 
@@ -53,28 +55,26 @@ in either.
 
 ## How it works
 
-### The deployed logistic regression
+### What is precomputed per year
 
-`veg_fire` is the previous-year MapBiomas class crossed with the region raster
-(`region_id * 100 + mb_class`, remapped by `C.VEG_FIRE_TO`); pixels outside any region or with
-an unmapped class fall through to the **non-observed sentinel 25**, non-burnable covers to
-**24**. The LULC year is `min(year − 1, C.MB_LIMIT_YEAR)`.
+The model is defined per observation ([`02-burn_probability.md`](02-burn_probability.md)), but
+evaluating it literally once per image would recompute, ~150 times per tile-year, a quantity that
+cannot change: **the previous-year half of the linear predictor is constant within a focal year**.
+Only the focal factors vary from scene to scene. So the tile-year is set up once —
 
-Every model CSV exports **raw-scale coefficients** — the mean-centering used while fitting is
-folded into the intercept and main slopes (`models/README.md`) — so prediction is a plain dot
-product with no centering before products: intercept + prev-year mosaic mains + focal spectral
-mains + focal×focal + prev×focal, through a logistic. `_parse_term` reads the factors out of the
-term names: `_t` is a focal index (`BLUE_t` → `BLUE`, matching `add_indices`), a summary suffix
-is a mosaic band via `C.PREV_SUFFIX_MAP` (`GREEN_med` → `mb_mos_green_median`), `A__B` is a
-product, and `(Intercept)` becomes `intercept_term` (parentheses are illegal band characters).
+- `build_coeff_image` → the per-pixel coefficient bands for this tile (they depend on `veg_fire`,
+  which is fixed for the year);
+- `build_prev_scalar` → intercept + Σ(prev coefficient × mosaic band), a single `prev_scalar`
+  band;
+- `build_cross_factor1_coef` → for each cross term, the image `prev_factor × coefficient`;
 
-`build_coeff_image` turns the per-class coefficients into one band per term, assigned per pixel
-by remapping `veg_fire` (non-fittable classes get 0 and are masked out anyway). The prev-only
-part of the linear predictor and the prev factor of every cross term are **constant within a
-year**, so `build_prev_scalar` and `build_cross_factor1_coef` precompute them once per tile-year
-and only the focal factor is multiplied in per image. Every multiply first renames the feature
-bands to the coefficient band names (`_select_renamed`), so both operands have identical names
-in identical order — correct under any GEE band-matching rule.
+— and `compute_burn_prob_img` then multiplies in **only the focal factor** per image before the
+logistic. The saving is proportional to the number of scenes in the padded window, which is the
+one thing in this step that scales with the length of the series.
+
+This is also the point where the two stages become one piece of code: the invariance being
+exploited — "constant within a focal year" — is a statement about the *series*, and is not even
+expressible until a focal year has been defined.
 
 ### Per-observation quantities
 
@@ -195,14 +195,6 @@ exactly the missing tiles.
 
 ## Key decisions
 
-- **The deployed model is P=50, not the full fit** (52 coefficient rows). Skill is flat from
-  the 130-term fit down to P≈50 and drops below it, and GEE prediction is **term-count-driven** —
-  `load_all_coefficients` builds one band per row present in the CSVs, so a trimmed CSV really
-  does compute less (measured: ~25 % lower EECU per tile). Each variant keeps its own tracked
-  folder (`models/P129/`, `models/P050/`, …) so the deployed set travels with a plain
-  `git clone` for the Colab export, `C.DEPLOYED_MODEL` selects it, and **redeploying is that one
-  line**. Route and evidence: `notes/02-lr_term_reduction.md`,
-  `notes/03-performance_profile.md`.
 - **One carta per task; tiles are never merged.** Merging was tested to amortise the per-task
   fixed floor and both wall-clock and EECU grew *super-linearly* with merged area, so per-tile
   cost rises. `notes/03-tile_merge_test.md`.
@@ -213,8 +205,10 @@ exactly the missing tiles.
 - **`n` is the only quality channel.** The inter-observation gap bands were dropped as redundant
   with it (18 → 16 bands); `notes/03-dropped_timediff_bands.md`.
 - **Do not optimize the array code.** Profiling puts the whole array/time-series machinery at
-  **< 1 %** of per-tile cost — the expense is the LR arithmetic, cloud masking and graph
-  plumbing over ~150 scenes. `notes/03-performance_profile.md`.
+  **< 1 %** of per-tile cost. The expense is the model arithmetic, cloud masking and graph
+  plumbing over ~150 scenes, which is why the two levers that ever mattered are *term count*
+  (hence the deployed P=50 set, ~25 % less EECU per tile) and *window length*, neither of which
+  is in this file's array code. `notes/03-performance_profile.md`.
 
 ## Gotchas
 
@@ -235,7 +229,8 @@ array code** — each item below is a fix that is still load-bearing:
 - **`compute_burn_prob_img` must carry `system:time_start`.** It builds a fresh
   `prob.addBands(day_num)` image; without copying the timestamp the `filterDate` split into
   prev/focal/next returns empty and every pixel gets `n = 0` — a structurally fine, entirely
-  empty product, which only showed after a full export.
+  empty product, which only showed after a full export. The image is built in
+  [`02-burn_probability.md`](02-burn_probability.md); the timestamp only matters here.
 - **A whole-series reducer over a length-`n−1` array needs an `n ≥ 2` guard.** A pixel with
   exactly one focal observation has a non-empty array (so it is not masked) but an empty derived
   one, and reducing it throws. No current band hits this; the next one added might
@@ -259,18 +254,15 @@ Over a known scar `date_post3` has been seen to land months late (`notes/03-vali
 
 | File | Role |
 |---|---|
-| `workflow/03-bp_ts_metrics.py` | **everything**: coefficient loading, the LR in GEE, the array metrics, the `bpts` driver, the CLI |
+| `workflow/03-bp_ts_metrics.py` | **everything for both stages**: the model code of `02-burn_probability.md`, the per-year precomputation, the array metrics, the `bpts` driver, the CLI |
 | `utils/functions.py` | the cross-step helpers it calls — `get_landsat`, `add_indices`, `get_mb_mosaic_bands`, `veg_fire_image` |
-| `utils/constants.py` | years, tiles, the two destination collections, padding, `DEPLOYED_MODEL`, the `veg_fire` table |
-| `models/P050/` | the deployed coefficients (one CSV per fittable class) |
+| `utils/constants.py` | years, tiles, the two destination collections, the padding window, `BPTS_TASK_PROJECTS` |
 | `scripts/test-03-bp_ts.py` | interactive/headless checks; also the `importlib`-by-path idiom every step-03 consumer needs, since the filename is not a valid Python identifier |
-| `scripts/test-03-model_load.py` | asserts the deployed CSVs parse into the expected term set |
 | `scripts/profile_bpts.py` | reproduces the EECU profile |
-| `scripts/export_region_raster.py` | paints `C.REGION_RASTER` (the buffered region ids) |
 
 ## Related
 
-- [`00-overview.md`](00-overview.md) — where the temporal stage sits; [`02-model_fitting.md`](02-model_fitting.md) — the model being deployed here; [`04-snic.md`](04-snic.md) — what consumes these bands.
+- [`02-burn_probability.md`](02-burn_probability.md) — the input this step reduces, computed in the same graph; [`00-overview.md`](00-overview.md) — where the temporal stage sits; [`04-snic.md`](04-snic.md) — what consumes these bands.
 - [`03-colab_multi_export.md`](03-colab_multi_export.md) — the distributed multi-account export.
 - `notes/03-performance_profile.md`, `notes/03-tile_merge_test.md`, `notes/03-validation_2015.md`, `notes/03-dropped_timediff_bands.md`, `notes/02-lr_term_reduction.md`.
 - `notebooks/burn_prob_ts_metrics.qmd` (the candidate metrics explored on synthetic signals), `notebooks/bpts_metrics_explained.qmd` (the band-by-band walkthrough, in Spanish), `notebooks/lr_term_pruning.qmd` (the P sweep).
