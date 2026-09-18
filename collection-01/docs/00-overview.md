@@ -6,8 +6,8 @@ and get on with its own business. For the full algorithm, see the ATBD; for any 
 its `NN-*.md`.
 
 The algorithm detects burned area at the finest temporal and spatial resolution Landsat
-allows: one 30 m pixel on one observation date — by exploiting the **spectral, temporal and
-spatial** signature of fire, **in that order**. Each stage consumes what the previous one
+allows: one 30 m pixel on one observation date, by exploiting the spectral, temporal and
+spatial signature of fire, in that order. Each stage consumes what the previous one
 produced and adds a kind of evidence the previous one could not see.
 
 ## 1. Spectral — is this observation burned?
