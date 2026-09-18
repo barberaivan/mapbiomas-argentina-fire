@@ -1,61 +1,101 @@
 # 01 — Training data
 
-How the labeled training set for the burn-probability model is built. This is a
-short operational note, **not** the ATBD (see `collection-00/docs/` for the pilot
-ATBD that this draws from).
+How the labelled training set for the burn-probability model is built: expert-collected points
+are sampled against the Landsat time series and the previous year's MapBiomas mosaic, exported
+as one GEE asset per fire, and downloaded as pooled CSVs for the local fit in step 02. Each row
+is one **observation** — a point on a date — carrying its spectral values and a burned label.
 
-## Inputs
+## Foundations
 
-- **Landsat C2 SR** (L5 TM, L7 ETM+, L8 OLI, L9 OLI-2), 1999–2025, all scenes
-  intersecting the territory. QA_PIXEL masking (cloud, cloud-shadow, snow, water).
-  L5/L7 reflectance harmonized to the OLI domain (Roy et al. 2016); OLI/OLI-2 left
-  as-is. No temporal interpolation or spatial gap-filling.
-- **MapBiomas Argentina annual mosaic** of the **previous** year (`y−1`) — attached to
-  each observation as previous-year context (40 selected bands; see
-  [`02-model_fitting.md`](02-model_fitting.md) for which bands and why `y−1`). Export-code
-  notes: bands are `.select()`-ed *before* `.mosaic()` (only the 40 are processed); the loop
-  variable is `mb_year` (the actual MB data year) with `obs_year = mb_year + 1`, so an
-  observation in year `Y` gets the `Y−1` mosaic.
-- **Training points**: burned / unburned points collected interactively per fire in the
-  GEE Code Editor by domain experts. The collection procedure and the GEE asset layout
-  are documented in [`../samples/README.md`](../samples/README.md).
+**The unit of judgement here is the observation, not the year.** The model asks, for a single
+pixel on a single date, how likely it is that this pixel is burned — using spectral information
+only. Every usable Landsat observation is evaluated, so a fire is detected as a *change in the
+series* rather than as a signature in a summary image. The approach follows Long et al. (2019),
+where all Landsat observations are scored.
 
-## Step 01 — export (`workflow/01-training_data_export.py`)
+This is the opposite end from MapBiomas Fire Brazil, which classifies an **annual mosaic** — the
+same way land cover is mapped everywhere in the network. Classifying a mosaic is cheaper and
+reuses the land-cover machinery, but it collapses the time axis exactly where the information
+is: the date of the burn, the pre-fire baseline of that specific pixel, and the distinction
+between a scar and a spectrally similar surface that was always dark. Keeping the observation as
+the unit is what makes the time-series metrics of step 03 possible at all.
 
-Samples the Landsat time-series + the `y−1` MapBiomas mosaic at every training point and
-exports **one GEE asset per fire**:
-`COLLECTION-1/TRAINING-DATA/{region}/training_observations-fire_NN_v{version}`.
+The consequence for training data is direct: a training **point** is not a label. The label is
+per observation, assigned from where that observation's date falls relative to the fire.
 
-Conventions (the durable ones are also in `CLAUDE.md`):
+## Inputs → Outputs
 
-- One GEE task per fire; task description `training_obs_{region}_{fire_id}_v{version}`
-  (region included because `fire_id`s repeat across regions).
-- `fire_id` is verbatim and only the `"fire_"` prefix is guaranteed — the body need
-  not be numeric or two digits (e.g. `"fire_sde10"`). Build asset tokens with
-  `C.fire_token(fire_id)` (`utils/constants.py`); never zero-pad or reconstruct it.
-- PAT fires 01–30 fall back to `COLLECTION-0/TRAINING-DATA/` for their training_locations.
-- Fires with no burned points (drought/ash negatives, e.g. PAT fire_46/47) export
-  unburned-only rather than being skipped.
-- Each run writes a JSON sidecar to `workflow/01-training_data_export/run_{region}_v{version}.json`
-  (input paths, task ids, versions, parameters) for reproducibility.
+Landsat C2 SR + MapBiomas mosaic (`y−1`) + expert-collected points
+→ **`workflow/01-training_data_export.py`** → one GEE asset per fire
+→ **`scripts/download_observations.py`** → one pooled CSV per region
 
-## Observation-level burned label
+| | What it is | Where |
+|---|---|---|
+| **in** | Landsat C2 SR (L5 TM, L7 ETM+, L8 OLI, L9 OLI-2), 1999–2025, all scenes intersecting the territory | GEE |
+| **in** | MapBiomas Argentina annual mosaic of the **previous** year, 40 selected bands | GEE (`C.MAPBIOMAS_MOSAIC`) |
+| **in** | burned / unburned points collected interactively per fire by domain experts | GEE assets — collection procedure and layout in [`../samples/README.md`](../samples/README.md) |
+| **out** | observations, one asset per fire | `COLLECTION-1/TRAINING-DATA/{region}/training_observations-fire_NN_v{version}` |
+| **out** | per-run reproducibility log | `workflow/01-training_data_export/run_{region}_v{version}.json` |
+| **out** | pooled observations for the local fit (~5.7 M obs over 5 regions, git-ignored) | `data/training_observations_{region}_v{version}.csv` |
 
-- `burned = 0`: all observations from unburned points, **and** observations from burned
+Landsat is QA_PIXEL-masked (cloud, cloud shadow, snow, water); L5/L7 reflectance is harmonized
+to the OLI domain (Roy et al. 2016) and OLI/OLI-2 left as-is. There is **no temporal
+interpolation and no spatial gap-filling** — a missing observation stays missing, which is what
+lets step 03 read real dates.
+
+## How it works
+
+The export samples the Landsat series and the `y−1` mosaic at every training point and writes
+one GEE task per fire, described `training_obs_{region}_{fire_id}_v{version}` — region included
+because `fire_id`s repeat across regions.
+
+The previous-year mosaic is attached as context to every observation; [`02-model_fitting.md`](02-model_fitting.md)
+covers which 40 bands and why `y−1`. In the export code the bands are `.select()`-ed *before*
+`.mosaic()`, so only the 40 are ever processed, and the loop variable is `mb_year` (the actual
+MapBiomas data year) with `obs_year = mb_year + 1` — an observation in year `Y` gets the `Y−1`
+mosaic.
+
+### The observation-level burned label
+
+- `burned = 0` — every observation from an unburned point, **and** observations from burned
   points in the **pre-fire** window.
-- `burned = 1`: observations from burned points in the **post-fire** window
+- `burned = 1` — observations from burned points in the **post-fire** window
   (`post_lwr → post_upr_long`).
-- `post_upr_short` is preserved in `training_fires` for filtering at training time, but is
-  **not** used to assign labels.
-- `pre_lwr` is often null in assets → computed as `pre_upr` minus one year.
+- `post_upr_short` is preserved in `training_fires` for filtering at training time but is **not**
+  used to assign labels.
+- `pre_lwr` is often null in the assets, and is computed as `pre_upr` minus one year.
 
-## Download for local fitting
+These windows are the collectors' judgement about when each fire happened, which is why they are
+revisited — and sometimes overridden per fire — by the `fit` gate in
+[`02-data_cleaning.md`](02-data_cleaning.md).
 
-`scripts/download_observations.py --region <R> --version <V>` pulls the completed assets to
-`collection-01/data/training_observations_{region}_v{version}.csv` (git-ignored, large).
-These pooled CSVs (~5.7M obs across 5 regions) are the input to step 02 and the notebooks.
+## Run
 
-## Production / reference files
+```bash
+$PYTHON collection-01/workflow/01-training_data_export.py --region <R> --version <V>
+$PYTHON collection-01/scripts/status.py                       # export status across regions
+$PYTHON collection-01/scripts/download_observations.py --region <R> --version <V>
+```
+
+## Key decisions
+
+- **`fire_id` is a verbatim string.** Only the `"fire_"` prefix is guaranteed — the body need not
+  be numeric or two digits (`"fire_sde10"` sits beside `"fire_07"`). Build asset tokens with
+  `C.fire_token(fire_id)` and never zero-pad, parse a numeric part, or reconstruct it.
+- **Fires with no burned points are exported unburned-only, not skipped.** The drought and ash
+  negatives (e.g. PAT `fire_46`, `fire_47`) exist precisely to teach the model what a false
+  positive looks like; dropping them would remove the hardest negatives from training.
+- **Every run writes a JSON sidecar** with input paths, task ids, versions and parameters, so a
+  set of assets can be traced back to the run that made it.
+
+## Gotchas
+
+- PAT fires 01–30 fall back to `COLLECTION-0/TRAINING-DATA/` for their `training_locations`.
+- Bare `fire_id`s repeat across regions — key fires region-uniquely
+  (`region_fire_id = paste(region, fire_id)`) in any analysis.
+- The pooled CSVs are large and git-ignored; they are downloaded, never committed.
+
+## Files
 
 | File | Role |
 |---|---|
@@ -66,6 +106,8 @@ These pooled CSVs (~5.7M obs across 5 regions) are the input to step 02 and the 
 | `samples/` | archival templates documenting the interactive point collection |
 | `data/training_observations_*_v1.csv` | downloaded training set (git-ignored) |
 
-## Related notebooks
+## Related
 
-- `notebooks/data_collection_stats.qmd` — effort stats (time, authors, points/obs per fire).
+- [`../samples/README.md`](../samples/README.md) — how the points were collected.
+- [`02-data_cleaning.md`](02-data_cleaning.md) — the `fit` gate applied to these observations.
+- `notebooks/data_collection_stats.qmd` — collection effort (time, authors, points/obs per fire).

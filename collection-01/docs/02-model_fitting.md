@@ -1,35 +1,75 @@
 # 02 — Model fitting (obs-level burn probability)
 
-One elastic-net logistic regression per `veg_fire` class, fit locally in R with `glmnet`.
-Output coefficients feed the GEE prediction pipeline (steps 03+). The **design rationale**
-lives in the notebook; this note is the operational map.
+One elastic-net logistic regression per `veg_fire` class, fit locally in R with `glmnet` on the
+cleaned training observations from step 01. Its output is a table of coefficients per class —
+the small, portable artifact that the GEE prediction pipeline (steps 03+) evaluates at every
+Landsat pixel-date in Argentina.
 
-## Approach (summary)
+## Foundations
 
-- **Model**: regularized logistic regression (`glmnet`, elastic net). Cheap to evaluate in
-  GEE over billions of pixel-dates, which is why LR over RF/NN.
-- **Design**: a reduced **129-term** predictor set (11 focal mains + 32 prev-year mosaic
-  mains + 22 focal×focal + 10 same-band + 22 prev×fire-index + 32 prev×fire-band). Reduced
-  from a 427-term "canonical-team" design that was too collinear to fit quickly — the full
-  story (correlation pruning, exact-linear-combo cut, VIF/eigenvalue analysis) is in
-  `notebooks/logistic_regression_design.qmd`.
-- **A second, later reduction decides what GEE actually runs.** The 129 terms are what gets
-  *fit*; term count dominates per-tile prediction cost in step 03, so a top-P cut on the global
-  standardized-coefficient ranking was swept (P ∈ {30,40,50,60,80}) and **P=50 deployed**. The
-  fitting code is unchanged — the sweep drives it through its `KEEP_TERMS_CSV` / `COEF_TAG`
-  hooks. Ranking: `notebooks/lr_term_pruning.qmd`; sweep: `scripts/refit_pruning_sweep.R`;
-  the decision and its evidence: [`03-bpts.md`](03-bpts.md) §9/§11.
-- **Tuning**: α grid `{0.25, 0.5, 0.75}` (ridge & lasso dropped), `lambda.min`,
-  `nlambda=50`, `lambda.min.ratio=1e-4`, `thresh=1e-4` (the real convergence-speed lever).
-  The tolerance is **adaptive**: each α gets a wall-clock budget (`FIT_TIMEOUT_SEC`, 600 s) and
-  is refit looser if it blows it, so no slow-class list is hardcoded; `THRESH_START` pre-seeds
-  the classes already known to crawl (today only `shrubland_cuyo-pampa`, at 5e-3). Interactions
-  fit on mean-centered factors, folded back to raw-product scale at export.
-- **CV**: grouped K-fold grouped by **region-unique fire id** (whole fires held out), stratified
-  packing. K is adaptive — `min(10, n_fires_with_positives)`, so 21 of the 23 classes fit at
-  K=10 and two at 7 and 6. Out-of-fold `p_i` saved per observation.
-- The fitting unit is the **`veg_fire` class** (may span regions); the driver loads whichever
-  region CSVs a class needs, from `config/veg_fire_remap.csv`.
+**The model has to be deployable inside GEE, and that constraint chose it.** A fitted logistic
+regression is a set of coefficients plus a simple equation: trivial to store, to version, to
+ship as a CSV, and cheap to evaluate over billions of pixel-dates. The richer classifiers GEE
+offers natively — random forest, boosted trees — fail on both ends here: they could not be
+fitted on this many training observations, and a fitted one cannot be saved as an asset, which
+is what deploying over the whole Landsat archive requires. External ML/DL models on Vertex AI
+would lift both limits, at a large step up in complexity.
+
+**We also wanted a natively probabilistic model**, because everything downstream consumes a
+probability rather than a hard class — the time-series metrics of step 03 read the shape of
+`p` through time. GEE's constraint bites again: a probability-mode random forest is not
+exportable to an asset. Only a regression-mode forest on binary data would return something
+probability-like, and getting calibrated probabilities out of it means tuning minimum node size
+against `N` — a dependency that would have to be re-tuned per class. Logistic regression gives
+the probability by construction, with nothing to tune for it.
+
+Fitting happens **locally in R**, not in GEE. The training set is a few million observations,
+`glmnet` handles it, and only the coefficients need to cross into GEE.
+
+## Inputs → Outputs
+
+`training_observations_{region}_v{V}.csv` (with the `fit` gate) + `config/veg_fire_remap.csv`
+→ **`workflow/02-model_fitting.R`** → one coefficient table per class
+
+| | What it is | Where |
+|---|---|---|
+| **in** | cleaned training observations, one CSV per region | `data/training_observations_{region}_v{V}.csv` — see [`01-training_data.md`](01-training_data.md), [`02-data_cleaning.md`](02-data_cleaning.md) |
+| **in** | which `veg_fire` classes exist and which regions each spans | `config/veg_fire_remap.csv` — see [`02-vegetation_remap.md`](02-vegetation_remap.md) |
+| **out** | coefficients, one folder per model variant, tracked | `models/P<NNN>/class_NN_coefficients.csv` |
+| **out** | heavy per-class artifacts (`cv_metrics`, `tuning`, `fit.rds`, `oof_predictions`) | `models-store/` (git-ignored, Insync store) |
+
+**`models/P050/` is what production reads.** `C.DEPLOYED_MODEL` in `utils/constants.py` selects
+the variant and `C.COEF_DIR` points at it, so redeploying a different one is that single
+constant. `COEF_TAG` chooses the destination folder at write time (default `P129`).
+[`../models/README.md`](../models/README.md) has the output schema and the coefficient
+fold-back / GEE-export details.
+
+## How it works
+
+The fitting unit is the **`veg_fire` class**, not the region: a class may span regions, so the
+driver reads each class's regions from `config/veg_fire_remap.csv`, loads only those region
+CSVs, and skips classes whose regions are not all downloaded yet. `workflow/02-model_fitting.R`
+is the source of truth for the design — term lists, block sizes, α grid and CV are defined
+there.
+
+### Predictors
+
+129 terms (+ intercept): 11 focal mains, 32 previous-year mosaic mains, 22 focal×focal, 10
+same-band, 22 prev×fire-index, 32 prev×fire-band. Interactions are fit on mean-centered factors
+and folded back to raw-product scale at export, so GEE evaluates raw products directly.
+
+### Tuning and cross-validation
+
+α grid `{0.25, 0.5, 0.75}` (ridge and lasso dropped — never best in CV), selected at
+`lambda.min`, `nlambda=50`, `lambda.min.ratio=1e-4`. The convergence tolerance `thresh` is the
+real speed lever on this ill-conditioned design: it starts at `1e-4` and is **adaptive** — each
+α gets a wall-clock budget (`FIT_TIMEOUT_SEC`, 600 s) and is refit looser if it blows it, so no
+slow-class list is hardcoded. `THRESH_START` pre-seeds classes already known to crawl.
+
+CV is **grouped K-fold on region-unique fire id** — whole fires held out, with stratified
+packing so folds carry comparable positive counts. K is adaptive, `min(10, n_fires_with_positives)`:
+21 of the 23 fittable classes fit at K=10, two at 7 and 6. Out-of-fold `p_i` is saved per
+observation.
 
 ## Run
 
@@ -43,74 +83,51 @@ Rscript collection-01/workflow/02-model_fitting.R 1
 Rscript collection-01/workflow/02-model_fitting.R 1 grassland_pampa
 ```
 
-`workflow/02-model_fitting.R` is the **source of truth** for the design (the term lists,
-block sizes, α grid and CV are defined there). Memory is auto-sized per class to a RAM budget;
-`FIT_CORES` overrides.
+Memory is auto-sized per class to a RAM budget; `FIT_CORES` overrides.
 
-## Outputs (`models/` + `models-store/`)
+## Key decisions
 
-Coefficients are tracked **one folder per model variant**, `models/P<NNN>/class_NN_coefficients.csv`
-— `P129/` is the full fit, `P080/ P060/ P050/ P040/ P030/` the top-P cuts, each holding only
-`intercept + kept terms`. **`P050/` is the deployed one**: `C.DEPLOYED_MODEL` in
-`utils/constants.py` selects it and `C.COEF_DIR` points at it, so redeploying is that one
-constant. `COEF_TAG` chooses the destination folder at write time (default `P129`).
+- **P=50 is the deployed predictor set, not the 129 it was fit with.** Term count dominates
+  per-tile prediction cost in step 03, so the 129 terms were ranked globally and cut to a top-P
+  subset; predictive skill is flat from the full fit down to P≈50 and drops below it. The route
+  — two separate reductions, from 427 terms and then from 129 — is in
+  [`notes/02-lr_term_reduction.md`](notes/02-lr_term_reduction.md); the decision record is
+  [`03-bpts.md`](03-bpts.md) §9/§11.
+- **Every variant keeps its own tracked folder** rather than the chosen one being promoted into
+  a single `models/`. The deployed coefficients then travel with the repo, which is what the
+  Colab multi-account export of step 03 needs.
+- **Whole fires are held out in CV, keyed region-uniquely.** Observations from one fire are
+  strongly correlated; splitting them across folds would report a skill the model does not have
+  on a new fire. Bare `fire_id`s repeat across regions, so the grouping key is `region_fire_id`.
 
-The heavy per-class artifacts — `cv_metrics.csv`, `tuning.csv`, `fit.rds`, `oof_predictions.csv`
-— are git-ignored and live in `models-store/` (the Insync-synced store symlinked in by
-`setup.sh`), with `cv_metrics_v1.csv` as the cross-class summary and `models-store/pruning/` as
-the sweep's own runs. The `class_NN` ↔ `veg_fire_name` mapping follows
-`config/veg_fire_remap.csv`. See [`../models/README.md`](../models/README.md) for the output
-schema and the coefficient fold-back / GEE-export details.
+## Gotchas
 
-## Production / reference files
+- A class's CV folds are built from **fires with positives**, so a class with few such fires
+  silently fits at K < 10. Check `K` in its `cv_metrics.csv` before comparing classes.
+- `scripts/cv_feasibility_report.py` is a pre-flight, not a gate — the fit will still start on a
+  class the report flags.
+
+## Files
 
 | File | Role |
 |---|---|
 | `workflow/02-model_fitting.R` | the fit (source of truth for the design) |
 | `config/veg_fire_remap.csv` | defines the classes to fit (see [`02-vegetation_remap.md`](02-vegetation_remap.md)) |
 | `scripts/cv_feasibility_report.py` | pre-flight CV feasibility per class |
+| `scripts/refit_pruning_sweep.R` | refits every top-P variant through the fit's `KEEP_TERMS_CSV` / `COEF_TAG` hooks |
 | `models/P<NNN>/class_*_coefficients.csv` | tracked fitted outputs; `P050/` is the GEE deliverable |
 | `utils/constants.py` (`DEPLOYED_MODEL`, `COEF_DIR`) | which variant production reads |
-| `scripts/refit_pruning_sweep.R` | refits every top-P variant through the hooks above |
 | `models-store/class_*`, `models-store/cv_metrics_v1.csv` | heavy fitted outputs (gitignored) |
 | `models/README.md` | output schema + coefficient export details |
 
-## Related notebooks
+## Related
 
-- `notebooks/logistic_regression_design.qmd` — the full design story (renders on full data).
-- `notebooks/lr_term_pruning.qmd` — ranks the 129 terms by standardized coefficient and picks
-  the common reduced set the sweep refits; writes `config/pruning_terms.csv`.
+- [`notes/02-lr_term_reduction.md`](notes/02-lr_term_reduction.md) — how the predictor set got
+  from 427 terms to 50, and what `K3` in the sweep's paths actually means.
+- `notebooks/logistic_regression_design.qmd` — evidence for the 427 → 129 reduction.
+- `notebooks/lr_term_pruning.qmd` — evidence for the 129 → top-P reduction.
 - `notebooks/model_fit_diagnostics.qmd` — per-class diagnostics (tuning, coefficients,
   calibration, OOF, omission/commission, by-fire OOF breakdown); auto-discovers every fitted
-  `class_*`. The per-fire time-series panels are **not** in this notebook — they are produced
-  only as standalone PNGs by `scripts/ts_plot_by_fire.R` (see below).
-
-## Per-fire time-series diagnostic plots
-
-For each fitted class, a 4-row panel (NBR / NBR2 / raw predicted burn probability /
-smoothed predicted burn probability) per fire, Burned points stacked above Unburned, one
-line per training point — useful for
-spotting fires whose pre/post-fire date window is mis-defined. Predicts **in-sample**
-(`class_NN_fit.rds`, not OOF) over the full training observations — see
-[`../models/README.md`](../models/README.md) ("Predicting burn probability") for why that
-tradeoff is accepted here.
-
-Script set (`collection-01/scripts/`):
-- `ts_predict_functions.R` — `design_raw()` / `predict_class()`, RAW-scale prediction from a
-  `class_NN_fit.rds` without loading glmnet.
-- `ts_plot_cache.R` — builds `models-store/ts_plot_cache_v1.rds`: predicts `p_pred` for every
-  fitted class's full observation set, adds `burn_class` (point-level Burned/Unburned factor)
-  and `p_pred_smooth` (n5 rolling median of `p_pred` per point, via `slider::slide_dbl`).
-- `ts_plot_functions.R` — shared `plot_fire_panel()`. Aesthetic (hex colors, thin-spaghetti +
-  bold-median-line geoms, `theme_classic`-based theme) mirrors the top two panels of
-  `collection-00/data_viz_Lican/functions.R::plot_tempseg()`, by explicit request.
-- `ts_plot_by_fire.R` — the **canonical** (and only) driver: one PNG per fire (pooled across
-  every veg_fire class a fire's points belong to, since a point's class depends on its
-  previous-year land cover) → `models-store/prediction_plots/{region}/{region_fire_id}.png`.
-
-The median marker on each per-fire panel is a solid burn-class–colored point for dates whose
-observations were used in fitting (`fit == TRUE`), and a **red asterisk** for held-out dates
-(`fit == FALSE`) — a quick visual flag for which obs the fit actually saw.
-
-Re-run `ts_plot_cache.R` after any `class_NN_fit.rds` changes, then `ts_plot_by_fire.R` to
-refresh the standalone PNGs.
+  `class_*`.
+- [`02-diagnostic_plots.md`](02-diagnostic_plots.md) — the per-fire time-series panels, which
+  are **not** in the diagnostics notebook.

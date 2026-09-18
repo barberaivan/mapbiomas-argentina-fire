@@ -306,13 +306,37 @@ The same rule applies to any future doc of this kind (the network's statistics t
 
 ### Phase 1 — the template and the bridge (with Iván, hands-on)
 
-- [ ] **Iván reviews by hand**: `01-training_data.md`, `02-vegetation_remap.md`,
-      `02-data_cleaning.md`, `02-model_fitting.md`. These are already close; polishing them is
-      what defines the target.
-- [ ] Write `docs/TEMPLATE.md` from that review — the skeleton with **quotas**, not adjectives:
-      `Purpose (3 lines) → Inputs → Outputs (table) → Pipeline (commands, no why) →
-      Key decisions (≤5, one paragraph each) → Gotchas → Links`. Target **800–1500 words**.
-      Name `01-training_data.md` in it as the model doc.
+- [x] **Iván reviewed by hand**: `01-training_data.md`, `02-vegetation_remap.md`,
+      `02-data_cleaning.md`, `02-model_fitting.md`. Three amendments to this plan came out of it
+      — see the box below.
+- [x] Wrote `docs/TEMPLATE.md`: a **guide, not a form**. Four always-present sections
+      (orientation, Inputs → Outputs, How it works, Files/Related) plus **Foundations**, `Run`,
+      `Key decisions` and `Gotchas` offered when the step has one. 800–1500 words.
+      `01-training_data.md` is named in it as the model doc.
+- [x] The four docs restructured to it, and `02-diagnostic_plots.md` split out of
+      `02-model_fitting.md` (a diagnostic tool, not a step). History →
+      `notes/02-lr_term_reduction.md`.
+> **Three amendments from the Phase 1 review (2026-09-18).**
+>
+> **(a) A class of explanation never reaches the ATBD, so the docs keep it permanently.** §2's
+> "reduction 2" assumed the explanation all moves out. It does not: collection 0's ATBD gives the
+> logistic regression's equation and term list — the formal object — and says nothing about why a
+> coefficient set is the only model deployable as an asset over the whole Landsat archive, or why
+> a probability-mode random forest is not exportable from GEE. That argument is **Foundations**,
+> and it stays in the doc. Reduction 2 removes the docs' restatement of the *formalism*, not the
+> implementation rationale. The Foundations ↔ ATBD line is **blurry on purpose** — some
+> redundancy is accepted, and Phase 6 draws it per paragraph with the ATBD in front of it, not
+> per section now.
+>
+> **(b) A notebook is not a home for settled rationale.** Notebooks hold exploration while a
+> question is open; once the answer changes what production does, the answer moves into the doc
+> **in that same commit** and the notebook becomes the evidence. Three docs said "the design
+> rationale lives in the notebook" — that pointer is reversed. Add this to §2 rule 1.
+>
+> **(c) Reduction 1 keeps the outcome, not just a pointer.** When history goes to `notes/`, the
+> doc keeps the **result** plus at most one clause of route — a reader must not open a second
+> file to learn what production does. `TEMPLATE.md` §2 has the worked example.
+
 - [ ] Write `docs/00-overview.md` (~800 words): the spectral / temporal / spatial framing and
       the step→section map. Iván supplies the framing; the session only expands it.
 - [ ] Consider promoting the template to `.claude/skills/step-doc/SKILL.md` so every future doc
@@ -402,6 +426,9 @@ has a real ATBD. No pass, no template, no extraction.
 Append one line per completed item: date — what — commit.
 
 - 2026-09-18 — plan written.
+- 2026-09-18 — **Phase 1, first three boxes**: `TEMPLATE.md` written as a guide not a form;
+  the four early docs restructured to it; `02-diagnostic_plots.md` split out;
+  `notes/02-lr_term_reduction.md` extracted; three amendments recorded in Phase 1.
 - 2026-09-18 — **Phase 0 done**: 3 `git mv`s, `docs/notes/` + `docs/external/` created with
   their conventions, ~120 citations rewritten across 30 files, ROADMAP pointed here.
   Uncommitted at time of writing.

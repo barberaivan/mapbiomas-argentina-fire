@@ -38,6 +38,8 @@ one step, e.g. the remap and the fit are both inputs to step 02):
 | `collection-01/docs/02-vegetation_remap.md` | the `veg_fire` fire-class remap (input to step 02) |
 | `collection-01/docs/02-data_cleaning.md` | the `fit`-column cleaning gate (input to step 02) |
 | `collection-01/docs/02-model_fitting.md` | step 02 — elastic-net LR fitting |
+| `collection-01/docs/02-diagnostic_plots.md` | the per-fire burn-probability time-series panels (a diagnostic tool, not a step) |
+| `collection-01/docs/TEMPLATE.md` | the shape a step doc follows — read before writing or rewriting one |
 | `collection-01/docs/03-bpts.md` | step 03 — burn-probability time-series metrics: full design, implementation + GEE array gotchas |
 | `collection-01/docs/03-colab_multi_export.md` | step 03 — distributed multi-account export via Colab (admin notes) |
 | `collection-01/docs/04-snic.md` | step 04 — burned-area segmentation: the whole-country **non-calendar fire-year** SNIC (fire-year `candseed` construction, Patagonia dieback padding, supervised SNIC, Drive-COG handoff to R); the shelved SNIC-3D attempt in brief; the `explore_snic_IB-0{2,3}` GEE tuning/inspection tools |

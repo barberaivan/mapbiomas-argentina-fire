@@ -100,7 +100,7 @@ This is probably for collection 2.
     region-uniquely (`region_fire_id = paste(region, fire_id)`).
   - Lican has reference code from collection-00 that produced this plot (not in this repo) — adapt it.
   - **As built, it diverges from this spec on three points** — see
-    `collection-01/docs/02-model_fitting.md` ("Per-fire time-series diagnostic plots"). It is
+    `collection-01/docs/02-diagnostic_plots.md`. It is
     **not** in `model_fit_diagnostics.qmd` but a standalone PNG per fire from
     `scripts/ts_plot_by_fire.R`; it has **4 rows**, not 3 (raw *and* smoothed probability); and it
     predicts **in-sample** from `class_NN_fit.rds`, not OOF — the tradeoff is argued in
