@@ -404,6 +404,7 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
 > out of a step doc to hit a number.**
 
 - [ ] `03-bpts.md` (5.7 k) — §§9–11 are status/handoff/decision records.
+
 - [x] `04-snic.md` (2,694 → 2,115 words) — §1 (the shelved SNIC-3D) →
       `notes/04-snic3d_firebreaks.md`; §5c (the FY2000 vectorize benchmark) →
       `notes/04-vectorization_benchmark.md`, both verbatim. §7 "Open questions" dissolved: three
@@ -438,6 +439,7 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
 > **(d) Over target at 2,115 words, and it stays** (`TEMPLATE.md` §1, the step-05 precedent). What
 > is left is live mechanism — the fire-year construction, the per-pixel K selection, the dieback
 > rule, the two-stage asset handoff — every piece of it cited from `constants.py` or a script.
+
 - [ ] `06-object_model.md` (8.0 k).
 - [ ] `validation/docs/design.md` (5.3 k, was `docs/11`).
       ⚠️ **NOT WRITTEN BY IVÁN — someone else on the team authored the validation design.**

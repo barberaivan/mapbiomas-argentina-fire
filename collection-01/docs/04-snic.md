@@ -11,12 +11,12 @@ annual metrics.
 
 **A fire is an object in space *and* time, and this step buys the time axis with a calendar, not
 an algorithm.** Segmenting calendar years independently splits every scar that straddles 31
-December and duplicates it across two years; the obvious repairs — a temporal firebreak inside the
+December and duplicates it across two years. The obvious repairs — a temporal firebreak inside the
 segmentation, a backward gap-fill from the previous year — were built first and did not work,
 because the step-03 per-pixel dates are too noisy to be a barrier
 ([`notes/04-snic3d_firebreaks.md`](notes/04-snic3d_firebreaks.md)). The whole problem disappears
-if the year boundary is placed where nothing is burning: **fire-years partition the calendar, so
-each fire belongs to exactly one of them** and there is no firebreak, no gap-fill and no
+if the year boundary is placed where almost nothing is burning: **fire-years partition the calendar, so
+almost all fires belong to exactly one of them** and there is no firebreak, no gap-fill and no
 cross-year de-duplication to manage.
 
 **Seeds and candidates are how the step avoids deciding early.** A single probability cut would
@@ -69,6 +69,10 @@ mis-labels Patagonia's Feb–Apr tail.
 edges: FY1998 is only the Jan–Apr 1999 tail, FY2025 only the May–Dec 2025 head. Completing them
 means extending `bpts` back to May 1998 and forward through 2026.
 
+We initially tried to define regions with their own fire-year, but getting all the country in a 
+single pass brought much more advantages than the sub-optimal whole-country fire-year. 
+Patagonia would ideally break in June-July, not in April-May, but it's not that bad.
+
 ### Seed and candidate
 
 A fire-year spans two `bpts` images; at the archive edges only one exists and whichever exists is
@@ -105,9 +109,17 @@ connects to a real focal seed, it can extend a detected scar but never manufactu
 Whether the Patagonian **steppe** (`grassland_pat`) needs the same padding was settled downstream,
 negatively: step 05 drops `candseed == 3` east of −70.6° because the steppe-edge strip is mostly
 false positives ([`05-object_metrics.md`](05-object_metrics.md) "Extract"). That cut tightens
-the padding's western limit rather than re-running SNIC.
+the padding's western limit rather than re-running SNIC. But this should belong here; the problem
+was just detected once SNIC had already run all years.
 
 ### Supervised SNIC
+
+SNIC is an unsupervised image segmentation method ([Achanta & Süsstrunk
+2017](https://doi.org/10.1109/CVPR.2017.520), *Superpixels and Polygons Using Simple Non-Iterative
+Clustering*, CVPR), and its most frequent use is to objectify (raster) a wall-to-wall image, from
+uniformly placed seeds and spectral features. However, we use it defining the seed and
+candidates, which is not exactly a supervised approach, but it's far more guided than the usual
+application.
 
 Seed clumps of ≤ `C.SNIC_SEED_MAX_DROP` connected pixels are demoted to candidate — they no longer
 seed, but stay in the footprint so a genuine cluster can still grow through them. SNIC then grows
