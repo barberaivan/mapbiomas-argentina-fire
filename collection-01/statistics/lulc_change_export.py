@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
 collection-01/statistics/lulc_change_export.py — QUÉ HABÍA ANTES Y QUÉ QUEDÓ DESPUÉS
-(el análisis 6 del factsheet; docs/09 §5.7, docs/10 §6)
+(el análisis 6 del factsheet; statistics/docs/statistics.md §5.7, statistics/docs/factsheet-sep2026-spec.md §6)
 
 La tercera —y última— reducción propia en Earth Engine.  `burnable_export.py` da el
 denominador del "% de lo quemable que se quemó"; `lulc_area_export.py`, el del "% del
@@ -26,7 +26,7 @@ QUÉ COMPUTA
 
     es decir la tabla completa área x estado de fuego x ecorregión x clase ANTES x clase
     DESPUÉS, anual.  Un solo entero, un solo `groupField`, una sola barrida — la misma
-    estrategia de programación que copiamos de la app de la red (docs/09 §2.1).
+    estrategia de programación que copiamos de la app de la red (statistics/docs/statistics.md §2.1).
 
     ⚠️ El empaquetado NO entra en uint16 (tope 3*1000000+137777 = 3137777): la banda es
     int32.  Copiar el `toUint16()` de `lulc_area_export.py` desbordaría en silencio y las
@@ -66,7 +66,7 @@ POR QUÉ Y-1 Y NO Y
     Porque no se sabe si la cobertura del año del fuego es la de antes o la de después
     (Ferro et al. 2026).  Y-1 es además, exactamente, la que el numerador de la red le
     adjudica a la hectárea quemada (`annual_burned_coverage` cruza con
-    `classification_<Y-1>`, docs/09 §2.2): la columna "antes" de esta tabla tiene que
+    `classification_<Y-1>`, statistics/docs/statistics.md §2.2): la columna "antes" de esta tabla tiene que
     reproducir el análisis 4 clase por clase, y la compuerta lo verifica.
     Y+offset es la cobertura DESPUÉS.  Eso acota la serie por arriba: la col-3 llega a 2025,
     así que con offset 1 el último año es 2024 (26 años) y con offset 3, 2022 (24 años).
@@ -125,7 +125,7 @@ from lulc_area_export import drive_client, initialize  # noqa: E402
 OUT_DIR = REPO_ROOT / "collection-01" / "data" / "statistics"
 
 # La tabla contra la que cierra la compuerta: el área quemada por año y ecorregión que
-# publica el toolkit de la red (docs/09 §2).
+# publica el toolkit de la red (statistics/docs/statistics.md §2).
 TOOLKIT_CSV = OUT_DIR / "annual_burned_Ecorregiones.csv"
 
 # El fuego cubre 1999-2025 y la col-3 llega a 2025: `FIRST_YEAR` es el primer año con
@@ -216,7 +216,7 @@ def code_image(year: int, offset: int, lat_split: float | None = None,
     `lat_split` agrega una dimensión más: 1 al norte del paralelo, 0 al sur.  Sirve para
     partir una ecorregión que no es homogénea sin inventar una ecorregión nueva — el caso es
     Bosques Patagónicos, donde el norte (Chubut arriba) tiene un régimen de fuego distinto
-    del sur (docs/09 §5.7.3).
+    del sur (statistics/docs/statistics.md §5.7.3).
     """
     lulc = ee.Image(C.PRODUCT_LULC)
     prev = lulc.select(f"classification_{year - 1}").unmask(0)
@@ -484,7 +484,7 @@ def check(args) -> int:
 
     # --- 2. la cobertura espacial --------------------------------------------
     # El país, de la MISMA fuente que el denominador del factsheet: la suma de las áreas de
-    # las 13 ecorregiones (docs/09 §3).  Cada año tiene que dar eso, porque cada píxel del
+    # las 13 ecorregiones (statistics/docs/statistics.md §3).  Cada año tiene que dar eso, porque cada píxel del
     # país cae en exactamente un estado.
     per_year = defaultdict(float)
     for r in rows:
@@ -532,10 +532,10 @@ def main() -> int:
                     help="años de la VENTANA DE EXCLUSIÓN, si no es igual a --offset. "
                          "Fijarla para todos los lags da la MISMA cohorte de píxeles y de "
                          "años focales, que es la única forma de leer Y+1..Y+5 como una "
-                         "trayectoria y no como cuatro poblaciones distintas (docs/09 §5.7.2)")
+                         "trayectoria y no como cuatro poblaciones distintas (statistics/docs/statistics.md §5.7.2)")
     ap.add_argument("--lat-split", type=float, default=None, metavar="LAT",
                     help="parte cada ecorregión en norte/sur de ese paralelo (ej. -44), "
-                         "como dimensión extra del código (docs/09 §5.7.3)")
+                         "como dimensión extra del código (statistics/docs/statistics.md §5.7.3)")
     ap.add_argument("--export", action="store_true", help="la corrida nacional")
     ap.add_argument("--split", action="store_true", help="una tarea por año")
     ap.add_argument("--status", action="store_true")

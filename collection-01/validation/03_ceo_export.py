@@ -4,7 +4,7 @@ collection-01/validation/03_ceo_export.py
 
 Paso 3 de la validación — LA MUESTRA INICIAL, en el formato de "custom plot" que exige
 Collect Earth Online (CEO): columnas `LON`, `LAT`, `PLOTID`, `PLOTID` único, y cualquier
-columna extra DESPUÉS de esas tres. No está en `docs/10-validation.md` (el spec llega hasta la
+columna extra DESPUÉS de esas tres. No está en `validation/docs/design.md` (el spec llega hasta la
 lista congelada, §5) — este paso lo agrega para que esa lista se pueda subir a CEO sin fricción.
 
 100% LOCAL — no toca GEE. Corre después de que `02_sample_pool.py --freeze` ya dejó las listas
@@ -13,11 +13,11 @@ congeladas en `outputs/frozen/`.
 QUÉ HACE
 --------
 Por año-fuego: toma las primeras 100 filas (`frozen_rank < 100`) de cada una de las 3 listas
-congeladas — la "muestra inicial" de 100/estrato/año que fija docs/10 §1 — las junta (300 filas),
+congeladas — la "muestra inicial" de 100/estrato/año que fija validation/docs/design.md §1 — las junta (300 filas),
 las baraja con una semilla propia y fija (`CEO_SHUFFLE_SEED`, distinta de la que usa el sorteo en
 GEE), y numera `PLOTID` 1..300 según ese orden ya barajado.
 
-Barajar es necesario porque docs/10 §7 exige que los lotes mezclen estratos y años — un lote de
+Barajar es necesario porque validation/docs/design.md §7 exige que los lotes mezclen estratos y años — un lote de
 100 filas seguidas, todas estrato 1, le delata al intérprete que ese tramo es "quemado por
 construcción" y rompe el blind labelling.
 
@@ -76,7 +76,7 @@ STRATA = _s2.STRATA
 task_name = _s2.task_name
 
 # ---------------------------------------------------------------------------
-N_INITIAL = 100          # por estrato, por año (docs/10 §1 — "muestra inicial")
+N_INITIAL = 100          # por estrato, por año (validation/docs/design.md §1 — "muestra inicial")
 CEO_SHUFFLE_SEED = 43    # fija y se registra para siempre — distinta de SEED=42 del sorteo en GEE
 
 # lo único que sube a CEO (y lo único que sube como asset de puntos para el inspector)

@@ -50,12 +50,12 @@ Usage (from the repo ROOT)
   $PYTHON collection-01/workflow/07-month_of_burn.py --year 2015 --launch
   $PYTHON collection-01/workflow/07-month_of_burn.py --all   --launch       # 27 tasks — tmux!
 
-  # timing benchmark into TESTS/, nothing production touched (docs/11 §4)
+  # timing benchmark into TESTS/, nothing production touched (statistics/docs/statistics.md §4)
   $PYTHON collection-01/workflow/07-month_of_burn.py --year 2020 --launch \
       --out-collection projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/TESTS/month_of_burn_benchmark \
       --suffix _benchmark
 
-  # deploy the agriculture filter once the threshold is chosen (docs/11 §2, §6)
+  # deploy the agriculture filter once the threshold is chosen (statistics/docs/statistics.md §2, §6)
   $PYTHON collection-01/workflow/07-month_of_burn.py --all --launch --overwrite --agri-max 0.4
 
   # the local<->GEE cross-check (docs/07 §8). A year selector is always required, so use --all:
@@ -384,7 +384,7 @@ def stats_read(years, csv_path=None):
     `--csv` dumps them long-format. These 27 assets are the whole-country per-month burned
     PIXEL COUNT for 1999-2025 and they already exist (they were the 07b cross-check), so the
     national time series and the national pirogram are available with no compute at all
-    (docs/11 §5.1).
+    (statistics/docs/statistics.md §5.1).
 
     Two caveats that must travel with the numbers:
       * PIXEL COUNTS, NOT HECTARES, and the naive conversion is badly wrong. The lattice step
@@ -396,8 +396,8 @@ def stats_read(years, csv_path=None):
         peak in summer while Chaco fires (lat ~25 deg, 0.082 ha/px) peak in late winter, so
         even the PIROGRAM'S SHAPE is skewed toward the southern months by this.
         Use these counts for RELATIVE structure only. Anything quoted in hectares comes
-        from the network's toolkit (docs/09 §2), which sums `ee.Image.pixelArea()`.
-      * They describe the CURRENT, UNFILTERED map — no agriculture filter (docs/11 §2).
+        from the network's toolkit (statistics/docs/statistics.md §2), which sums `ee.Image.pixelArea()`.
+      * They describe the CURRENT, UNFILTERED map — no agriculture filter (statistics/docs/statistics.md §2).
     """
     local_dir = REPO_ROOT / "collection-01/data/objects-scars"
     any_bad = False
@@ -440,7 +440,7 @@ def export_year(cal_year, region, launch, overwrite=False,
     """Export one calendar year.
 
     `out_col` + `suffix` exist so a timing/benchmark run lands in TESTS/ instead of next to a
-    published product (docs/11 §4.4). The task description carries the same suffix, because the
+    published product (statistics/docs/statistics.md §4.4). The task description carries the same suffix, because the
     in-flight check matches on description and the compute project is shared with the whole
     network (CLAUDE.md): a bare `mob_2012` could collide with another country's task.
     """
@@ -518,7 +518,7 @@ def main():
                          "docs/07 §1.1. For exploration only — the default is FINAL.")
     ap.add_argument("--out-collection", default=None, metavar="ASSET",
                     help="write to this ImageCollection instead of the published one — for "
-                         "benchmark/timing runs (docs/11 §4.4). Created if missing.")
+                         "benchmark/timing runs (statistics/docs/statistics.md §4.4). Created if missing.")
     ap.add_argument("--suffix", default="", metavar="STR",
                     help="appended to the asset name AND the task description, e.g. '_benchmark'")
     ap.add_argument("--project", default=C.GEE_PROJECT,

@@ -41,7 +41,7 @@ track live in **[`09-statistics.md`](09-statistics.md)**.
 | **Launch-process guide** — the network's own step-by-step (source for §2) | [*MapBiomas Fuego — Guía del Proceso de Lanzamiento*](https://docs.google.com/presentation/d/1Y5SUeS_405k5zZkBX4z6BDaC_umI8Saiguk7coITB1Q/edit), 39 slides | **Readable by tooling** — the `/edit` view is a JS shell, but the PDF export is public: `curl -sL -o slides.pdf "https://docs.google.com/presentation/d/1Y5SUeS_405k5zZkBX4z6BDaC_umI8Saiguk7coITB1Q/export/pdf"` then read the PDF. |
 | **Reference code** — source of truth for §5 | Local clone: `/home/ivan/dev/MapBiomas/mapbiomas-latam-fire-gee/` | GEE Code Editor repo, remote `https://earthengine.googlesource.com/users/mapbiomasworkspace1/mapbiomas-fire` (branch `master`). Files have **no extension**. **Read-only for us** — the network's repo; never push. |
 | **Mapping method paper** (theirs, not ours) | Alencar, A. A. C., Arruda, V. L., Silva, W. V. da, Conciani, D. E., Costa, D. P., Crusco, N., Duverger, S. G., Ferreira, N. C., Franca-Rocha, W., Hasenack, H., Martenexen, L. F. M., Piontekowski, V. J., Ribeiro, N. V., Rosa, E. R., Rosa, M. R., Santos, S. M. B., Shimbo, J. Z., Vélez-Martin, E. (2022). *Long-Term Landsat-Based Monthly Burned Area Dataset for the Brazilian Biomes Using Deep Learning.* **Remote Sensing 14(11), 2510.** <https://doi.org/10.3390/rs14112510> | What our steps 01–07 replace (§3). |
-| **ATBD** | [ATBD MapBiomas Fogo Colección 4](https://brasil.mapbiomas.org/wp-content/uploads/sites/4/2025/06/ATBD-MapBiomas-Fogo-Colecao-4.pdf) | Product definitions in prose; also the template for **our own ATBD** (docs/09). |
+| **ATBD** | [ATBD MapBiomas Fogo Colección 4](https://brasil.mapbiomas.org/wp-content/uploads/sites/4/2025/06/ATBD-MapBiomas-Fogo-Colecao-4.pdf) | Product definitions in prose; also the template for **our own ATBD** (statistics/docs/statistics.md). |
 | **Legend colours / codes** | `Mapbiomas-Fogo-Legenda-Col4.xlsx` (linked from the guide) + each country's *códigos de la leyenda* page | Authoritative pixel values + hex colours per subproduct. **Use this, don't eyeball colours** from the slides. |
 | **Per-country examples** | Peru: [descargas](https://peru.mapbiomas.org/descargas-mapbiomas-fuego/), [ATBD](https://peru.mapbiomas.org/wp-content/uploads/sites/14/2025/10/ATBD-General-MapBiomas-Fuego-Peru-Col-1-ES.pdf) · Paraguay: [descargas](https://paraguay.mapbiomas.org/descargas/), [ATBD por etapa](https://paraguay.mapbiomas.org/atbd-entienda-cada-etapa/) | Closest models for what Argentina must produce. |
 
@@ -55,8 +55,8 @@ track live in **[`09-statistics.md`](09-statistics.md)**.
 | 2 | **Versión consolidada (sin máscaras)** — one ImageCollection, all years and regions | §5.2 | ✅ collapsed into stage 3 — we have no unmasked variant to consolidate (§6.8) |
 | 3 | **Versión final (con máscaras)** — LULC mask + solitary-pixel removal + month coding | §5.2 | ✅ `collection1_fire_mask_v1`, 27 images; mask + pixel filter are upstream (§6.2) |
 | 4 | **Generación de subproductos** | §5.3–5.4 | ✅ 12 images (9 derived + 3 scar) + 27 scar FCs (§7) |
-| 5 | **Estadísticas preliminares** → Looker Studio *(the network's tool; we analyse in R)* | docs/09 | ⬜ needs the territorial layer first (§8.10) |
-| 6 | **Assets públicos + catastro en Workspace + enlaces directos** | docs/09 §3–4 | ⬜ IPAM's copy; naming decision §8.1 |
+| 5 | **Estadísticas preliminares** → Looker Studio *(the network's tool; we analyse in R)* | statistics/docs/statistics.md | ⬜ needs the territorial layer first (§8.10) |
+| 6 | **Assets públicos + catastro en Workspace + enlaces directos** | statistics/docs/statistics.md §3–4 | ⬜ IPAM's copy; naming decision §8.1 |
 
 > ⚠️ **Validation gate: "antes de avanzar a la siguiente etapa, cada producto debe ser validado por el
 > equipo del país correspondiente."** Expect a human check between stages, not one unattended run.
@@ -103,12 +103,12 @@ mapbiomas-latam-fire-gee/
 ├── 00_Tools/                          # Palettes.js ('mensual', 'frecuencia25'), Legends.js
 ├── 01_Mosaics/                        # THEIR mapping inputs (quality mosaics) — we don't use this
 ├── 1-Toolkit_Collection1/             # sample collection + Visualize-Collections-Fire (validation app)
-├── 2-Statistics/                      # area statistics → CSV (docs/09 §2)
+├── 2-Statistics/                      # area statistics → CSV (statistics/docs/statistics.md §2)
 ├── 4-Collection_anual_final_products/ # ⭐⭐ THE CHAIN
 │   ├── Reference/                     #   ⭐ copy THIS one
 │   │   ├── 1-Post_classifications/    #     stages 2–3   (§5.2)
 │   │   ├── 2-Collection_Fire_Subproducts/  # stage 4     (§5.3–5.4)
-│   │   └── ToPublish/                 #     stage 6      (docs/09 §3)
+│   │   └── ToPublish/                 #     stage 6      (statistics/docs/statistics.md §3)
 │   └── bolivia/ chile/ colombia/ paraguay/ peru/ suriname/   # country adaptations — best examples
 └── 5-Monitor-Fuego/                   # near-real-time monitor — out of scope
 ```
@@ -133,7 +133,7 @@ projects/mapbiomas-<country>/assets/FIRE/
 │   └── annual-burned-vectors/mbfogo-col1-<year>-v1 # FeatureCollection per year (scars)
 └── AUXILIARY_DATA/regiones_fuego_<country>_v1      # fire regions
 ```
-Published copies go to `projects/mapbiomas-public/assets/<country>/fire/collection1/` (docs/09 §3).
+Published copies go to `projects/mapbiomas-public/assets/<country>/fire/collection1/` (statistics/docs/statistics.md §3).
 
 > **Naming gotcha:** they use **`COLLECTION1`** (no hyphen), `AUXILIARY_DATA` (underscore) and
 > lowercase `mapbiomas_<country>_…`; our repo uses **`COLLECTION-1`** / `AUXILIARY-DATA`
@@ -189,7 +189,7 @@ South America), exported to `FINAL_PRODUCTS/` with `pyramidingPolicy: mode`, `sc
 - **Don't copy the typo** in script 2: `outFileNameAccumulated` builds `…_accumulate1_burned_v1`
   where the publish list expects `…_accumulated_burned_v1`.
 - ⚠️ **The `*_coverage` products are easy to forget** and are exactly what the statistics read
-  (docs/09 §2). ~~They need our LULC asset extended to 2025~~ — **not a blocker and now moot**: they
+  (statistics/docs/statistics.md §2). ~~They need our LULC asset extended to 2025~~ — **not a blocker and now moot**: they
   cross against LULC **col-3 v1**, which carries `classification_2025` natively (§8.3, docs/07 §12.1).
 - ⚠️ **Not every built subproduct appears in a publish list, and the three lists disagree**
   (read 11 Sep 2026). `ToPublish/` now holds **three** scripts, renumbered since this doc was
@@ -204,7 +204,7 @@ South America), exported to `FINAL_PRODUCTS/` with `pyramidingPolicy: mode`, `sc
   | `annual_burned_area_ha` | script 5 | ✅ | — | ✅ |
 
   We have built all four. Whether they are meant to be published, or are deliberately
-  internal, is a question for the network (docs/09 §17) — do not infer an answer from the lists,
+  internal, is a question for the network (statistics/docs/statistics.md §17) — do not infer an answer from the lists,
   since they are inconsistent with each other.
 
 ### 5.4 Stage 4, scripts 4–6 — the scar-size chain
@@ -434,7 +434,7 @@ verification numbers and the run commands are in docs/07; this table is the deli
 | 5 | `monthly_burned`, `annual_burned`, `monthly_burned_coverage`, `annual_burned_coverage`, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`), `year_last_fire` | ✅ **9/9** (`07-subproducts.py`), re-verified on the landed assets — band counts, dtypes, pinned grid, every coverage code decoding exactly (docs/07 §12.8). The four coverage products cross **LULC col-3 v1**, so nothing is duplicated forward (§8.3) |
 
 ⚠️ The `*_coverage` products are the easiest to forget and are exactly what the statistics read
-(docs/09 §2). All four exist.
+(statistics/docs/statistics.md §2). All four exist.
 
 **Not part of the network delivery, but built and shared alongside it:** the fire-object polygon layer
 `FINAL_PRODUCTS/burned_area_polygons_v1` — every mapped fire, all 28 fire-years, ten properties,
@@ -513,7 +513,7 @@ several were closed by *measuring* rather than deciding, and the notes say which
 9. **`frequency_burned` band name** — the publish map says `frequency_burned_{year1}_{year2}` while
    script 2 writes `fire_frequency_<y1>_<y2>`; confirm which the platform reads.
 10. **The territorial layer — DEFERRED to ~20 August 2026, by Iván's call (2026-07-29).** Not needed
-    for the 31 July asset delivery; it belongs to the statistics stage (docs/09), which cannot start
+    for the 31 July asset delivery; it belongs to the statistics stage (statistics/docs/statistics.md), which cannot start
     until the 07d `*_coverage` products land anyway. Do not build it before then, because
     **which territories to cut by is still an open question** — possibly *not* the 5 fire regions at
     all, but a **vegetation-units map**. That decision comes first; the layer is mechanical after it.
@@ -523,5 +523,5 @@ several were closed by *measuring* rather than deciding, and the notes say which
       `Region` + integer `Zona` 1-5 (found 2026-07-29). If the 5 fire regions win, this is a
       rename/reproperty job rather than a build from the raster.
     - Two caveats to settle either way: it is **`simplificada`** (simplified geometry — the statistics
-      are checked to ~1 %, docs/09), and its `Zona` numbering is **unverified** against
+      are checked to ~1 %, statistics/docs/statistics.md), and its `Zona` numbering is **unverified** against
       `REGION_RASTER.region_id` and is not `C.REGIONS` order.

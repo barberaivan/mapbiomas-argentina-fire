@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-collection-01/statistics/burnable_export.py — the BURNABLE DENOMINATOR (docs/09 §4.2-§4.3)
+collection-01/statistics/burnable_export.py — the BURNABLE DENOMINATOR (statistics/docs/statistics.md §4.2-§4.3)
 
 The one thing we still compute in Earth Engine.  The numerator (burned area by month x
 year x ecorregión x LULC) comes from the network's toolkit; this produces the other half
@@ -18,11 +18,11 @@ WHAT IT COMPUTES
 
     2 and 3 are NOT folded into 0, deliberately.  `ee.Reducer.mode()` breaks a tie toward
     the SMALLER value, and "no observado" is supposed to be excluded from both sides of
-    every ratio (docs/09 §6) — both would quietly shrink the denominator and inflate every
-    percentage.  As their own rows they are measurable (gate 3, docs/09 §7) and the decode
+    every ratio (statistics/docs/statistics.md §6) — both would quietly shrink the denominator and inflate every
+    percentage.  As their own rows they are measurable (gate 3, statistics/docs/statistics.md §7) and the decode
     can then fold them wherever we decide, on the record.
 
-PROGRAMMING STRATEGY — copied from the network's app (docs/09 §2), because the shape is
+PROGRAMMING STRATEGY — copied from the network's app (statistics/docs/statistics.md §2), because the shape is
 what makes it fast, not the reducer:
     * the whole crossing packed into ONE integer band, one group field, one sweep;
     * territory is `ee.Image().paint(fc, 'GEOCODE')` — never an intersected vector;
@@ -31,7 +31,7 @@ what makes it fast, not the reducer:
     * no `tileScale`;
     * everything in one task.
   The one divergence: `crs` + `crsTransform` instead of `scale: 30`, because every raster
-  in this pipeline sits on one lattice (docs/09 §3).
+  in this pipeline sits on one lattice (statistics/docs/statistics.md §3).
 
 MASKING RULE (the trap): `add()` propagates masks, so if two inputs were masked, any pixel
 missing from EITHER would vanish from the reduction without a trace.  Exactly one layer is
@@ -80,10 +80,10 @@ TIDY_CSV = OUT_DIR / "burnable_eco13.csv"             # decoded, one row per eco
 CACHE = OUT_DIR / ".burnable_regions_cache.json"      # per-region results, resumable
 
 # LULC years to collapse.  1998-2024 = the previous-year range of calendar years
-# 1999-2025, i.e. the same 27 layers a per-year design would have read (docs/09 §4.2).
+# 1999-2025, i.e. the same 27 layers a per-year design would have read (statistics/docs/statistics.md §4.2).
 FIRST_LULC_YEAR, LAST_LULC_YEAR = 1998, 2024
 
-# The Córdoba test rectangle (docs/09 §4.5): dry Chaco / Espinal, west of Villa María.
+# The Córdoba test rectangle (statistics/docs/statistics.md §4.5): dry Chaco / Espinal, west of Villa María.
 # Natural woodland and cropland — both burnable — so the burnable share must come out
 # near 100 %, and the reported TOTAL must come out near the rectangle's own area.
 TEST_RECT = [-63.90, -31.55, -63.70, -31.35]          # W, S, E, N
@@ -132,7 +132,7 @@ def burnable_status() -> ee.Image:
 
     def indicator(year: int) -> ee.Image:
         # No-observado (0, 27) is in NEITHER list, so remap leaves it masked and it never
-        # reaches the mean — which IS "no observado is excluded everywhere" (docs/09 §6).
+        # reaches the mean — which IS "no observado is excluded everywhere" (statistics/docs/statistics.md §6).
         return lulc.select(f"classification_{year}").remap(remap_from, remap_to)
 
     years = range(FIRST_LULC_YEAR, LAST_LULC_YEAR + 1)
@@ -173,7 +173,7 @@ def grouped_area(geometry: ee.Geometry) -> ee.Dictionary:
 
 
 def national_bounds() -> ee.Geometry:
-    # A RECTANGLE, never the multipolygon (docs/09 §2, point 3).
+    # A RECTANGLE, never the multipolygon (statistics/docs/statistics.md §2, point 3).
     return ee.FeatureCollection(C.ARG_BUFFER_FC).geometry().bounds()
 
 

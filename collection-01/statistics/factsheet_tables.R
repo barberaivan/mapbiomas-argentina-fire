@@ -7,19 +7,19 @@
 # the factsheet quotes is in one of them, so a new figure is a read and a ggplot,
 # never a re-computation.
 #
-# THE THREE SOURCES (docs/09 §2)
+# THE THREE SOURCES (statistics/docs/statistics.md §2)
 #   the numerator    the network's toolkit, run on our 13-class ecoregion vector:
 #                    annual / monthly / annual-coverage burned area, by calendar
 #                    year x ecorregión (x LULC). Already decoded — the toolkit
 #                    writes names, not codes.
 #   the denominator  burnable_eco13.csv — ONE constant burnable area per
 #                    ecorregión, the mode over 1998-2024 of the col-3 burnable
-#                    classes. It does NOT vary by year (docs/09 §4).
+#                    classes. It does NOT vary by year (statistics/docs/statistics.md §4).
 #   the fire counts  fire_counts_by_month.csv, from statistics/fire_counts.R —
 #                    events, not pixels, off the local polygons.
 #   el cambio        lulc_change_eco13.csv, de statistics/lulc_change_export.py: lo
 #                    quemado cruzado por la cobertura de Y-1 y la de Y+1 (análisis 6,
-#                    docs/09 §5.7). OPCIONAL: si no está, la sección se saltea.
+#                    statistics/docs/statistics.md §5.7). OPCIONAL: si no está, la sección se saltea.
 #
 # WHAT IT WRITES  (all into data/statistics/)
 #   factsheet_annual.csv        ecorregión x año: burned, burnable, %, % / media
@@ -64,6 +64,43 @@ NAT <- "Argentina"        # the national row's `ecoregion`, with ecoregion_id 0
 # maps and from the national denominator (252.25 -> 251.09 Mha burnable).
 UNMAPPED_REGIONS <- 13L
 
+# ── ⚠️ LA LEYENDA DE NIVEL 2 DE LA RED TRAE TRES CLASES ROTADAS ─────────────
+# `00_Tools/Legends.js::lulc_argentina_nivel2` tiene los valores de los códigos 11, 12 y 63
+# corridos un lugar respecto de sus claves, así que cada uno se queda con el nombre del
+# siguiente:
+#
+#   código   dice la red                        es
+#   ------   --------------------------------   --------------------------------
+#     11     Mosaicos de arbustos y herbaceas    Herbaceas Inundables
+#     12     Herbaceas Inundables                Herbaceas
+#     63     Herbaceas                           Mosaicos de arbustos y herbaceas
+#
+# La evidencia geográfica sola alcanza: el 11 es el 75 % de lo quemado en el DELTA (humedal),
+# el 12 el 62 % en la PAMPA (pastizal seco) y el 63 el 51 % en la PUNA y 37 % en la ESTEPA.
+# Detalle completo en statistics/docs/statistics.md §5.10.1.
+#
+# EL ARREGLO ES DE DOS LADOS Y VAN JUNTOS:
+#   * el DENOMINADOR es nuestro y ya sale bien, porque `statistics/legends.py` está corregido
+#     y decodifica por CÓDIGO;
+#   * el NUMERADOR son los CSV del toolkit de la red, que llegan con el NOMBRE ya decodificado
+#     por ese mismo Legends.js, así que se permuta acá, al leerlos.
+#
+# ⚠️ Corregir un solo lado es el peor resultado posible: el join numerador-denominador es POR
+# NOMBRE, los tres nombres existen en los dos lados, y entonces "Herbaceas" del denominador se
+# emparejaría con "Herbaceas" del numerador siendo clases distintas. No habría huérfanos, la
+# compuerta no diría nada, y los porcentajes del análisis 5 saldrían mal en silencio.
+#
+# La permutación es CERRADA (los tres nombres se intercambian entre sí), así que aplicarla a
+# los dos lados deja el join idéntico en estructura. NIVEL 0 Y NIVEL 1 NO SE TOCAN: las tres
+# clases caen en la misma familia.
+N2_ROTADAS <- c("Mosaicos de arbustos y herbaceas" = "Herbaceas Inundables",
+                "Herbaceas Inundables"             = "Herbaceas",
+                "Herbaceas"                        = "Mosaicos de arbustos y herbaceas")
+fix_n2 <- function(x) {
+  x <- as.character(x); i <- x %in% names(N2_ROTADAS)
+  x[i] <- N2_ROTADAS[x[i]]; x
+}
+
 # ── las clases NO QUEMABLES no entran a ningún análisis de cobertura ─────────
 # Area quemada sobre agua, glaciar, ciudad o suelo desnudo es ERROR DE MAPEO: esas clases
 # no arden. Medido, es ruido — 0.09 % de lo quemado en el país (32,122 ha en 'Áreas sin
@@ -80,8 +117,8 @@ UNMAPPED_REGIONS <- 13L
 # significa cuando se la lee.
 NON_BURNABLE_N1 <- c("Áreas sin vegetación", "Cuerpos de agua")
 
-K_TREND  <- 5      # docs/10 análisis 2 — a few bases, a smooth decadal shape
-# docs/10 análisis 3.2 asks for k = 12, so that the curve FOLLOWS the 12 summary
+K_TREND  <- 5      # statistics/docs/factsheet-sep2026-spec.md análisis 2 — a few bases, a smooth decadal shape
+# statistics/docs/factsheet-sep2026-spec.md análisis 3.2 asks for k = 12, so that the curve FOLLOWS the 12 summary
 # points. Measured, 12 does the opposite at the one place it matters: nationally
 # it overshoots the August peak by 8 % and the Chaco's by 10.5 %, drawing a curve
 # that is higher than any month actually is. k = 10 reproduces the national peak
@@ -138,7 +175,7 @@ ann[is.na(burned_ha), burned_ha := 0]
 ann <- add_national(ann, "year")
 ann[burn, on = "ecoregion_id", `:=`(ecoregion = i.ecoregion, burnable_ha = i.burnable_ha)]
 ann[, pct := 100 * burned_ha / burnable_ha]
-# "veces el año típico" (docs/10 análisis 2): the series divided by its own mean,
+# "veces el año típico" (statistics/docs/factsheet-sep2026-spec.md análisis 2): the series divided by its own mean,
 # so regions of wildly different magnitude can share one panel and be compared by
 # SHAPE. 1 is a normal year for that region, 4 is four times its normal.
 ann[, pct_rel := pct / mean(pct), by = ecoregion_id]
@@ -176,11 +213,12 @@ wr(mon[, .(ecoregion_id, ecoregion, year, month, month_fy, month_name, burned_ha
 # composition, and neither is a "% of the class that burned".
 #
 # This cross reads the PREVIOUS year's land cover — what burned, not what the
-# pixel became (docs/09 §2.2).
+# pixel became (statistics/docs/statistics.md §2.2).
 lulc <- read_toolkit("annual_burned_coverage_Ecorregiones.csv",
                      c("Nivel 0", "Nivel 1", "Nivel 2"))
 lulc[, ecoregion := NULL]
 setnames(lulc, c("Nivel 0", "Nivel 1", "Nivel 2"), c("nivel0", "nivel1", "nivel2"))
+lulc[, nivel2 := fix_n2(nivel2)]        # ⚠️ ver N2_ROTADAS, arriba
 # "No observado" is excluded from every ratio in this stage (§8), so it is dropped
 # here too rather than becoming a sliver of every composition bar. Measured: 0.24 ha
 # in the whole country over 27 years — one pixel in 2025. Reported, not assumed.
@@ -263,7 +301,7 @@ if (!file.exists(LULC_AREA)) {
     # ORPHANS: burned hectares whose (región, clase, año) has no denominator row. It
     # should be impossible — a burned pixel of class c is a pixel of class c — but the
     # two sides are reduced by different teams on grids that differ by a sub-pixel phase
-    # (docs/09 §2.3), so an edge sliver can produce one. `all.x = TRUE` would drop it
+    # (statistics/docs/statistics.md §2.3), so an edge sliver can produce one. `all.x = TRUE` would drop it
     # without a word, and dropped numerator is the one error that makes every `%` look
     # fine and be too low. Counted, not assumed.
     orph <- b[!r, on = c("ecoregion_id", "year", "clase")]
@@ -308,7 +346,7 @@ if (!file.exists(LULC_AREA)) {
 }
 
 # ── 4. the trend: a GAM through the annual % series ──────────────────────────
-# One normal GAM per region, k = 5 (docs/10 análisis 2). The scalar it is
+# One normal GAM per region, k = 5 (statistics/docs/factsheet-sep2026-spec.md análisis 2). The scalar it is
 # summarised by is the MEAN SLOPE over the series — evaluated at every observed
 # year and averaged, which for a straight line is just the slope.
 trend_one <- function(d) {
@@ -333,7 +371,7 @@ wr(trend_fits, "factsheet_trend_fits.csv")
 
 # ── 5. the pirogram: área e incendios por mes ────────────────────────────────
 # Both halves are MEANS OVER THE 27 YEARS of that month's value — "un mes de
-# septiembre típico", not a total. The count half is the >= 10 ha fires (docs/10
+# septiembre típico", not a total. The count half is the >= 10 ha fires (statistics/docs/factsheet-sep2026-spec.md
 # análisis 3.2); it comes from the polygons and is filed whole into the month of
 # `date_median`, while the area half is split per pixel. Same shape, different
 # values — say which one a number came from.
@@ -349,7 +387,7 @@ piro <- merge(mon[, .(burned_ha = sum(burned_ha) / nyears, pct = sum(pct) / nyea
               cnt[, .(n_fires = sum(n_fires) / nyears, n_ge10 = sum(n_ge10) / nyears,
                       n_ge100 = sum(n_ge100) / nyears), by = .(ecoregion_id, month)],
               by = c("ecoregion_id", "month"))
-# The intra-annual SHAPES (docs/10 análisis 3.3): each region's 12 months sum to
+# The intra-annual SHAPES (statistics/docs/factsheet-sep2026-spec.md análisis 3.3): each region's 12 months sum to
 # 100 %, so magnitude is divided out and only the season's shape is compared.
 piro[, share_area := 100 * burned_ha / sum(burned_ha), by = ecoregion_id]
 piro[, share_fires := 100 * n_ge10 / sum(n_ge10), by = ecoregion_id]
@@ -365,7 +403,7 @@ wr(piro[, .(ecoregion_id, ecoregion, month, month_fy, month_name, burned_ha, pct
 # ── 6. the cyclic GAM through the pirogram ───────────────────────────────────
 # Fitted on the 12 SUMMARY points, not on the raw year-by-month data: it is there
 # to follow the mean curve, an aesthetic device, and fitting it to the summary is
-# what makes it do that (docs/10 análisis 3.2).
+# what makes it do that (statistics/docs/factsheet-sep2026-spec.md análisis 3.2).
 season_one <- function(d, yname) {
   y <- d[[yname]]
   if (sum(y) <= 0) return(data.table(month = numeric(0), fit = numeric(0)))
@@ -443,7 +481,7 @@ scal[fs, on = "ecoregion_id",
           p95_ha = i.p95_ha, biggest_fire_ha = i.max_ha,
           fires_ge10_per_10kkm2 = i.fires_per_year_per_10kkm2,
           total_fires = i.n_fires, total_ge10 = i.n_ge10)]
-# The totals over the whole series, which the pirograma normalizado annotates (docs/10 análisis 3.4): a
+# The totals over the whole series, which the pirograma normalizado annotates (statistics/docs/factsheet-sep2026-spec.md análisis 3.4): a
 # PMF divides magnitude out, so the panel has to carry the magnitude in text or it
 # says nothing about how much burned. The area is the RASTER side (the sum of the
 # annual table, recurrences and all — a hectare that burned four times is in it four
@@ -459,7 +497,7 @@ scal <- merge(scal, rbind(meta[, .(ecoregion_id, lat, lon, area_km2, palette_ord
 setorder(scal, -mean_pct)
 wr(scal, "factsheet_region_scalars.csv")
 
-# ── 6. el cambio de cobertura alrededor del fuego (docs/09 §5.7, docs/10 §6) ──
+# ── 6. el cambio de cobertura alrededor del fuego (statistics/docs/statistics.md §5.7, statistics/docs/factsheet-sep2026-spec.md §6) ──
 # La fuente son `lulc_change_eco13_y{1,3}.csv` (statistics/lulc_change_export.py): el país
 # entero cruzado por estado de fuego x ecorregión x clase col-3 de Y-1 x clase de Y+offset,
 # por año. OPCIONAL, como el análisis 5: un factsheet regenerado antes de que aterrice esa
@@ -467,7 +505,7 @@ wr(scal, "factsheet_region_scalars.csv")
 #
 # EL DISEÑO ES EL DE FERRO ET AL. (2026) — el trabajo del grupo sobre el Chaco Seco—, acá a
 # 30 m y para todo el país. De ahí vienen la ventana Y-1 -> Y+1, la regla de exclusión y el
-# cociente q; docs/09 §5.7 dice qué se copia y qué cambia.
+# cociente q; statistics/docs/statistics.md §5.7 dice qué se copia y qué cambia.
 #
 # LOS CUATRO ESTADOS, y qué usa cada figura (legends.py::FIRE_STATE_NAMES):
 #   1 burned_clean + 3 burned_repeat = TODO lo que ardió en Y -> el titular del análisis
@@ -608,7 +646,7 @@ if (!length(have_off)) {
 # La pregunta era si el mapa está mal o si TARDA. Resultó lo segundo, con un techo.
 #
 # Necesita dos cosas que el análisis general no tiene, y las dos salen de
-# `lulc_change_export.py` con banderas (docs/09 §5.7.3):
+# `lulc_change_export.py` con banderas (statistics/docs/statistics.md §5.7.3):
 #
 #   --lat-split -44   Bosques Patagónicos no es homogénea: el norte (de la mitad de Chubut
 #                     para arriba) concentra el 87 % de lo quemado y tiene otro régimen.
@@ -675,7 +713,7 @@ if (!nrow(pat)) {
     , lapply(.SD, function(x) if (is.numeric(x)) round(x, 1) else x)])
 }
 
-# ── 6b. SÓLO BOSQUES, nacional, en las cuatro ventanas (docs/09 §5.9) ────────
+# ── 6b. SÓLO BOSQUES, nacional, en las cuatro ventanas (statistics/docs/statistics.md §5.9) ────────
 # El mismo aparato del bloque patagónico —`pat_file()` lee los `_n44`, que son el PAÍS ENTERO
 # con un bit norte/sur de más— pero sin filtrar por región y colapsando ese bit. Existe porque
 # la pregunta "¿cuánto más probable es que un bosque deje de serlo si se quema?" es la que va a

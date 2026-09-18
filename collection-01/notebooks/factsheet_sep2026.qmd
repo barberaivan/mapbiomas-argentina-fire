@@ -1,0 +1,1105 @@
+---
+title: "Factsheet MapBiomas Fuego Argentina, septiembre 2026"
+subtitle: "Las figuras y las tablas que recibe el diseñador"
+date: today
+lang: es
+params:
+  write_plots: true
+  force_maps: false
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    embed-resources: true
+    fig-width: 7
+    fig-height: 4.6
+---
+
+## Qué es esto
+
+Este cuaderno arma **el material gráfico del factsheet de lanzamiento**. No calcula nada:
+todas las cifras salen de las tablas de `data/statistics/`, que producen
+`statistics/fire_counts.R` y `statistics/factsheet_tables.R`. De dónde sale cada número
+está en [`statistics/docs/statistics.md`](../statistics/docs/statistics.md); qué dice cada figura y por qué,
+en [`statistics/docs/factsheet-sep2026-spec.md`](../statistics/docs/factsheet-sep2026-spec.md).
+
+Las figuras de acá son **versiones para diseño** de las del cuaderno largo
+([`factsheet.qmd`](factsheet.html)): mismo dato, mismo estilo, pero **sin título, sin
+subtítulo y sin epígrafe dentro de la imagen**. Lo único que queda escrito adentro es lo que
+la figura no puede decir de otro modo: la leyenda, el título de la leyenda, los títulos de
+los ejes y, en las series y los pirogramas, el nombre de la región. Todo el resto del texto
+va en la pieza, no en el PNG.
+
+### Lo que se entrega
+
+La carpeta **`collection-01/data/statistics/factsheet_sep2026_figures_and_tables`**, con:
+
+- cada figura en **PNG** (300 dpi, para el borrador y para maquetar) y en **PDF vectorial**
+  (para editarla en Illustrator o Inkscape: los textos son texto, las líneas son líneas);
+- la **tabla que genera cada figura**, en `figNN_datos.csv`, por si se prefiere volver a
+  dibujarla desde cero. Los mapas no llevan CSV: son rásters de millones de celdas y van
+  sólo como imagen;
+- una copia de **este mismo documento** (`factsheet_sep2026.html`), para que la carpeta se
+  explique sola.
+
+El texto del factsheet, los comentarios y el orden final de las láminas están en el borrador
+de Google Slides:
+[`1E4RdJ1rMAtl-4yaUaGrGAJrQPU6lu2Z0YsBMnxPrgXQ`](https://docs.google.com/presentation/d/1E4RdJ1rMAtl-4yaUaGrGAJrQPU6lu2Z0YsBMnxPrgXQ/edit).
+Este documento es la referencia técnica de las imágenes: qué muestra cada una, con qué
+nombre de archivo está guardada y qué conviene decir en su epígrafe.
+
+### Cuatro cosas que valen para todas las figuras
+
+1. **Todo es año calendario.** El año de fuego (1 may a 30 abr) es cómo está organizado el
+   *mapeo*, no cómo se reporta nada. En los pirogramas el eje de meses se **dibuja** de mayo
+   a abril para no cortar la temporada al medio, pero los datos se agregan por año calendario.
+2. **La serie es 1999 a 2025**, 27 años.
+3. **El color de cada ecorregión es fijo** en todo el factsheet: cálido en el norte, frío en
+   el sur. Un color aprendido en una lámina significa lo mismo tres láminas después.
+4. **El área quemada y la cantidad de incendios no se cuentan igual.** El área sale de los
+   rásters y se parte **por píxel** según su fecha; los incendios salen de los polígonos y
+   cada uno se archiva **entero** en el mes de su fecha mediana. Misma forma, distintos
+   valores.
+
+```{r setup}
+#| message: false
+#| warning: false
+knitr::opts_knit$set(root.dir = normalizePath("../.."))
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, dev = "png", dpi = 150)
+```
+
+```{r style}
+#| message: false
+source("collection-01/statistics/factsheet_style.R")
+
+WRITE <- isTRUE(params$write_plots)
+OUT   <- file.path(STATS_DIR, "factsheet_sep2026_figures_and_tables")
+if (WRITE) dir.create(OUT, showWarnings = FALSE, recursive = TRUE)
+
+# Las figuras de esta entrega NO llevan texto adentro salvo ejes y leyenda, así que el tema
+# sube un punto de tamaño de base: se van a ver reducidas dentro de una lámina y el pie de
+# figura lo pone el diseñador afuera.
+theme_set(theme_fs(13))
+
+# PNG para maquetar, PDF vectorial para editar. `cairo_pdf` y no el device por defecto:
+# los textos llevan tildes y ñ, que el device base tira en silencio en algunas
+# configuraciones de fuentes.
+#
+# DEVUELVE EL PLOT VISIBLE, y eso no es un detalle de estilo. Devolviéndolo `invisible()`, un
+# chunk cuya última línea es `save2(...)` escribe los archivos y NO dibuja nada: la figura sale
+# en la carpeta de entrega y falta en el HTML, que es el documento donde se elige. Ya pasó una
+# vez, con la torta de dos anillos. Visible, cualquier chunk que termine en `save2()` la
+# muestra; los que sólo escriben en un bucle terminan en `invisible(NULL)` a propósito.
+#
+# También REGISTRA lo que escribió, para la compuerta del final.
+FIGS <- character(0)
+save2 <- function(p, name, w = 7, h = 4.6) {
+  if (WRITE) {
+    ggsave(file.path(OUT, paste0(name, ".png")), p, width = w, height = h,
+           dpi = 300, bg = "white")
+    ggsave(file.path(OUT, paste0(name, ".pdf")), p, width = w, height = h,
+           device = cairo_pdf, bg = "white")
+    FIGS <<- union(FIGS, name)
+  }
+  p
+}
+
+# La tabla que genera la figura. Se escribe con punto decimal (es un CSV, no una tabla para
+# leer) y con los nombres de columna en castellano, porque la lee el diseñador y no un
+# script nuestro.
+TABS <- character(0)
+save_tab <- function(d, fig) {
+  if (WRITE) {
+    fwrite(d, file.path(OUT, sprintf("%s_datos.csv", fig)), bom = TRUE)
+    TABS <<- union(TABS, sprintf("%s_datos", fig))
+  }
+  invisible(d)
+}
+
+# ── LOS DOS MAPAS NO SE REDIBUJAN SI YA ESTÁN ESCRITOS ──────────────────────
+# Este cuaderno son 12 figuras que salen de CSV chicos en segundos, y dos mapas de ráster que
+# se llevaban el 90 % del render. El caro es el 1: es el único que se dibuja a su resolución
+# nativa de 480 m con vecino más cercano (promediar rompe la escala de conteos enteros,
+# statistics/docs/statistics.md §5.5.1), así que reproyectar a Albers y aplanar ~5 M de celdas a data.frame cuesta
+# varios minutos, y encima hay que escribir el PNG y el PDF.
+#
+# Y no hace falta ni una vez de más: los dos mapas dependen SÓLO de su GeoTIFF, que se baja
+# una vez y no se vuelve a tocar. Así que si el PNG y el PDF ya están en la carpeta de entrega
+# y son más nuevos que el `.tif`, no se recalcula nada: se inserta en el HTML la imagen que ya
+# está escrita. El render pasa de ~7 minutos a menos de uno.
+#
+# Se rehacen solos cuando corresponde: si falta alguno de los dos archivos, si se baja un
+# `.tif` nuevo, o a pedido con `-P force_maps:true`.
+FORCE_MAPS <- isTRUE(params$force_maps)
+
+map_stale <- function(name, tif) {
+  f <- file.path(OUT, paste0(name, c(".png", ".pdf")))
+  !all(file.exists(f)) || any(file.mtime(f) < file.mtime(raster_path(tif)))
+}
+
+map_fig <- function(name, tif, f, w = 5, h = 6.5) {
+  if (!WRITE || FORCE_MAPS || map_stale(name, tif)) {
+    p <- f(); save2(p, name, w = w, h = h); return(p)
+  }
+  cat(sprintf("%s: ya está escrito y el .tif no cambió, no se redibuja\n", name))
+  FIGS <<- union(FIGS, name)      # se entrega igual, así que cuenta para la compuerta
+  # El PNG se EMBEBE en base64, no se referencia por ruta. `include_graphics()` resuelve la
+  # ruta relativa al .qmd, y la carpeta de entrega cuelga de `data/`, que es un symlink al
+  # store de Insync: normalizar la ruta la saca del árbol del documento y knitr no la
+  # encuentra. Con `image_uri()` no hay ruta que resolver, y de paso el HTML queda
+  # autocontenido, que es lo que `embed-resources: true` quiere de todos modos.
+  knitr::raw_html(sprintf('<img src="%s" style="max-width:100%%; height:auto;">',
+                          knitr::image_uri(file.path(OUT, paste0(name, ".png")))))
+}
+
+# El título de la leyenda de un mapa lo fija el `name` de su escala, dentro de `map_classes()`
+# en `factsheet_style.R`. Un `labs(fill = ...)` NO lo pisa: en ggplot2 el `name` de la escala
+# gana sobre `labs`, y el resultado es un mapa que sale con el título viejo sin avisar. Se le
+# cambia el nombre a la escala que ya está puesta, que además evita copiar acá la tabla de
+# colores y que las dos copias se separen.
+relabel_fill <- function(p, name) {
+  i <- which(vapply(p$scales$scales, function(s) "fill" %in% s$aesthetics, logical(1)))
+  p$scales$scales[[i[1]]]$name <- name
+  p
+}
+
+# Los ejes en castellano: coma decimal, punto de miles.
+#
+# Los decimales NO son fijos, y esa es toda la gracia. En Mha por año, Argentina se mueve
+# entre 0 y 5 y Bosques Patagónicos entre 0 y 0,004: con dos decimales fijos, el eje de
+# Bosques Patagónicos dice "0,00" cinco veces. Se toman los decimales del PASO entre marcas,
+# que es la única cifra que tiene que verse.
+num_auto <- function(x) {
+  v <- x[is.finite(x)]
+  if (!length(v)) return(rep(NA_character_, length(x)))
+  step <- suppressWarnings(min(diff(sort(unique(v)))))
+  d <- if (!is.finite(step) || step <= 0) 1L else max(0L, as.integer(ceiling(-log10(step))))
+  formatC(x, format = "f", digits = d, decimal.mark = ",", big.mark = ".")
+}
+
+ann   <- fs$annual
+scal  <- fs$scalars
+YEARS <- range(ann$year)
+
+# ── LA PALETA DE COBERTURA ES LA DE MAPBIOMAS, NO LA NUESTRA ────────────────
+# Los colores de las clases de cobertura son estándar en toda la red y el lector ya los
+# asocia a la clase: verde oscuro = bosque cerrado, verde claro = bosque abierto, beige =
+# pastizal. Inventar una paleta propia para el factsheet rompería ese reconocimiento.
+#
+# Esto es el `mapbiomasPalette` de la colección 3 de cobertura, copiado VERBATIM del script
+# de producción del equipo de LULC (`mapbiomas-arg-pat-col3/Workflow/13-reclass`, que a su
+# vez es `palettes.get('classification8')`). El índice es el CÓDIGO de clase col-3, empezando
+# en 0, así que se une por código y no por nombre: `lulc_area_eco13.csv` es la única tabla
+# que trae el `class_id` al lado de los tres niveles de leyenda (statistics/docs/statistics.md §5.4).
+MB_PALETTE <- c(
+  "#ffffff", "#32a65e", "#32a65e", "#1f8d49", "#7dc975", "#04381d", "#026975", "#000000",
+  "#000000", "#7a5900", "#ad975a", "#519799", "#d6bc74", "#d89f5c", "#ffffb2", "#edde8e",
+  "#000000", "#000000", "#f5b3c8", "#c27ba0", "#db7093", "#ffefc3", "#db4d4f", "#ffa07a",
+  "#d4271e", "#db4d4f", "#0000ff", "#ffffff", "#000000", "#ffaa5f", "#9c0027", "#091077",
+  "#fc8114", "#2532e4", "#93dfe6", "#9065d0", "#d082de", "#000000", "#000000", "#f5b3c8",
+  "#c71585", "#f54ca9", "#000000", "#000000", "#000000", "#000000", "#d68fe2", "#9932cc",
+  "#e6ccff", "#02d659", "#ad5100", "#000000", "#000000", "#000000", "#000000", "#000000",
+  "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#ff69b4", "#ebf8b5",
+  "#000000", "#000000", "#a89358", "#f79c02", "#000000", "#000000", "#000000", "#000000",
+  "#000000", "#000000", "#000000", "#1a88bf")
+
+# DOS CÓDIGOS QUE ESA PALETA NO CUBRE, y los dos son clases que sólo existen en Argentina:
+#
+#   77  Matorrales y arbustales abiertos: el arreglo llega hasta el 75, así que no hay
+#       color estándar. Se usa el de nuestro propio repo `fuego`
+#       (`collection-01/utils/constants.js::MB_LULC_PALETTE[77]`). ⚠️ Es el ÚNICO color de
+#       esta figura que no viene de la red, y no es menor: son el 12,5 % de lo quemado.
+#   73  Turberas: la integración col-3 la codifica 73, pero el equipo de LULC la trata como
+#       75 en su propio flujo (`Workflow/08-temporal_3anos`), que en la paleta estándar es
+#       `#1a88bf`. Se usa ése. Es el 0,0008 % de lo quemado, así que sólo se ve en la barra.
+MB_PALETTE_EXTRA <- c(`77` = "#86b074", `73` = MB_PALETTE[75 + 1])
+
+# El diccionario final, clase de nivel 2 -> color, LEÍDO del crosswalk y no tipeado. Si
+# falta el export del denominador se cae a la paleta propia del cuaderno largo, que es lo
+# que había antes: la figura sale, con otro color y diciéndolo.
+LULC_N2_MB <- local({
+  if (is.null(fs$lulc_area)) return(NULL)
+  cw <- unique(as.data.table(fs$lulc_area)[, .(class_id, nivel2)])
+  cw[, col := ifelse(as.character(class_id) %in% names(MB_PALETTE_EXTRA),
+                     MB_PALETTE_EXTRA[as.character(class_id)],
+                     MB_PALETTE[class_id + 1])]
+  setNames(cw$col, cw$nivel2)[LULC_N2]
+})
+HAS_MB_PAL <- !is.null(LULC_N2_MB) && !anyNA(LULC_N2_MB)
+N2_COLORS  <- if (HAS_MB_PAL) LULC_N2_MB else LULC_N2_COLORS
+
+# ── EL ORDEN DE LAS CLASES: LEÑOSIDAD DECRECIENTE ──────────────────────────
+# `LULC_N2` viene de `factsheet_style.R` ordenado por familia y, dentro de la familia, por
+# área quemada. Para la lámina 1 el orden es otro y es el que pidió Iván: de más leñoso a
+# menos, que es un gradiente de estructura de la vegetación y no una magnitud. Así el círculo
+# de la torta recorre bosque -> arbustal -> pastizal -> uso agropecuario, y el lector ve un
+# eje físico en vez de un ranking.
+#
+# Lo que NO está en esta lista se agrega al final, en el orden que traía: así una clase nueva
+# en la col-3 aparece, aunque sea al final, en vez de desaparecer del gráfico sin avisar.
+LENOSIDAD <- c(
+  "Bosque cerrado", "Bosque abierto", "Bosque inundable",
+  "Matorrales y arbustales cerrados", "Matorrales y arbustales abiertos",
+  "Mosaicos de arbustos y herbaceas", "Herbaceas", "Pastura", "Herbaceas Inundables",
+  # el resto, que en la torta cae en "Otros" y en la barra se ve entero
+  "Turberas", "Silvicultura", "Cultivos perennes", "Cultivos temporarios", "Mosaico de usos")
+N2_ORDEN <- c(intersect(LENOSIDAD, LULC_N2), setdiff(LULC_N2, LENOSIDAD))
+
+# Las tres familias, en el mismo sentido. El color es el de los CÓDIGOS PADRE de la paleta
+# estándar (1 Bosques, 10 Vegetación natural herbácea y arbustiva, 14 Agropecuario): existen
+# en el diccionario aunque no aparezcan en ningún píxel de la integración, y son los que la
+# plataforma usa para agrupar.
+N1_ORDEN  <- c("Bosques", "Vegetación natural herbácea y arbustiva",
+               "Áreas de uso agropecuario")
+N1_COLORS <- setNames(MB_PALETTE[c(1, 10, 14) + 1], N1_ORDEN)
+
+# ── lámina 2: el ribbon lleva el color, la serie va en negro ────────────────
+# Dos puntos de plasma y nada en el medio: no es una escala continua, es una DICOTOMÍA.
+#
+# ⚠️ EL SENTIDO LO FIJA EL MAPA DEL AÑO DEL ÚLTIMO FUEGO (figura 3), y no se elige acá. Ese
+# mapa usa plasma INVERTIDA (`direction = -1`), así que **lo oscuro es lo reciente** y lo
+# claro es lo viejo: 1999-2002 sale amarillo y 2023-2025, violeta. Estas bandas tienen que
+# leerse igual, o las dos figuras de la misma lámina dirían lo contrario con el mismo color.
+# Entonces: la región que SUBE se quema AHORA, y va en el tono OSCURO (plasma 0,2, violeta);
+# la que BAJA se quemaba ANTES, y va en el CLARO (plasma 0,8, naranja).
+#
+# Ni 0 ni 1: el extremo oscuro de plasma es casi azul marino y el claro es un amarillo que
+# sobre blanco desaparece; a 0,45 de opacidad los dos elegidos siguen siendo un color.
+TREND_COLORS <- c(baja = viridisLite::plasma(1, begin = 0.8, end = 0.8),
+                  sube = viridisLite::plasma(1, begin = 0.2, end = 0.2))
+# `trend_ratio` < 1 es "se quema menos que al principio" (statistics/docs/statistics.md §5.1).
+trend_side  <- function(r) if (scal[ecoregion == r, trend_ratio] < 1) "baja" else "sube"
+ribbon_col  <- function(r) if (r == NAT) "#1A1A1A" else TREND_COLORS[[trend_side(r)]]
+
+# ── lámina 3: el color de las barras ────────────────────────────────────────
+# El país en gris oscuro y las tres regiones en rocket, sin llegar a las puntas
+# (0,3 / 0,5 / 0,7): el negro del 0 y el blanco rosado del 1 no aguantan una barra grande.
+# El orden es el de siempre, norte -> sur, así que el tono claro es el norte.
+# El orden es norte -> sur y el norte se lleva el tono CLARO, así que la posición en la rampa
+# dice la latitud sin que haya que ir al mapa. El país va en gris oscuro, fuera de la rampa.
+piro_pal <- function(f, at) setNames(
+  c("#3F3F3F", vapply(at, function(b) f(1, begin = b, end = b), "")),
+  c(NAT, "Chaco", "Delta e Islas del Paraná", "Bosques Patagónicos"))
+
+PIRO_COLORS <- piro_pal(viridisLite::rocket, c(0.70, 0.50, 0.30))
+
+# EL GAM CÍCLICO DE LOS PIROGRAMAS, en un solo lugar: 10 bases y `gamma = 1`, que es el
+# ajuste de siempre. Ver `season_fit()` para qué significa cada uno.
+GAM_K <- 10L; GAM_GAMMA <- 1
+
+cat(if (WRITE) sprintf("Se escribe en %s\n", OUT) else "write_plots = false\n")
+```
+
+---
+
+## Lámina 1. Dónde y cuánto se quema en Argentina
+
+### Figura 0. Mapa de ecorregiones
+
+**No la produce el equipo de fuego.** Va el mapa de ecorregiones de Burkart et al. (1999) en
+blanco, el mismo corte territorial que usa la colección 3 de cobertura. Si hiciera falta una
+versión con los colores del factsheet, está en `data/statistics/figures/fig00_mapa_leyenda`
+y `fig00_mapa_leyenda_texto` (esta última con los nombres al lado).
+
+### Figura 1. Cuántas veces se quemó cada píxel
+
+**Archivo: `fig01_mapa_anios_quemados`** (PNG y PDF, sin CSV).
+
+::: {.callout-note}
+## Qué muestra
+En cuántos años distintos, de los 27 de la serie, hubo fuego en cada lugar del país. El
+**blanco es una clase aparte**: no ardió nunca, y son alrededor del 60 % del territorio.
+"Acá no hubo fuego" y "acá hubo poco fuego" son dos cosas distintas y una rampa continua las
+pega, así que el cero se dibuja blanco y la rampa empieza recién en 1.
+
+La celda del mapa mide 480 m y toma **el píxel que más ardió** de esos 480 m, que es lo
+único que da un número entero de años. Se lee "en algún lugar de esta celda hubo un píxel
+que ardió N años". Exagera a propósito la superficie de las clases altas, y por eso el
+epígrafe conviene que diga "en algún lugar de", no "acá ardió N veces".
+:::
+
+```{r fig01}
+#| fig-height: 6.5
+#| fig-width: 5
+#| eval: !expr HAS_BURN_MAX
+map_fig("fig01_mapa_anios_quemados", "max", function()
+  relabel_fill(map_burn_count(stat = "max"), "Cantidad de años\nque se quemó"))
+```
+
+### Figura 2. Qué se quema a nivel nacional
+
+**Archivos: `fig02_torta_cobertura` y `fig02_barras_cobertura`; tabla `fig02_datos.csv`.**
+
+Dos dibujos del mismo dato. **La torta agrupa en "Otros" todo lo que está por debajo del
+4 %** y deja siete porciones legibles; la barra las muestra **todas**, de mayor a menor, y es
+la que permite comparar clases parecidas. Van las dos porque responden cosas distintas: la
+torta es para una lámina, la barra es para quien quiera el detalle.
+
+::: {.callout-note}
+## Qué muestra
+De todo lo que se quemó en el país entre 1999 y 2025, **qué porcentaje era cada clase de
+cobertura**, con la clase leída en el **nivel 2** de la leyenda de la colección 3 de
+MapBiomas (la clase nativa, la que ve un usuario de la plataforma).
+
+Tres cosas para el epígrafe:
+
+- Es la composición de **lo que se quemó**, no el porcentaje de cada clase que se quemó. El
+  denominador es el área quemada del país.
+- La cobertura es la del **año anterior** al fuego: lo que ardió, no en qué se convirtió
+  después.
+- Sólo entran las **clases quemables**, así que suma 100 % sobre lo que puede arder. El
+  fuego mapeado sobre agua, glaciar o ciudad es error de mapeo (0,09 % de lo quemado) y
+  queda afuera.
+:::
+
+:::: {.callout-note}
+## Tres clases de nivel 2 venían con el nombre cambiado, y ya está arreglado
+
+La leyenda `lulc_argentina_nivel2` del `00_Tools/Legends.js` **de la red** tiene los nombres
+de los códigos **11, 12 y 63 corridos un lugar** respecto de sus claves. Se encontró el 17 de
+septiembre de 2026, uniendo la paleta de MapBiomas por código de clase, y estaba en **todas
+nuestras tablas de nivel 2**, no sólo en esta figura.
+
+| código | decía | **es** | % de lo quemado |
+|---|---|---|---|
+| 11 | Mosaicos de arbustos y herbaceas | **Herbaceas Inundables** | 21,2 % |
+| 12 | Herbaceas Inundables | **Herbaceas** | 21,7 % |
+| 63 | Herbaceas | **Mosaicos de arbustos y herbaceas** | 4,1 % |
+
+**Está corregido de los dos lados** (statistics/docs/statistics.md §5.10.1): `statistics/legends.py` para el
+denominador, que es nuestro y decodifica por código, y `statistics/factsheet_tables.R` al leer
+los CSV del toolkit de la red, que llegan con el nombre ya decodificado. Los dos, porque el
+join entre numerador y denominador es **por nombre** y arreglar uno solo los habría emparejado
+mal sin que ninguna compuerta lo viera.
+
+**No se re-exportó nada de GEE**: los `_raw` estaban en disco y los `--check` de
+`lulc_area_export.py` y `lulc_change_export.py` vuelven a decodificar sin red.
+
+Y se nota que quedó bien: la **Pampa** pasa a ser 62 % *Herbaceas* (pastizal), el **Delta**
+75 % *Herbaceas Inundables* (humedal) y la **Puna** 51 % *Mosaicos de arbustos y herbaceas*
+(estepa altoandina), que es lo que esas regiones son.
+::::
+
+**Los colores son los de MapBiomas**, no nuestros: el `mapbiomasPalette` de la colección 3 de
+cobertura, unido por **código de clase** y no por nombre. Un lector que vio un mapa de
+cobertura reconoce el verde oscuro como bosque cerrado sin leer la leyenda, y eso vale más
+que cualquier paleta que pudiéramos elegir. La única excepción está anotada en el código:
+*Matorrales y arbustales abiertos* (código 77) no existe en esa paleta y usa el color de
+nuestro propio repo de GEE.
+
+```{r fig02-datos}
+d02 <- fs$lulc_share[level == "nivel2" & ecoregion_id == 0 & clase %in% LULC_N2]
+d02 <- d02[, .(clase, familia = nivel1, burned_ha, share)]
+d02[, clase := factor(clase, levels = N2_ORDEN)]
+d02[, familia := factor(familia, levels = N1_ORDEN)]
+setorder(d02, clase)
+
+TOTAL_HA <- sum(d02$burned_ha)
+save_tab(d02[, .(clase_nivel2 = as.character(clase), familia_nivel1 = familia,
+                 ha_quemadas = round(burned_ha, 1),
+                 Mha_quemadas = round(burned_ha / 1e6, 4),
+                 porcentaje_de_lo_quemado = round(share, 3))], "fig02")
+
+if (!HAS_MB_PAL) cat("⚠️ Falta lulc_area_eco13.csv: se dibuja con la paleta propia\n")
+tbl(d02[order(-share), .(`clase (nivel 2)` = as.character(clase),
+                         `familia (nivel 1)` = familia,
+                         Mha = round(burned_ha / 1e6, 2),
+                         `% de lo quemado` = round(share, 1))], align = "llrr")
+```
+
+#### El número del bosque, para el texto
+
+```{r bosque-total}
+#| echo: false
+bos2 <- d02[clase %in% c("Bosque cerrado", "Bosque abierto")]
+bos3 <- d02[familia == "Bosques"]
+b2_ha <- sum(bos2$burned_ha); b3_ha <- sum(bos3$burned_ha)
+cat(sprintf(paste0(
+  "TOTAL quemado 1999-2025 . . . . . . . . . %s Mha\n",
+  "Bosque abierto + cerrado  . . . . . . . . %s Mha   (%s %% de lo quemado)\n",
+  "  + bosque inundable (la familia entera)  %s Mha   (%s %% de lo quemado)\n"),
+  fmt_mha(TOTAL_HA, 2),
+  fmt_mha(b2_ha, 2), fmt_pct(100 * b2_ha / TOTAL_HA, 1),
+  fmt_mha(b3_ha, 2), fmt_pct(100 * b3_ha / TOTAL_HA, 1)))
+```
+
+La frase, ya armada y con el redondeo hecho:
+
+> En Argentina se quemaron **`r fmt_mha(TOTAL_HA, 1)` millones de hectáreas** entre 1999 y
+> 2025, y el **`r fmt_pct(100 * b2_ha / TOTAL_HA, 0)` %** (`r fmt_mha(b2_ha, 1)` Mha) era
+> **bosque**.
+
+El `r fmt_pct(100 * b2_ha / TOTAL_HA, 2)` % redondea a **`r fmt_pct(100 * b2_ha / TOTAL_HA, 0)` %**,
+así que sí: 25 %. Dos cosas antes de escribirlo en la pieza.
+
+::: {.callout-warning}
+## El total NO es "cuánto del país se quemó alguna vez"
+
+`r fmt_mha(TOTAL_HA, 1)` Mha es **la suma de los 27 años**, así que una hectárea que se quemó
+cuatro veces está contada cuatro veces. Es una superficie por año acumulada, no una huella.
+La superficie que ardió *al menos una vez* es bastante menor y sale de otro producto
+(`accumulated_burned_coverage`). En la pieza: "**se quemaron** 63 Mha en 27 años" o "**el
+equivalente a** dos veces la provincia de Buenos Aires", nunca "se quemó el 25 % del país".
+
+Y **"bosque" acá son las dos clases que pediste, abierto y cerrado**. Si se suma *bosque
+inundable*, que la leyenda también cuenta como bosque, el número sube a
+**`r fmt_pct(100 * b3_ha / TOTAL_HA, 0)` %** (`r fmt_mha(b3_ha, 1)` Mha). Las dos frases son
+ciertas y dicen cosas distintas: la de 25 % habla de bosque seco, la de 30 % de la familia
+entera. Decir cuál.
+:::
+
+```{r fig02-torta}
+#| fig-height: 5
+#| fig-width: 7.5
+# EL AGRUPAMIENTO ES SÓLO DE LA TORTA. Siete clases pasan el 4 % y las otras siete juntas
+# suman menos que la más chica de ésas: dibujadas aparte son astillas que no se leen y una
+# leyenda que duplica su largo. "Otros" va en gris, fuera del lenguaje de color de la
+# leyenda, justamente para que no se lea como una clase de MapBiomas, y la barra de al lado
+# las tiene todas, así que no se pierde nada.
+PIE_MIN <- 4
+OTROS   <- sprintf("Otros (< %d %%)", PIE_MIN)
+dt <- copy(d02)
+dt[, grp := ifelse(share >= PIE_MIN, as.character(clase), OTROS)]
+dt <- dt[, .(share = sum(share), burned_ha = sum(burned_ha)), by = grp]
+# El orden del círculo es el de LEÑOSIDAD (N2_ORDEN), con "Otros" al final: el recorrido va
+# de bosque cerrado a uso agropecuario y el gris cierra la vuelta.
+dt[, grp := factor(grp, levels = c(intersect(N2_ORDEN, grp), OTROS))]
+setorder(dt, grp)
+dt[, pos := cumsum(share) - share / 2]
+pie_cols <- c(N2_COLORS[intersect(N2_ORDEN, as.character(dt$grp))],
+              setNames("#BDBDBD", OTROS))
+
+f02t <- ggplot(dt, aes(x = 1, y = share, fill = grp)) +
+  geom_col(width = 1, colour = "white", linewidth = 0.5) +
+  geom_text(aes(x = 1.62, y = 100 - pos, label = paste0(fmt_pct(share, 0), " %")),
+            size = 3.6, colour = "grey20") +
+  coord_polar(theta = "y", direction = -1) +
+  scale_fill_manual(values = pie_cols, breaks = levels(dt$grp), name = NULL) +
+  scale_y_continuous(expand = c(0, 0)) +
+  xlim(0, 1.9) +
+  theme_void(base_size = 13) +
+  theme(legend.position = "right", legend.text = element_text(size = rel(0.85)),
+        legend.key.size = grid::unit(1.05, "lines"))
+save2(f02t, "fig02_torta_cobertura", w = 7.5, h = 5)
+f02t
+```
+
+### Figura 2, versión 2: los dos niveles en un solo círculo
+
+**Archivo: `fig02_torta_dos_anillos`** (misma tabla, `fig02_datos.csv`).
+
+La misma composición leída en los dos niveles a la vez: **la clase nativa adentro** (nivel 2,
+con todo lo que no llega al 4 % agrupado en "Otros") y **la familia afuera** (las tres clases
+de nivel 1). El anillo externo es la suma del interno, así que cada arco de familia cubre
+exactamente a sus hijas y el círculo se lee de afuera hacia adentro: "el 61 % es vegetación
+herbácea y arbustiva, y adentro de eso lo más grande son las herbáceas y las herbáceas
+inundables".
+
+Una diferencia de orden que vale la pena conocer: acá las clases van **agrupadas por familia**
+y dentro de cada familia por leñosidad, porque un anillo anidado exige que las hijas de una
+familia sean contiguas. En la torta simple y en la barra el orden es de leñosidad pura, que es
+el pedido, y por eso *Pastura* cae entre *Herbaceas* y *Herbaceas Inundables*; acá se va con su
+familia agropecuaria. La leyenda sigue el orden del círculo, no el de leñosidad, para que
+recorrerla con la vista sea recorrer el dibujo.
+
+```{r fig02-anillos}
+#| fig-height: 5.6
+#| fig-width: 8
+# Un sunburst en ggplot son dos bandas a distinto x bajo `coord_polar`: el DETALLE (nivel 2)
+# adentro y el AGREGADO (nivel 1) afuera, que es el orden que importa: el anillo de afuera es
+# la suma del de adentro y no al revés. El `xlim` que no empieza en 0 abre el agujero del
+# medio. Las dos capas comparten UNA escala de relleno, así que los colores de clase y de
+# familia van en un solo vector; no colisionan porque ninguna familia se llama como una clase.
+#
+# ⚠️ EL "OTROS" SE ARMA DENTRO DE CADA FAMILIA, no una vez. Un anillo anidado exige que las
+# hijas de una familia sean contiguas, y un "Otros" único que mezclara turberas con
+# silvicultura tendría que partirse en dos arcos bajo padres distintos, que es justamente lo
+# que el dibujo no puede hacer. Las dos porciones grises comparten nombre y color, así que la
+# leyenda muestra una sola entrada y se leen como lo que son: el resto de cada familia.
+PIE_MIN2 <- 4
+OTROS2   <- sprintf("Otros (< %d %%)", PIE_MIN2)
+d2a <- copy(d02)
+d2a[, clase := ifelse(share >= PIE_MIN2, as.character(clase), OTROS2)]
+d2a <- d2a[, .(share = sum(share)), by = .(familia, clase)]
+d2a[, clase := factor(clase, levels = c(intersect(N2_ORDEN, clase), OTROS2))]
+setorder(d2a, familia, clase)                   # anidado: primero la familia
+
+# ⚠️ LOS ARCOS SE CALCULAN A MANO, con `geom_rect` y no con `geom_col`. `geom_col` apila por
+# los NIVELES del factor de relleno y NO por el orden de las filas, así que el anillo interno
+# salía en orden de leñosidad pura (con *Pastura* entre las dos herbáceas) mientras el externo
+# iba por familia: los dos anillos quedaban corridos y *Pastura* caía adentro del arco de la
+# vegetación natural. Y no alcanza con reordenar los niveles, porque las dos porciones "Otros"
+# comparten nivel y `geom_col` las habría fundido en una sola. Con los límites explícitos no
+# hay orden implícito que adivinar.
+arcos <- function(d) { d[, top := 100 - (cumsum(share) - share)][, bot := 100 - cumsum(share)]
+                       d[, pos := (top + bot) / 2][] }
+d2a <- arcos(d2a)
+
+fam2 <- d2a[, .(share = sum(share)), by = familia]
+setorder(fam2, familia)
+fam2 <- arcos(fam2)
+fam2[, lab := paste0(vapply(as.character(familia),
+                            function(z) paste(strwrap(z, 14), collapse = "\n"), ""),
+                     "\n", fmt_pct(share, 0), " %")]
+
+# El anillo interno se lleva la banda ancha y el externo es un aro fino: el interno tiene
+# diez porciones y el externo tres, así que el lugar hace falta adentro. Los porcentajes de
+# las clases se escriben en la parte de AFUERA de su banda (x = 1,55), donde el arco ya se
+# abrió y las porciones del 4 % tienen dónde entrar.
+f02a <- ggplot() +
+  geom_rect(data = d2a, aes(xmin = 0.5, xmax = 1.9, ymin = bot, ymax = top, fill = clase),
+            colour = "white", linewidth = 0.5) +
+  geom_rect(data = fam2, aes(xmin = 1.95, xmax = 2.55, ymin = bot, ymax = top, fill = familia),
+            colour = "white", linewidth = 0.6) +
+  geom_text(data = d2a[share >= 3.5],
+            aes(x = 1.55, y = pos, label = paste0(fmt_pct(share, 0), " %")),
+            size = 3.5, colour = "grey15") +
+  geom_text(data = fam2, aes(x = 2.25, y = pos, label = lab),
+            size = 3.5, lineheight = 0.95, colour = "grey15") +
+  coord_polar(theta = "y", direction = -1) +
+  # La leyenda va en el orden del círculo (familia y después leñosidad), con "Otros" al final
+  # porque no es una clase.
+  scale_fill_manual(values = c(N2_COLORS, setNames("#BDBDBD", OTROS2), N1_COLORS),
+                    breaks = c(setdiff(unique(as.character(d2a$clase)), OTROS2), OTROS2),
+                    name = NULL) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 100)) +
+  xlim(0.15, 2.6) +
+  theme_void(base_size = 13) +
+  theme(legend.position = "right", legend.text = element_text(size = rel(0.85)),
+        legend.key.size = grid::unit(1.05, "lines"))
+save2(f02a, "fig02_torta_dos_anillos", w = 8, h = 5.6)
+f02a
+```
+
+```{r fig02-barras}
+#| fig-height: 5
+#| fig-width: 8
+# La barra va en el MISMO orden que la torta y no por magnitud. Dos órdenes distintos para la
+# misma leyenda en la misma lámina es lo que hace que el lector las lea como dos leyendas
+# distintas; el tamaño ya lo dice el largo de la barra, que para eso está.
+db <- copy(d02)
+db[, clase := factor(clase, levels = rev(N2_ORDEN))]   # rev: ggplot dibuja de abajo a arriba
+setorder(db, -clase)
+f02b <- ggplot(db, aes(share, clase, fill = clase)) +
+  geom_col(width = 0.78) +
+  geom_text(aes(label = paste0(fmt_pct(share, 1), " %")), hjust = -0.15, size = 3.5,
+            colour = "grey30") +
+  scale_fill_manual(values = N2_COLORS, guide = "none") +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.16)),
+                     labels = function(x) paste0(x, " %")) +
+  labs(x = "% del área quemada del país", y = NULL) +
+  theme(panel.grid.major.y = element_blank(),
+        panel.grid.major.x = element_line(colour = "grey92", linewidth = 0.3))
+save2(f02b, "fig02_barras_cobertura", w = 8, h = 5)
+f02b
+```
+
+---
+
+## Lámina 2. Cambios en el tiempo
+
+### Figura 3. Cuándo ardió por última vez
+
+**Archivo: `fig03_mapa_ultimo_fuego`** (PNG y PDF, sin CSV).
+
+::: {.callout-note}
+## Qué muestra
+El **año del último fuego** de cada lugar del país: dónde ardió hace poco y dónde hace veinte
+años. Es el complemento exacto de la figura 1, que dice *cuánto* ardió cada lugar; ésta dice
+*cuándo fue la última vez*.
+
+- **Blanco es "no ardió nunca"** en los 27 años. No es la clase más baja de la rampa: no hay
+  año que mostrar.
+- La celda de 480 m **promedia el año** de los píxeles que ardieron, así que el valor es
+  fraccionario y **la clase es un período, no un año**. Una celda "2011 a 2014" puede ser una
+  que ardió entera en 2012 o una que ardió mitad en 2005 y mitad en 2019.
+- **Lo oscuro es lo reciente.** La paleta es distinta a propósito de la de la figura 1: son
+  dos variables distintas y compartir paleta las haría leer como la misma.
+:::
+
+```{r fig03}
+#| fig-height: 6.5
+#| fig-width: 5
+#| eval: !expr HAS_LAST_FIRE
+# `map_last_fire()` rotula la leyenda en minúscula, que es la convención del cuaderno largo.
+# Acá todos los títulos de eje y de leyenda arrancan en mayúscula ("Año", "Mes", "Área
+# quemada", "Cantidad de años"), así que se reescribe para que las trece figuras de la entrega
+# se lean como una sola familia. El cuaderno largo queda como está: son dos convenciones y
+# cada una es coherente consigo misma.
+map_fig("fig03_mapa_ultimo_fuego", "year", function()
+  relabel_fill(map_last_fire(), "Año del\núltimo fuego"))
+```
+
+### Figuras 4 a 8. Las series anuales
+
+**Archivos: `fig04_serie_argentina`, `fig05_serie_monte`, `fig06_serie_espinal`,
+`fig07_serie_delta_e_islas_del_parana`, `fig08_serie_bosques_patagonicos`; tablas
+`fig04_datos.csv` a `fig08_datos.csv`.**
+
+Cinco imágenes sueltas, no un panel: el diseñador las acomoda como quiera.
+
+::: {.callout-note}
+## Qué muestran
+**Millones de hectáreas quemadas por año**, del país y de cuatro ecorregiones. Los puntos y
+la línea de color son el dato observado; la **línea gris y su banda** son la tendencia
+suavizada (un GAM de cinco bases, con su intervalo de confianza del 95 %), que está para
+mostrar la forma de fondo y no para predecir nada.
+
+**El color de la banda dice el signo de la tendencia**, y es lo único coloreado de la
+figura: **naranja** si la región se quema menos que al principio de la serie (Monte, Espinal)
+y **violeta** si se quema más (Delta, Bosques Patagónicos). Son dos puntos de la escala
+plasma, **leídos en el mismo sentido que el mapa del año del último fuego**: ahí lo oscuro es
+lo reciente, así que acá el violeta es la región cuyo fuego está ocurriendo ahora y el naranja
+la que se quemaba antes. Las dos figuras comparten lámina, y con el sentido invertido dirían
+lo contrario con el mismo color. Argentina va en negro, como en
+todo el factsheet. Puntos, serie y línea de tendencia son negros en todos los paneles: el
+dato es lo que hay que poder leer con precisión, y la banda es lo que hay que poder ver de
+lejos.
+
+El único texto dentro de la imagen es el **nombre de la región** y los títulos de los ejes.
+Si las cinco se ordenan en cuadrícula conviene **borrar los títulos de los ejes de los
+paneles interiores** y poner uno solo para toda la cuadrícula: dicen todos lo mismo.
+
+Ojo con una cosa al comparar paneles: **cada uno tiene su propia escala Y**, y las escalas
+se llevan dos órdenes de magnitud (el país quema hasta 5 Mha en un año, Bosques Patagónicos
+0,04). La altura de una curva no se puede comparar entre figuras; la forma, sí, y por eso el
+eje Y de cada panel lleva su número.
+:::
+
+```{r serie-fun}
+# La tendencia está ajustada sobre el % del área quemable (`factsheet_trend_fits.csv`, la
+# misma que pinta el mapa de tendencia del cuaderno largo). El área quemable de una región es
+# CONSTANTE en el tiempo (el modo 1998-2024 de las clases quemables), así que pasar el ajuste
+# de % a Mha es multiplicar por una constante: es el mismo ajuste, en otra unidad, y no hay
+# que re-ajustar nada.
+#
+# EL COLOR VA EN LA BANDA Y EN NINGÚN OTRO LADO. Puntos, serie y ajuste son negros; lo único
+# coloreado es el intervalo del GAM, en violeta si la región se quema MENOS que al principio
+# de la serie y en naranja si se quema MÁS (`TREND_COLORS`, dos puntos de plasma). Así el
+# signo de la tendencia se lee de lejos, sin buscar la pendiente de una línea gris, y el dato
+# (que es lo que hay que poder leer con precisión) queda en el color de máximo contraste.
+serie_mha <- function(r) {
+  d <- ann[ecoregion == r][order(year)]
+  bha <- scal[ecoregion == r, burnable_ha]
+  g <- copy(fs$trend[ecoregion == r])[, `:=`(
+    fit_mha = fit / 100 * bha / 1e6,
+    # El intervalo del GAM se recorta en 0: un % quemado negativo no existe, y con el eje
+    # limitado en 0 la banda censurada dejaría un hueco en la cinta.
+    lo_mha  = pmax(0, lo) / 100 * bha / 1e6,
+    hi_mha  = hi / 100 * bha / 1e6)]
+  ggplot(d, aes(year, burned_ha / 1e6)) +
+    geom_ribbon(data = g, aes(year, ymin = lo_mha, ymax = hi_mha), inherit.aes = FALSE,
+                fill = ribbon_col(r), alpha = 0.45) +
+    geom_line(data = g, aes(year, fit_mha), inherit.aes = FALSE, colour = "black",
+              linewidth = 0.9) +
+    geom_line(colour = "black", linewidth = 0.4, alpha = 0.45) +
+    geom_point(colour = "black", size = 1.9) +
+    scale_x_continuous(breaks = seq(2000, 2025, 5)) +
+    scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.1)),
+                       labels = num_auto) +
+    labs(x = "Año", y = "Área quemada (Mha)", title = r)
+}
+
+serie_tab <- function(r) {
+  d <- ann[ecoregion == r][order(year)]
+  bha <- scal[ecoregion == r, burnable_ha]
+  g <- copy(fs$trend[ecoregion == r])[abs(year - round(year)) < 1e-6][, year := round(year)]
+  m <- merge(d[, .(anio = year, ha_quemadas = round(burned_ha, 1),
+                   Mha_quemadas = round(burned_ha / 1e6, 4),
+                   porcentaje_del_area_quemable = round(pct, 4))],
+             g[, .(anio = year,
+                   tendencia_Mha = round(fit / 100 * bha / 1e6, 4),
+                   tendencia_inf_Mha = round(pmax(0, lo) / 100 * bha / 1e6, 4),
+                   tendencia_sup_Mha = round(hi / 100 * bha / 1e6, 4))],
+             by = "anio", all.x = TRUE)
+  cbind(region = r, m)
+}
+
+# LAS CUATRO REGIONES EN UNA GRILLA 2x2, arriba las que bajan y abajo las que suben.
+#
+# Acá SÍ va `facet_wrap` y no patchwork, al revés que en los pirogramas: la diferencia es que
+# esta figura no tiene segundo eje, así que no hay ningún factor por región que un facet no
+# pueda representar. Lo único propio de cada panel es el rango del eje Y, y para eso está
+# `scales = "free_y"`.
+#
+# El orden de las filas se DERIVA del signo de la tendencia, no se escribe a mano: si algún
+# día una región cambia de lado, la figura se reordena sola en vez de quedar mintiendo con la
+# etiqueta vieja. Si no salieran dos y dos, avisa.
+serie_facet <- function(regiones) {
+  lado <- vapply(regiones, trend_side, "")
+  if (!setequal(table(lado), c(2, 2)))
+    message("⚠️ las regiones de la grilla ya no se reparten 2 y 2: ",
+            paste(regiones, lado, sep = "=", collapse = ", "))
+  lv <- c(regiones[lado == "baja"], regiones[lado == "sube"])
+
+  d <- ann[ecoregion %in% lv]
+  g <- rbindlist(lapply(lv, function(r) {
+    bha <- scal[ecoregion == r, burnable_ha]
+    copy(fs$trend[ecoregion == r])[, `:=`(
+      fit_mha = fit / 100 * bha / 1e6,
+      lo_mha  = pmax(0, lo) / 100 * bha / 1e6,
+      hi_mha  = hi / 100 * bha / 1e6)]
+  }))
+  d[, ecoregion := factor(ecoregion, levels = lv)]
+  g[, ecoregion := factor(ecoregion, levels = lv)]
+  g[, lado := vapply(as.character(ecoregion), trend_side, "")]
+
+  ggplot(d, aes(year, burned_ha / 1e6)) +
+    geom_ribbon(data = g, aes(year, ymin = lo_mha, ymax = hi_mha, fill = lado),
+                inherit.aes = FALSE, alpha = 0.45) +
+    geom_line(data = g, aes(year, fit_mha), inherit.aes = FALSE, colour = "black",
+              linewidth = 0.9) +
+    geom_line(colour = "black", linewidth = 0.4, alpha = 0.45) +
+    geom_point(colour = "black", size = 1.9) +
+    facet_wrap(~ ecoregion, ncol = 2, scales = "free_y") +
+    scale_fill_manual(values = TREND_COLORS, guide = "none") +
+    scale_x_continuous(breaks = seq(2000, 2025, 5)) +
+    # `limits = c(0, NA)` con `free_y` no aplana los paneles: fija el piso en 0 para todos y
+    # deja que cada uno calcule su propio techo, que es lo que hace falta cuando el Monte
+    # llega a 2,7 Mha y Bosques Patagónicos a 0,04.
+    scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.1)),
+                       labels = num_auto) +
+    labs(x = "Año", y = "Área quemada (Mha)") +
+    # La faja del facet, sin recuadro y alineada a la izquierda, para que el nombre de la
+    # región se lea igual que el título de las figuras sueltas.
+    theme(strip.background = element_blank(),
+          strip.text = element_text(face = "bold", hjust = 0, size = rel(1.02)),
+          panel.spacing = grid::unit(1.1, "lines"))
+}
+
+# Región -> número de figura, en el orden del factsheet.
+SERIES <- c("04" = NAT, "05" = "Monte", "06" = "Espinal",
+            "07" = "Delta e Islas del Paraná", "08" = "Bosques Patagónicos")
+REGIONES_SERIE <- unname(SERIES[names(SERIES) != "04"])   # las cuatro, sin el país
+```
+
+```{r figs-series}
+#| fig-height: 4
+#| fig-width: 6
+for (i in names(SERIES)) {
+  r <- SERIES[[i]]
+  save2(serie_mha(r), sprintf("fig%s_serie_%s", i, slug(r)), w = 6, h = 4)
+  save_tab(serie_tab(r), paste0("fig", i))
+}
+save2(serie_facet(REGIONES_SERIE), "fig05-06-07-08_series_regiones", w = 9.6, h = 7)
+for (i in names(SERIES)) print(serie_mha(SERIES[[i]]))
+invisible(NULL)
+```
+
+#### Las cuatro regiones en una grilla
+
+**Archivo: `fig05-06-07-08_series_regiones`.** Las mismas cuatro series, en 2 × 2: **arriba las
+dos que decrecen** (Monte y Espinal, banda naranja) y **abajo las dos que aumentan** (Delta y
+Bosques Patagónicos, banda violeta). Mismo estilo y mismos colores que las sueltas, así que las
+dos formas de entregarlo son intercambiables.
+
+El orden de las filas no está escrito a mano: sale del signo de la tendencia de cada región, y
+si alguna cambiara de lado la figura se reordena sola en vez de quedar contradiciendo su propia
+disposición.
+
+Acá el facet **sí** es la herramienta correcta, al revés que en los pirogramas: esta figura no
+tiene segundo eje, así que no hay ningún factor por región que un facet no pueda representar.
+Lo único propio de cada panel es el rango del eje Y. El eje de años se escribe una sola vez,
+abajo, porque es el mismo en los cuatro paneles; el de hectáreas va en cada panel, porque no lo
+es.
+
+```{r fig-series-facet}
+#| fig-height: 7
+#| fig-width: 9.6
+serie_facet(REGIONES_SERIE)
+```
+
+Los números de las cinco series, uno al lado del otro (Mha quemadas por año):
+
+```{r tabla-series}
+ts <- dcast(rbindlist(lapply(SERIES, serie_tab)), anio ~ region,
+            value.var = "Mha_quemadas")
+setcolorder(ts, c("anio", unname(SERIES)))
+tbl(ts[, lapply(.SD, function(x) if (is.numeric(x)) round(x, 3) else x)],
+    col.names = c("año", unname(SERIES)), es = FALSE, align = "rrrrrr")
+```
+
+---
+
+## Lámina 3. Cuándo se quema: la distribución intraanual
+
+**Archivos: `fig09` a `fig12`, `_pirograma_<región>` para la versión recomendada y con
+sufijo para las tres alternativas; tablas `fig09_datos.csv` a `fig12_datos.csv`.**
+
+::: {.callout-note}
+## Qué muestran
+El **pirograma**: en qué meses del año ocurre el fuego. Dos series sobre el mismo eje de 12
+meses, las dos promediadas sobre los 27 años, o sea "un septiembre típico" y no un total.
+
+- **Las barras** son el **área quemada** de ese mes, en millones de hectáreas por año (eje
+  izquierdo), en el color de la región.
+- **Los puntos y la curva negros** son la **cantidad de incendios de 10 hectáreas o más** de
+  ese mes, por año (eje derecho). Van en negro en todas las variantes: es la misma variable
+  en las cuatro figuras y tiene que leerse igual en todas.
+
+**El eje corre de mayo a abril**, que es el año de fuego, para no cortar la temporada al
+medio. Los datos siguen siendo por año calendario.
+
+Dos cosas para el epígrafe. La primera: **los dos ejes no son la misma cosa** y la distancia
+entre la barra y el punto no significa nada por sí sola; lo que se compara es la forma de las
+dos curvas. Un mes donde la curva va alta y las barras bajas es un mes de muchos incendios
+chicos. La segunda: **un incendio se cuenta en todas las ecorregiones que toca**, así que los
+conteos de las regiones suman más que el nacional.
+:::
+
+### La versión que quedó
+
+De las cuatro que probamos, queda **la de barras en el color de la región con los incendios en
+negro**, en **rocket** (0,3 / 0,5 / 0,7, norte a sur) y con el GAM cíclico de siempre,
+**10 bases y `gamma = 1`**.
+
+Se entrega en dos formatos, pensados para ir uno al lado del otro con Argentina a la izquierda:
+**Argentina sola** (`fig09`) y **las tres regiones apiladas en una columna**
+(`fig10-11-12_pirogramas_regiones`). Las tres también se siguen escribiendo sueltas (`fig10`,
+`fig11`, `fig12`) por si conviene ubicarlas por separado.
+
+```{r pirograma-fun}
+# Las dos series son medias sobre los 27 años, y vienen ya promediadas de
+# `factsheet_pirogram.csv`: `burned_ha` es el área de ese mes en un año típico y `n_ge10` la
+# cantidad de incendios de 10 ha o más de ese mes en un año típico.
+#
+# `k` es el factor del segundo eje, y es lo único que hace convivir dos unidades distintas en
+# un panel. Se calcula por región, así que NO es comparable entre pirogramas.
+Y_AREA  <- "Área quemada (Mha por año)\n[barras]"
+Y_FUEGO <- "Incendios ≥ 10 ha por año\n[puntos]"
+
+# EL GAM CÍCLICO, AJUSTADO ACÁ Y NO LEÍDO DE `factsheet_season_fits.csv`, porque la gracia es
+# poder moverle las bases. El de las tablas es `k = 10` sobre el % del área quemable; éste es
+# el mismo modelo sobre los 12 puntos resumidos, en la unidad que dibuja cada eje.
+#
+# `k` es el número de bases y `gamma` el multiplicador de la penalización: gamma < 1 penaliza
+# MENOS, así que la curva se pega más a los datos. Con k = 12 sobre 12 puntos cíclicos el
+# ajuste llega a 10,95 grados de libertad efectivos y explica el 99,99 % de la devianza, o sea
+# que prácticamente interpola. Es exactamente lo que se pidió, y conviene saber qué significa:
+# a esa altura la curva ya no resume nada, sólo une los puntos de forma redondeada. Sigue
+# siendo legítimo como guía del ojo (que es para lo único que está), pero no se puede leer
+# como "la estacionalidad estimada".
+season_fit <- function(d, ycol, k = 10, gamma = 1) {
+  y <- d[[ycol]]
+  if (sum(y) <= 0) return(data.table(month_fy = numeric(0), fit = numeric(0)))
+  f <- mgcv::gam(y ~ s(month, bs = "cc", k = k),
+                 data = data.frame(month = d$month, y = y),
+                 knots = list(month = c(0.5, 12.5)), method = "REML", gamma = gamma)
+  # LA GRILLA SE GENERA EN EL ORDEN DE DIBUJO Y NO EN MES CALENDARIO, y ahí estaba el
+  # "mayo fantasma": generándola de enero a diciembre, el tramo que va de abril a mayo cae en
+  # `month_fy` 12 a 13, o sea MEDIO MES A LA DERECHA del tick de abril, y la curva se salía
+  # del eje por un mes que ya está dibujado del otro lado. Generada de 1 a 12 en orden de
+  # dibujo, la curva empieza en mayo y termina en abril y no sobra nada.
+  #
+  # El precio es que la curva NO CIERRA EL CICLO: entre abril y mayo hay un salto visual,
+  # aunque el modelo sea cíclico y los dos extremos valgan casi lo mismo. Es deliberado: un
+  # eje de doce meses tiene dos puntas, y estirar la curva más allá de una de ellas para
+  # sugerir que se muerde la cola dibuja un mes que no existe.
+  gm_fy <- seq(1, 12, by = 0.02)
+  gm    <- ((gm_fy - 1 + 4) %% 12) + 1        # orden de dibujo -> mes calendario
+  data.table(month_fy = gm_fy,
+             fit = pmax(0, as.numeric(mgcv::predict.gam(f, data.frame(month = gm)))))
+}
+
+piro_data <- function(r, k = GAM_K, gamma = GAM_GAMMA) {
+  d <- copy(fs$pirogram[ecoregion == r])[order(month_fy)]
+  d[, mha := burned_ha / 1e6]
+  list(d = d,
+       g_area  = season_fit(d, "mha",    k, gamma),
+       g_fuego = season_fit(d, "n_ge10", k, gamma),
+       k   = max(d$mha) / max(d$n_ge10),
+       col = PIRO_COLORS[[r]])
+}
+
+# Barras anchas (0,95: se tocan casi entre sí) en el color de la región, y los incendios en
+# negro encima. El negro sobre el color es la única combinación que aguanta las cuatro
+# regiones sin que haya que pensar en cada una.
+pirograma <- function(r, k = GAM_K, gamma = GAM_GAMMA) {
+  z <- piro_data(r, k, gamma)
+  ggplot(mapping = aes(month_fy)) +
+    geom_col(data = z$d, aes(y = mha), fill = z$col, alpha = 0.85, width = 0.95) +
+    geom_line(data = z$g_fuego, aes(month_fy, fit * z$k), colour = "black", linewidth = 0.9) +
+    geom_point(data = z$d, aes(y = n_ge10 * z$k), colour = "black", size = 2.1) +
+    scale_x_continuous(breaks = 1:12, labels = MONTH_FY_LAB, expand = c(0.02, 0)) +
+    scale_y_continuous(
+      name = Y_AREA, limits = c(0, NA), expand = expansion(mult = c(0, 0.08)),
+      labels = num_auto,
+      sec.axis = sec_axis(~ . / z$k, name = Y_FUEGO, labels = num_auto)) +
+    labs(x = "Mes", title = r)
+}
+
+# LAS TRES REGIONES EN UNA COLUMNA. Se apilan con patchwork y NO con `facet_wrap`, y la razón
+# es el segundo eje: el factor `k` que convierte Mha en incendios es distinto en cada región,
+# y un facet comparte UNA especificación de escala, así que el eje derecho saldría con el
+# factor de una sola de las tres. Con patchwork cada panel conserva su `sec_axis`.
+#
+# `axis_titles = "collect"` da lo que da un facet y es lo que se pidió: los títulos de los
+# tres ejes (izquierdo, derecho y de meses) se escriben UNA vez, mientras que los valores de
+# los ejes se repiten en cada panel. Y no hay recuadro alrededor de cada panel: el nombre de
+# la región va como título, no como faja de facet.
+#
+# Los paneles son los MISMOS que las figuras sueltas, sin ningún retoque de tema: la apilada
+# es esas tres figuras juntas y nada más. Por eso conserva el ancho de la de Argentina (los
+# doce meses necesitan ese ancho para no tocarse entre sí) y lo que se acorta es el ALTO de
+# cada panel, que es lo que permite que las tres entren en una columna.
+pirograma_stack <- function(regiones, k = GAM_K, gamma = GAM_GAMMA) {
+  ps <- lapply(regiones, function(r)
+    # EL TÍTULO SE ALINEA AL PANEL Y NO AL LIENZO. `theme_fs()` usa
+    # `plot.title.position = "plot"`, que en una figura suelta es lo correcto: el título
+    # arranca en el borde izquierdo de la imagen. Apiladas, ese borde está a la izquierda del
+    # eje Y, así que los tres nombres de región quedaban flotando afuera de su panel.
+    pirograma(r, k, gamma) + theme(plot.title.position = "panel"))
+  patchwork::wrap_plots(ps, ncol = 1) +
+    patchwork::plot_layout(axis_titles = "collect")
+}
+
+# La tabla lleva los 12 puntos observados y, al lado, el valor del GAM en cada mes entero,
+# por si el diseñador quiere volver a dibujar la curva suave. La curva del gráfico está
+# evaluada mucho más fino; en 12 puntos se ve igual.
+piro_tab <- function(r) {
+  d   <- copy(fs$pirogram[ecoregion == r])[order(month_fy)]
+  bha <- scal[ecoregion == r, burnable_ha]
+  g   <- copy(fs$season[ecoregion == r])[abs(month - round(month)) < 1e-6][
+    , month := round(month)]
+  m <- merge(
+    d[, .(mes = month, mes_nombre = month_name, orden_mayo_abril = month_fy,
+          Mha_quemadas = round(burned_ha / 1e6, 5),
+          ha_quemadas = round(burned_ha, 1),
+          incendios_10ha_o_mas = round(n_ge10, 1),
+          incendios_todos = round(n_fires, 1))],
+    g[, .(mes = month,
+          tendencia_Mha = round(pct / 100 * bha / 1e6, 5),
+          tendencia_incendios_10ha = round(n_ge10, 1))],
+    by = "mes", all.x = TRUE)
+  setorder(m, orden_mayo_abril)
+  cbind(region = r, m)
+}
+
+PIROS   <- c("09" = NAT, "10" = "Delta e Islas del Paraná", "11" = "Chaco",
+             "12" = "Bosques Patagónicos")
+REGIONES_PIRO <- c("Chaco", "Delta e Islas del Paraná", "Bosques Patagónicos")
+STACK    <- "fig10-11-12_pirogramas_regiones"
+# Las dos imágenes van una al lado de la otra, así que comparten ANCHO: la apilada es apenas
+# más angosta que la de Argentina y mucho más alta. Lo que se achica es el ALTO de cada panel
+# de región (3,4" contra los 4,2" de Argentina), que es lo que hace que las tres entren en una
+# columna sin que la imagen quede desproporcionada al lado de la otra.
+W1 <- 6.6; H1 <- 4.2          # Argentina sola
+WS <- 6.4; HS <- 10.2         # las tres apiladas (3 paneles de 3,4)
+```
+
+```{r figs-pirogramas}
+#| fig-height: 4.2
+#| fig-width: 6.6
+for (i in names(PIROS)) {
+  r <- PIROS[[i]]
+  save2(pirograma(r), sprintf("fig%s_pirograma_%s", i, slug(r)), w = W1, h = H1)
+  save_tab(piro_tab(r), paste0("fig", i))
+}
+save2(pirograma_stack(REGIONES_PIRO), STACK, w = WS, h = HS)
+invisible(NULL)     # las dos figuras se muestran abajo, una por sección
+```
+
+#### Argentina sola
+
+```{r piro-arg}
+#| fig-height: 4.2
+#| fig-width: 6.6
+pirograma(NAT)
+```
+
+#### Las tres regiones, apiladas en una columna
+
+```{r piro-stack}
+#| fig-height: 10.2
+#| fig-width: 6.4
+pirograma_stack(REGIONES_PIRO)
+```
+
+#### Las tres regiones, sueltas
+
+Los mismos tres paneles de arriba, cada uno en su archivo (`fig10`, `fig11`, `fig12`), por si
+conviene ubicarlos por separado en vez de en bloque.
+
+```{r piro-sueltas}
+#| fig-height: 4.2
+#| fig-width: 6.6
+for (r in REGIONES_PIRO) print(pirograma(r))
+invisible(NULL)
+```
+
+Los cuatro pirogramas en números. `incendios_todos` está en los CSV pero **no se dibuja**:
+la línea es la de 10 hectáreas o más, que es la que no depende de dónde corta la resolución
+del mapeo.
+
+```{r tabla-pirogramas}
+pt <- rbindlist(lapply(PIROS, piro_tab))
+tbl(dcast(pt, orden_mayo_abril + mes_nombre ~ region,
+          value.var = "Mha_quemadas")[order(orden_mayo_abril)][
+            , .(mes = mes_nombre, Argentina, `Delta e Islas del Paraná`, Chaco,
+                `Bosques Patagónicos`)],
+    align = "lrrrr")
+```
+
+---
+
+## El inventario de la carpeta, y la compuerta
+
+El cuaderno se revisa a sí mismo antes de terminar. **Dos cosas se verifican acá** y una
+tercera está resuelta en otro lado:
+
+1. **Que todo lo que el texto nombra exista.** Cada `figNN_...` escrito entre comillas simples
+   en la prosa se busca en lo que realmente se escribió. Prometer un archivo que no está es el
+   error más caro, porque el diseñador lo descubre recién cuando abre la carpeta.
+2. **Que no sobre nada.** Un archivo de una corrida vieja, con un nombre que ya no se usa, se
+   entrega igual y nadie se entera. Los nombres cambiaron varias veces en este cuaderno.
+
+Lo tercero, **que toda figura escrita se vea también en este HTML**, no se comprueba con una
+lista sino que está resuelto por construcción: `save2()` devuelve el plot de forma **visible**,
+así que cualquier chunk que termine en `save2(...)` la dibuja. Los dos chunks que sólo escriben
+en un bucle terminan en `invisible(NULL)` para no duplicar lo que se muestra más abajo. Fue un
+error real: la torta de dos anillos estuvo una corrida entera en la carpeta y ausente del HTML,
+porque `save2()` devolvía `invisible()` y nadie lo notaba desde adentro.
+
+```{r compuerta}
+#| echo: false
+if (!WRITE) cat("write_plots = false: no se verifica nada\n") else local({
+  qmd  <- readLines("collection-01/notebooks/factsheet_sep2026.qmd", warn = FALSE)
+  # sólo la PROSA: dentro de los chunks los nombres aparecen como argumentos y no son promesas
+  chunk <- cumsum(grepl("^```", qmd)) %% 2 == 1
+  texto <- paste(qmd[!chunk & !grepl("^```", qmd)], collapse = "\n")
+  promesas <- unique(unlist(regmatches(texto, gregexpr("(?<=`)fig[0-9][A-Za-z0-9_.-]*", texto,
+                                                       perl = TRUE))))
+  promesas <- sub("\\.csv$", "", promesas)
+  # Las `fig00_*` son del cuaderno LARGO y viven en `figures/`: el texto las nombra para decir
+  # dónde están, no para prometerlas en esta carpeta.
+  promesas <- grep("^fig00_", promesas, value = TRUE, invert = TRUE)
+  escrito  <- c(FIGS, TABS)
+  # Por PREFIJO: la prosa abrevia ("`fig10`", "`fig09`") donde el archivo lleva además el
+  # nombre de la región. Una promesa vale si algo escrito empieza con ella.
+  cumple   <- vapply(promesas, function(x) any(startsWith(escrito, x)), logical(1))
+  faltan   <- promesas[!cumple]
+
+  en_disco <- unique(sub("\\.(png|pdf|csv)$", "", list.files(OUT, pattern = "\\.(png|pdf|csv)$")))
+  sobran   <- setdiff(en_disco, escrito)
+
+  ok <- TRUE
+  if (length(faltan)) { ok <- FALSE
+    cat("⚠️ NOMBRADAS EN EL TEXTO Y NO ESCRITAS:\n", paste(" -", faltan, collapse = "\n"), "\n\n") }
+  if (length(sobran)) { ok <- FALSE
+    cat("⚠️ EN LA CARPETA Y NO GENERADAS POR ESTA CORRIDA (borrar):\n",
+        paste(" -", sobran, collapse = "\n"), "\n\n") }
+  if (ok) cat(sprintf("✅ %d figuras y %d tablas, todas nombradas y ninguna de más.\n\n",
+                      length(FIGS), length(TABS)))
+
+  cat(sprintf("%d archivos en %s\n\n", length(list.files(OUT)), OUT))
+  cat(paste(" -", sort(list.files(OUT))), sep = "\n")
+})
+```
+
+Para regenerar todo:
+
+```bash
+quarto render collection-01/notebooks/factsheet_sep2026.qmd
+```

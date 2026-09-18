@@ -16,104 +16,121 @@ Read it at the start of every session, before planning anything.
 - [`BACKLOG.md`](BACKLOG.md) is the *unscheduled* pile, per topic, with the post-mortems. An item
   moves BACKLOG → ROADMAP when it is scheduled, never the other way.
 
-**Dates.** MapBiomas Argentina col-3 (with fire col-1) launches **24 Sep 2026**. The factsheet is
-drawn by graphic designers, so its **data is due ~Wed 16 Sep**. Ideally, assets sould be ready 
-at **15 Sep 2026** for Brazil to copy them to `mapbiomas-public`.
+**Dates.** MapBiomas Argentina col-3 (with fire col-1) launches **24 Sep 2026**. 
 
 ## Next
 
-### Análisis 6: decidir ventana y figura (17 sep)
+**Ordenar y limpiar el repo — el plan vive en [`DOCS-CLEANUP.md`](DOCS-CLEANUP.md)** (raíz del
+repo): el orden de las fases, la plantilla, a dónde va cada archivo y el protocolo de sesión.
+Lo que sigue abajo es el material de origen de ese plan, no la lista de tareas.
 
-**Hecho**: el análisis 6 completo con control, en su propio cuaderno
-(`notebooks/factsheet_veg.qmd`, renderiza en ~2 min), más los dos mapas de píxel nuevos y las
-Malvinas en todos los mapas. q = 3,74 nacional, 10,9 para bosque → agropecuario.
+Ordenar y limpiar el repo. Debe quedar listo para que alguien pueda entenderlo,
+y quizás reproducirlo. No se puede reproducir estrictamente porque muchos assets 
+que se usan no son públicos, pero el objetivo es que si alguien quiere aplicar este
+procedimiento en otro país pueda hacerlo.
 
-**Hecho también, y es la mitad de la decisión de abajo**: la **versión de slide**
-(`notebooks/factsheet_veg_short.qmd`, ~10 s; docs/09 §5.8, docs/10 §6.5) — tres frases
-nacionales con **cada porcentaje acompañado de su superficie**, más dos Sankeys (nivel 2 y
-nivel 1) y la figura de las dos barras de denominador distinto. Los números: de las **61,4 Mha
-quemadas (1999-2024, hectárea-año)** cambian de clase **12,5 Mha / 20 %** (nivel 2) y **9,1 Mha
-/ 15 %** (nivel 1); el país cambia **10,4 Mha/año, el 4,1 %** de sus 252 Mha de superficie
-vegetal; y **el 3,4 % de ese cambio ocurre donde ardió**, contra un 0,9 % de superficie —
-**3,6 veces**, que es q = 3,74 por otro camino. Escribe `fig06c_*`.
+Tengo dudas sobre el diseño de la documentación, y quizás sobre el orden del código.
 
-**Hecho, 17 sep**: **el bloque de bosques** (`factsheet_veg_short.qmd` §4, docs/09 §5.9,
-docs/10 §6.6) y las dos tablas que lo alimentan (`factsheet_bosques{,_destinos}.csv`).
-Y **sí tenemos Y+4 e Y+5 nacionales**: los `_n44` son país entero con un bit norte/sur de
-más, así que los cuatro lags están exportados y no hace falta ninguna corrida nueva.
+La estructura general implica que workflow/ hace todo lo grueso, lo más importante.
+En scripts/ viven herramientas accesorias; no es que sean dispensables, son realmente
+necesarias para el pipeline, pero no implican generalmente cómputo pesado ni conceptualmente
+complejo. Es más bien descargar/formatear/ordenar, y código que se usa para exploración.
 
-**Lo que hay que decidir, y sólo se decide mirando**:
+docs/ inicialmente tenía la documentación de cada paso del workflow. La idea es que alguien
+externo primero lea el ATBD para entender conceptualmente cómo va la cosa. Ahí se detalla el
+algoritmo, pero casi no hay detalle de código. Por su parte, es difícil llenar el gap entre
+ATBD y código: hay muchos aspectos clave de implementación que hacen posible o no el cómputo
+que no son obvias, y esa explicación vive en docs/. De todos modos, los docs deben ser un 
+autosuficientes en un punto, para que uno pueda leer un breve párrafo ahí de qué va la idea,
+el para qué, sin tener que ir al ATBD. Los docs casi no deberían tener código, salvo algunas 
+menciones a paquetes, librería, funciones, sofware que son realmente clave, pero no chunks 
+largos de código.
 
-- **Qué número de bosque se dice, porque hay cuatro y sólo uno responde a cada frase**: la
-  familia deja de ser bosque **q = 6,4**; el **bosque cerrado, q = 14,0**; bosque →
-  agropecuario (esa transición sola) **10,9**. ⚠️ El promedio de la familia **no describe a
-  ninguna de sus clases** — bosque inundable da **q = 1,0**, el fuego no le hace nada—, así
-  que si va un solo número de bosque tiene que ser **el de una clase**. La recomendación:
-  *"cuando se quema un bosque cerrado, el 44 % deja de ser bosque al año siguiente; sin
-  fuego, el 3 %"*.
+Pero tengo problemas para pensar dónde debería estar cada cosa. El README general está bien, 
+es re conciso, pero el README de col1 es super extenso. Quizás está bien.
+A la vez, no sé dónde debería vivir todo lo que indica cómo se corren las cosas.
+Acá hay mucho sobre cómo ejecutar comandos en bash, porque la forma en que ejecuté todo 
+fue a través de Claude Code corriendo cosas en bash. Pero no sé si eso es esencial del repo.
+En el README hay mucho de eso, pero quizás podría no estar.
 
-- **Qué ventana se reporta.** Y+1 es la de Ferro et al., calibrada en el Chaco donde el fuego
-  despeja. En Patagonia el bosque quemado que deja de ser bosque va de 49 % (Y+1) a 78 % (Y+5)
-  — la arbustalización llega al mapa tres años tarde (docs/09 §5.7.3). Si se reporta a un año
-  se subestiman todos los sistemas donde el fuego mata pero no despeja.
-- **Qué figura va a la slide**: el dumbbell del control (la honesta), la matriz de q (la que
-  tiene el 10,9), o las del cuaderno corto (el Sankey + las dos barras, que es la historia sin
-  q). Todas nacionales, en nivel 1. **Si va el Sankey de nivel 2, el porcentaje que lo acompaña
-  es 20 %, no 15 %** — "cambió de cobertura" depende del nivel de leyenda (docs/10 §6.5).
-- **Los cortes de clase del mapa del año del último fuego** y **si la magma invertida
-  reemplaza a la naranja** en la lámina de apertura (el cero blanco deja 60 % del país en
-  blanco).
+Nunca me enfrenté a una codebase tan grande, entonces no sé qué tiene sentido documentar.
+También hay que tener en cuenta que esto no es desarrollo de software para producción.
+Las cosas se corren una sola vez, y parte de la ejecución se repite en la col siguiente,
+pero no es código que se corre repetidas veces: es hacer el mapa, y listo. 
+Pero es valiso saber cómo repetirlo porque siempre se itera: algo sale mal, o algo se mejora
+en el futuro. Pero por ej, un código de ejemplo sobre cómo correr un código puede estar 
+en el header, y que en docs/ siempre haya una sección de pipeline que encadene la secuencia
+de ejecución en prosa y en comandos, sin explicar por qué (eso está en otra secc del 
+docs).
 
-**Pendiente si se quiere cerrar el 17 % que falta en Patagonia** (docs/09 §5.7.3): partir el
-bosque quemado por tamaño de incendio o por severidad propia. No está hecho ni es necesario
-para el lanzamiento.
+Empezando a pensar sobre esto, tuve esta charla con otro Claude:
 
-### ⚠️ Los tres cuadernos no tienen el mismo estatus
+[YO]
+Estoy con un repo grande de MapBiomas fuego. El algoritmo es complejo, tiene muchos pasos que usan GEE, python, R, computo en la nube, local y toda esa mezcla. También hay análisis exploratorios, idas y vueltas.
+Lo que hago para mantener el orden y la reproducibilidad es usar una carpeta docs/ con un .md por paso importante del algoritmo, idealmente independientes entre sí. Esto se escribe casi enteramente por Claude Code (Opus 5) según mis instrucciones.
+Pero claude aun es muy malo escribiendo en cuanto a que no distingue jerarquia de la ideas, por más que algo intente explicarle sobre eso. Escribe textos muy largos.
+Claro que se le puede pedir que revise, resuma. Pero hay mejores prácticas? Qué se anda diciendo del tema?
+Quizás es sólo itersr un poco: documentá esto, estas son las ideas claves. Revisar, más prompts indicando y ya.
 
-**Sólo `factsheet.qmd` alimenta el lanzamiento de septiembre** (análisis 1–5). Los otros dos
-—`factsheet_veg.qmd` y `factsheet_veg_short.qmd`, todo el análisis 6— son **exploratorios**: no
-se publican ahora, y son el material del **lanzamiento de fuego de diciembre (Bariloche, 7-11
-dic)** y del **paper**. No se borran ni se dejan de documentar. Está escrito en docs/09 §5.0 y
-en el encabezado de docs/10.
+[CLAUDE]
+Tu intuición de iterar es correcta, pero hay tres cosas que reducen mucho las vueltas: fijar la estructura antes de que escriba, darle un ejemplo bueno y revisar en un contexto limpio. El problema de fondo es que Claude Code escribe con toda la sesión en contexto, y desde ahí todo le parece igual de importante.
+Lo que mejor funciona
+Plantilla fija con límites por sección. No le pidas "sé conciso"; dale un esqueleto con cupos. Por ejemplo: Propósito (2 líneas), Entradas → Salidas (tabla), Cómo correrlo (comandos), Decisiones clave y por qué (máx. 5 ítems), Pendientes. La jerarquía la impone la plantilla, no su criterio.
+Un doc modelo. Tomá el paso mejor documentado, pulilo a mano y referencialo como ejemplo. Un buen ejemplo le enseña más que cualquier descripción de "jerarquía de ideas".
+Vos das las ideas clave, rankeadas. "Las 3 cosas que alguien tiene que entender de este paso son X > Y > Z". Él expande, pero no decide qué importa.
+Separar el doc del paso de la historia. Las idas y vueltas exploratorias son las que más inflan. Mandalas a otro lado: un decisions/ estilo ADR (una nota corta por decisión: contexto, opción elegida, alternativas descartadas) o un log de exploración. El doc del paso solo dice qué se hace hoy y enlaza al porqué.
+Revisión con contexto limpio. Un subagente o una sesión nueva que solo vea el .md, con la instrucción de actuar como editor: "cortá 30–40%, cada párrafo empieza con su idea principal, eliminá lo que un lector nuevo no necesita". Quien escribió el texto está anclado a él y le cuesta cortarlo.
+Documentar referenciando el código, no repitiéndolo. Parámetros, rutas y assets de GEE conviene dejarlos en config o docstrings, y que el .md los enlace. Así el doc queda más corto y no se desactualiza.
+Para no repetir instrucciones: todo esto va en un skill (.claude/skills/doc-paso/SKILL.md) o un slash command /doc-paso, con la plantilla, el ejemplo y las reglas de estilo. Así cada doc arranca desde las mismas reglas en vez de depender de lo que le digas ese día.
+Qué se dice del tema: lo más citado es Diátaxis, que distingue tutorial, how-to, referencia y explicación. Muchos docs largos lo son porque mezclan los cuatro tipos. Tu doc por paso es mayormente referencia más how-to; la explicación va aparte. También aparece mucho la pirámide de Minto (conclusión primero): una buena regla es pedirle que escriba primero un resumen de 3 líneas y que después solo desarrolle lo que ese resumen necesita.
+En la práctica, igual vas a iterar, pero con plantilla, ejemplo y editor separado suele alcanzar con una pasada de revisión en vez de cinco.
 
-**Lo próximo: el cuaderno que especifica la lámina.** Una entrada por slide de septiembre —
-figura, epígrafe, número, archivo de origen— que reemplace a la prosa de docs/10 como fuente de
-verdad y que sea lo que recibe el diseñador gráfico. Iván está diseñando el factsheet real
-ahora; el cuaderno se escribe sobre esa decisión, no antes.
+--- end of transcript ---
 
-### Revisar el factsheet y elegir qué va a las slides
+Sobre esto: "Diátaxis, que distingue tutorial, how-to, referencia y explicación". Ni idea. 
+Cómo se comporta este repo en ese sentido.
 
-Los seis análisis están hechos, con sus tablas y sus 170 figuras
-(`collection-01/docs/09-statistics.md`; `quarto render collection-01/notebooks/factsheet.qmd`).
-Lo que falta es **decidir**:
-
-- **Qué regiones se destacan en cada slide.** Las variantes `all_regions` están para eso; hay
-  12 focales de cada análisis ya escritas, así que cambiar de región no cuesta nada.
-- **Las frases de equivalencia**, del peor año (2001, 5,08 Mha) y del **total de la serie**
-  (63,23 Mha con recurrencias = 2,06 provincias de Buenos Aires): la tabla de candidatas, con
-  las tres cuentas hechas, está en la sección 0 del notebook.
-- **Selva Paranense: 60 % de lo quemado es agropecuario** (análisis 4). Mirarlo antes de que
-  vaya a una slide.
-- **Los análisis 4 y 5 se invierten entre sí** y hay que elegir cuál va (o los dos, juntos):
-  Bosques Patagónicos es 55 % bosque de lo quemado pero quema 0,16 % de su bosque por año.
-  Citar uno sin el otro da la lectura opuesta (docs/09 §5.3.1).
-- **Si el Delta aparece**, su epígrafe tiene que decir que el 27 % de la región es "no
-  observado" en col-3 y queda fuera del denominador (docs/09 §3.1).
-- **Del análisis 6, qué va**: lo más probable es sólo lo nacional en nivel 1. El epígrafe
-  **tiene** que decir que es observacional — los píxeles que arden no son una muestra al azar
-  del país, y el fuego como herramienta de un desmonte ya decidido es la lectura más probable
-  de bosque → agropecuario (docs/10 §6.4).
-
-### Entregar los números y las figuras al diseñador (~mié 16 sep)
-
-`collection-01/data/statistics/figures/` — 170 figuras, PNG y PDF de cada una.
+Quizás puedas hacer un overview del repo, leer docs principales, no una super-revisión.
+No quiero que te ensucies el contexto, pero necesito que tengas una idea general de cómo 
+está organizado todo. Un gran problema quizás haya sido delegar mucho la documentación
+a Claude, y avanzar con desarrollo antes de limpiar esa doc.
 
 ## After
 
-- **El cruce contra *staging***, cuando Brasil copie los assets (gate 8, docs/09 §9).
-- **El ingest manual de los 27 paquetes de cicatrices**, que destraba `toDrive-area-scar-size`.
-- **Registro en Workspace** (subtemas, leyendas, capas territoriales) — docs/09 §11.
-- **El ATBD de Argentina**, que nadie más puede escribir por nosotros.
-- **El cuaderno lámina por lámina** de la versión de septiembre: qué figura va en cada una,
-  con qué epígrafe y qué número, y de qué archivo sale. Es lo que se le entrega al diseñador
-  gráfico, y hoy esa selección vive en prosa en docs/10. **Es lo próximo** (ver abajo).
+- **El ATBD de Argentina Fuego Col1**, que nadie más puede escribir por nosotros.
+- **Seguir explorando análisis para el lanzamiento de diciembre**. 
+    Ahí hay 4 factsheet-related notebooks; factsheet_sep2026 es el que soporta el factsheet
+    del lanzamiento de Col3 ARG en septiembre.
+- **Comunicar problema de leyenda**:
+
+Arreglada la leyenda de nivel 2 de la red (17 sep). Falta avisarles.
+
+`00_Tools/Legends.js::lulc_argentina_nivel2` **de la red** traía los valores de los códigos
+11, 12 y 63 corridos un lugar respecto de sus claves, y `statistics/legends.py` lo copió
+verbatim, así que estaba en **todas nuestras tablas de nivel 2**.
+
+| código | decía | **es** | % de lo quemado |
+|---|---|---|---|
+| 11 | Mosaicos de arbustos y herbaceas | **Herbaceas Inundables** | 21,2 |
+| 12 | Herbaceas Inundables | **Herbaceas** | 21,7 |
+| 63 | Herbaceas | **Mosaicos de arbustos y herbaceas** | 4,1 |
+
+**Hecho**: corregido **de los dos lados** (collection-01/statistics/docs/statistics.md §5.10.1), que es lo que importa, porque el
+join numerador-denominador es POR NOMBRE y arreglar uno solo los habría emparejado mal sin que
+ninguna compuerta lo viera. `legends.py` para el denominador (nuestro, decodifica por código)
+y `factsheet_tables.R::fix_n2()` al leer los CSV del toolkit (que llegan con el nombre ya
+decodificado por ese mismo archivo). **No se re-exportó nada de GEE**: los `_raw` estaban en
+disco, los nueve `--check` re-decodifican sin red y pasan, `factsheet_tables.R` tarda 4,5 s.
+Los cuatro cuadernos re-renderizados.
+
+**Ningún número se movió, y el nivel 1 no se tocó** (las tres son la misma familia): el 25 % de
+bosque del factsheet y todo el bloque de bosques de §5.9 están intactos. Cambió la etiqueta de
+la mitad de nivel 2. Control después del arreglo: Pampa 62 % *Herbaceas*, Delta 75 %
+*Herbaceas Inundables*, Puna 51 % *Mosaicos*.
+
+**Lo que falta, y no es código**:
+
+**Avisarle a la red.** El archivo es de ellos y lo lee todo país que decodifique la leyenda
+argentina. Conviene mirar si la misma rotación está en el bloque de otro país.
+**Revisar si algo ya publicado cita uno de los tres nombres**: el ATBD, láminas viejas, el
+borrador del paper.

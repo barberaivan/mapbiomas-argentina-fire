@@ -2,7 +2,7 @@
 """
 collection-01/validation/demo_small_region.py
 
-DEMO / TUTORIAL — NO es parte del diseño congelado (`docs/10-validation.md`). No toca el asset de
+DEMO / TUTORIAL — NO es parte del diseño congelado (`validation/docs/design.md`). No toca el asset de
 producción (`FIRE/VALIDATION/sampling_strata`) ni las listas congeladas reales.
 
 Dos pedidos de Iván en uno:
@@ -23,7 +23,7 @@ falta más preciso.
 ASSET DE SALIDA — carpeta separada de producción, no puede colisionar
 --------------------------------------------------------------------------
 `.../FIRE/VALIDATION/sampling_strata_demo/...` — `02_sample_pool.py` filtra la ImageCollection de
-PRODUCCIÓN por `year`+`collection` (docs/10 §4.4), nunca por este path, así que un asset acá jamás
+PRODUCCIÓN por `year`+`collection` (validation/docs/design.md §4.4), nunca por este path, así que un asset acá jamás
 se cuela en el sorteo real aunque alguien corra `02` sin querer contra el año equivocado.
 
 USO

@@ -26,7 +26,7 @@ Two deliberate departures from the reference script `5-export_annual_burned_id_a
      `area_ha = feat.geometry().area()/10000` over the FC. For a pixel-edge polygon with interior
      rings, GEE's geodesic polygon area is not the same number as the pixel-count area that every
      other figure we publish is built from — and the statistics stage is checked to ~1 %
-     (docs/09). `07-calendar_scars.R` already wrote `area_ha` from the per-row cell area, so the
+     (statistics/docs/statistics.md). `07-calendar_scars.R` already wrote `area_ha` from the per-row cell area, so the
      `.map()` is dropped.
   2. **The size classes come from `C.SCAR_SIZE_LOWER_HA`, applied here and not baked into the
      vectors.** The reference script's ranges do NOT match the published Fogo col-5 legend on the

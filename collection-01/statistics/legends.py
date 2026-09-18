@@ -5,9 +5,9 @@ The three lookup tables the statistics decode against, as LITERALS.  A CSV carri
 metadata of its own, so every one of these has to live next to the code that writes the
 numbers — never implicit in a downstream group_by.
 
-  BURNABLE / NON_BURNABLE   the col-3 class verdicts (docs/09 §6)
-  ECO13_NAMES               GEOCODE -> name for the 13-class ecoregions (docs/09 §5.1)
-  STATUS_NAMES              the burnable-status codes this package writes (docs/09 §4.2)
+  BURNABLE / NON_BURNABLE   the col-3 class verdicts (statistics/docs/statistics.md §6)
+  ECO13_NAMES               GEOCODE -> name for the 13-class ecoregions (statistics/docs/statistics.md §5.1)
+  STATUS_NAMES              the burnable-status codes this package writes (statistics/docs/statistics.md §4.2)
 
 WHY THE NAMES ARE LITERALS AND NOT READ OFF THE ASSET: two ecoregion assets carry the
 same ids with different name encodings (`Stats-Arg_ecorregions` is Latin-1 damage stored
@@ -16,7 +16,7 @@ a designer's CSV.  These 13 strings come from ARG-Political_Level_2-13Ecorregion
 checked 2026-09-14.
 """
 
-# --- col-3 burnable verdicts (docs/09 §6) -----------------------------------------
+# --- col-3 burnable verdicts (statistics/docs/statistics.md §6) -----------------------------------------
 # "Burnable" is a property of the LAND-COVER CLASS, not a computation.  Anchored on our
 # own col-2 remap (config/veg_fire_remap.csv), which sends 24/25/33/34 -> non-burnable and
 # 27 -> non-observed in every one of the 5 regions.  22 and 26 had no col-2 precedent and
@@ -37,7 +37,7 @@ NON_BURNABLE = [
 # so they never enter the mode and never land in the numerator or the denominator.
 NO_OBSERVADO = [0, 27]
 
-# --- the status codes written by burnable_export.py (docs/09 §4.2) ----------------
+# --- the status codes written by burnable_export.py (statistics/docs/statistics.md §4.2) ----------------
 # 0/1 are the answer; 2 and 3 exist so the two things that could silently corrupt the
 # denominator are VISIBLE as their own rows instead of being folded into 0.
 STATUS_NAMES = {
@@ -48,7 +48,7 @@ STATUS_NAMES = {
                            # would silently send these to 0 (the smaller value)
 }
 
-# --- the 13-class ecoregions (docs/09 §5.1) ---------------------------------------
+# --- the 13-class ecoregions (statistics/docs/statistics.md §5.1) ---------------------------------------
 ECO13_NAMES = {
     1:  "Altos Andes",
     2:  "Bosques Patagónicos",
@@ -65,19 +65,25 @@ ECO13_NAMES = {
     13: "Islas del Atlántico Sur",
 }
 
-# The exact 16 -> 13 aggregation, kept here for December's finer cut (docs/09 §5.2).
+# The exact 16 -> 13 aggregation, kept here for December's finer cut (statistics/docs/statistics.md §5.2).
 # Measured, not assumed: every 16-class falls 100 % inside one 13-class.  The only
 # non-obvious row is 9 (Esteros del Iberá) -> 4 (Chaco).
 ECO16_TO_13 = {1: 1, 2: 2, 3: 3, 4: 4, 5: 4, 6: 5, 7: 6, 8: 7,
                9: 4, 10: 8, 11: 8, 12: 9, 13: 10, 14: 11, 15: 12, 16: 13}
 
 
-# --- the col-3 land-cover legend, all three levels (docs/09 §5.4) ----------------
+# --- the col-3 land-cover legend, all three levels (statistics/docs/statistics.md §5.4) ----------------
 # VERBATIM from the network's own `00_Tools/Legends.js::lulc_argentina_nivel{0,1,2}`,
 # which is what the toolkit decodes its burned-area CSVs with.  Copied here so the
 # DENOMINATOR (our per-class area export) and the NUMERATOR (their burned-area table)
 # carry the same class names and can be joined on them — a second, independently typed
 # legend is exactly how the join silently stops matching.
+#
+# ⚠️ CON UNA EXCEPCIÓN, EN NIVEL 2: los códigos 11, 12 y 63 vienen con el nombre rotado en
+# el archivo de la red y acá están CORREGIDOS (ver el comentario largo en `LULC_NIVEL_2`).
+# Eso rompe el verbatim a propósito, y por eso el numerador se corrige con la misma
+# permutación al leerlo, en `statistics/factsheet_tables.R`.  Nivel 0 y nivel 1 no están
+# afectados: las tres clases caen en la misma familia y en el mismo nivel 0.
 LULC_NIVEL_0 = {
     0: "No observado", 27: "No observado",
     1: "Natural", 3: "Natural", 4: "Natural", 6: "Natural",
@@ -113,8 +119,34 @@ LULC_NIVEL_2 = {
     1: "Bosques", 3: "Bosque cerrado", 4: "Bosque abierto", 6: "Bosque inundable",
     10: "Vegetación natural herbácea y arbustiva",
     66: "Matorrales y arbustales cerrados", 77: "Matorrales y arbustales abiertos",
-    63: "Herbaceas", 12: "Herbaceas Inundables",
-    11: "Mosaicos de arbustos y herbaceas", 73: "Turberas",
+    # ⚠️ 11 / 12 / 63 SON LA ÚNICA DESVIACIÓN DEL VERBATIM DE ESTE ARCHIVO, y es a propósito.
+    # `00_Tools/Legends.js::lulc_argentina_nivel2` de la red los trae ROTADOS UN LUGAR: sus
+    # claves van 63, 12, 11 y sus valores en el orden natural (Herbaceas, Herbaceas
+    # Inundables, Mosaicos), así que cada código se queda con el nombre del siguiente.
+    #
+    #   código   dice la red                        es
+    #   ------   --------------------------------   --------------------------------
+    #     11     Mosaicos de arbustos y herbaceas    Herbaceas Inundables
+    #     12     Herbaceas Inundables                Herbaceas
+    #     63     Herbaceas                           Mosaicos de arbustos y herbaceas
+    #
+    # Seis evidencias, y la geográfica sola alcanza: el 11 es el 75 % de lo quemado en el
+    # DELTA E ISLAS DEL PARANÁ, que es un humedal; el 12 el 62 % en la PAMPA, que es pastizal
+    # seco; el 63 el 51 % en la PUNA y el 37 % en la ESTEPA PATAGÓNICA, y es exactamente lo
+    # que `config/veg_fire_remap.csv` (col-2) nombra "Estepa (ID=63)" y "Vegas/Mallines
+    # (ID=11)". Además Chile, EN ESE MISMO ARCHIVO de la red, usa la convención global
+    # (11 Humedal, 12 Pastizal, 63 Estepa), que es también la de MapBiomas en todo el mundo.
+    #
+    # ⚠️ EL NUMERADOR HAY QUE ARREGLARLO DEL OTRO LADO. Los CSV del toolkit de la red
+    # (`annual_burned_coverage_*.csv`) vienen con el NOMBRE ya decodificado por ese mismo
+    # Legends.js, y `statistics/factsheet_tables.R` une numerador y denominador POR NOMBRE.
+    # Corregir sólo acá emparejaría "Herbaceas" del denominador con "Herbaceas" del
+    # numerador, que son clases distintas, y ninguna compuerta lo vería: los tres nombres
+    # existen en los dos lados, así que no habría huérfanos. Por eso `factsheet_tables.R`
+    # aplica LA MISMA permutación al leer el CSV del toolkit (`N2_ROTADAS` allá). Las dos
+    # correcciones van juntas o ninguna. Ver statistics/docs/statistics.md §5.10.1.
+    11: "Herbaceas Inundables", 12: "Herbaceas",
+    63: "Mosaicos de arbustos y herbaceas", 73: "Turberas",
     14: "Agropecuario", 18: "Agricultura", 19: "Cultivos temporarios",
     36: "Cultivos perennes", 15: "Pastura", 9: "Silvicultura", 21: "Mosaico de usos",
     22: "Áreas sin vegetación", 24: "Áreas urbanas", 25: "Otras áreas no vegetadas",
@@ -155,7 +187,7 @@ def decode(code):
     return eco, ECO13_NAMES[eco], status, STATUS_NAMES[status]
 
 
-# --- el cruce estado x ecorregión x cobertura ANTES x cobertura DESPUÉS (docs/09 §5.7) ---
+# --- el cruce estado x ecorregión x cobertura ANTES x cobertura DESPUÉS (statistics/docs/statistics.md §5.7) ---
 # El empaquetado de `lulc_change_export.py`:
 #
 #     state * 1000000 + eco * 10000 + prev * 100 + post
@@ -171,10 +203,10 @@ CHANGE_STATE_BASE = 1000000
 # está, el código lleva un dígito más adelante — `north * 10000000 + state * 1000000 + ...` —
 # y el decode lo detecta por magnitud.  Existe para una pregunta concreta que el corte por
 # ecorregión no puede contestar: los Bosques Patagónicos del norte (Chubut arriba) no se
-# comportan como los del sur, y la ecorregión es una sola (docs/09 §5.7.3).
+# comportan como los del sur, y la ecorregión es una sola (statistics/docs/statistics.md §5.7.3).
 CHANGE_NORTH_BASE = 10000000
 
-# LOS CUATRO ESTADOS DE FUEGO (docs/09 §5.7.1).  Son cuatro y no dos porque la regla de
+# LOS CUATRO ESTADOS DE FUEGO (statistics/docs/statistics.md §5.7.1).  Son cuatro y no dos porque la regla de
 # exclusión de Ferro et al. (2026) —"sólo píxeles que NO ardieron en el año anterior ni en el
 # siguiente, para evitar errores de clasificación de la cobertura"— se aplica a LOS DOS
 # grupos, no sólo al control:

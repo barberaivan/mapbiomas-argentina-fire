@@ -7,7 +7,7 @@
 # objects, their metrics and their territory tags are already on disk.
 #
 # It is the only factsheet script that reads geometry, and that is the point
-# (docs/09 §3): it runs once, in minutes, and writes small tables; every plot
+# (statistics/docs/statistics.md §3): it runs once, in minutes, and writes small tables; every plot
 # downstream is then a cheap read of a CSV, so a new figure idea costs nothing.
 #
 # WHAT IT WRITES  (all into data/statistics/)
@@ -27,7 +27,7 @@
 #
 # CALENDAR YEAR AND MONTH, FROM `date_median`. The object database is stored by
 # FIRE year (1 May -> 30 Apr), but everything the factsheet reports is calendar
-# year (docs/09 §5). A fire is filed whole into the calendar year and month of its
+# year (statistics/docs/statistics.md §5). A fire is filed whole into the calendar year and month of its
 # median date, so a fire that straddles 31 December lands in one year here and is
 # split between two in the pixel-based area numbers. That divergence is expected
 # and is stated in the captions.
@@ -41,7 +41,7 @@
 # polygon INTERSECTS (`terra::relate(..., "intersects")`, a true/false — never an
 # actual intersection geometry, which on 1.3 M polygons would cost hours for an
 # answer nothing needs). Regional counts therefore sum to MORE than the national
-# count, by design (docs/10, análisis 3.2). The national row is computed from the
+# count, by design (statistics/docs/factsheet-sep2026-spec.md, análisis 3.2). The national row is computed from the
 # fire set itself, never by summing regions.
 #
 # Usage (from the repo ROOT):
@@ -74,7 +74,7 @@ RULE_A_MAX_HA <- 150                   # rule A: only fires BELOW this area
 T_AGRI        <- 0.40                  # rule B: frac_agri above this
 
 # Reporting size bands for the fire counts. The pirogram's count half is normally
-# read at >= 10 ha (docs/10, análisis 3.2); the others are there so a different cut
+# read at >= 10 ha (statistics/docs/factsheet-sep2026-spec.md, análisis 3.2); the others are there so a different cut
 # is a column choice downstream and not a re-run of this script.
 SIZE_CUTS <- c(0, 10, 100, 1000)
 
@@ -223,7 +223,7 @@ msg("[out] ecoregions13_meta.csv (%d rows) | ecoregions13_simple.gpkg (%.1f MB)"
 # n_fires counts everything mapped (>= 1 ha); n_ge10/100/1000 are the reporting
 # bands. area_ha is the WHOLE object's area filed into its median month — it is a
 # fire-count companion, never the burned-area number (that is the toolkit's, and
-# it is split per pixel; docs/09 §5).
+# it is split per pixel; statistics/docs/statistics.md §5).
 count_block <- function(d, by) d[, {
   r <- list(n_fires = .N, area_ha = sum(area_ha))
   for (k in SIZE_CUTS[-1]) r[[sprintf("n_ge%d", k)]] <- sum(area_ha >= k)

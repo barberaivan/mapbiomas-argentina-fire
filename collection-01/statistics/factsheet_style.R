@@ -1,7 +1,7 @@
 # =============================================================================
 # collection-01/statistics/factsheet_style.R
 #
-# The conventions of docs/10 §"Convenciones para gráficos multi-región", in code,
+# The conventions of statistics/docs/factsheet-sep2026-spec.md §"Convenciones para gráficos multi-región", in code,
 # so every figure in notebooks/factsheet.qmd is a member of one family and not a
 # plot on its own. Sourced by the notebook; it loads the tables and defines the
 # palette, the theme, the map-as-legend and the two figure variants.
@@ -39,13 +39,13 @@ NAT <- "Argentina"
 MONTH_ES <- c("Ene", "Feb", "Mar", "Abr", "May", "Jun",
               "Jul", "Ago", "Sep", "Oct", "Nov", "Dic")
 # The month axis is DISPLAYED mayo -> abril so the fire season is not cut in two.
-# The data behind it is calendar-year throughout (docs/09 §5).
+# The data behind it is calendar-year throughout (statistics/docs/statistics.md §5).
 MONTH_FY_LAB <- MONTH_ES[c(5:12, 1:4)]
 
 # ── the tables ───────────────────────────────────────────────────────────────
 fs <- local({
   rd <- function(f) fread(file.path(STATS_DIR, f), encoding = "UTF-8")
-  # Optional: análisis 5 needs the second GEE export (docs/09 §5.3). A notebook
+  # Optional: análisis 5 needs the second GEE export (statistics/docs/statistics.md §5.3). A notebook
   # rendered before that export has landed should skip the section, not die in the
   # setup chunk with an unrelated-looking file-not-found.
   rd_opt <- function(f) if (file.exists(file.path(STATS_DIR, f))) rd(f) else NULL
@@ -61,13 +61,13 @@ fs <- local({
        # the denominator export — the only table that carries the col-3 CLASS CODE
        # next to the three legend levels, so the crosswalk is read, never retyped
        lulc_area = rd_opt("lulc_area_eco13.csv"),
-       # análisis 6 (docs/10 §6): las tres tablas del cambio de cobertura. Opcionales
-       # por la misma razón — dependen de la tercera exportación (docs/09 §5.7).
+       # análisis 6 (statistics/docs/factsheet-sep2026-spec.md §6): las tres tablas del cambio de cobertura. Opcionales
+       # por la misma razón — dependen de la tercera exportación (statistics/docs/statistics.md §5.7).
        change        = rd_opt("factsheet_change.csv"),
        change_annual = rd_opt("factsheet_change_annual.csv"),
        change_sum    = rd_opt("factsheet_change_summary.csv"),
        change_q      = rd_opt("factsheet_change_q.csv"),
-       # sólo bosques, nacional, las cuatro ventanas (docs/09 §5.9)
+       # sólo bosques, nacional, las cuatro ventanas (statistics/docs/statistics.md §5.9)
        bosques       = rd_opt("factsheet_bosques.csv"),
        bosques_dest  = rd_opt("factsheet_bosques_destinos.csv"),
        counts   = rd("fire_counts_by_month.csv"),
@@ -221,7 +221,7 @@ ECO_SF <- local({
 # La ecorregión 13 (Islas del Atlántico Sur) está fuera de la grilla de procesamiento —
 # ninguna de las 248 cartas la toca—, así que su "0 % quemado" sería un agujero del mapeo
 # presentado como un hecho sobre el fuego, y por eso no entra en NINGUNA tabla ni en el
-# denominador nacional (docs/09 §3.2). Dibujarla vacía dice las dos cosas a la vez: el
+# denominador nacional (statistics/docs/statistics.md §3.2). Dibujarla vacía dice las dos cosas a la vez: el
 # territorio está, el dato no.
 #
 # Verificado sobre la capa (17 sep 2026): la ecorregión 13 de este asset es SÓLO las
@@ -251,7 +251,7 @@ geom_malvinas <- function(colour = "grey35", linewidth = 0.1)
 
 # ── los tres rásters del factsheet ───────────────────────────────────────────
 # Todo lo demás del paso 09 son tablas; esto son imágenes, y son TRES archivos que salen de
-# dos scripts (docs/09 §5.5 y §5.6):
+# dos scripts (statistics/docs/statistics.md §5.5 y §5.6):
 #
 #   arg_burn_perc_480m_mean.tif   banda 1 = % de los años con fuego (el promedio de la celda)
 #                                 banda 2 = % de la celda que es QUEMABLE
@@ -263,7 +263,7 @@ geom_malvinas <- function(colour = "grey35", linewidth = 0.1)
 # Los tres son opcionales, como la tabla del análisis 5: un cuaderno renderizado antes de
 # bajar un GeoTIFF se saltea esa figura en vez de morir en el chunk de setup.
 #
-# ⚠️ LOS DOS PRIMEROS ESTÁN EN EPSG:3857 Y EL TERCERO EN 4326 (docs/09 §5.6): los nueve
+# ⚠️ LOS DOS PRIMEROS ESTÁN EN EPSG:3857 Y EL TERCERO EN 4326 (statistics/docs/statistics.md §5.6): los nueve
 # subproductos v2 no comparten retícula, y cada ráster se agregó sobre la de SU asset para no
 # remuestrear.  Acá da igual —los tres se reproyectan a Albers para dibujar— pero significa
 # que no se pueden cruzar celda a celda; el cruce está hecho, sobre números nacionales, en
@@ -339,7 +339,7 @@ ZERO_COLOUR <- "#FFFFFF"
 BURN_BREAKS <- c(0, 0.2, 0.5, 1, 2, 5, 10, Inf)
 BURN_LABELS <- c("< 0,2", "0,2 – 0,5", "0,5 – 1", "1 – 2", "2 – 5", "5 – 10", "> 10")
 
-# Las etiquetas del mismo dato en VECES (docs/10 §0.2): % de los años x 27 / 100.  Es una
+# Las etiquetas del mismo dato en VECES (statistics/docs/factsheet-sep2026-spec.md §0.2): % de los años x 27 / 100.  Es una
 # reescala de los mismos cortes, no otro mapa — así las dos figuras son comparables tono a
 # tono y la única diferencia es qué dice la leyenda.
 count_lab <- function(x) formatC(x, format = "f", digits = 2, decimal.mark = ",")
@@ -419,7 +419,7 @@ map_burn_perc <- function(res_m = 1000, outline = TRUE, legend = TRUE) {
 }
 
 # El MISMO dato en veces (`stat = "mean"`, la celda promedio) o el máximo de la celda
-# (`stat = "max"`, el único que da enteros).  Ver docs/10 §0.2 para cuál dice qué.
+# (`stat = "max"`, el único que da enteros).  Ver statistics/docs/factsheet-sep2026-spec.md §0.2 para cuál dice qué.
 map_burn_count <- function(res_m = 1000, stat = c("mean", "max"), outline = TRUE,
                            legend = TRUE) {
   stat <- match.arg(stat)
@@ -440,7 +440,7 @@ map_burn_count <- function(res_m = 1000, stat = c("mean", "max"), outline = TRUE
   }
 }
 
-# El año del último fuego (docs/10 §2.1).  `min_denom` es el de la banda 2 de ESTE archivo, que no es la
+# El año del último fuego (statistics/docs/factsheet-sep2026-spec.md §2.1).  `min_denom` es el de la banda 2 de ESTE archivo, que no es la
 # fracción quemable sino la fracción QUEMADA: 0 dibuja todo lo que ardió alguna vez, y
 # subirlo esconde las celdas donde ardieron dos píxeles.  Por defecto no se esconde nada — el
 # color acá codifica una FECHA, no una magnitud, así que una celda que ardió poco no miente
@@ -583,7 +583,7 @@ lines_focal <- function(d, x, y, focal) {
 
 # ── análisis 6: el cambio de cobertura alrededor del fuego ───────────────────
 # Tres vistas de la misma tabla (`factsheet_change.csv`), y el orden importa porque cada una
-# es el zoom de la anterior (docs/10 §6):
+# es el zoom de la anterior (statistics/docs/factsheet-sep2026-spec.md §6):
 #
 #   (a) de todo lo que ardió, ¿qué proporción figura con OTRA cobertura un año después?
 #   (b1) de lo que NO cambió, ¿cómo se reparte entre clases?  (suma 100 %)
@@ -592,7 +592,7 @@ lines_focal <- function(d, x, y, focal) {
 # LO QUE NO DICEN, y que va en el epígrafe y no en una nota al pie: esto NO es "el fuego
 # transformó X hectáreas".  La col-3 puede estar reaccionando a la cicatriz misma, un año es
 # poco para la recuperación, y un píxel pudo cambiar por desmonte sin relación con el fuego.
-# Es una descripción de qué coberturas se suceden alrededor del fuego (docs/09 §5.7).
+# Es una descripción de qué coberturas se suceden alrededor del fuego (statistics/docs/statistics.md §5.7).
 HAS_CHANGE  <- !is.null(fs$change)
 HAS_BOSQUES <- !is.null(fs$bosques)
 
@@ -626,7 +626,7 @@ change_colors <- function(level) {
 }
 
 # Las filas de un ámbito y un nivel, sumadas sobre los 26 años (la tabla es anual; las figuras
-# suman — docs/09 §5.7).  `scope` es el nombre de la ecorregión, o NAT para el país.
+# suman — statistics/docs/statistics.md §5.7).  `scope` es el nombre de la ecorregión, o NAT para el país.
 # El argumento se llama `lv` y no `level` A PROPÓSITO: `level` es también una COLUMNA de la
 # tabla, y el optimizador de `data.table` no encuentra `..level` cuando el nombre coincide
 # ("object '..level' not found").  Un nombre distinto es la solución, no un `get()`.
@@ -737,7 +737,7 @@ sankey_change <- function(scope = NAT, lv = "nivel1", min_share = 1, off = 1L,
 
 # ── el control: q, y las dos figuras que lo muestran ─────────────────────────
 # `q = P(cambió | ardió) / P(cambió | no ardió)`, tratamiento = estado 1 y control = estado 0
-# (los dos LIMPIOS, docs/09 §5.7.1).  q > 1 el fuego promueve el cambio, q < 1 lo limita, y
+# (los dos LIMPIOS, statistics/docs/statistics.md §5.7.1).  q > 1 el fuego promueve el cambio, q < 1 lo limita, y
 # q = 1 es "lo mismo que le pasa a la tierra sin fuego".
 #
 # Es EL número del análisis 6: "el 15 % de lo quemado cambió de cobertura" no se puede leer
@@ -789,7 +789,7 @@ bars_q <- function(lv = "nivel1", off = 1L) {
     labs(x = "q — veces que el fuego multiplica la probabilidad de cambio", y = NULL)
 }
 
-# (3) LA VENTANA: Y+1 CONTRA Y+3.  La prueba del artefacto de la cicatriz (docs/09 §5.7.2).
+# (3) LA VENTANA: Y+1 CONTRA Y+3.  La prueba del artefacto de la cicatriz (statistics/docs/statistics.md §5.7.2).
 # Si lo que se ve a un año fuera la col-3 mirando la quemadura, a tres años habría vuelto:
 # la tasa de lo quemado caería hacia el control y q se desplomaría a 1.  Que no pase es la
 # evidencia de que las transiciones son persistentes.

@@ -3,14 +3,14 @@
 # collection-01/scripts/objects_region_tag.R
 #
 # Tag every fire OBJECT with the territories it falls in — the one prerequisite of
-# the factsheet's "Family B" analyses (docs/11 §5.2): number of fires per month per
+# the factsheet's "Family B" analyses (statistics/docs/statistics.md §5.2): number of fires per month per
 # region, fire-size distributions per region, anything counted on the fire-year
 # object database rather than on pixels.
 #
 # WHY LOCALLY, AND WHY THIS IS THE CHEAP HALF. Family B needs no GEE and no
 # re-export: the geometries are already on disk (`objects-raw/objects_<fy>.gpkg`)
 # and the metrics are already in CSVs. That makes it THRESHOLD-AGNOSTIC — the
-# agriculture filter (docs/11 §2) is a `filter()` on the output, so this can be
+# agriculture filter (statistics/docs/statistics.md §2) is a `filter()` on the output, so this can be
 # built before the threshold is chosen and never rebuilt.
 #
 # TWO ASSIGNMENTS, because the factsheet needs both:
@@ -36,7 +36,7 @@
 #                            genuinely in two regions and `_multi` is the honest
 #                            answer anyway.
 #
-# BOTH TERRITORIAL CUTS in one pass (docs/11 §6): `ecoregions13` (Burkart et al.
+# BOTH TERRITORIAL CUTS in one pass (statistics/docs/statistics.md §6): `ecoregions13` (Burkart et al.
 # 1999, the factsheet default) and `mbregions` (the 5 MapBiomas Argentina regions —
 # the cut our own veg_fire remap is regionalised by, so it is what `frac_c1/c2/c3`
 # already speak).

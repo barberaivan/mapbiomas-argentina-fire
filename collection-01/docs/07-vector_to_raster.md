@@ -19,7 +19,7 @@ Run in this order; each sub-step needs the one before it.
 | **07b** | **Calendar-year scars**, 8-connected, labelled locally → `data/scars-upload-cache/scars_<Y>.zip`, then ingested by hand as `FINAL_PRODUCTS/annual_burned_vectors/scars_<Y>` | `workflow/07-calendar_scars.R` + `scripts/run_07_scars.sh` (local, two passes) | ✅ **done** — 27/27 built, gated and ingested, all verified against the local build |
 | **07c** | **Scar rasters** — `annual_burned_id`, `annual_burned_area_ha`, `annual_burned_scar_size_range`, painted from the ingested scars and masked to 07a | `workflow/07-scar_rasters.py` (GEE) | ✅ **done** — 3/3 exported and verified on the landed assets (§9.1) |
 | **07d** | **The nine derived subproducts** — `monthly_burned`, `annual_burned`, both `*_coverage`, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`), `year_last_fire` | `workflow/07-subproducts.py` (GEE) | ✅ **done** — 9/9 landed and verified on the exported assets (§12.8) |
-| **07e** | **The fire-object polygon layer** — every mapped fire, all 28 fire-years, merged into one FC with ten properties, for early users → `FINAL_PRODUCTS/burned_area_polygons_v2` | `workflow/07-burned_area_polygons.py` (GEE) | ✅ **done** — **`_v2`: 1,012,648 rows / 1,012,645 objects / 63.33 Mha** (counted on the asset, 2026-09-15; the local object tables reproduce it to the object — docs/09 §4). `_v1` (2026-07-31, third submission, 3.27 h) was **1,263,079 rows / 1,263,076 objects / 69.12 Mha** — that is the **pre-rule** layer, and the 250,431-object difference is exactly what exclusion rules A and B remove (§1.1). v1 took three goes: the first two carried 1,249 duplicate FY2021 rows because `objects_raw_2021` is duplicated *in storage* where no metadata count reveals it (§13.6) |
+| **07e** | **The fire-object polygon layer** — every mapped fire, all 28 fire-years, merged into one FC with ten properties, for early users → `FINAL_PRODUCTS/burned_area_polygons_v2` | `workflow/07-burned_area_polygons.py` (GEE) | ✅ **done** — **`_v2`: 1,012,648 rows / 1,012,645 objects / 63.33 Mha** (counted on the asset, 2026-09-15; the local object tables reproduce it to the object — statistics/docs/statistics.md §4). `_v1` (2026-07-31, third submission, 3.27 h) was **1,263,079 rows / 1,263,076 objects / 69.12 Mha** — that is the **pre-rule** layer, and the 250,431-object difference is exactly what exclusion rules A and B remove (§1.1). v1 took three goes: the first two carried 1,249 duplicate FY2021 rows because `objects_raw_2021` is duplicated *in storage* where no metadata count reveals it (§13.6) |
 
 > ⚠️ **Every "done" above is the FIRST build (v1), and all of it is being rebuilt as `_v2` in
 > September 2026.** Two things changed underneath: the object selection gains the two exclusion
@@ -360,7 +360,7 @@ address an old product deliberately (a v1-vs-v2 comparison).
 
 **Why version rather than overwrite in place.** Agreed with the Brazil team: we write `_v2` on our
 side and **they copy it over the public asset**, so the public id — and therefore the Workspace
-registration, the `band_format` lookup and every download link — does not change (docs/09 §11).
+registration, the `band_format` lookup and every download link — does not change (statistics/docs/statistics.md §11).
 Versioning on our side then buys three things overwriting would not:
 
 1. the v1 products stay readable while v2 is built, so a number can be traced to the layer it came
@@ -671,7 +671,7 @@ from the reference `5-export_annual_burned_id_and_size_by_year`:
 - **Our `area_ha` is painted, not recomputed.** The reference maps
   `area_ha = feat.geometry().area()/10000`. For a pixel-edge polygon with interior rings, GEE's
   geodesic polygon area is not the pixel-count area that every other figure we publish derives
-  from, and the statistics stage is checked to ~1 % (docs/09).
+  from, and the statistics stage is checked to ~1 % (statistics/docs/statistics.md).
 - **Size classes are applied server-side** from `C.SCAR_SIZE_LOWER_HA`, for the reason in §8. The
   values are the **published legend's**, not the reference script's: `< 10 / 10–250 / 250–500 /
   500–5 000 / 5 000–10 000 / 10 000–50 000 / 50 000–100 000 / ≥ 100 000 ha`, confirmed from the
@@ -784,7 +784,7 @@ the exported assets (§9.1, §12.8), and docs/08 §7 is the delivery checklist. 
   `Zona` 1-5. Earlier notes here and in docs/08 said only the raster existed; that was wrong. It is
   **`simplificada`** (simplified geometry) and its `Zona` numbering is **not** verified against
   `REGION_RASTER.region_id`, so it is a candidate for the statistics stage's territorial layer, not a
-  drop-in for it (docs/09 checks to ~1 %).
+  drop-in for it (statistics/docs/statistics.md checks to ~1 %).
 - ~~Scar-size ranges~~ — **settled**: the published legend's, confirmed from two independent sources
   (docs/08 §5.4). No IPAM ruling needed. Do not copy `6-export_scar_size_range_by_year`.
 - **Asset-name cosmetics**: the month images are
@@ -856,7 +856,7 @@ varies, not the fixed anchor.
 subproduct** over `regions.union().geometry()` — the whole country. The only per-region assets in the
 network's chain are the stage-2/3 classification collections (one image per region-year), and ours has
 no region dimension at all: 07a wrote one whole-country image per calendar year. So there is nothing
-to reconcile. (Not to be confused with the **statistics** exports, docs/09, which *are* cut by
+to reconcile. (Not to be confused with the **statistics** exports, statistics/docs/statistics.md, which *are* cut by
 territory — that is a different stage and a different layer.)
 
 **4. Shape.** One asset per subproduct, one **band** per year — never one asset per year (§10).
@@ -903,7 +903,7 @@ going backward.
    `accumulated_*` pair is consistent (`fire_accumulated_*` both places); only frequency disagrees.
    **Confirm with IPAM which the platform reads** — docs/08 open #9.
 4. **The `*_coverage` products are the easiest to forget** and are exactly what the statistics stage
-   reads (docs/09 §2). Four of the nine are coverage products.
+   reads (statistics/docs/statistics.md §2). Four of the nine are coverage products.
 
 ### 12.4 The LULC year — never a blocker, and now moot
 
@@ -987,7 +987,7 @@ not(A) & not(B)`, §1.1), stripped to ten properties, merged and flattened.
 are the PRE-RULE layer**, exported 31 July, before exclusion rules A and B were finalised
 (2026-09-11/12). The 250,431-object gap between the two is the rules: −196,804 to rule A and
 −53,627 to rule B, measured per fire-year by `statistics/fire_counts.R`, whose local object tables
-reproduce the v2 count **to the object** (docs/09 §4). Do not quote a v1 number as the size of the
+reproduce the v2 count **to the object** (statistics/docs/statistics.md §4). Do not quote a v1 number as the size of the
 published layer. (A naive row-sum of `area_ha` overstates the area in either version — §13.7.)
 
 It depends only on step 06, not on 07a–07d, so it can be rebuilt at any time and in any order.

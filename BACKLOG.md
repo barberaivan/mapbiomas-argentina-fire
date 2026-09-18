@@ -14,13 +14,13 @@ before taking on them.
 
 ## Validation (step 10)
 
-The point-drawing recipe in `docs/10-validation.md` Appendix B (`stratifiedSample` per stratum)
+The point-drawing recipe in `collection-01/validation/docs/design.md` Appendix B (`stratifiedSample` per stratum)
 does not scale — OOMs at country scale in every variant (direct, tuned, by-carta partitioned,
 even plain `reduceRegion`). Root cause found 2026-08-31: not `stratum`, not the algorithm — the
 **region geometry** (`ARG-Political_Level_1-Pais`, 2M+ edges) makes any op that receives it as
 `region=` pay to evaluate containment against it. Fixed by swapping it for a plain
 `ee.Geometry.Rectangle` bounding box everywhere it's used as a sampling/reduction region (5/5
-failures → 3/3 successes in a controlled test). Full post-mortem in `docs/10-validation.md` §0
+failures → 3/3 successes in a controlled test). Full post-mortem in `collection-01/validation/docs/design.md` §0
 and `collection-01/validation/02_sample_pool.py`'s module docstring.
 
 Working implementation pivoted to an **unstratified pool** (`Image.sample()`, no `classBand`,
@@ -54,7 +54,7 @@ split by stratum locally in pandas) instead of Appendix B's per-stratum `stratif
   verify first; it very plausibly works now given the same fix applied cleanly to `sample()` and
   `reduceRegions`-by-carta both use the same region-geometry mechanism. If it still fails, the
   pool's own realized per-stratum proportions are already a usable `Wh` estimate (tight — see
-  `docs/10-validation.md` §0/§7) as a fallback, pending the team's sign-off on using an estimate
+  `collection-01/validation/docs/design.md` §0/§7) as a fallback, pending the team's sign-off on using an estimate
   vs. an exact census as the frozen fingerprint.
 
 ---
@@ -155,7 +155,7 @@ landed and verified on the exported assets** — docs/08 §7 is the delivery che
 4. **Ask IPAM the three open questions** (docs/08 §8): #9 `frequency_burned`'s band name — the only one
    that changes an asset — plus #1 the `COLLECTION-1` spelling and #8 whether we may publish the
    fire-year vectors.
-5. **Then the statistics stage** (docs/09), which cannot start before the territorial-layer decision —
+5. **Then the statistics stage** (collection-01/statistics/docs/statistics.md), which cannot start before the territorial-layer decision —
    deferred to ~20 Aug 2026, see below.
 
 What remains, in detail:
@@ -267,7 +267,7 @@ What remains, in detail:
   - **`Zona` numbering vs `REGION_RASTER`'s `region_id`** — NOT verified to agree. Zona is
     Puna/Monte=1, Patagonia=2, Pampas=3, Chaco=4, BA=5, which is not `C.REGIONS` order.
   - **It is `simplificada`** — simplified geometry. Fine as an export geometry or a `region` property
-    source; do NOT assume it is adequate for the area statistics, which are checked to ~1 % (docs/09)
+    source; do NOT assume it is adequate for the area statistics, which are checked to ~1 % (collection-01/statistics/docs/statistics.md)
     and whose authoritative regions are the raster.
 - [x] **Scar-size ranges settled — the published legend's, not the reference script's** (2026-07-29).
   Confirmed from the Coleção 5 legend-code PDF and the live Fogo col-5 platform legend, so no IPAM

@@ -12,7 +12,7 @@ format:
     fig-height: 5.5
 ---
 
-Three fire-years have to be chosen for the validation campaign (`docs/10-validation.md` §8).
+Three fire-years have to be chosen for the validation campaign (`validation/docs/design.md` §8).
 This notebook supplies the fire-regime half of that decision: **whole-country burned area per
 fire-year**, from every independent burned-area product available, so a year can be placed as
 low / moderate / extreme before it is committed to.
@@ -135,7 +135,7 @@ ggplot(z, aes(fire_year, z, colour = product)) +
 
 ## The decision table
 
-Fire regime is only one of the three constraints in `docs/10` §8. The other two are the **Landsat
+Fire regime is only one of the three constraints in `validation/docs/design.md` §8. The other two are the **Landsat
 sensor era** the year sits in, and **how many independent burned-area products** exist to build the
 S2 omission-catcher stratum — a year with fewer gets a weaker S2 and a wider interval for the same
 interpretation effort (no bias, just less precision).
@@ -144,7 +144,7 @@ interpretation effort (no bias, just less precision).
 era <- function(fy) fifelse(fy <= 2002, "L5 + L7 SLC-on",
                      fifelse(fy <= 2012, "L7 SLC-off (FY2012 = L7 only)",
                                          "L8 + L9"))
-# Count of independent BURNED-AREA products (docs/10 §4.5): MCD64A1 from FY2001,
+# Count of independent BURNED-AREA products (validation/docs/design.md §4.5): MCD64A1 from FY2001,
 # FireCCI51 FY2001-2019, VNP64A1 FY2012 on. FIRMS active fire is present in every year
 # and so is not counted -- it shifts no year relative to another.
 n_aux <- function(fy) (fy >= 2001) + (fy >= 2001 & fy <= 2019) + (fy >= 2012)

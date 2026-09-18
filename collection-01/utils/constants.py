@@ -214,21 +214,21 @@ CARTAS_FC           = "projects/mapbiomas-chaco/BASE/cartas-argentina"
 CARTAS_ID_PROPERTY  = "grid_name"   # e.g. 'SK-19-Y-A'
 ARG_BUFFER_FC       = "projects/mapbiomas-argentina/assets/ANCILLARY_DATA/VECTOR/ARG/ARG-Political_Level_1-Pais_buffer"
 
-# Ecorregiones (Burkart et al. 1999), the territorial cut of the statistics (docs/09 §5).
+# Ecorregiones (Burkart et al. 1999), the territorial cut of the statistics (statistics/docs/statistics.md §5).
 # BOTH sides of every ratio run on the 13-class layer: it is what the network's toolkit
 # gets as its territory, so the join has to be on that id.  `GEOCODE` is a NUMBER 1..13
 # here and the names (LEVEL_2) are clean UTF-8.
 #   * NEVER use the `..._r` raster twins: their pixel values are NOT these GEOCODEs — they
-#     number the regions alphabetically, so 6 of 13 ids disagree (docs/09 §5.1, measured).
+#     number the regions alphabetically, so 6 of 13 ids disagree (statistics/docs/statistics.md §5.1, measured).
 #   * The 16-class layer is for December's finer cut; its GEOCODE is a STRING, so it needs
-#     ee.Number.parse() before paint().  The 16 -> 13 aggregation is exact (docs/09 §5.2).
+#     ee.Number.parse() before paint().  The 16 -> 13 aggregation is exact (statistics/docs/statistics.md §5.2).
 _ANC_VEC_ARG = "projects/mapbiomas-argentina/assets/ANCILLARY_DATA/VECTOR/ARG"
 ECOREGIONS13 = f"{_ANC_VEC_ARG}/ARG-Political_Level_2-13Ecorregiones_3857"
 ECOREGIONS16 = f"{_ANC_VEC_ARG}/ARG-Political_Level_2-16Ecorregiones_3857"
 ECOREGION_ID_PROPERTY = "GEOCODE"
 ECOREGION_NAME_PROPERTY = "LEVEL_2"
 
-# Drive folder for the statistics tables (docs/09 §4.6).  A folder NAME, not a path:
+# Drive folder for the statistics tables (statistics/docs/statistics.md §4.6).  A folder NAME, not a path:
 # `gee_fire_stats`, on the PRIMARY (gmail) account's Drive.  Unlike SNIC_DRIVE_FOLDER
 # below, this one is NOT Insync-synced into STORE_ROOT — the tables are small, and the
 # export scripts also write them straight to collection-01/data/statistics/.
@@ -588,7 +588,7 @@ CLASSIFICATION_COLLECTIONS = f"{_FIRE_ROOT}/COLLECTION-1/CLASSIFICATION_COLLECTI
 # (docs/07 §1.1) change what is mapped, and the four `*_coverage` products move to the
 # PUBLISHED land cover (PRODUCT_LULC).  Agreed with the Brazil team: we write `_v2` on
 # OUR side and they copy it over the public asset, so the public id and therefore the
-# Workspace registration and every download link are unaffected (docs/07 §14, docs/09 §11).
+# Workspace registration and every download link are unaffected (docs/07 §14, statistics/docs/statistics.md §11).
 #
 # Versioning rather than overwriting in place buys three things: the v1 products stay
 # readable while v2 is built, nothing is ever half-replaced, and the "all 27 month assets

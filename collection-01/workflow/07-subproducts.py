@@ -303,7 +303,7 @@ def check(years, roi_str):
     is a batch task).  What matters here is not the absolute counts but that
     `month == annual == coverage` pixel-for-pixel and that `lulc_missing` is 0: a burned pixel
     whose LULC band is masked would silently vanish from BOTH coverage products while staying in
-    `annual_burned`, and the statistics stage is checked to ~1 % (docs/09).
+    `annual_burned`, and the statistics stage is checked to ~1 % (statistics/docs/statistics.md).
 
     The band listing is the other half of the audit — 53 windows over two prefixes, one dropped
     duplicate window and an off-by-one in `year_last_fire`'s names is where this goes wrong.

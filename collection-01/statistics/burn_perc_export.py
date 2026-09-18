@@ -5,7 +5,7 @@ collection-01/statistics/burn_perc_export.py — EL MAPA DE "% DE LOS AÑOS CON 
 El primero de los tres rásters que baja el factsheet (los otros dos son la corrida
 `--reducer max` de acá mismo y `last_fire_export.py`).  Todo lo demás son tablas; esto es
 una imagen, porque la figura de apertura quiere el mapa nacional al lado del mapa de
-ecorregiones (docs/10 §0).
+ecorregiones (statistics/docs/factsheet-sep2026-spec.md §0).
 
 QUÉ COMPUTA
     `frequency_burned_v2`, banda `fire_frequency_1999_2025` (cuántos de los 27 años
@@ -46,7 +46,7 @@ Opciones: --factor 16 (480 m, por defecto) | --reducer mean|max|p90 | --denom bu
 
 `--reducer max` es una SEGUNDA corrida y un SEGUNDO archivo, no una variante de dibujo: es el
 mapa de conteos ENTEROS del factsheet ("el píxel que más ardió de esta celda ardió N veces",
-docs/09 §5.5.1).  Es otra cuenta y exagera a propósito, así que `--check` informa los números
+statistics/docs/statistics.md §5.5.1).  Es otra cuenta y exagera a propósito, así que `--check` informa los números
 y NO cierra compuerta: el 0,933 % nacional sólo lo conserva `mean`.
 `--credentials ~/.config/earthengine/credentials.comahue --project mapbiomas-argentina`
 corre como la segunda cuenta (la cola de tareas es por usuario).
@@ -70,7 +70,7 @@ from utils import constants as C  # noqa: E402
 OUT_DIR = REPO_ROOT / "collection-01" / "data" / "statistics"
 TASK_PREFIX = "arg_burn_perc"        # namespaced: el proyecto de cómputo es COMPARTIDO
 
-# GCS: el mismo bucket donde el toolkit de la red deja las tablas de Argentina (docs/09 §2),
+# GCS: el mismo bucket donde el toolkit de la red deja las tablas de Argentina (statistics/docs/statistics.md §2),
 # bajo el mismo prefijo del país. Medido 2026-09-16: las credenciales residentes tienen
 # objects.{create,get,list,delete} ahí. Es alternativa a Drive, no reemplazo — `--to-gcs`.
 GCS_BUCKET = "mapbiomas-fire"
@@ -78,7 +78,7 @@ GCS_PREFIX = "data-container/stats/mapbiomas_fuego_argentina_collection1/raster"
 
 N_YEARS = 27                         # 1999..2025, la ventana de la banda
 FREQ_BAND = "fire_frequency_1999_2025"
-FIRST_LULC_YEAR, LAST_LULC_YEAR = 1998, 2024     # el modo quemable (docs/09 §4.2)
+FIRST_LULC_YEAR, LAST_LULC_YEAR = 1998, 2024     # el modo quemable (statistics/docs/statistics.md §4.2)
 
 # La grilla nativa de los productos v2.  NO derivarla del asset en tiempo de ejecución:
 # escrita acá, un cambio de grilla río arriba se ve como una falla de la compuerta y no
@@ -113,7 +113,7 @@ def name_of(args) -> str:
 # ---------------------------------------------------------------------------
 def ecoregions() -> ee.FeatureCollection:
     """Las 12 reportadas.  Islas del Atlántico Sur queda afuera: su 0 es un hueco del
-    mapeo, no un dato (docs/09 §3.2)."""
+    mapeo, no un dato (statistics/docs/statistics.md §3.2)."""
     return ee.FeatureCollection(C.ECOREGIONS13).filter(
         ee.Filter.neq(C.ECOREGION_ID_PROPERTY, 13))
 
@@ -132,7 +132,7 @@ def denominator(denom: str) -> ee.Image:
     frm = legends.BURNABLE + legends.NON_BURNABLE
     to = [1] * len(legends.BURNABLE) + [0] * len(legends.NON_BURNABLE)
     # 0 y 27 ("no observado") no están en ninguna lista: remap los deja ENMASCARADOS y
-    # nunca entran al promedio — que ES "no observado se excluye" (docs/09 §6).
+    # nunca entran al promedio — que ES "no observado se excluye" (statistics/docs/statistics.md §6).
     ind = [lulc.select(f"classification_{y}").remap(frm, to)
            for y in range(FIRST_LULC_YEAR, LAST_LULC_YEAR + 1)]
     mean = ee.ImageCollection(ind).mean()
@@ -403,7 +403,7 @@ def check(args) -> int:
     if args.reducer != "mean":
         # Sólo `mean` conserva el número nacional (TRAMPA 2): el max de la celda es otra
         # cuenta y no tiene contra qué cerrar.  Se informa y no se falla — si no, la corrida
-        # de `--reducer max` (el mapa de conteo entero, docs/09 §5.5.1) parece rota.
+        # de `--reducer max` (el mapa de conteo entero, statistics/docs/statistics.md §5.5.1) parece rota.
         print(f"  promedio simple          {np.nanmean(a):.3f} %")
         print(f"  máximo                   {np.nanmax(a):.3f} %")
         print(f"\n  SIN COMPUERTA: `--reducer {args.reducer}` no conserva el número nacional "

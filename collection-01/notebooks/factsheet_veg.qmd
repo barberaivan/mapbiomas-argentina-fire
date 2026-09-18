@@ -22,10 +22,10 @@ de celdas— y esta parte todavía se está decidiendo. Acá se dibuja sólo lo 
 CSV chicos, así que un render son segundos.
 
 Las figuras que escribe siguen llevando el prefijo **`fig06_`**: el análisis sigue siendo el
-6 (`docs/10-factsheet_design.md` §6), sólo cambió de cuaderno. `factsheet.qmd` ya no lo
+6 (`statistics/docs/factsheet-sep2026-spec.md` §6), sólo cambió de cuaderno. `factsheet.qmd` ya no lo
 dibuja, así que cada figura tiene un único productor.
 
-De dónde salen los números: [`docs/09-statistics.md`](../docs/09-statistics.md) §5.7.
+De dónde salen los números: [`statistics/docs/statistics.md`](../statistics/docs/statistics.md) §5.7.
 
 ```{r setup}
 #| message: false
@@ -538,7 +538,7 @@ de alta severidad y la bibliografía habla de **~95 % de mortalidad del rodal**:
 que arde se arbustaliza o se pastizaliza. El análisis general daba **44 %** de cambio de
 cobertura a un año. O el mapa está mal, o tarda en verlo.
 
-Contestarlo necesita dos cosas que el análisis general no tiene (`docs/09 §5.7.3`):
+Contestarlo necesita dos cosas que el análisis general no tiene (`statistics/docs/statistics.md §5.7.3`):
 
 - **El corte latitudinal.** Bosques Patagónicos no es homogénea. El norte —de la mitad de
   Chubut para arriba— concentra el **87 %** de lo quemado y tiene otro régimen de fuego que

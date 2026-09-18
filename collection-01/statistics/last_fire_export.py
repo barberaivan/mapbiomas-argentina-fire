@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-collection-01/statistics/last_fire_export.py — EL MAPA DEL AÑO DEL ÚLTIMO FUEGO (docs/09 §5.6)
+collection-01/statistics/last_fire_export.py — EL MAPA DEL AÑO DEL ÚLTIMO FUEGO (statistics/docs/statistics.md §5.6)
 
 El segundo ráster que baja el factsheet, hermano de `burn_perc_export.py`: misma grilla,
 mismo factor, mismo camino (tarea batch -> Drive/GCS -> `data/statistics/`) y la misma
@@ -19,7 +19,7 @@ QUÉ COMPUTA
 
     El producto está `selfMask`eado, así que **nunca-quemado está AUSENTE, no en 0** — que
     es justo lo que queremos: en el mapa, lo que nunca ardió va en BLANCO, no en el primer
-    tono de la rampa (docs/10 §2.1).  Por eso acá, al revés que en `burn_perc_export.py`,
+    tono de la rampa (statistics/docs/factsheet-sep2026-spec.md §2.1).  Por eso acá, al revés que en `burn_perc_export.py`,
     NO hay `unmask(0)`: sumar ceros al promedio de una fecha no significa nada.
 
 EL REDUCTOR ES `mean` (decidido con Iván, 17 sep 2026)
@@ -52,7 +52,7 @@ LA GRILLA NO ES LA DEL MAPA DE FRECUENCIA, Y ESO ES DELIBERADO (medido 17 sep 20
 
     La consecuencia es que los dos rásters del factsheet NO se pueden cruzar celda a celda.
     La compuerta de acá cruza NÚMEROS NACIONALES (la huella quemada), que no dependen de la
-    retícula.  Para el dibujo da igual: R reproyecta los dos a Albers igual (docs/10 §2.1).
+    retícula.  Para el dibujo da igual: R reproyecta los dos a Albers igual (statistics/docs/factsheet-sep2026-spec.md §2.1).
 
 LAS DOS BANDAS, Y SUS ENCODINGS (distintos entre sí — leer antes de decodificar)
     1. `last_fire`  = (año_medio − 1998) × 100, uint16.  Rango 100 (1999) … 2700 (2025).

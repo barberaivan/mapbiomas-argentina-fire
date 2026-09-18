@@ -3,7 +3,7 @@
 collection-01/validation/01_strata_export.py
 
 Paso 1 de la validación — LA IMAGEN DE ESTRATOS, en la grilla del producto (30 m), por año-fuego.
-Traducción directa a Python del Appendix A de `docs/10-validation.md` (§4) — ese doc es el
+Traducción directa a Python del Appendix A de `validation/docs/design.md` (§4) — ese doc es el
 diseño CERRADO, no un borrador; acá no se innova, se implementa.
 
     projects/mapbiomas-argentina/assets/FIRE/VALIDATION/sampling_strata/sampling_strata_fy<FY>

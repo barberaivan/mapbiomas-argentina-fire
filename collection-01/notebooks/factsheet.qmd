@@ -19,8 +19,8 @@ format:
 Este cuaderno **dibuja**; no calcula nada. Todas las cifras salen de las tablas de
 `data/statistics/`, producidas por `statistics/fire_counts.R` (la pasada vectorial) y
 `statistics/factsheet_tables.R` (la pasada de análisis). El contenido de cada figura —
-qué dice y por qué — está en [`docs/10-factsheet_design.md`](../docs/10-factsheet_design.md);
-de dónde sale cada número, en [`docs/09-statistics.md`](../docs/09-statistics.md).
+qué dice y por qué — está en [`statistics/docs/factsheet-sep2026-spec.md`](../statistics/docs/factsheet-sep2026-spec.md);
+de dónde sale cada número, en [`statistics/docs/statistics.md`](../statistics/docs/statistics.md).
 
 Con `write_plots: true` (por defecto) cada figura se escribe en
 `data/statistics/figures/` en **PNG** (para el borrador en PowerPoint) y **PDF**
@@ -90,7 +90,7 @@ donde quiera en la pieza final.
 
 De las 13 ecorregiones se reportan **`r length(REGIONS)`**: Islas del Atlántico Sur queda
 afuera de todas las tablas y mapas porque ninguna carta de la grilla de procesamiento la
-cubre — su cero es un hueco del mapeo, no un dato sobre el fuego (`docs/09-statistics.md`
+cubre — su cero es un hueco del mapeo, no un dato sobre el fuego (`statistics/docs/statistics.md`
 §3.2).
 
 Dos versiones. La primera es la que acompaña a un gráfico multi-región: no hace falta
@@ -131,8 +131,8 @@ de este mapa es la proporción quemada media anual del país (0,838 % sobre el �
 0,93 % sobre lo quemable). Por eso las dos figuras no pueden contradecirse — y si alguna vez
 lo hacen, la compuerta de `statistics/burn_perc_export.py --check` dice cuál se rompió.
 
-Tres cosas del dibujo, las tres deliberadas y las tres explicadas en `docs/09 §5.5` y
-`docs/10 §0.1`: se agrega **promediando** (no con el máximo, que a 480 m ya duplica y a 2 km
+Tres cosas del dibujo, las tres deliberadas y las tres explicadas en `statistics/docs/statistics.md §5.5` y
+`statistics/docs/factsheet-sep2026-spec.md §0.1`: se agrega **promediando** (no con el máximo, que a 480 m ya duplica y a 2 km
 cuadruplica lo que el país quema); se muestra **en clases** y no en rampa continua, porque el
 grueso del país está por debajo de 1 % y una rampa lineal no muestra nada; y **el cero es
 blanco y es una clase aparte**, porque "acá no hubo fuego" y "acá hubo poco fuego" son dos
@@ -177,7 +177,7 @@ Y la versión con **conteos enteros**, que es la que empieza en 1. Para que una 
 número entero de fuegos hay que quedarse con **el píxel que más ardió** de la celda
 (`--reducer max`, un segundo archivo): entonces la clase dice "en algún lugar de esta celda
 hubo un píxel que ardió N veces". Es otra cuenta, no otro corte — exagera a propósito, y por
-eso **no** es la que va en la lámina de apertura (`docs/09 §5.5`, trampa 2).
+eso **no** es la que va en la lámina de apertura (`statistics/docs/statistics.md §5.5`, trampa 2).
 
 ```{r fig00-veces-max}
 #| fig-height: 6.5
@@ -216,7 +216,7 @@ Los dos porcentajes NO son el mismo número, y la relación entre ellos es exact
 medio es *qué fracción de lo quemable arde por año* en cada región; el de la derecha, *qué
 fracción de los años ardió* cada píxel. **Promediá el mapa de la derecha sobre una región y
 te da el número que pinta el del medio** — verificado a nivel país, 0,932 % contra 0,933 %
-(`docs/09-statistics.md` §5.5).
+(`statistics/docs/statistics.md` §5.5).
 
 ```{r fig00-tres-mapas}
 #| fig-height: 6.5
@@ -330,7 +330,7 @@ del territorio del país**.
 Es la suma de los `r length(unique(ann$year))` años, así que una hectárea que se quemó
 cuatro veces está contada cuatro veces. La superficie que se quemó *al menos una vez* —la
 huella— es menor y no sale de estas tablas: es el producto `accumulated_burned_coverage`
-(docs/09 §2). En los epígrafes: "**el equivalente a** dos veces la provincia de Buenos
+(statistics/docs/statistics.md §2). En los epígrafes: "**el equivalente a** dos veces la provincia de Buenos
 Aires", nunca "se quemó una superficie igual a dos Buenos Aires" y mucho menos "se quemó
 el 23 % del país".
 :::
@@ -387,7 +387,7 @@ slide, esa frase va en el epígrafe.
 **La figura de la sección es el mapa del año del último fuego**: dónde ardió hace poco y
 dónde hace veinte años, píxel por píxel. Es el complemento exacto del mapa de apertura — aquél
 dice *cuánto* ardió cada lugar en 27 años, éste dice *cuándo fue la última vez* — y las dos
-salen del mismo conjunto de productos (`year_last_fire`, `docs/09 §5.6`).
+salen del mismo conjunto de productos (`year_last_fire`, `statistics/docs/statistics.md §5.6`).
 
 Tres cosas que hay que decir en el epígrafe:
 
@@ -817,7 +817,7 @@ arder. El fuego mapeado sobre agua, glaciar, ciudad o suelo desnudo es error de 
 Son dos preguntas distintas y sólo una es contestable con estas tablas. El denominador acá es
 **el área quemada de la región**, que la tenemos. El de la otra pregunta sería el área de cada
 clase en la región, que el quemable constante no tiene — necesitaría un export más
-(`docs/09-statistics.md` §3.3).
+(`statistics/docs/statistics.md` §3.3).
 
 Además este cruce lee la cobertura del **año anterior** al fuego, no la del mismo año: lo que
 se quemó, no en qué se convirtió el píxel después de quemarse. Los productos publicados
@@ -862,7 +862,7 @@ Los códigos padre de la leyenda (`1` Bosques, `10` Vegetación natural herbáce
 arbustiva, `14` Agropecuario, `22` Áreas sin vegetación, `26` Cuerpos de agua) existen en
 el diccionario pero **no aparecen en píxeles** de la integración, así que no están en la
 tabla. `No observado` (`0` y `27`) se descarta de todos los cocientes: son 0,24 ha en 27
-años, un píxel de 2025 (`docs/09-statistics.md` §8).
+años, un píxel de 2025 (`statistics/docs/statistics.md` §8).
 
 **Y las clases no quemables tampoco están**: agua, glaciar, ciudad y suelo desnudo
 (`24`, `25`, `33`, `34` — las familias *Áreas sin vegetación* y *Cuerpos de agua*) no arden,
@@ -1084,7 +1084,7 @@ análisis 6 —que sale de tres CSV chicos y todavía se está decidiendo— no 
 ese costo cada vez que se lo toca.
 
 Sigue escribiendo sus figuras con el prefijo `fig06_` en la misma carpeta, así que para el
-diseñador no cambia nada. El diseño está en `docs/10-factsheet_design.md` §6.
+diseñador no cambia nada. El diseño está en `statistics/docs/factsheet-sep2026-spec.md` §6.
 
 ## 7. Material de apoyo (no va al factsheet)
 

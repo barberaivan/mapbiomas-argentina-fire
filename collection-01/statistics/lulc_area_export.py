@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-collection-01/statistics/lulc_area_export.py — the PER-CLASS DENOMINATOR (docs/09 §5.4)
+collection-01/statistics/lulc_area_export.py — the PER-CLASS DENOMINATOR (statistics/docs/statistics.md §5.4)
 
 The second and last thing we compute in Earth Engine.  `burnable_export.py` gives the
 denominator of "% del área quemable que se quemó"; this one gives the denominator of
@@ -10,7 +10,7 @@ per year.
 WHY IT IS NOT THE TOOLKIT'S JOB.  Every dataset in the network's app is a FIRE product:
 its reductions are masked to burned pixels, so they can tell you how much forest burned
 and never how much forest there was.  A space-filling per-class area is a different
-reduction, and it is the one docs/09 §3.3 costed as "§3 plus a digit".  Same route as the
+reduction, and it is the one statistics/docs/statistics.md §3.3 costed as "§3 plus a digit".  Same route as the
 burnable layer, same programming strategy, our own small export.
 
 WHAT IT COMPUTES
@@ -23,18 +23,18 @@ WHAT IT COMPUTES
 
 WHICH YEARS, AND WHY THOSE.  1998-2024, the PREVIOUS-year range of calendar years
 1999-2025.  The numerator (`annual_burned_coverage`) crosses fire in year Y with
-`classification_<Y-1>` (docs/09 §2.2), so the class label on a burned hectare refers to
+`classification_<Y-1>` (statistics/docs/statistics.md §2.2), so the class label on a burned hectare refers to
 Y-1 and its denominator must be the class area in Y-1.  Pairing Y with Y with be wrong by
 one year in a way no gate would catch.
 
-PROGRAMMING STRATEGY — copied from the network's app (docs/09 §2.1):
+PROGRAMMING STRATEGY — copied from the network's app (statistics/docs/statistics.md §2.1):
     * the whole crossing packed into ONE integer band, one group field, one sweep;
     * territory is `ee.Image().paint(fc, 'GEOCODE')` — never an intersected vector;
     * the reduction geometry is a `bounds()` RECTANGLE;
     * no `tileScale`;
     * ALL 27 YEARS IN ONE TASK — 27 reductions flattened into a single `Export.table`,
       one queue slot, one CSV.  `--split` falls back to one task per year.
-  The one divergence: `crs` + `crsTransform` instead of `scale: 30` (docs/09 §2.3).
+  The one divergence: `crs` + `crsTransform` instead of `scale: 30` (statistics/docs/statistics.md §2.3).
 
 MASKING RULE (the trap, same as burnable_export): `add()` propagates masks, so exactly one
 layer may drive the mask — the ecoregions, which tile the country.  The LULC band is
@@ -255,7 +255,7 @@ def drive_client(args):
     from googleapiclient.discovery import build
 
     # No quota project — the shared compute project has no Drive API enabled, and enabling
-    # one there to read our own file is not ours to do (docs/09 §3).
+    # one there to read our own file is not ours to do (statistics/docs/statistics.md §3).
     stored = json.loads(
         Path(args.credentials or "~/.config/earthengine/credentials").expanduser().read_text()
     )

@@ -27,7 +27,7 @@ contra nada, y en una slide es lo primero que alguien pregunta: *¿cuántas hect
 No calcula nada nuevo: lee las mismas tablas que produce
 `statistics/factsheet_tables.R` (`factsheet_change.csv` y `factsheet_change_annual.csv`), que
 salen de la exportación `statistics/lulc_change_export.py`. De dónde viene cada número:
-[`docs/09-statistics.md`](../docs/09-statistics.md) §5.7.
+[`statistics/docs/statistics.md`](../statistics/docs/statistics.md) §5.7.
 
 Las figuras llevan el prefijo **`fig06c_`** (c de *corto*) para no pisar las `fig06_` del
 cuaderno largo: cada figura tiene un único productor.
@@ -164,7 +164,7 @@ knitr::kable(
    **cada Sankey va con el número de su propio nivel**.
 3. **La ventana son dos años, no uno.** Se compara la cobertura de **Y−1** con la de **Y+1**,
    porque en el año del fuego no se sabe si la clase que ve la col-3 es la de antes o la de
-   después de arder (docs/09 §5.7).
+   después de arder (statistics/docs/statistics.md §5.7).
 
 ## 1. Frase 1 — de lo que ardió, qué se convirtió en qué
 
@@ -640,11 +640,11 @@ descuido, no para ponerlos en ella.
    una muestra al azar del país: parte de la asociación es fuego ocurriendo donde el cambio ya
    iba a ocurrir. En `bosque → agropecuario` —la banda más gruesa del Sankey de nivel 1— la
    lectura más probable es el fuego como **herramienta de un desmonte ya decidido**, no como su
-   causa (docs/10 §6.4).
+   causa (statistics/docs/factsheet-sep2026-spec.md §6.4).
 2. **Un año es poco para la vegetación leñosa.** La ventana Y+1 está calibrada en el Chaco,
    donde el fuego *despeja*. Donde mata pero no despeja, el cambio llega al mapa más tarde: a
    Y+3 el número de la frase 1 sube de `r fmt_pct(N1$XX, 1)` % a **17,9 %** (nivel 1), y en el
-   bosque patagónico va de 49 % a 78 % entre Y+1 e Y+5 (docs/09 §5.7.3). **Estas frases
+   bosque patagónico va de 49 % a 78 % entre Y+1 e Y+5 (statistics/docs/statistics.md §5.7.3). **Estas frases
    subestiman**, no exageran.
 3. **Parte del cambio a un año puede ser la cicatriz y no la conversión.** La col-3 se construye
    con las mismas imágenes que ven la quemadura. El cuaderno largo mide cuánto de esto hay
