@@ -26,7 +26,20 @@ In this order. **Bold = always present.**
 | **Files** | a table | production/reference files and their role | descriptions that restate the doc |
 | **Related** | bullets | notebooks, `notes/` entries, sibling docs | anything not actually linked |
 
-Whole doc: **800–1500 words.** Over that, something belongs in `notes/`.
+Whole doc: **800–1500 words — a target, not a limit.** The quotas in the table above are the
+same: they describe the shape a step doc usually wants, and none of them is a rule that overrides
+the content.
+
+Going over is a **prompt to check one thing**, not a failure: *is the excess history, or is it the
+live algorithm?* History goes to `notes/` however short the doc already is. What the code actually
+does today **stays**, even if that puts the doc over 1500 — a doc that omits a rule the code
+enforces is worse than a long one, and a reader who needs it will not find it in `notes/`.
+
+> **Worked precedent — `05-object_metrics.md`, 2026-09-18.** Its Phase 2 pass cut 4,376 → ~1,720
+> words and moved 2.4 k words of benchmarks, post-mortems and abandoned roads into two `notes/`
+> entries. It still sits ~15 % over, and stays there: what remains is the enlarged-context distance
+> table, the metric definitions and the `pid`/`oid` scheme — all of them cited from code. Nothing
+> left to move; the doc is the right length for that step.
 
 Not every step has a Foundations or Key decisions section. `02-data_cleaning.md` has neither —
 its "why" is one clause in the orientation paragraph, and nothing about it was a choice worth

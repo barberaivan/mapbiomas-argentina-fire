@@ -74,7 +74,7 @@ source(file.path(HERE, "05-objects_metrics.R"))
 Rcpp::sourceCpp(file.path(HERE, "..", "utils", "label_uf.cpp"))
 
 # ── config ───────────────────────────────────────────────────────────────────
-SNIC_DIRECT_DIR <- "collection-01/data/snic-rasters"
+SNIC_DIR        <- "collection-01/data/snic-rasters"   # MIRRORS 05-objects_metrics.R::SNIC_DIR
 OBJ_DIR         <- "collection-01/data/objects-raw"
 PRED_DIR        <- "collection-01/data/objects-pred"
 PIX_CACHE       <- "collection-01/data/scars-pixels-cache"   # -cache = regenerable
@@ -155,7 +155,7 @@ global_grid <- function() {
 }
 
 tif_list <- function(fy) {
-  d <- file.path(SNIC_DIRECT_DIR, as.character(fy))
+  d <- file.path(SNIC_DIR, as.character(fy))
   if (!dir.exists(d)) stop(sprintf("no snic-rasters for FY%d (%s)", fy, d))
   tf <- sort(list.files(d, pattern = "\\.tif$", full.names = TRUE))
   keep <- Sys.getenv("CARTAS", "")

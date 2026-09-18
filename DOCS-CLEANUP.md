@@ -396,11 +396,12 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
 > describes what the code does today, even when the reason is historical (the dilation-as-window
 > equivalence stays, because it **is** the live algorithm; the halo that OOM'd is one clause).
 >
-> ⚠️ **The doc landed at 1,748 words against TEMPLATE's 1,500 cap** and I did not cut further,
-> because what remains is live algorithm: the enlarged-context distance table, the metric
-> definitions and the `pid`/`oid` scheme are all cited from code. Iván to decide whether the cap
-> bends for a step this mechanical, or whether the dilation-geometry derivation moves to `notes/`
-> and the doc keeps only the table.
+> **(c) The word count is a target, not a limit — settled 2026-09-18.** The doc landed ~15 % over
+> the 1500 figure and stays there: what remains is live algorithm (the enlarged-context distance
+> table, the metric definitions, the `pid`/`oid` scheme), all of it cited from code. Iván's ruling:
+> the cap is soft. `TEMPLATE.md` §1 now says so, with the test that matters — *is the excess
+> history, or the live algorithm?* — and this doc as the worked precedent. **Do not cut a live rule
+> out of a step doc to hit a number.**
 - [ ] `03-bpts.md` (5.7 k) — §§9–11 are status/handoff/decision records.
 - [ ] `04-snic.md` (2.9 k) — §1 (the shelved SNIC-3D) and §5c (benchmark) are `notes/`.
 - [ ] `06-object_model.md` (8.0 k).
