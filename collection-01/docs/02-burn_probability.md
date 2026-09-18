@@ -8,14 +8,36 @@ decides nothing, and it is never written to an asset: the probability exists onl
 
 ## Foundations
 
-**Nothing here is materialized, and that is a size argument.** A focal year sees ~150
-date-mosaicked Landsat scenes per *carta*, so storing the probability per observation would mean
-~150 layers per tile-year where the annual summary exported by step 03 has 16 bands — an order
-of magnitude more data than a product that is itself ~55 GiB per year, for 248 tiles × 27 years.
-And nothing downstream wants a single observation's probability: what carries the evidence is
-the *shape* of the series, which step 03 reduces on the fly. Since the model is a coefficient
-set plus a dot product, recomputing it inside the graph is cheaper than writing it out and
-reading it back.
+**The year is the unit of work, and that is a choice.** Mapping change across decades of Landsat
+is expensive, and there are methods that avoid discretising time at all: CCDC fits a continuous
+harmonic model per pixel and flags breaks in it (Zhu & Woodcock 2014), and CODED extends that
+idea to forest degradation with spectral unmixing (Bullock et al. 2020). MapBiomas instead works
+in **discrete annual units**, and so does this collection — the product is one burned-area map per
+year, so aggregating the raw Landsat information by year is the natural shape for everything
+upstream of it. That decision is what makes the per-observation probability an *intermediate*.
+
+**And the intermediate is not materialized, which is a size argument.** Over the padded window a
+*carta* is covered by roughly 150 image **dates** (~294 raw scenes, collapsed by
+`mosaic_by_date`), so storing the probability per observation would mean ~150 layers per
+tile-year where the annual summary exported by step 03 has 16 bands — an order of magnitude more
+data than a product that is itself ~55 GiB per year, over 248 tiles × 27 years. And nothing
+downstream wants a single observation's probability: what carries the evidence is the *shape* of
+the series, which step 03 reduces on the fly. Since the model is a coefficient set plus a dot
+product, recomputing it inside the graph is cheaper than writing it out and reading it back.
+
+> **~150 dates is not `n`.** The two counts are different things and it is worth keeping them
+> apart. **~150** is how many date-mosaics *the graph evaluates* over a carta — every model
+> evaluation is paid on all of them, which is why it drives cost. **`n`** is how many of those
+> dates leave a *valid* observation at a given pixel after cloud masking: tens, not hundreds
+> (mean 25, max 54 over a 2015 Patagonian carta; up to ~75 where coverage is best). A pixel is
+> judged on `n` observations; the tile is billed for ~150.
+
+> **A *carta*** is one sheet of the MapBiomas Argentina working grid
+> (`C.CARTAS_FC` = `projects/mapbiomas-chaco/BASE/cartas-argentina`), the national 1:250,000
+> chart series: the id in `grid_name` names the million-sheet and its subdivisions
+> (`SK-19-Y-A`), and each sheet covers ~14,000 km². The grid has ~286 sheets and **248 intersect
+> the buffered country**, which is the tile set every image-based GEE step here runs over —
+> *not* Landsat WRS-2 path/row, and not an arbitrary bounding box.
 
 **One model per vegetation class, applied without branching.** 23 fittable `veg_fire` classes
 mean 23 coefficient sets, and the obvious implementation — evaluate each model on its own masked
@@ -132,3 +154,4 @@ cosmetic one, and one that only makes sense once a whole year's series is in vie
 - [`02-model_fitting.md`](02-model_fitting.md) — the fit that produces these coefficients, and why P=50; [`02-vegetation_remap.md`](02-vegetation_remap.md) — how `veg_fire` is built; `models/README.md` — the CSV schema.
 - [`03-bpts.md`](03-bpts.md) — the only consumer: the time series this feeds, and the export.
 - `notes/02-lr_term_reduction.md` (how the predictor set got to 50 terms), `notes/03-validation_2015.md` (the ~7e-9 check against a hand-computed logit).
+- The two continuous-time alternatives named in Foundations: Zhu, Z. & Woodcock, C.E. (2014), *Continuous change detection and classification of land cover using all available Landsat data*, Remote Sensing of Environment (CCDC); Bullock, E.L., Woodcock, C.E. & Olofsson, P. (2020), *Monitoring tropical forest degradation using spectral unmixing and Landsat time series analysis*, Remote Sensing of Environment (CODED).
