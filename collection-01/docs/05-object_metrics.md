@@ -19,16 +19,15 @@ per object — because the obvious dense formulations (a country-wide object-id 
 edge list, a materialized dilation halo) each need tens of GB and OOM'd a 31 GB box. The measured
 walls are in [`notes/05-whole_country_redesign.md`](notes/05-whole_country_redesign.md).
 
-## Inputs → Outputs
-
-step-04 SNIC rasters → **`workflow/05-objects_metrics.R`** → one GPKG of geometry + two metric CSVs
-
-### Object ids — `pid` and `oid`
-
-`pid` is the label the step assigns to an object, unique **within a fire-year only**, because
+**Objects jargon: `pid` and `oid`.** `pid` is the label the step assigns to an object, 
+unique **within a fire-year only**, because
 labelling restarts each year. The globally unique key is **`oid = "<fire_year>_<pid>"`** (e.g.
 `2015_4213`) — every output below is keyed by it, and it is the join key everything downstream
 uses. Since it embeds the fire-year, **no separate `fire_year` column is written**.
+
+## Inputs → Outputs
+
+step-04 SNIC rasters → **`workflow/05-objects_metrics.R`** → one GPKG of geometry + two metric CSVs
 
 | | What it is | Where |
 |---|---|---|
@@ -154,7 +153,7 @@ All five were forced by whole-country memory; the benchmarks behind them are in
   re-merging forces every polygon metric to be re-aggregated across the pieces. The untiled run is
   feasible, so the seam problem is never created; the fallback for a year that does not fit is a
   few deliberately coarse regions, not per-carta tiling.
-- **Union-find, not a graph library.** `igraph` is faster on an ROI but its explicit edge list
+- **Union-find, not a graph library.** `igraph` is faster on a ROI but its explicit edge list
   OOM'd whole-country; union-find stores only the parent array.
 - **Dilation as a wider union window, not a materialized halo.** Exactly equivalent, verified
   pixel-for-pixel, and without the transient that fed the OOM.
@@ -171,11 +170,6 @@ All five were forced by whole-country memory; the benchmarks behind them are in
   Track `MemTotal − MemAvailable`.
 - **`_shape_metrics.csv` is written last**, so it is the completion marker: a year with a GPKG but
   no shape CSV did not finish.
-- **`snic_tifs()` silently falls back to a legacy Drive-COG layout** (`data/objects-raw/`, 4
-  bands, `burned_around` computed locally) when `data/snic-rasters/<fy>/` is empty. It is
-  **ROI-scale only** — one big COG is a single tile, so it re-hits the whole-mosaic extract limit
-  at country scale. Production has never used it: a run reporting `layout = "legacy"` means the
-  per-carta tiles are missing, not that a valid second route was taken.
 - Keep `NO_DILATE_VEG` and the enlarged-context rule above in sync; one decision written twice.
 
 ## Files

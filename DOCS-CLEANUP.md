@@ -470,6 +470,10 @@ has a real ATBD. No pass, no template, no extraction.
 ### Phase 6 — deferred sub-tasks (not part of this plan)
 
 - [ ] Tidy `docs/notes/`: merge, prune, and decide which entries become ADRs.
+      **Not in scope: the heading numbers inside a note.** Asked and settled 2026-09-18 — a note
+      keeps the `## 6.` / `## 7.` it was extracted with, because they are archived text and they
+      are what makes its provenance header checkable, and a note is cited by filename anyway.
+      Written into `notes/README.md` so it is not reopened.
 - [ ] **Reconcile `docs/notes/` against the code, once the Phase 2 passes have all landed.**
       A note ages in two different ways and only one of them is a defect:
       - **Its provenance header and its quotes go stale by design.** The section a header names

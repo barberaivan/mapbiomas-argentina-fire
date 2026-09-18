@@ -229,9 +229,9 @@ ECOREGION_ID_PROPERTY = "GEOCODE"
 ECOREGION_NAME_PROPERTY = "LEVEL_2"
 
 # Drive folder for the statistics tables (statistics/docs/statistics.md §4.6).  A folder NAME, not a path:
-# `gee_fire_stats`, on the PRIMARY (gmail) account's Drive.  Unlike SNIC_DRIVE_FOLDER
-# below, this one is NOT Insync-synced into STORE_ROOT — the tables are small, and the
-# export scripts also write them straight to collection-01/data/statistics/.
+# `gee_fire_stats`, on the PRIMARY (gmail) account's Drive.  NOT Insync-synced into
+# STORE_ROOT — the tables are small, and the export scripts also write them straight
+# to collection-01/data/statistics/.
 STATS_DRIVE_FOLDER = "gee_fire_stats"
 
 # Output ImageCollection for this step (asset name pattern: bpts_YYYY_<tile-id>).
@@ -301,14 +301,6 @@ SNIC_COL = f"{_FIRE_ROOT}/COLLECTION-1/WORKFLOW-EXPORTS/snic"
 # these to an asset lets the tiled direct download be a cheap pixel READ (no per-tile
 # recompute of the §4 construction). Asset pattern: snic_metrics_<fy> / snic_metrics_test_<fy>.
 SNIC_METRICS_COL = f"{_FIRE_ROOT}/COLLECTION-1/WORKFLOW-EXPORTS/snic_metrics"
-# Drive folder for the R-facing COG export (04-snic.py --to-drive); files are
-# named like the assets (snic_<fire_year> / snic_test_<fire_year>).
-# GEE's toDrive `folder` is a folder NAME, not a path: it writes into an existing
-# Drive folder of that name wherever it lives. This one already exists on the
-# comahue account's Drive at MapBiomas/mapbiomas-arg-fire-store/collection-01/data/
-# objects-raw, which Insync syncs to STORE_ROOT/collection-01/data/objects-raw.
-SNIC_DRIVE_FOLDER = "objects-raw"
-
 # Fire-year calendar (§2): FY Y1 = 1 May Y1 → 30 Apr (Y1+1), named by START year Y1.
 FY_START_MONTH = 5
 FIRST_FIRE_YEAR, LAST_FIRE_YEAR = 1998, 2025   # start years

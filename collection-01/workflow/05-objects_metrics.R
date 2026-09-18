@@ -3,9 +3,9 @@
 # 05-objects_metrics.R — vectorize fire-year SNIC objects + per-object metrics
 # =============================================================================
 # Pipeline step 05 (R, terra/sf/data.table + a small Rcpp union-find). Consumes the
-# step-04 SNIC product for one fire-year — EITHER the direct-download per-carta tiles
-# (snic-rasters/<fy>/, 7 bands incl. burned_around_{1,2,3} pre-computed in GEE; preferred,
-# 04 §5b) OR the legacy Drive COG (objects-raw/) — and turns the burned pixels into
+# step-04 SNIC product for one fire-year — the per-carta tiles in snic-rasters/<fy>/
+# (7 bands incl. burned_around_{1,2,3} pre-computed in GEE; 04 §5b) — and turns the burned
+# pixels into
 # fire-scar OBJECTS with a metrics table, ready for the step-06 object filter. One fire-year
 # at a time; objects are global within a year (no tiling), so nearby fragments of the same
 # scar share one id.
@@ -61,14 +61,10 @@ HERE   <- if (length(.this_file)) dirname(normalizePath(.this_file)) else getwd(
 UF_CPP <- file.path(HERE, "..", "utils", "label_uf.cpp")
 
 # ── config ───────────────────────────────────────────────────────────────────
-# Two input layouts (snic_tifs prefers the first):
-#   snic-rasters/<fy>/<carta>.tif — direct-download per-carta tiles (04 §5b): 248 cartas,
-#       7 bands incl. burned_around_{1,2,3} PRE-COMPUTED in GEE as CELL COUNTS.
-#   objects-raw/snic_<fy>*.tif — legacy Drive COG: candseed+abs_date+veg_fire[+n];
-#       burned_around computed locally here. (Legacy is ROI-scale only — one big COG is one
-#       "tile", so it re-hits the whole-mosaic extract limit at country scale.)
-SNIC_DIR        <- "collection-01/data/objects-raw"   # legacy Drive COG (symlink into store)
-SNIC_DIRECT_DIR <- "collection-01/data/snic-rasters"     # direct-download per-carta tiles
+# Input: snic-rasters/<fy>/<carta>.tif — the step-04 per-carta tiles (04 §5b): 248 cartas,
+# 7 bands incl. burned_around_{1,2,3} PRE-COMPUTED in GEE as CELL COUNTS.
+SNIC_DIR <- "collection-01/data/snic-rasters"   # input: per-carta tiles (symlink into store)
+OUT_DIR  <- "collection-01/data/objects-raw"    # output: GPKG + the two metric CSVs
 
 # veg_fire codes that get NO enlarged connectivity context (8-connectivity only): agriculture
 # (1,2,3) + grasslands ba/chaco/pampa/inund (12,13,15,17) + pastures ba/chaco (18,19). Burned
@@ -83,9 +79,8 @@ DIEBACK_LON_CUT <- -70.6
 VEG_CODES   <- 1:23                 # burnable veg_fire classes (24/25 are sentinels)
 BA_RADII    <- c(1L, 2L, 3L)        # burned_around neighbourhood radii (px)
 EPOCH       <- "1970-01-01"         # abs_date is whole days since this
-EXPECT_BANDS        <- c("candseed", "abs_date", "veg_fire", "n")  # legacy COG; n optional
-EXPECT_BANDS_DIRECT <- c("abs_date", "veg_fire", "n",             # direct-download tiles (04 §5b)
-                         sprintf("burned_around_%d", BA_RADII), "candseed")
+EXPECT_BANDS <- c("abs_date", "veg_fire", "n",                    # per-carta tiles (04 §5b)
+                  sprintf("burned_around_%d", BA_RADII), "candseed")
 DILATE_R    <- 3L                   # 1-px dilation ≡ union within Chebyshev ≤3 (docs/05 "Label")
 
 # per-object vectorize parallelism (unix fork only; 1 elsewhere)
@@ -99,30 +94,23 @@ terraOptions(progress = 0)   # keep tee'd tmux logs clean
 
 # ── [1] locate + load one fire-year ───────────────────────────────────────────
 snic_tifs <- function(fy, test = FALSE) {
-  # Returns list(tifs = <paths>, layout = "direct"|"legacy"). Prefers the direct-download
-  # per-carta tiles; falls back to the legacy Drive COG glob. 4-digit years never prefix
-  # one another, so the globs are unambiguous; `test` reads the small-ROI variants.
-  prefix <- if (test) "snic_test_" else "snic_"
-  ddir   <- file.path(SNIC_DIRECT_DIR, if (test) sprintf("test_%d", fy) else as.character(fy))
-  dtifs  <- if (dir.exists(ddir)) list.files(ddir, pattern = "\\.tif$", full.names = TRUE) else character(0)
-  if (length(dtifs)) return(list(tifs = dtifs, layout = "direct"))
-  ltifs <- list.files(SNIC_DIR, pattern = sprintf("^%s%d.*\\.tif$", prefix, fy), full.names = TRUE)
-  if (!length(ltifs))
-    stop(sprintf("no tiles for FY%d in %s/ or %s (run 04-snic.py --to-asset + download_snic.py, or --to-drive)",
-                 fy, ddir, SNIC_DIR))
-  list(tifs = ltifs, layout = "legacy")
+  # Returns the per-carta tile paths for one fire-year; `test` reads the small-ROI variants.
+  ddir  <- file.path(SNIC_DIR, if (test) sprintf("test_%d", fy) else as.character(fy))
+  tifs  <- if (dir.exists(ddir)) list.files(ddir, pattern = "\\.tif$", full.names = TRUE) else character(0)
+  if (!length(tifs))
+    stop(sprintf("no tiles for FY%d in %s/ (run 04-snic.py --to-asset + download_snic.py)",
+                 fy, ddir))
+  tifs
 }
 
 load_snic <- function(fy, test = FALSE) {
   # Named whole-country mosaic (terra vrt) — used by the `terra` fallback and for grid geometry.
-  s <- snic_tifs(fy, test)
-  r <- if (length(s$tifs) > 1L) terra::vrt(s$tifs, overwrite = TRUE) else terra::rast(s$tifs)
-  expect <- if (s$layout == "direct") EXPECT_BANDS_DIRECT else EXPECT_BANDS
-  if (!all(names(r) %in% expect)) {                    # vrt() drops names → assign by stack order
-    ok <- if (identical(expect, EXPECT_BANDS_DIRECT)) length(expect) else c(3L, 4L)
-    if (!nlyr(r) %in% ok)
-      stop(sprintf("FY%d raster has %d bands; expected %s", fy, nlyr(r), paste(ok, collapse = " or ")))
-    names(r) <- expect[seq_len(nlyr(r))]
+  tifs <- snic_tifs(fy, test)
+  r <- if (length(tifs) > 1L) terra::vrt(tifs, overwrite = TRUE) else terra::rast(tifs)
+  if (!all(names(r) %in% EXPECT_BANDS)) {              # vrt() drops names → assign by stack order
+    if (!nlyr(r) %in% length(EXPECT_BANDS))
+      stop(sprintf("FY%d raster has %d bands; expected %d", fy, nlyr(r), length(EXPECT_BANDS)))
+    names(r) <- EXPECT_BANDS
   }
   r
 }
@@ -254,25 +242,6 @@ aggregate_metrics <- function(dt, has_n) {
   merge(num, fracs, by = "pid", all.x = TRUE)[]
 }
 
-# burned_around_k = fraction of the (2k+1)² window burned, per burned cell (legacy COG: no
-# pre-computed band, compute it here; O(burned)).
-.in_set <- function(x, bs) { p <- findInterval(x, bs); p >= 1L & bs[pmax(p, 1L)] == x }
-add_burned_around <- function(dt, nc) {
-  bs   <- sort(dt$cell)
-  K    <- max(BA_RADII)
-  offs <- CJ(dr = -K:K, dc = -K:K)[, cheb := pmax(abs(dr), abs(dc))]
-  cnt  <- matrix(0L, nrow(dt), length(BA_RADII))
-  for (i in seq_len(nrow(offs))) {
-    ncl <- dt$col + offs$dc[i]; ok <- ncl >= 1 & ncl <= nc
-    nb  <- (dt$row + offs$dr[i] - 1) * nc + ncl
-    hit <- ok & .in_set(nb, bs)
-    for (ri in seq_along(BA_RADII)) if (offs$cheb[i] <= BA_RADII[ri]) cnt[hit, ri] <- cnt[hit, ri] + 1L
-  }
-  for (ri in seq_along(BA_RADII))
-    dt[, (sprintf("burned_around_%d", BA_RADII[ri])) := cnt[, ri] / (2L * BA_RADII[ri] + 1L)^2]
-  invisible(dt)
-}
-
 # SCALABLE (union-find) path: returns list(geom = dt[row,col,pid], mets). Never builds a dense
 # pid raster — vectorize_sparse() polygonizes per object from `geom`.
 objects_sparse <- function(tifs, r, tag = "") {
@@ -280,9 +249,8 @@ objects_sparse <- function(tifs, r, tag = "") {
   dt <- extract_burned(tifs, r)
   if (!nrow(dt)) stop("no burned pixels in raster")
   message(sprintf("[%s] extract: %s burned cells", tag, format(nrow(dt), big.mark = ",")))
-  nc     <- ncol(r)
-  has_n  <- "n" %in% names(dt)
-  has_ba <- all(sprintf("burned_around_%d", BA_RADII) %in% names(dt))
+  nc    <- ncol(r)
+  has_n <- "n" %in% names(dt)
   if (!has_n) warning("no 'n' band — n-summaries skipped (04 §5).", call. = FALSE)
 
   # per-cell area: for a lon/lat grid it depends only on the ROW (latitude) → cellSize on a
@@ -295,10 +263,9 @@ objects_sparse <- function(tifs, r, tag = "") {
     dt[, cell_area := carow[row]]
   } else dt[, cell_area := terra::xres(r) * terra::yres(r)]
 
-  if (has_ba) {                                          # direct-download: counts → window fraction
-    for (k in BA_RADII) dt[, (sprintf("burned_around_%d", k)) :=
-                            get(sprintf("burned_around_%d", k)) / (2L * k + 1L)^2]
-  } else add_burned_around(dt, nc)                       # legacy: compute the fraction here
+  # burned_around_k arrives from GEE as a CELL COUNT → window fraction
+  for (k in BA_RADII) dt[, (sprintf("burned_around_%d", k)) :=
+                           get(sprintf("burned_around_%d", k)) / (2L * k + 1L)^2]
 
   message(sprintf("[%s] labelling (union-find + dilation)…", tag))
   label_uf(dt, nc, dilate = TRUE)                        # → pid (dilation-window union-find)
@@ -347,17 +314,9 @@ vectorize_sparse <- function(geom, g, ncores = OBJ_CORES) {
 raster_metrics <- function(r, pid) {
   burned <- terra::ifel(is.na(pid), NA, 1)
   has_n  <- "n" %in% names(r)
-  has_ba <- all(sprintf("burned_around_%d", BA_RADII) %in% names(r))
-  if (!has_n) warning("no 'n' band in the COG — n-summaries skipped (04 §5).", call. = FALSE)
-  if (has_ba) {
-    ba <- terra::mask(r[[sprintf("burned_around_%d", BA_RADII)]], pid)
-    for (i in seq_along(BA_RADII)) ba[[i]] <- ba[[i]] / (2L * BA_RADII[i] + 1L)^2
-  } else {
-    ba <- terra::rast(lapply(BA_RADII, function(k) {
-      w <- 2L * k + 1L
-      terra::mask(terra::focal(burned * 1, matrix(1, w, w), "sum", na.rm = TRUE), pid) / (w * w)
-    }))
-  }
+  if (!has_n) warning("no 'n' band — n-summaries skipped (04 §5).", call. = FALSE)
+  ba <- terra::mask(r[[sprintf("burned_around_%d", BA_RADII)]], pid)
+  for (i in seq_along(BA_RADII)) ba[[i]] <- ba[[i]] / (2L * BA_RADII[i] + 1L)^2
   names(ba) <- sprintf("burned_around_%d", BA_RADII)
   cell_area <- terra::mask(terra::cellSize(pid, unit = "m"), pid)
   bands <- c("candseed", "veg_fire", "abs_date", if (has_n) "n")   # candseed → seed_mean
@@ -396,10 +355,10 @@ process_year <- function(fy, test = FALSE, method = "sparse") {
   tag <- sprintf("FY%d%s", fy, if (test) "-test" else "")
   message(sprintf("\n══ %s ── start [%s, %d core(s)] ══", tag, method,
                   if (method == "sparse") OBJ_CORES else 1L))
-  s <- snic_tifs(fy, test); r <- load_snic(fy, test)
+  tifs <- snic_tifs(fy, test); r <- load_snic(fy, test)
 
   if (method == "sparse") {                       # union-find + per-object vectorize (default)
-    os          <- objects_sparse(s$tifs, r, tag)
+    os          <- objects_sparse(tifs, r, tag)
     raster_mets <- os$mets
     message(sprintf("[%s] vectorize: %d objects across %d core(s)…",
                     tag, length(unique(os$geom$pid)), OBJ_CORES))
@@ -424,9 +383,9 @@ process_year <- function(fy, test = FALSE, method = "sparse") {
   raster_out <- raster_mets[, c("oid", setdiff(names(raster_mets), c("oid", "pid"))), with = FALSE]
 
   stem <- if (test) sprintf("objects_test_%d", fy) else sprintf("objects_%d", fy)
-  gpkg <- file.path(SNIC_DIR, paste0(stem, ".gpkg"))
-  rcsv <- file.path(SNIC_DIR, paste0(stem, "_raster_metrics.csv"))
-  scsv <- file.path(SNIC_DIR, paste0(stem, "_shape_metrics.csv"))
+  gpkg <- file.path(OUT_DIR, paste0(stem, ".gpkg"))
+  rcsv <- file.path(OUT_DIR, paste0(stem, "_raster_metrics.csv"))
+  scsv <- file.path(OUT_DIR, paste0(stem, "_shape_metrics.csv"))
   message(sprintf("[%s] writing GPKG + raster/shape CSVs…", tag))
   sf::st_write(polys[, "oid"], gpkg, delete_dsn = TRUE, quiet = TRUE)
   fwrite(raster_out, rcsv)
@@ -442,17 +401,12 @@ main <- function() {
   test   <- "test"  %in% args
   method <- if ("terra" %in% args) "terra" else "sparse"
   args   <- setdiff(args, c("test", "terra"))
-  prefix <- if (test) "snic_test_" else "snic_"
   years <- if (length(args)) as.integer(args) else {
     dpat   <- if (test) "^test_(\\d{4})$" else "^(\\d{4})$"
-    dnames <- if (dir.exists(SNIC_DIRECT_DIR)) list.files(SNIC_DIRECT_DIR, pattern = dpat) else character(0)
-    dyears <- as.integer(sub(dpat, "\\1", dnames))
-    f      <- list.files(SNIC_DIR, pattern = sprintf("^%s\\d{4}.*\\.tif$", prefix))
-    lyears <- as.integer(sub(sprintf("^%s(\\d{4}).*$", prefix), "\\1", f))
-    sort(unique(c(dyears, lyears)))
+    dnames <- if (dir.exists(SNIC_DIR)) list.files(SNIC_DIR, pattern = dpat) else character(0)
+    sort(as.integer(sub(dpat, "\\1", dnames)))
   }
-  if (!length(years)) stop("no fire-years to process (none given; none found in ",
-                           SNIC_DIRECT_DIR, "/ or ", SNIC_DIR, ")")
+  if (!length(years)) stop("no fire-years to process (none given; none found in ", SNIC_DIR, "/)")
   for (fy in years) process_year(fy, test, method)
 }
 

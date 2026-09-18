@@ -74,9 +74,10 @@ Other documentation:
 - **GEE project**: `mapbiomas-fire-485203` (hardcoded in `collection-01/utils/constants.py`).
 - **GEE accounts — two of them.** Most work runs under the primary personal account
   (`ivanbarbera93@gmail.com`). A few steps run under a **second account,
-  `ivanbarbera@comahue-conicet.gob.ar`** — specifically anything that writes to Drive for the
-  `-store` side (e.g. step 04 `--to-drive`), because that account **owns the Google Drive that
-  Insync syncs into `STORE_ROOT`** (`.local-paths`). GEE credentials live in a single file
+  `ivanbarbera@comahue-conicet.gob.ar`** — it **owns the Google Drive that Insync syncs into
+  `STORE_ROOT`** (`.local-paths`), and it has its own task queue. (Step 04's `--to-drive` was the
+  main Drive-writing consumer and was **deleted in September 2026** — the step-04 → 05 handoff is
+  now the direct tiled download, which writes straight to local disk.) GEE credentials live in a single file
   (`~/.config/earthengine/credentials`), so switching accounts means swapping that file — keep
   per-account backups (`credentials.gmail`, `credentials.comahue`) and `cp` the one you need
   into place before running. Note the comahue account is registered under the shared

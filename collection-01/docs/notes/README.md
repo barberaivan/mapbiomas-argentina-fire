@@ -33,6 +33,16 @@ sweep found in the `docs/NN` citations. Pin the commit instead, so the address s
 The same applies inside a note: quoted doc text and cited line numbers are snapshots. A note that
 quotes a doc paragraph keeps that paragraph even after the doc drops it — that is the point.
 
+### A note KEEPS the heading numbers it was extracted with
+
+Step docs no longer number their headings and are cited by name (`TEMPLATE.md` rule 5). **Notes
+are the exception, deliberately.** A note's `## 6.` / `## 7.` / `## 8.` are not addresses anyone
+should cite — they are part of the archived text, and they are what makes the provenance header
+checkable: the header says "extracted from §6, §7 and §8", and those three sections are visibly
+there. Renaming them would break that correspondence and gain nothing, because a note is always
+cited by **filename**, never by internal section. So: do not renumber, do not rename, and do not
+"fix" a note's headings to match the doc it came from.
+
 **What does need maintaining** is a note's claims about *code*: a file path, a constant, a script
 name. Those are live, and a note that names a script that no longer exists is misleading rather
 than archival. Reconciling them across the whole folder is a Phase 6 item.

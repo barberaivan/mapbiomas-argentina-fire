@@ -5,8 +5,6 @@ Step 04 — supervised SNIC burned-area segmentation on a **non-calendar fire-ye
 sharing one construction across stages:
 
   * default stage  (asset) — build `candseed` and export it to a GEE asset.
-  * `--to-drive`   (Drive) — read an already-exported `candseed` asset and write
-                             the R-facing COG (`candseed` + `abs_date` + `veg_fire` + `n`).
   * `--to-asset`   (asset) — read the `candseed` asset and materialize the R-facing
                              metric bands (`abs_date` + `veg_fire` + `n` +
                              `burned_around_{1,2,3}`, stored as cell counts) to a
@@ -41,8 +39,8 @@ Design: docs/04-snic.md §2–§5. Summary, per fire-year `Y1`
   6. Export ONLY `candseed ∈ {1,2,3}` (int16) to asset (§5): 1 = candidate,
      2 = seed, 3 = next-year (Patagonia dieback) candidate.
 
-`abs_date` / `veg_fire` are NOT stored in the asset. They are recreated at
-Drive-export (`--to-drive`) by re-running this construction (steps 1–4) and
+`abs_date` / `veg_fire` are NOT stored in the asset. They are recreated at the
+metrics-asset stage (`--to-asset`) by re-running this construction (steps 1–4) and
 masking to the exported `candseed` asset (§5). SNIC is NOT recomputed at that
 stage — the asset already holds the segmented mask.
 
@@ -50,7 +48,7 @@ Assets land in the COLLECTION-1 `snic` ImageCollection (`C.SNIC_COL`) as
 `snic_<fire_year>` (e.g. `snic_2024`; a `--test` run uses `snic_test_<fire_year>`
 over a tiny ROI), on the bpts 30 m grid, over Argentina buffered ~2 km
 (`C.ARG_BUFFER_FC`), tagged `fire_year` / `system:time_start` (Y1-05-01) /
-`system:time_end` ((Y1+1)-04-30). The Drive COG lands in `C.SNIC_DRIVE_FOLDER`.
+`system:time_end` ((Y1+1)-04-30).
 
 Run from the repo root:
 
@@ -60,9 +58,7 @@ Run from the repo root:
     $PYTHON collection-01/workflow/04-snic.py --fire-year 2015
     # actually submit the asset:
     $PYTHON collection-01/workflow/04-snic.py --fire-year 2015 --launch
-    # once the asset exists, export the R-facing COG to Drive (legacy path):
-    $PYTHON collection-01/workflow/04-snic.py --fire-year 2015 --to-drive --launch
-    # ...or materialize the metric bands to snic_metrics_2015 for the direct download:
+    # once the asset exists, materialize the metric bands to snic_metrics_2015:
     $PYTHON collection-01/workflow/04-snic.py --fire-year 2015 --to-asset --launch
     # the whole archive (1998..2025) — many whole-country tasks, use tmux:
     $PYTHON collection-01/workflow/04-snic.py --all --launch
@@ -381,57 +377,6 @@ def process_fire_year(fire_year, region, crs, transform, launch, name_prefix,
 # ---------------------------------------------------------------------------
 # stage 2 — read the candseed asset, attach abs_date + veg_fire, export COG to Drive
 # ---------------------------------------------------------------------------
-def process_fire_year_drive(fire_year, region, crs, transform, launch, name_prefix,
-                            overwrite=False):
-    y1 = fire_year
-    asset_id = f"{C.SNIC_COL}/{name_prefix}{y1:04d}"
-    file_prefix = f"{name_prefix}{y1:04d}"
-    description = f"{file_prefix}_drive"
-
-    if not asset_exists(asset_id):
-        print(f"[skip] {asset_id} not exported yet — run the asset stage first")
-        return
-    # --overwrite lets a Drive export be re-queued past the in-flight guard (Drive
-    # files don't block like assets, so nothing is deleted here).
-    if task_in_flight(description) and not overwrite:
-        print(f"[skip] {description} has a PENDING/RUNNING task")
-        return
-
-    # candseed comes straight from the exported asset (SNIC is NOT recomputed);
-    # abs_date + veg_fire + n are recreated from the §4 construction and masked to it.
-    _pre, abs_date, n_img, _meta = build_candseed_pre(fire_year)
-    candseed = ee.Image(asset_id).select("candseed")
-    burned = candseed.mask()
-    veg_fire = F.veg_fire_image(y1).updateMask(burned).toInt16().rename("veg_fire")
-    abs_date = abs_date.updateMask(burned)
-    n_img = n_img.updateMask(burned)
-    stack = candseed.addBands(abs_date).addBands(veg_fire).addBands(n_img)
-
-    task = ee.batch.Export.image.toDrive(
-        image=stack,
-        description=description,
-        folder=C.SNIC_DRIVE_FOLDER,
-        fileNamePrefix=file_prefix,
-        region=region,
-        crs=crs,
-        crsTransform=transform,
-        maxPixels=int(1e13),
-        skipEmptyTiles=True,   # drop fully-masked tiles → sparse COG (big win country-wide)
-        fileFormat="GeoTIFF",
-        # noData=0 tags the masked background so R reads it as NA (0 is never a valid
-        # value: candseed 1-3, abs_date >10000, veg 1-25, n >=1). cloudOptimized keeps
-        # the internal tiling + overviews.
-        formatOptions={"cloudOptimized": True, "noData": 0},
-    )
-    if launch:
-        task.start()
-        print(f"[launched] {task.id}  ->  Drive:{C.SNIC_DRIVE_FOLDER}/{file_prefix}")
-    else:
-        bands = stack.bandNames().getInfo()
-        print(f"[dry] would export Drive:{C.SNIC_DRIVE_FOLDER}/{file_prefix}  bands={bands}")
-
-
-# ---------------------------------------------------------------------------
 # stage 2b — read the candseed asset, materialize the R-facing metric bands to
 #            a companion asset (for the tiled direct download; docs/04 §5, docs/notes/05-whole_country_redesign.md)
 # ---------------------------------------------------------------------------
@@ -542,8 +487,6 @@ def main():
                     help="actually submit export task(s) (default: build + sanity check only)")
     ap.add_argument("--test", action="store_true",
                     help="export over the tiny TEST_ROI as snic_test_<fy> (feasibility check)")
-    ap.add_argument("--to-drive", action="store_true",
-                    help="Drive stage: export candseed+abs_date+veg_fire COG from the existing asset")
     ap.add_argument("--to-asset", action="store_true",
                     help="Metrics-asset stage (2b): materialize abs_date+veg_fire+n+burned_around_* "
                          "to snic_metrics_<fy> from the existing candseed asset, for the tiled "
@@ -555,11 +498,9 @@ def main():
     ap.add_argument("--project", default=C.GEE_PROJECT,
                     help="GEE compute project to initialize under (default: %(default)s). "
                          "Override to a project the authenticated account can use — e.g. "
-                         "'mapbiomas-argentina' when running --to-drive under the comahue "
-                         "account, which is not registered on the default project.")
+                         "'mapbiomas-argentina' under the comahue account, which is not "
+                         "registered on the default project.")
     args = ap.parse_args()
-    if args.to_drive and args.to_asset:
-        ap.error("--to-drive and --to-asset are separate stage-2 variants; pick one")
 
     ee.Initialize(project=args.project)
 
@@ -573,9 +514,7 @@ def main():
 
     fire_years = (list(range(C.FIRST_FIRE_YEAR, C.LAST_FIRE_YEAR + 1))
                   if args.all else [args.fire_year])
-    run = (process_fire_year_metrics_asset if args.to_asset
-           else process_fire_year_drive if args.to_drive
-           else process_fire_year)
+    run = process_fire_year_metrics_asset if args.to_asset else process_fire_year
     for fy in fire_years:
         run(fy, region, crs, transform, args.launch, name_prefix, args.overwrite)
 

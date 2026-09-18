@@ -134,35 +134,29 @@ the cut are in `utils/constants.py` (Step 04 section).
 
 Object work is done in R (`terra`/`sf`) — GEE vector topology is its weak spot and objects cross
 tiles. **Everything done to the step-04 output (vectorization, metrics, filtering, final products)
-lives in `docs/05-object_metrics.md` and `docs/06`.** Two handoff paths exist:
+lives in `docs/05-object_metrics.md` and `docs/06`.** The handoff is the **direct tiled download**
+(`--to-asset` + `download_snic.py`), detailed in §5b.
 
-- **Direct tiled download (`--to-asset` + `download_snic.py`) — preferred.** `toDrive` is slow for
-  a bad reason: its write target is the **Drive API** (a rate-limited consumer service), then
-  **Insync** dribbles the file down — two slow stages the asset path skips entirely (pyramids are
-  *not* the cause — `toAsset` builds those too; §5b). Instead, `04-snic.py --to-asset` materializes
-  the R-facing bands to a companion `snic_metrics_<fy>` **asset**, and `download_snic.py` pulls them
-  per *carta* straight to disk via `geedim`'s compute-pixels endpoint (no batch queue, no Drive, no
-  Insync). See **§5b** below and [`docs/notes/05-whole_country_redesign.md`](notes/05-whole_country_redesign.md).
-- **Drive COG (`--to-drive`) — legacy.** Kept for now; details in the bullets below.
+A Drive-COG route (`--to-drive`) existed first and was **deleted in September 2026**, along with
+step 05's fallback that read it — the direct download had superseded it for every fire-year.
+`toDrive` was slow for a bad reason: its write target is the **Drive API** (a rate-limited consumer
+service), then **Insync** dribbles the file down — two slow stages the asset path skips entirely
+(pyramids are *not* the cause; `toAsset` builds those too). The removal is recorded in
+[`docs/notes/05-whole_country_redesign.md`](notes/05-whole_country_redesign.md).
 
-The handoff (both paths):
+The handoff:
 
-- **Asset stores only `candseed`; the Drive COG carries the R-facing bands.** Stage 2, run with
-  `04-snic.py --to-drive --project mapbiomas-argentina` (same `--fire-year`/`--all`/`--test`/`--launch`
-  flags), writes a cloud-optimized GeoTIFF (`Export.image.toDrive`,
-  `formatOptions={'cloudOptimized': True}`) to `C.SNIC_DRIVE_FOLDER` holding **`candseed` +
-  `abs_date` + `veg_fire` + `n`**. It **reads `candseed` (and its burned mask) straight from the
-  `snic_<fire_year>` asset — SNIC is NOT recomputed** — and recreates `abs_date` + `veg_fire` + `n`
-  by re-running the §4 construction, masking all to the asset. They are thus computed per pixel,
-  **not** looked up from the `candseed` code. `abs_date` and `n` both follow the Y1/Y2 image that
-  won the seed>cand>none max, so they track each other.
+- **The asset stores only `candseed`; the R-facing bands are materialized separately.** The
+  metrics stage **reads `candseed` (and its burned mask) straight from the `snic_<fire_year>`
+  asset — SNIC is NOT recomputed** — and recreates `abs_date` + `veg_fire` + `n` by re-running the
+  §4 construction, masking all to the asset. They are thus computed per pixel, **not** looked up
+  from the `candseed` code. `abs_date` and `n` both follow the Y1/Y2 image that won the
+  seed>cand>none max, so they track each other.
   `candseed == 3` flags a dieback pixel so R gives it the **parent object's** date for the
   month-of-burn raster, never its own (next-year) dieback date. Idempotent: skips a fire-year whose
-  asset is missing (run stage 1 first) or that has a PENDING/RUNNING Drive task.
-- **Compression is what makes the download cheap** (`cloudOptimized` → DEFLATE + tiling); burned is
-  ~0.3–1 % of area, so a masked image collapses to tens of MB/yr. A plain uncompressed export is
-  dense and large regardless of the mask. Drive (not GCS: the project has no CS budget). GEE may
-  auto-split a big export into sub-tifs — R re-mosaics with `terra::vrt()`.
+  asset is missing (run stage 1 first) or that has a PENDING/RUNNING task.
+- **The masked image is tiny**: burned is ~0.3–1 % of area, so a fire-year collapses to tens of
+  MB. GEE may auto-split a big export into sub-tifs — R re-mosaics with `terra::vrt()`.
 - **Permissive SNIC by design:** loose cuts protect **recall** at segmentation; **precision** is
   recovered at the step-06 object filter (real scars are compact and seeded throughout, noise is
   sparse and unseeded).
@@ -204,18 +198,17 @@ Replaces the Drive+Insync round-trip. Two commands:
      05 reads full-res full-coverage). geedim writes the mask → NoData tag, which terra honours. At
      carta granularity (~20 M cells) there is no OOM risk regardless.
 
-**R-side change still needed (step 05):** point `load_snic` at `data/snic-rasters/<fy>/` and
-`terra::vrt()` the per-carta tifs into one year mosaic *before* labelling (objects stay global),
-and read the **new band set/order** (`abs_date, veg_fire, n, burned_around_{1,2,3}, candseed`);
-`burned_around_*` now arrive pre-computed as **cell counts** (divide by (2r+1)² for the
-proportion), so drop the terra sparseness step for this path.
+**R side (step 05), done:** `load_snic` reads `data/snic-rasters/<fy>/` and `terra::vrt()`s the
+per-carta tifs into one year mosaic *before* labelling (objects stay global), in the band order
+`abs_date, veg_fire, n, burned_around_{1,2,3}, candseed`; `burned_around_*` arrive as **cell
+counts** and R divides by (2r+1)².
 
 ## 5c. Whole-country vectorization benchmark (FY2000)
 
-> **Legacy input.** Run on the legacy `snic_2000` **Drive COG** (16 sub-tifs, **9,156,980,085
-> cells** = 123601 × 74085) — the monolithic object being **replaced by the direct-download
-> per-carta images** (§5b). It measures the vectorize primitive at real whole-country scale;
-> numbers on the tiled input will differ. Machine: 31 GB RAM + 8 GB swap; GDAL 3.8.4.
+> **Retired input.** Run on the `snic_2000` **Drive COG** (16 sub-tifs, **9,156,980,085
+> cells** = 123601 × 74085) — the monolithic object since **replaced by the direct-download
+> per-carta images** (§5b), and deleted in September 2026. It measures the vectorize primitive at
+> real whole-country scale; numbers on the tiled input will differ. Machine: 31 GB RAM + 8 GB swap; GDAL 3.8.4.
 
 Steps share a burned-mask prep (terra writes a sparse `candseed>0` uint8 tif), then the mask is
 vectorized three ways. Wall time / peak RSS from `/usr/bin/time -v`:
