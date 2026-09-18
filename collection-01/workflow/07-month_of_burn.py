@@ -5,7 +5,7 @@ collection-01/workflow/07-month_of_burn.py
 Step 07a — MONTH OF BURN per CALENDAR YEAR, server-side in GEE.
 
 This is the hand-off from our fire-year mapping to the network's calendar-year products
-(docs/07 §4, docs/08 §6.5).  Nothing is uploaded here: the two inputs are already in GEE —
+(docs/07 §4, docs/07 "The verified calendar-year partition").  Nothing is uploaded here: the two inputs are already in GEE —
 the step-06 object FeatureCollections (`objects_raw_<fy>`, one per fire-year, the WHOLE
 object set with the `fire` call) and the SNIC per-pixel assets (`snic_<fy>.candseed`,
 `snic_metrics_<fy>.abs_date`).  We paint the accepted objects, read each pixel's own burn

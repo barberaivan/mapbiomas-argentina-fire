@@ -616,7 +616,7 @@ ANNUAL_BURNED_VECTORS = f"{FINAL_PRODUCTS}/annual_burned_vectors_v{PRODUCT_VERSI
 # ⚠️ DO NOT copy the LatAm reference script `6-export_scar_size_range_by_year`.  It writes
 # <5 / 5-25 / 25-50 / 50-250 / 250-500 / 500-1000 / 1000-5000 / >=5000 onto the SAME pixel
 # values 1-8, which does NOT match the legend the platform renders — a raster built with the
-# script and registered with the legend is silently mislabelled in every class (docs/08 §5.4).
+# script and registered with the legend is silently mislabelled in every class (docs/external/mapbiomas-fuego-reference.md "Stage 4, scripts 4–6 — the scar-size chain").
 #
 # docs/08 previously guessed the reference ranges were "almost certainly right for us" because
 # Brazil's are tuned to Amazon-scale scars.  MEASURED over all 27 calendar years (2,734,416

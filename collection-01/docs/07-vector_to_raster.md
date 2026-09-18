@@ -103,7 +103,7 @@ read time; nothing about the upload changes.
 **Calendar year and month are assigned PER PIXEL, from `abs_date`** — not per object from
 `year_calendar`. The object-level `year_cal` remains a property of the object database and is not
 used by any raster product. Per-pixel is what makes `annual_burned`, `monthly_burned` and
-`scar_size` agree pixel-for-pixel (docs/08 §6.7). The consequence is deliberate: **a fire that
+`scar_size` agree pixel-for-pixel (docs/08 "How Argentina's route differs"). The consequence is deliberate: **a fire that
 straddles 31 December is split into two calendar years**, and therefore into two scars.
 
 **A `candseed==3` dieback pixel takes its parent object's median date**, not its own `abs_date`
@@ -493,7 +493,7 @@ properties recording that it was applied upstream rather than skipped.
 ## 6. Why the object polygons can be trusted as the pixel set
 
 Both sides of this step recover a pixel set from the step-06 polygons, so that had to be exact
-rather than approximately right. docs/08 §6.4.2 warned that "painting a polygon fills its
+rather than approximately right. docs/notes/08-corrections_and_delivery.md warned that "painting a polygon fills its
 interior". **It does not**, and this was verified two independent ways:
 
 - **Locally**: `terra::cells(country template, accepted polygons)` for FY2020 returned
@@ -659,7 +659,7 @@ portion (47.2 M px) lands there, which is why it is bigger than either adjacent 
 **No size class is written into the vectors.** It is derived in GEE from `area_ha`
 (`C.SCAR_SIZE_LOWER_HA`), so the ranges are a one-line, one-task change rather than 27 re-uploads.
 That mattered: the reference script's ranges turned out **not** to match the published legend, and the
-classes were switched to the legend's after the vectors were already built (docs/08 §5.4).
+classes were switched to the legend's after the vectors were already built (docs/external/mapbiomas-fuego-reference.md "Stage 4, scripts 4–6 — the scar-size chain").
 
 ---
 
@@ -675,7 +675,7 @@ from the reference `5-export_annual_burned_id_and_size_by_year`:
 - **Size classes are applied server-side** from `C.SCAR_SIZE_LOWER_HA`, for the reason in §8. The
   values are the **published legend's**, not the reference script's: `< 10 / 10–250 / 250–500 /
   500–5 000 / 5 000–10 000 / 10 000–50 000 / 50 000–100 000 / ≥ 100 000 ha`, confirmed from the
-  Coleção 5 legend-code PDF and the live col-5 platform legend (docs/08 §5.4). We write **level 2
+  Coleção 5 legend-code PDF and the live col-5 platform legend (docs/external/mapbiomas-fuego-reference.md "Stage 4, scripts 4–6 — the scar-size chain"). We write **level 2
   only** (1–8); the platform derives its level-1 aggregation. Argentina populates all 8 classes —
   24 scars ≥ 100 000 ha, largest 219 410 ha in calendar 2003.
 
@@ -760,7 +760,7 @@ folder and the per-year names have to be aligned — not just the folder.
 ## 11. What is still open
 
 Nothing in **07a–07d** is outstanding: all 12 images and the 27 scar FCs are landed and verified on
-the exported assets (§9.1, §12.8), and docs/08 §7 is the delivery checklist. What is left:
+the exported assets (§9.1, §12.8), and docs/08 "What Argentina delivers" is the delivery checklist. What is left:
 
 - **The whole-country month-histogram cross-check has never completed** (§7). The GEE half is on its
   third submission (27 tasks, relaunched 2026-07-30); the **local half is missing from disk** —
@@ -786,7 +786,7 @@ the exported assets (§9.1, §12.8), and docs/08 §7 is the delivery checklist. 
   `REGION_RASTER.region_id`, so it is a candidate for the statistics stage's territorial layer, not a
   drop-in for it (statistics/docs/statistics.md checks to ~1 %).
 - ~~Scar-size ranges~~ — **settled**: the published legend's, confirmed from two independent sources
-  (docs/08 §5.4). No IPAM ruling needed. Do not copy `6-export_scar_size_range_by_year`.
+  (docs/external/mapbiomas-fuego-reference.md "Stage 4, scripts 4–6 — the scar-size chain"). No IPAM ruling needed. Do not copy `6-export_scar_size_range_by_year`.
 - **Asset-name cosmetics**: the month images are
   `mapbiomas_argentina_fire_collection1_fire_mask_v1_<year>`, which carries `v1` mid-name. Only the
   `year` property is read downstream, so this is cosmetic — but if it is to be renamed, do it
@@ -811,7 +811,7 @@ integration**, bands `classification_<year>`. **NOT `veg_fire`.** `veg_fire` is 
 25-class fire-modelling remap (region-specific, built for the burn-probability model); it is not the
 published LULC legend and no other country has it. Using it would make our `*_coverage` products
 undecodable by the platform and incomparable across the network. `veg_fire`'s only role in step 07 is
-the argument that the LULC *mask* is already embedded upstream (docs/08 §6.2) — it never enters a
+the argument that the LULC *mask* is already embedded upstream (docs/08 "Foundations") — it never enters a
 product.
 
 ⚠️ **`C.PRODUCT_LULC` is deliberately a SECOND constant, not a repoint of `C.MAPBIOMAS_LULC`.**
@@ -919,7 +919,7 @@ With `C.PRODUCT_LULC` on LULC col-3 v1 the question is moot anyway: it carries
 series is crossed with its own land cover.
 
 This is the **only** remaining place LULC enters our pipeline — the stage-3 LULC *mask* does not
-apply to us (docs/08 §6.2).
+apply to us (docs/08 "Foundations").
 
 **The LULC sits on our lattice.** Verified 2026-07-29 for col-2 v8 and col-3 v1 alike: the LULC has
 the same 30 m pixel size as the SNIC grid, and its origin is offset by exactly **9953 columns /

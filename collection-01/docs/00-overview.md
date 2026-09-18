@@ -88,11 +88,14 @@ set of layers in a specific shape: the fire-year objects are re-partitioned into
 years**, with year and month assigned **per pixel** from its burn date, and derived into the nine
 subproducts the network defines. It is a change of packaging, not of evidence.
 
-The network's shared post-processing is the spec those products conform to.
-[`08-postprocessing.md`](08-postprocessing.md) is mostly **our reading of the reference
-implementation** the other countries run, rather than a stage we execute: several of its stages
-are already embedded upstream here, and Argentina's actual route is
-[`07-vector_to_raster.md`](07-vector_to_raster.md), which wins wherever the two disagree.
+The network's shared post-processing is the spec those products conform to, and it is documented
+in two files because it is two different things. The spec itself — the other countries' reference
+implementation — is [`external/mapbiomas-fuego-reference.md`](external/mapbiomas-fuego-reference.md),
+read against a pinned commit of a repo we do not own. **Argentina's route through it** is
+[`08-postprocessing.md`](08-postprocessing.md): which of its stages are already embedded upstream
+here, how dating per pixel changes the products, and what is still undecided. What we actually
+built is [`07-vector_to_raster.md`](07-vector_to_raster.md), which wins wherever the three
+disagree.
 
 **Statistics and validation are not stages of this chain.** They consume the finished map — see
 [`../statistics/docs/statistics.md`](../statistics/docs/statistics.md) and

@@ -12,7 +12,7 @@
 #     fires that touch become one scar, which is what the network's definition says.
 #   * A fire that straddles 31 December IS split into two scars, one per calendar year.
 #     That is the point of the per-pixel date assignment: annual, monthly and scar_size then
-#     agree pixel-for-pixel (docs/08 §6.7).
+#     agree pixel-for-pixel (docs/08 "How Argentina's route differs").
 #
 # GEE cannot do the labelling (`connectedPixelCount` caps at 1024 px ≈ 92 ha, far below a real
 # scar), which is why Brazil round-trips through Drive + Colab. We label locally instead, from
@@ -21,7 +21,7 @@
 #
 # WHAT GOES IN THE VECTORS: `scar_id`, `area_ha`, `n_px`, `year`. NO size class — that is
 # derived in GEE from `area_ha`, so it follows whatever ranges the platform finally registers
-# (docs/08 §5.4 has the reference-vs-Workspace conflict).
+# (docs/external/mapbiomas-fuego-reference.md "Stage 4, scripts 4–6 — the scar-size chain" has the reference-vs-Workspace conflict).
 #
 # ONLY ACCEPTED OBJECTS CONTRIBUTE: `fire == 1 & area_ha >= MIN_FIRE_HA`. `fire` is the
 # deployed call — the collected label where there is one, else the model (docs/06 "The three call columns"); note
@@ -385,7 +385,7 @@ pass_scars <- function(Y) {
   message(sprintf("\n══ %s scars ── from %s ══", tag, paste(basename(fs[have]), collapse = " + ")))
   px <- rbindlist(lapply(fs[have], readRDS))
   # reburn inside one calendar year is the only real conflict: the LATER month wins — what the
-  # pixel looks like at year end (docs/08 §6.4.3). The two halves are otherwise disjoint.
+  # pixel looks like at year end (docs/notes/08-corrections_and_delivery.md). The two halves are otherwise disjoint.
   before <- nrow(px)
   # `unique(..., by=)` on the sorted table, NOT `.SD[1L]` by group: at ~100 M rows a per-group
   # subset is orders of magnitude slower than one pass over sorted keys.

@@ -30,7 +30,7 @@ Two deliberate departures from the reference script `5-export_annual_burned_id_a
      `.map()` is dropped.
   2. **The size classes come from `C.SCAR_SIZE_LOWER_HA`, applied here and not baked into the
      vectors.** The reference script's ranges do NOT match the published Fogo col-5 legend on the
-     same pixel values 1-8, so we use the LEGEND's (docs/08 §5.4). Keeping the classification
+     same pixel values 1-8, so we use the LEGEND's (docs/external/mapbiomas-fuego-reference.md "Stage 4, scripts 4–6 — the scar-size chain"). Keeping the classification
      server-side is what made that switch free after the vectors were already built -- one
      re-export, not 27 re-uploads.
 

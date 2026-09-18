@@ -1,4 +1,11 @@
-# 03 — Distributed export via Colab (admin notes)
+# 03 — Distributed export via Colab (a how-to)
+
+> **This is a how-to, not a step doc.** It is the operating procedure for running one step's
+> exports across several people, written for whoever is coordinating them. The step itself — what
+> `bpts` computes and why — is [`03-bpts.md`](03-bpts.md). Nothing here is part of the method.
+>
+> **Collection 1's `bpts` export is finished** (all years landed; steps 04–07 are built on them),
+> so this is kept as the recipe for collection 2 rather than as a live campaign.
 
 How to run step-03 (`bpts`) exports across several people/accounts, since GEE only
 runs ~3 export tasks at a time per account. Coordination is a shared **Excel**: one
@@ -22,10 +29,14 @@ Put that URL in the Excel header. You share the *link*, not the file.
 2. **Repo readable** by contributors — make it public, or add them as collaborators
    (the `git clone` line needs read access).
 3. **Export the buffered region raster** — `scripts/export_region_raster.py`
-   (`C.REGION_RASTER`). Without it every run fails at runtime. ← current blocker.
-4. **Grant each contributor's Google account writer access** to the output collection
-   `projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/WORKFLOW-EXPORTS/bp_ts_metrics`
-   (and reader on the inputs). Immediate permission errors mean this is missing.
+   (`C.REGION_RASTER`). Without it every run fails at runtime. *(Done for collection 1,
+   2026-06-24.)*
+4. **Grant each contributor's Google account writer access to BOTH output collections**, not one:
+   `C.bpts_target_col(year)` routes **1999–2009 to `projects/mapbiomas-chaco/FIRE/bp_ts_metrics`**
+   and every other year to `C.BP_TS_METRICS_COL`, because the `mapbiomas-argentina` asset home ran
+   out of space (`03-bpts.md` "Inputs → Outputs"). A contributor who claims an early
+   year and has writer access only to the main collection fails immediately. Reader on the inputs
+   too.
 5. **Excel**: rows for years 1999–2025 with columns name / status / (optional) project.
 
 ## What each contributor does

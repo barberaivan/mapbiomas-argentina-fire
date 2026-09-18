@@ -19,7 +19,7 @@ En este documento se detallan enlaces/datos relevantes, e ideas para
 el factsheet. Puede también servir como hoja de ruta/bitácora, para estar al
 tanto de qué se hizo y qué falta.
 
-> **Plan de producción: [`09-statistics.md`](09-statistics.md)** (de dónde sale cada
+> **Plan de producción: [`09-statistics.md`](statistics.md)** (de dónde sale cada
 > número: el área quemada del toolkit, el denominador quemable, el conteo de incendios) y
 
 ---
@@ -56,7 +56,7 @@ imprenta ahora.
 publica. Especifica lámina por lámina qué figura va, con qué nombre de archivo, qué dice el
 epígrafe y de qué tabla sale; escribe las imágenes y sus CSV en
 `data/statistics/factsheet_sep2026_figures_and_tables/`, que es la carpeta que se comparte.
-De dónde sale cada número sigue estando en [`09-statistics.md`](09-statistics.md) §5.10; el
+De dónde sale cada número sigue estando en [`09-statistics.md`](statistics.md) §5.10; el
 resto de este documento es el porqué de cada figura, que es lo que el cuaderno resume.
 
 ---

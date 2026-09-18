@@ -2,10 +2,10 @@
 
 How we compute fire statistics from the published maps. **None of this is part of the
 product** — it exists to communicate results. The maps themselves are
-[`07-vector_to_raster.md`](07-vector_to_raster.md) (what we build) and
-[`08-postprocessing.md`](08-postprocessing.md) (what the network expects); what each graphic
+[`07-vector_to_raster.md`](../../docs/07-vector_to_raster.md) (what we build) and
+[`08-postprocessing.md`](../../docs/08-postprocessing.md) (what the network expects); what each graphic
 *says* is [`factsheet-sep2026-spec.md`](factsheet-sep2026-spec.md). This file is where each of its
-**numbers** comes from. [`ROADMAP.md`](../../ROADMAP.md) is the *when*.
+**numbers** comes from. [`ROADMAP.md`](../../../ROADMAP.md) is the *when*.
 
 **Three sources, and every figure must say which one it used.**
 
@@ -1517,7 +1517,7 @@ themselves. Do them first.
 - **Fire-year totals**, directly — but the toolkit's table carries month *and* year, so a
   fire-year total is recoverable as May..Dec of *y* plus Jan..Apr of *y+1*. A legitimate
   aggregation of calendar-year products, and it should be labelled as such.
-- **Error-adjusted area.** That is [`11-validation.md`](11-validation.md)'s design-based
+- **Error-adjusted area.** That is [`11-validation.md`](../../validation/docs/design.md)'s design-based
   estimate, and it is not ready for September.
 - **Anything at departamento or provincia level with a `%`.** The toolkit already exports the
   provincia cut (`*_Provincia.csv`, absolute areas), but there is **no burnable denominator at

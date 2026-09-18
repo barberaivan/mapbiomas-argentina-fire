@@ -53,7 +53,7 @@ collection-01/
 │   ├── 07-scar_rasters.py           # Scar id / area / size-range rasters from the ingested scar FCs
 │   ├── 07-subproducts.py            # The 9 derived subproducts, from the month collection (docs/07 §12)
 │   └── 07-burned_area_polygons.py   # All fires, 28 fire-years, one FC for early users (docs/07 §13)
-│                           # step 08 (network post-processing) has no script yet — docs/08-postprocessing.md
+│                           # step 08 has no script — the spec is met by step 07; docs/08-postprocessing.md
 ├── statistics/             # Step 09 — every factsheet number and figure (statistics/docs/statistics.md)
 │   ├── legends.py                   # burnable class list, status codes, the 13 ecoregion names (literals)
 │   ├── burnable_export.py           # the CONSTANT burnable denominator: one GEE export, 13 numbers
@@ -208,10 +208,12 @@ country-team validation gate, so that all countries' products are identical in n
 encoding and legend despite mapping with a different method (Alencar et al. 2022). Reproduce it from
 the network's reference code, don't redesign it:
 
-- `docs/08-postprocessing.md` — stages 1–4: the GEE assets (what each reference script does, **§6
-  Argentina's route**, what we owe, open decisions).
+- `docs/08-postprocessing.md` — **Argentina's route** through the spec: which stages are already
+  embedded upstream, how dating per pixel changes the products, what we deliver, open decisions.
+- `docs/external/mapbiomas-fuego-reference.md` — **the spec itself**, i.e. our reading of the
+  network's repo, pinned to a commit. Derivative and liable to go stale.
 - `statistics/docs/statistics.md` — stages 5–6 + launch: statistics, territorial layer, Workspace, materials.
-- [*Guía del Proceso de Lanzamiento — MapBiomas Fuego*](https://docs.google.com/presentation/d/1Y5SUeS_405k5zZkBX4z6BDaC_umI8Saiguk7coITB1Q/edit) — the network's own guide (public; `docs/08` §1 shows how to read it as a PDF).
+- [*Guía del Proceso de Lanzamiento — MapBiomas Fuego*](https://docs.google.com/presentation/d/1Y5SUeS_405k5zZkBX4z6BDaC_umI8Saiguk7coITB1Q/edit) — the network's own guide (public; `docs/external/mapbiomas-fuego-reference.md` "Reference material" shows how to read it as a PDF).
 - Read-only reference repo at `/home/ivan/dev/MapBiomas/mapbiomas-latam-fire-gee/` (see CLAUDE.md → *GEE Code Editor scripts*).
 
 **Argentina is expected to deliver all six subproducts** (annual, monthly, accumulated, frequency,
@@ -573,10 +575,10 @@ Export status across regions: `python collection-01/scripts/status.py`.
 |------|--------|
 | 01 — training data export | Complete for all 5 regions (BA, CHACO, PAMPA, CUYO, PAT), v1. |
 | 02 — model fitting (R, glmnet) | All 23 `veg_fire` classes fitted (v1); see `models/cv_metrics_v1.csv`. |
-| 03 — burn-probability time series | Running (per-carta export; `docs/03-bpts.md`). |
+| 03 — burn-probability time series | **Done.** All years exported per *carta*; 1999–2009 live in `mapbiomas-chaco` (`docs/03-bpts.md`). |
 | 04 — SNIC segmentation | Whole-country fire-year SNIC settled; per-carta direct-download handoff to R (`docs/04-snic.md`). |
 | 05 — object metrics (R/terra) | 2001–2025 measured and run; 1.69 M objects (`docs/05-object_metrics.md`). |
 | 06 — object model (R, BART) | **Done.** 20 predictors, fitted on 5255 labels, grid-blocked OOF AUC 0.891 (within-year 0.845); per-size-band cuts deployed; all 28 fire-years scored (1 689 419 objects, 36 unscored); 28 QGIS layers built and inspected (`docs/06-object_model.md`, `docs/06-object_labels.md`, `docs/06-object_inspection.md`). |
 | 07 — calendar-year products | **All 12 images + 27 scar FCs landed and verified on the exported assets** (2026-07-30): **07a** month-of-burn collection 27/27, **07b** calendar-year scars 27/27 built, gated and ingested, **07c** scar rasters 3/3, **07d** the nine derived subproducts 9/9. **07e** the fire-object polygon layer for early users is exporting. Delivery checklist: `docs/08-postprocessing.md` §7; detail and verification numbers: `docs/07-vector_to_raster.md`. Still owed: the whole-country month-histogram cross-check (its local half needs regenerating) and the network's visual validation pass. |
-| 08 — network post-processing & published subproducts | Not started; design notes only (`docs/08-postprocessing.md`). Assets due **31 Jul 2026** |
+| 08 — network post-processing & published subproducts | **Delivered 2026-07-30** — the spec is satisfied by step 07; `docs/08-postprocessing.md` says how Argentina's route differs and what is still undecided, `docs/external/mapbiomas-fuego-reference.md` is the network's spec |
 | 09 — statistics & factsheet | **Numbers and figures done.** Burned area from the network's toolkit run on our ecorregiones; burnable denominator exported (251.09 Mha over the 12 mapped ecorregiones); 1,012,645 mapped fires counted locally; the `factsheet_*` tables and 170 figures built (`statistics/docs/statistics.md`), including **análisis 6** — how land cover changes around fire, with a control: q = 3.74 nationally, 10.9 for bosque → agropecuario. Gate 6 — toolkit vs object database — closes at **63.23 vs 63.25 Mha, 0.03 %**. Still owed: the staging cross-check, the ATBD, Workspace registration. Launch **24 Sep 2026** |

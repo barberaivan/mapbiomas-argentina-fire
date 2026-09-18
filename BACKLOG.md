@@ -133,7 +133,7 @@ This is probably for collection 2.
 ## Calendar-year products (step 07)
 
 Built 2026-07-29/30 (`docs/07-vector_to_raster.md`). **All 12 product images and the 27 scar FCs are
-landed and verified on the exported assets** — docs/08 §7 is the delivery checklist.
+landed and verified on the exported assets** — docs/08 "What Argentina delivers" is the delivery checklist.
 
 **Next actions, in order** (everything else in this section is history, kept for the reasoning):
 
@@ -157,9 +157,9 @@ landed and verified on the exported assets** — docs/08 §7 is the delivery che
      eye before the ATBD quotes anything about the largest mapped fires.
 2. **Regenerate `scars_<Y>_months.csv`** (`07-calendar_scars.R` pass 2, from `scars-pixels-cache`),
    then `07-month_of_burn.py --all --stats-read` — the last unrun verification of the month product.
-3. **The network's visual validation gate** (docs/08 §2): `1-Toolkit_Collection1/Visualize-Collections-Fire`
+3. **The network's visual validation gate** (docs/08 "Gotchas"): `1-Toolkit_Collection1/Visualize-Collections-Fire`
    over a few years by eye, before IPAM copies anything to `mapbiomas-public`.
-4. **Ask IPAM the three open questions** (docs/08 §8): #9 `frequency_burned`'s band name — the only one
+4. **Ask IPAM the three open questions** (docs/08 "Open decisions"): #9 `frequency_burned`'s band name — the only one
    that changes an asset — plus #1 the `COLLECTION-1` spelling and #8 whether we may publish the
    fire-year vectors.
 5. **Then the statistics stage** (collection-01/statistics/docs/statistics.md), which cannot start before the territorial-layer decision —
@@ -265,7 +265,7 @@ What remains, in detail:
 - [ ] **The territorial layer — NOT before ~20 August 2026** (Iván, 2026-07-29). Not needed for the
   31 July assets, and **which territories to cut by is undecided** — possibly a **vegetation-units
   map** rather than the 5 fire regions. That decision comes first; the layer is mechanical after it.
-  docs/08 §8.10. What follows applies only if the 5 fire regions win:
+  docs/08 "Open decisions". What follows applies only if the 5 fire regions win:
 - [ ] **Build `regiones_fuego_argentina_v1` as a FeatureCollection.** ⚠️ **The premise was wrong**: a
   5-feature region VECTOR does exist — `ANCILLARY_DATA/VECTOR/ARG/regiones_arg_col1_simplificada_num`,
   with `Region` (`Pampas`, `Bosque Atlantico`, `Puna,Monte y Altos Andes`, `Patagonia`, `Chaco`) and an

@@ -627,14 +627,52 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
 > been **merged into one table cell** by a missing newline (`… comes from || \`…/design.md\` | step
 > 11 — …`), so the validation row had not been rendering as a row at all since the move.
 
-- [ ] `08-postprocessing.md` (5.3 k) — **when this splits, revisit the closing paragraphs of
-      `00-overview.md`**, which describe today's 08 as "mostly our reading of the reference
-      implementation". After the split that is `docs/external/`, and what stays numbered is only
-      Argentina's route — which docs/07 already implements, so decide there whether a step-08 doc
-      survives at all or folds into 07. — **split first** (§3): our step 08 stays numbered, the
-      reading of the network's repo moves to `docs/external/` with a pinned commit. The four
-      `CORRECTION —` sections are `notes/`.
-- [ ] `03-colab_multi_export.md` (0.6 k) — small; mark as how-to.
+- [x] `08-postprocessing.md` (5,284 → **1,219**) — **split, and the step doc did not survive as
+      one.** The plan asked the question and the answer is no: §6 was almost entirely a second
+      telling of `docs/07`. Three ways: §§1–5 → `docs/external/mapbiomas-fuego-reference.md`
+      (2,433 words, commit-pinned); the three `CORRECTION —` sections, the July delivery checklist
+      and the struck-through decisions → `notes/08-corrections_and_delivery.md` (1,999, verbatim);
+      what is left is a **1.2 k signpost** that carries the only things neither of the others has
+      — the *stage-by-stage comparison* of what Argentina already satisfies upstream, what dating
+      per pixel buys and costs, and the four live open decisions. ~25 citations repointed across
+      7 files; `00-overview.md`'s closing paragraph rewritten as the plan asked; CLAUDE.md's one
+      row replaced by two.
+- [x] `03-colab_multi_export.md` (568 → 662) — marked as a **how-to, not a step doc**, in a header
+      box, and **it grew, because two facts in it were false.** See the box.
+
+> **What the step-08 and colab passes found (2026-09-18).**
+>
+> **(a) A step doc can be a duplicate of its neighbour and read as perfectly current.** Every
+> substantive claim in §6 of `08-postprocessing.md` — the LULC mask being upstream, paint
+> reproducing the pixel set, the scars being a fresh labelling pass, the verified calendar
+> partition, the `candseed == 3` parent date — is also in `docs/07`, measured, and CLAUDE.md's
+> docs/07 row already listed all five. Nothing in it was stale and nothing was history, so neither
+> the reduction-1 test nor a currency check would have flagged it. **What flagged it was asking
+> the plan's own question** — *does a step-08 doc survive at all?* — which is worth generalising:
+> when two docs cover adjacent stages, check for duplication explicitly, because a per-doc pass
+> structurally cannot see it.
+>
+> **(b) The external reading was pinned, and the pin is already the story.** `mapbiomas-fire` was
+> cloned locally at `904fbdf` (2026-09-15); on the day it was pinned `origin/master` was **68
+> commits ahead** and none of those had been read against the text. That is stated in the header
+> box rather than fixed by pulling: pulling would have made the doc's claims unverified against a
+> repo nobody had reviewed, which is worse than an honest pin. `docs/external/README.md`'s rule
+> should probably say so explicitly — *pin what you read, do not pull to look current*.
+>
+> **(c) The colab how-to had two false statements, and the harmful one was an omission.** It still
+> flagged "export the region raster ← **current blocker**" for something done on 2026-06-24, which
+> is merely embarrassing. The real defect: step 4 tells a contributor to get writer access to *the*
+> output collection, singular — but `C.bpts_target_col()` routes **1999–2009 to
+> `mapbiomas-chaco`**, so anyone claiming an early year would have failed on permissions with no
+> idea why. That routing is the same fact the step-03 pass found missing from `03-bpts.md`; it had
+> been missing from **two** docs, and fixing one did not fix the other. **When a pass adds a
+> previously-undocumented rule, grep for every other doc that should have had it.**
+>
+> **(d) Four Phase-0 broken links fixed in passing**, all in the moved statistics docs:
+> `statistics.md` still linked `07-vector_to_raster.md`, `08-postprocessing.md`, `../../ROADMAP.md`
+> and `11-validation.md` as if it were still in `docs/`. A `.md`-link resolver over
+> `collection-01/` now reports clean except one archived link inside a `notes/` file, which stays.
+
 - [ ] `07-vector_to_raster.md` (13.3 k) — **two sessions**. Also re-order §12.7–12.8 vs §13.
 - [ ] `statistics/docs/statistics.md` (16.8 k, was `docs/09`) — **two sessions. FROZEN, with its
       move, until the launch lands (24 Sep 2026).**
@@ -747,6 +785,15 @@ Append one line per completed item: date — what — commit.
   the Python); headings and ~55 citations de-numbered across 8 files; attribution box added (design
   Iván, implementation Ramón — the item's premise was wrong); **the strata were built on the `_v1`
   map and the product is `_v2`** — recorded, not fixed, because rebuilding is a team call.
+- 2026-09-18 — **Phase 2, `08-postprocessing.md`**: 5,284 → 1,219 words, split three ways —
+  `docs/external/mapbiomas-fuego-reference.md` (the network's spec, pinned at `904fbdf` with
+  `origin/master` 68 commits ahead) and `notes/08-corrections_and_delivery.md` (the three
+  CORRECTIONs, the July delivery, the decisions list). The step doc survives only as the
+  Argentina-vs-reference comparison and the four live open decisions; ~25 citations repointed,
+  `00-overview.md`'s closing paragraph rewritten, CLAUDE.md's row replaced by two.
+- 2026-09-18 — **Phase 2, `03-colab_multi_export.md`**: marked a how-to; the stale "current
+  blocker" removed and the **two-collection writer access** (1999–2009 → `mapbiomas-chaco`) added,
+  which was missing from this doc as well as from `03-bpts.md`.
 - 2026-09-18 — **Phase 0 done**: 3 `git mv`s, `docs/notes/` + `docs/external/` created with
   their conventions, ~120 citations rewritten across 30 files, ROADMAP pointed here.
   Uncommitted at time of writing.
