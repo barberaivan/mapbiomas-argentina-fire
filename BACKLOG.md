@@ -356,7 +356,7 @@ What remains, in detail:
   `n_mean` is an era proxy (see the closed item above). `n_pixels` is not a size — the pixel scale is
   latitude-dependent — and the importance analysis puts it **last of 20** on every measure
   (permutation |Δp| 0.0006, AUC drop 0.0000, ALE range 0.008), so `area_ha` carries everything it
-  does. Recorded at docs/05 §2.4 and docs/06 §4.
+  does. Recorded at docs/05 "Metrics" and docs/06 §4.
 - [x] **Aggregated vegetation fractions in the object model** (2026-07-27). Five summed fractions
   (`frac_agri`, `frac_grass_inund`, `frac_pasture`, `frac_grass_temp`, `frac_woody`, derived from
   `config/veg_fire_remap.csv` by name) replaced the 23 raw class fractions: 22 predictors instead of

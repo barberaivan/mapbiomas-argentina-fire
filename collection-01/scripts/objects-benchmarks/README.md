@@ -2,7 +2,7 @@
 
 One-off benchmark harness that profiled step 05 (`workflow/05-objects_metrics.R`) on the
 whole-country **FY2000** grid and compared the two vectorization strategies. Findings and the
-resulting decisions live in **`docs/05-object_metrics.md` §7–§8**; these scripts are kept so the
+resulting decisions live in **`docs/notes/05-whole_country_redesign.md`**; these scripts are kept so the
 numbers are reproducible. They are **not** part of the production pipeline.
 
 Input: the FY2000 direct-download tiles in `collection-01/data/snic-rasters/2000/` (04 §5b).
@@ -37,7 +37,7 @@ bash    collection-01/scripts/objects-benchmarks/run_all.sh         # label → 
 | `stage0_extract.R` | per-carta burned-cell extract → `row/col.i32` + `meta_grid.json` (dodges the `as.data.frame` long-vector crash) |
 | `stage0_label_uf.R` | memory-bounded **union-find** 8-conn labelling (Rcpp parent array, no edge list/graph) → `pid.i32` + `meta.json` |
 | `stageA.py` | Path A: block-aware out-of-core `pid` GeoTIFF write + `osgeo.gdal.Polygonize -8` → raw GPKG |
-| `stageA_dissolve.R` | Path A: `terra::aggregate(by="pid")` (required to merge gdal's disconnected same-pid fragments — docs/05 §7b) |
+| `stageA_dissolve.R` | Path A: `terra::aggregate(by="pid")` (required to merge gdal's disconnected same-pid fragments — docs/notes/05-whole_country_redesign.md) |
 | `stageB.R` | Path B: per-object local-raster `as.polygons`, parallel (`F2000_CORES`, default 13), shard + merge |
 | `compare.R` | A-vs-B agreement: feature counts, total area, per-pid area |
 
@@ -47,7 +47,7 @@ bash    collection-01/scripts/objects-benchmarks/run_all.sh         # label → 
 
 ## Supporting micro-benchmarks
 
-Produced numbers cited in docs/05 §7b (kept for record; some carry session-specific scratch paths).
+Produced numbers cited in docs/notes/05-whole_country_redesign.md (kept for record; some carry session-specific scratch paths).
 
 | script | role |
 |---|---|

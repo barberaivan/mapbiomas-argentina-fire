@@ -322,8 +322,8 @@ SNIC_SEED_MAX_DROP = 5         # drop seed components with <= this many connecte
 # Pixel-level "context_burned" (sparseness): for r in SNIC_CONTEXT_RADII, burned_around_<r> =
 # burned-pixel COUNT in the (2r+1)² square window = sum of the 0/1 burned mask
 # (reduceNeighborhood). Computed in GEE (ported from collection-00 07-objects_metrics), baked
-# into the metrics asset — NOT in terra (a local focal, but terra densifies the grid; docs/05
-# §3, §7b). Kept the collection-00 band NAME burned_around_<r>, but its SCALE is a plain int16
+# into the metrics asset — NOT in terra (a local focal, but terra densifies the grid; docs/05 "Metrics";
+# docs/notes/05-whole_country_redesign.md). Kept the collection-00 band NAME burned_around_<r>, but its SCALE is a plain int16
 # CELL COUNT (max (2r+1)² = 49 at r=3), not the proportion — so the download stays integer with
 # no scale factor; R divides by (2r+1)² for the [0,1] proportion (real scar → near 1; speckle →
 # low). A burned pixel's own centre keeps count ≥ 1, so 0 stays a safe masked/NoData sentinel.

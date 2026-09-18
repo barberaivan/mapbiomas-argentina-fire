@@ -11,7 +11,7 @@
 # scar share one id.
 #
 # SCALES TO THE WHOLE COUNTRY (docs/05). The three steps that broke at 9.16 B cells were
-# replaced (see docs/05 §7/§8 for the FY2000 profile that forced each change):
+# replaced (see docs/notes/05-whole_country_redesign.md for the profile that forced each change):
 #   * EXTRACT burned cells PER-CARTA TILE, not as.data.frame() on the whole mosaic — the
 #     latter builds 1:ncell (9.16 B) and R's cbind throws "long vectors not supported".
 #   * LABEL with a UNION-FIND (utils/label_uf.cpp: parent array only, edges streamed one
@@ -72,11 +72,11 @@ SNIC_DIRECT_DIR <- "collection-01/data/snic-rasters"     # direct-download per-c
 
 # veg_fire codes that get NO enlarged connectivity context (8-connectivity only): agriculture
 # (1,2,3) + grasslands ba/chaco/pampa/inund (12,13,15,17) + pastures ba/chaco (18,19). Burned
-# fields/paddocks sit close together and bridging them inflates commission error (docs/05 §2.2).
+# fields/paddocks sit close together and bridging them inflates commission error (docs/05 "Label").
 # candseed==3 dieback pixels ALSO get no enlarged context (added in label_uf). Keep in sync w/ docs.
 NO_DILATE_VEG <- c(1L, 2L, 3L, 12L, 13L, 15L, 17L, 18L, 19L)
 
-# Patagonia steppe dieback cut (docs/05 §2.1): drop candseed==3 pixels EAST of this longitude.
+# Patagonia steppe dieback cut (docs/05 "Extract"): drop candseed==3 pixels EAST of this longitude.
 # SNIC pads dieback only west of -70.3 (04 §4.3); this tightens the western limit to -70.6.
 DIEBACK_LON_CUT <- -70.6
 
@@ -86,7 +86,7 @@ EPOCH       <- "1970-01-01"         # abs_date is whole days since this
 EXPECT_BANDS        <- c("candseed", "abs_date", "veg_fire", "n")  # legacy COG; n optional
 EXPECT_BANDS_DIRECT <- c("abs_date", "veg_fire", "n",             # direct-download tiles (04 §5b)
                          sprintf("burned_around_%d", BA_RADII), "candseed")
-DILATE_R    <- 3L                   # 1-px dilation ≡ union within Chebyshev ≤3 (docs/05 §2)
+DILATE_R    <- 3L                   # 1-px dilation ≡ union within Chebyshev ≤3 (docs/05 "Label")
 
 # per-object vectorize parallelism (unix fork only; 1 elsewhere)
 OBJ_CORES <- {
@@ -133,7 +133,7 @@ grid_of <- function(r) list(nc = ncol(r), nr = nrow(r), x0 = terra::ext(r)$xmin,
 
 # Per-carta burned-cell extract → data.table(all bands, row, col, cell). Each tile is read
 # whole (< 2^31 cells), burned cells kept, local (row,col) mapped to the GLOBAL lattice via
-# the tile's offset. Never touches the 9.16 B-cell grid at once (docs/05 §7).
+# the tile's offset. Never touches the 9.16 B-cell grid at once (docs/notes/05-whole_country_redesign.md).
 extract_burned <- function(tifs, r) {
   g <- grid_of(r); expect <- names(r)
   parts <- lapply(tifs, function(tf) {
@@ -151,7 +151,7 @@ extract_burned <- function(tifs, r) {
   dt <- rbindlist(parts, use.names = TRUE)
   if (!nrow(dt)) return(dt)
   dt <- unique(dt, by = c("row", "col"))                # guard carta seams (clipped disjoint anyway)
-  # Patagonia steppe dieback cut (docs/05 §2.1): drop candseed==3 east of DIEBACK_LON_CUT.
+  # Patagonia steppe dieback cut (docs/05 "Extract"): drop candseed==3 east of DIEBACK_LON_CUT.
   dt <- dt[!(candseed == 3L & (g$x0 + (col - 0.5) * g$dx) > DIEBACK_LON_CUT)]
   if (!nrow(dt)) return(dt)
   dt[, cell := (as.numeric(row) - 1) * g$nc + col]      # global linear cell (double; > 2^31 ok)
@@ -166,7 +166,7 @@ make_forward_offsets <- function(R) {
 }
 
 # Union-find labelling with the 1-px-DILATION connectivity, WITHOUT materializing a halo
-# (docs/05 §2). The dilation ⇔ union two burned cells at Chebyshev distance d iff:
+# (docs/05 "Label"). The dilation ⇔ union two burned cells at Chebyshev distance d iff:
 #   d ≤ 1 always;  d ≤ 2 if ≥1 endpoint is non-ag/grass;  d ≤ 3 if BOTH are non-ag/grass.
 # (Exact: a non-ag/grass burned pixel "occupies" its 3×3 dilation, an ag/grass one just 1×1;
 # two occupied regions 8-touch at exactly those distances. Reproduces terra dilate→label→drop
@@ -219,7 +219,7 @@ object_ids <- function(candseed, veg_fire) {
 mode_int <- function(x) { u <- unique(x); u[which.max(tabulate(match(x, u)))] }
 
 # From a burned-cell data.table (pid, candseed, veg_fire, abs_date, [n], cell_area,
-# burned_around_1..3) → ONE metrics data.table keyed by pid (docs/05 §2.4). Reducers are
+# burned_around_1..3) → ONE metrics data.table keyed by pid (docs/05 "Metrics"). Reducers are
 # data.table-GForce-optimizable (mean/median/min/max/sum/.N) except the calendar-year mode, kept in
 # its own tiny group-by. Date/seed/year stats EXCLUDE candseed==3 dieback pixels (§2.4). Used by
 # BOTH the union-find and the terra paths.
@@ -322,7 +322,7 @@ objects_sparse <- function(tifs, r, tag = "") {
   p <- terra::as.polygons(rr, dissolve = TRUE); p$pid <- cc$pid[1]; p
 }
 
-# Parallel per-object polygonize (docs/05 §7b Path B). Workers return terra::wrap()ped chunks
+# Parallel per-object polygonize (docs/notes/05-whole_country_redesign.md, Path B). Workers return terra::wrap()ped chunks
 # (serializable across fork); master unwraps + rbinds. ncores=1 → serial.
 vectorize_sparse <- function(geom, g, ncores = OBJ_CORES) {
   setkey(geom, pid)
@@ -417,7 +417,7 @@ process_year <- function(fy, test = FALSE, method = "sparse") {
   polys$oid <- sprintf("%d_%d", fy, polys$pid)
   raster_mets[, oid := sprintf("%d_%d", fy, pid)]
 
-  # split outputs (docs/05 §4): GPKG (oid + geometry ONLY) + two metric CSVs, all keyed by oid.
+  # split outputs (docs/05 "Inputs → Outputs"): GPKG (oid + geometry ONLY) + two metric CSVs, all keyed by oid.
   shape_cols <- c("oid", "perimeter_m", "convexity", "mbr_fill", "mbr_elongation",
                   "circularity", "shape_index")
   shape_mets <- as.data.table(sf::st_drop_geometry(polys))[, ..shape_cols]

@@ -142,7 +142,7 @@ lives in `docs/05-object_metrics.md` and `docs/06`.** Two handoff paths exist:
   *not* the cause — `toAsset` builds those too; §5b). Instead, `04-snic.py --to-asset` materializes
   the R-facing bands to a companion `snic_metrics_<fy>` **asset**, and `download_snic.py` pulls them
   per *carta* straight to disk via `geedim`'s compute-pixels endpoint (no batch queue, no Drive, no
-  Insync). See **§5b** below and `docs/05 §7b`.
+  Insync). See **§5b** below and [`docs/notes/05-whole_country_redesign.md`](notes/05-whole_country_redesign.md).
 - **Drive COG (`--to-drive`) — legacy.** Kept for now; details in the bullets below.
 
 The handoff (both paths):
@@ -183,7 +183,7 @@ Replaces the Drive+Insync round-trip. Two commands:
    computed **GEE-native** (`reduceNeighborhood` **sum** of the 0/1 burned mask over a (2r+1)²
    window, ported from collection-00 `07-objects_metrics`) and belongs here — a local focal, cheap
    and non-densifying in GEE, vs terra where it densified the grid (supersedes the terra
-   `burned_around_*` in `docs/05 §3` for this path). **Kept the collection-00 name, but its scale is
+   `burned_around_*` in `docs/05` "Metrics" for this path). **Kept the collection-00 name, but its scale is
    a plain int16 CELL COUNT, not the proportion** (so the download stays integer, no scale factor);
    **R divides by (2r+1)² for the [0,1] proportion**.
 
@@ -199,7 +199,7 @@ Replaces the Drive+Insync round-trip. Two commands:
      `--shard i/n` — disjoint carta shards under different accounts at once (swap credentials per
      shard). Each carta is `clip`ped to its polygon so a burned pixel lands in exactly one tile (no
      double-count); `crs_transform` pins every tile to the bpts lattice so they `vrt()` cleanly.
-   - **No COG, and none needed** (`docs/05 §1`, §7b): the read-speed/OOM win was the **NoData tag +
+   - **No COG, and none needed** (`docs/05` "Inputs → Outputs"): the read-speed/OOM win was the **NoData tag +
      sparse tiling**, not the cloud-optimized overviews (which only help partial/zoomed reads; step
      05 reads full-res full-coverage). geedim writes the mask → NoData tag, which terra honours. At
      carta granularity (~20 M cells) there is no OOM risk regardless.
@@ -240,13 +240,13 @@ Reading:
   **cannot complete** at country scale (§8.3).
 - **The prep scan (18:48 / 8.7 GB) is the real cost, and it's a monolithic-COG artifact** — reading
   9.16 B cells single-threaded. From the per-carta direct-download tiles it is far cheaper and
-  parallelizable (though we run **untiled** by choice — `docs/05 §7c`).
+  parallelizable (though we run **untiled** by choice — [`docs/notes/05-whole_country_redesign.md`](notes/05-whole_country_redesign.md)).
 
 **Caveat:** the benchmark polygonized the **raw** burned mask (no 1-px dilation / ag-suppression,
 §2), so it times the vectorize *primitive*; production polygonizes the `pid` raster (same cost
 order). **Conclusion:** streaming `gdal_polygonize` over a **disk-backed** `pid` (built out-of-core,
 not the 34 GB in-RAM fill) makes the whole-country, **untiled** run feasible at bounded RAM within
-~1 h/year (decision + architecture in `docs/05 §7c`).
+~1 h/year (decision + architecture in [`docs/notes/05-whole_country_redesign.md`](notes/05-whole_country_redesign.md)).
 
 ---
 

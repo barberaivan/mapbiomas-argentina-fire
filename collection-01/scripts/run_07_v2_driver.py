@@ -165,7 +165,7 @@ def spawn(name, argv):
 
 
 def ensure_mem_monitor():
-    """Keep `mem_monitor.sh` alongside the local passes (docs/05 §4.1).  Memory, not CPU, is the
+    """Keep `mem_monitor.sh` alongside the local passes (docs/05 "Run").  Memory, not CPU, is the
     binding constraint on the `scars` pass, and an OOM shows up as a bare rc=137 in the launcher
     log with nothing to explain it."""
     if running("mem_monitor.sh"):

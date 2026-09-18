@@ -360,10 +360,34 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
 > names a section that the same pass just deleted. That is correct and is not repaired — see
 > `notes/README.md` and the Phase 6 item.
 
-- [ ] `05-object_metrics.md` (4.4 k) — **do this one first, as calibration**: medium size,
-      self-contained, and §8 "Roads taken and abandoned" + §9 "the bug that killed the run" are
-      an unambiguous `notes/` case. Get Iván's sign-off on *what counts as history* here before
-      touching the rest.
+- [x] `05-object_metrics.md` (4.4 k → 1.75 k) — the calibration pass. §6 (status), §7 (the
+      FY2000 walls) and §8 (roads abandoned) → `notes/05-whole_country_redesign.md`; §9 (memory
+      profile, the merge bug, the trims) + §4.1's measured run → `notes/05-memory_profile.md`.
+      2.4 k words moved verbatim. **Two things for Iván to sign off — see the box below.**
+
+> **What the calibration pass settled, and the two open questions (2026-09-18).**
+>
+> **(a) The heading-number rot is INSIDE the docs too, not just across them.** Phase 0 found that
+> `docs/NN` was never a stable address; the same is true of `§N` *within* a doc. `docs/05 §3` meant
+> **two different sections** depending on the citer — the metrics section under an old numbering
+> (9 citations: `objects_data_functions.R`, `06-object_model.R`, `04-snic.py`, `constants.py`,
+> `objects-analysis.qmd`, `04-snic.md`, `objects_upload.py:184`) and the *object ids* section under
+> today's (`objects_upload.py:173`). `§7b` and `§7c` were cited 7 times and have never existed.
+> Since `TEMPLATE.md` rule 4 drops heading numbers anyway, **all 30-odd inbound citations were
+> rewritten to named sections** — `docs/05 "Metrics"`, `docs/05 "Label"`, `docs/05 "Run"` — and the
+> history citations now point at the `notes/` file directly. Recommend this becomes the rule for
+> every remaining Phase 2 pass: **cite a doc section by name, never by number.**
+>
+> **(b) What counted as history here** — the rule applied, for sign-off: a passage left the doc if
+> it was *dated*, a *benchmark*, a *rejected alternative*, or a *bug post-mortem*. It stayed if it
+> describes what the code does today, even when the reason is historical (the dilation-as-window
+> equivalence stays, because it **is** the live algorithm; the halo that OOM'd is one clause).
+>
+> ⚠️ **The doc landed at 1,748 words against TEMPLATE's 1,500 cap** and I did not cut further,
+> because what remains is live algorithm: the enlarged-context distance table, the metric
+> definitions and the `pid`/`oid` scheme are all cited from code. Iván to decide whether the cap
+> bends for a step this mechanical, or whether the dilation-geometry derivation moves to `notes/`
+> and the doc keeps only the table.
 - [ ] `03-bpts.md` (5.7 k) — §§9–11 are status/handoff/decision records.
 - [ ] `04-snic.md` (2.9 k) — §1 (the shelved SNIC-3D) and §5c (benchmark) are `notes/`.
 - [ ] `06-object_model.md` (8.0 k).
@@ -464,6 +488,10 @@ Append one line per completed item: date — what — commit.
 - 2026-09-18 — **Phase 1, first three boxes**: `TEMPLATE.md` written as a guide not a form;
   the four early docs restructured to it; `02-diagnostic_plots.md` split out;
   `notes/02-lr_term_reduction.md` extracted; three amendments recorded in Phase 1.
+- 2026-09-18 — **Phase 2, `05-object_metrics.md`** (the calibration pass): 4,376 → 1,748 words;
+  `notes/05-whole_country_redesign.md` + `notes/05-memory_profile.md` extracted verbatim;
+  ~30 inbound citations repointed from `§N` to named sections across 14 files; CLAUDE.md's step-05
+  index row corrected (it still claimed `igraph` labelling, replaced by union-find in July).
 - 2026-09-18 — **Phase 0 done**: 3 `git mv`s, `docs/notes/` + `docs/external/` created with
   their conventions, ~120 citations rewritten across 30 files, ROADMAP pointed here.
   Uncommitted at time of writing.

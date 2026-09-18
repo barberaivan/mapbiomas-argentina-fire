@@ -14,7 +14,7 @@ sharing one construction across stages:
                              asset, WITHOUT re-storing `candseed`. Feeds the tiled direct
                              download `download_snic.py`, which re-attaches `candseed` and
                              pulls the stack per *carta* to local disk — no Drive, no Insync
-                             (docs/04 §5, docs/05 §7b).
+                             (docs/04 §5, docs/notes/05-whole_country_redesign.md).
 
 All tunable settings live in `utils/constants.py` (Step 04 section); this file
 holds only procedure.
@@ -441,7 +441,7 @@ def burned_around_bands(candseed_asset):
     sum of the 0/1 burned mask (r in C.SNIC_CONTEXT_RADII). NOTE: the stored scale is a CELL
     COUNT (max (2r+1)² = 49 at r=3), NOT the proportion — so the download stays integer with no
     scale factor; R divides by (2r+1)² for the [0,1] proportion. int16, masked back to the burned
-    pixels. A local focal — cheap and non-densifying in GEE — so it belongs here, not terra (docs/05 §3)."""
+    pixels. A local focal — cheap and non-densifying in GEE — so it belongs here, not terra (docs/05 "Metrics")."""
     burned = candseed_asset.mask()
     burned01 = candseed_asset.gt(0).unmask(0)      # 1 burned, 0 elsewhere: window counts NA as 0
     out = []

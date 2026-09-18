@@ -12,7 +12,7 @@
 //
 // The primitives are LABELLING-AGNOSTIC: the CALLER decides which pairs to union — plain
 // 8-connectivity, or the 7x7 dilation-equivalent window with the veg-class distance threshold
-// (docs/05 §2). Only pair generation (in R) changes; this file never does.
+// (docs/05 "Label"). Only pair generation (in R) changes; this file never does.
 #include <Rcpp.h>
 #include <vector>
 using namespace Rcpp;

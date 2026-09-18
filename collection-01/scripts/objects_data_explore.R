@@ -81,7 +81,7 @@ show(data.table(cut_ha = thr)[, .(
   "full_size_cuts.csv")
 msg("(total: %d objects, %.0f ha)", tot_n, tot_a)
 
-hdr("the 10 largest objects (FULL) — dilation-bridged complexes, see docs/05 §2")
+hdr("the 10 largest objects (FULL) — dilation-bridged complexes, see docs/05 \"Label\"")
 show(full[order(-area_ha)][1:10, .(oid, area_ha, n_pixels, seed_mean, convexity,
                                    shape_index, burned_around_3)], "full_largest.csv")
 

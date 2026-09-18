@@ -190,7 +190,7 @@ do_predict <- function(years) {
     obj <- read_year_objects(fy)
     msg("  %d objects read in %.1f s", nrow(obj), elapsed(t_load))
 
-    # NA predictors cannot be scored (all-dieback objects, docs/05 §3): carry them through
+    # NA predictors cannot be scored (all-dieback objects, docs/05 "Metrics"): carry them through
     # with NA probabilities rather than dropping the oid from the year's output.
     ok <- complete.cases(obj[, ..PREDICTORS])
     X  <- design(obj[ok], meta$predictors)

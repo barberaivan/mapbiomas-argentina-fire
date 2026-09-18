@@ -90,7 +90,7 @@ collection-01/
 │   ├── run_07_upload_zips.sh              # step 07: parallel upload-package build — one process per fire-year, 4 at a time, resumable
 │   ├── run_07_scars.sh                    # step 07: calendar-year scar build in two passes — `pixels` per fire-year (-j 5), `scars` per calendar year (-j 2), resumable
 │   ├── validate_scar_zips.py              # step 07: pre-ingest gate over the 27 scar zips (fields/types, gapless scar_id, area vs summary, CRS, geometry)
-│   ├── run_05_years.sh                    # Overnight all-years step-05 launcher — one Rscript/year, resumable, OOM-flagging (docs/05 §4.1)
+│   ├── run_05_years.sh                    # Overnight all-years step-05 launcher — one Rscript/year, resumable, OOM-flagging (docs/05 "Run")
 │   └── mem_monitor.sh                     # Lightweight RAM peak / near-OOM-warn monitor (used by run_05_years.sh; standalone too)
 ├── notebooks/              # Quarto-R (.qmd) exploratory analyses and decisions
 ├── samples/                # ARCHIVE — JS templates from interactive point collection
@@ -111,7 +111,7 @@ collection-01/
 | `statistics/` | step-09 (⚠️ the nivel-2 legend fix of statistics/docs/statistics.md §5.10.1 lives in `legends.py` + `factsheet_tables.R`, and the two go together): the toolkit's burned-area CSVs, the burnable denominator, the fire tables, the `factsheet_*` tables (incl. the four `factsheet_change*` and the two `factsheet_bosques*` of análisis 6), the **three rasters** (`arg_burn_perc_480m_{mean,max}.tif`, `arg_last_fire_480m_mean.tif`) and `figures/` (PNG + PDF of every figure). **`factsheet_sep2026_figures_and_tables/` is the folder the designer gets**: only the deck's images, clean, each with its CSV | ~160 MB |
 
 A fire is an **object** (the layer is sparse, not an OBIA partition), and a **`-cache` suffix means
-regenerable**: delete it and re-run its launcher. Details: `docs/05-object_metrics.md` §4 and
+regenerable**: delete it and re-run its launcher. Details: `docs/05-object_metrics.md` "Inputs → Outputs" and
 `docs/06-object_model.md` "Files, directories and scripts".
 
 ---
@@ -220,10 +220,10 @@ year of last fire, scar size). Dates: assets to MapBiomas Argentina **31 Jul 202
 
 Step 05 (object vectorization & metrics, R) runs **one fire-year at a time**. For the full
 2001–2025 run, use the overnight launcher — one `Rscript` per year (resumable; OOM-killed years
-are flagged and don't stop the batch) with a lightweight RAM monitor alongside (**docs/05 §4.1**):
+are flagged and don't stop the batch) with a lightweight RAM monitor alongside (**docs/05 "Run"**):
 
 ```bash
-# launch detached; use an ABSOLUTE path (see docs/05 §4.1)
+# launch detached; use an ABSOLUTE path (see docs/05 "Run")
 tmux new-session -d -s obj05 '/abs/path/to/collection-01/scripts/run_05_years.sh 2001 2025'
 tmux attach -t obj05            # watch; Ctrl-B D to detach
 grep -E 'OOM|WARN|FAILED|done rc=0' collection-01/logs/05_{run,mem}_*.log   # morning triage

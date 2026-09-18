@@ -89,7 +89,7 @@ add_derived <- function(m) {
 
 # ── the model columns ────────────────────────────────────────────────────────
 # NOTHING HERE MAY IDENTIFY THE YEAR — see the block above before adding a column.
-VEG_FRAC   <- sprintf("frac_c%d", 1:23)      # veg_fire abundance per class (docs/05 §3) — the
+VEG_FRAC   <- sprintf("frac_c%d", 1:23)      # veg_fire abundance per class (docs/05 "Metrics") — the
                                              # RAW columns, summed into the 5 groups below; not
                                              # predictors themselves
 NON_VEG    <- c("n_pixels", "area_ha", "burned_around_1", "burned_around_2", "burned_around_3",
@@ -219,7 +219,7 @@ resolve_fire <- function(fire_model, fire_tag) {
 #   [2] oid_class_conflict the same object was labelled fire AND non-fire — unresolvable
 #   [3] duplicates         many labels on one object collapse to one row (deterministic:
 #                          lowest feat_id kept; the surviving author/src describe THAT label)
-#   [4] NA predictors      all-dieback objects have no seed/date stats by design (docs/05 §3)
+#   [4] NA predictors      all-dieback objects have no seed/date stats by design (docs/05 "Metrics")
 clean_tagged <- function(verbose = TRUE) {
   d  <- fread(MERGED_CSV, na.strings = c("NA", ""))
   rep <- list(pairs = nrow(d), labels = uniqueN(d$feat_id))

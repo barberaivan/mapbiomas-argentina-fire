@@ -650,7 +650,7 @@ call, or required by the product — not by ranking high on `split_share` alone.
   random sample of objects, so the *level* of the cuts is uncalibrated and these
   percentages are an upper bound on plausible fire rates, not an estimate of them. Removing the
   year leak did not change that — it removed the model *reading* the sampling, not the sampling.
-- Objects with NA predictors (all-dieback, docs/05 §3) carry NA probabilities and are excluded
+- Objects with NA predictors (all-dieback, docs/05 "Metrics") carry NA probabilities and are excluded
   from §6-9 counts but present in §1-4.
 - The predictor set carries no absolute time coordinate. `doy_sin`/`doy_cos` encode season
   circularly because the fire season straddles Dec/Jan; `date_span` is a duration. See docs/06.

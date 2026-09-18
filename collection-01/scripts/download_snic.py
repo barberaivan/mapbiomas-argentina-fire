@@ -2,7 +2,7 @@
 collection-01/scripts/download_snic.py
 
 Direct, tiled download of the step-04 SNIC products from GEE to local disk,
-bypassing Drive + Insync (docs/04 §5, docs/05 §7b). For each fire-year it builds
+bypassing Drive + Insync (docs/04 §5, docs/notes/05-whole_country_redesign.md). For each fire-year it builds
 
     stack = snic_metrics_<y>.addBands( snic_<y>.select('candseed') )
 
@@ -33,7 +33,7 @@ Why carta-by-carta rather than one whole-country geedim call (geedim tiles eithe
     So `geedim` = inner tiling (request limit), `carta` = outer partition (footprint /
     resume / cross-account) — different scales, both needed.
 
-On COG / NoData (docs/05 §1, §7b): we do NOT need a COG here. The read-speed / OOM win
+On COG / NoData (docs/05 "Inputs → Outputs"): we do NOT need a COG here. The read-speed / OOM win
 came from the NoData tag + sparse tiling, NOT the cloud-optimized overviews (which only
 help partial/zoomed reads; step 05 does full-res full-coverage reads). `geedim` masks
 background → the GeoTIFF NoData tag (we pin it to 0, never a valid value on burned pixels),
