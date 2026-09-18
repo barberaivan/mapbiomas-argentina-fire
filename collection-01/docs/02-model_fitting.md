@@ -16,6 +16,12 @@ is what deploying over the whole Landsat archive requires. External ML/DL models
 would lift both limits, at a large step up in complexity, but that implies an economic cost to
 MapBiomas.
 
+**Every class shares one predictor set**, chosen globally rather than per class: only the
+coefficients differ between vegetation types. That keeps deployment cheap in the same way the
+model itself does — the prediction pipeline builds one band set once and reuses it for all 23
+classes, instead of assembling a different design per vegetation type and paying for it at every
+pixel-date.
+
 **We also wanted a natively probabilistic model**, because everything downstream consumes a
 probability rather than a hard class — the time-series metrics of step 03 read the shape of
 `p` through time. GEE's constraint bites again: a probability-mode random forest is not
@@ -56,12 +62,9 @@ there.
 ### Predictors
 
 **The deployed model carries 51 terms + intercept** (52 coefficient rows): 10 focal mains, 14
-previous-year mosaic mains, 10 focal×focal, 4 same-band, 6 prev×fire-index, 7 prev×fire-band.
-It is the top-P=50 cut of the 129-term set the fit works in — see the Key decisions below.
-
-**The kept term set is common to all 23 classes**, not chosen per class: only the coefficients
-differ. That is what lets the GEE prediction pipeline build one band set once and reuse it for
-every class, instead of a different design per vegetation type.
+previous-year mosaic mains, 10 focal×focal, 4 same-band, 6 prev×fire-index, 7 prev×fire-band —
+the same terms in every class, as Foundations says. It is the top-P=50 cut of the 129-term set
+the fit works in; see the Key decisions below.
 
 Interactions are fit on mean-centered factors and folded back to raw-product scale at export, so
 GEE evaluates raw products directly.

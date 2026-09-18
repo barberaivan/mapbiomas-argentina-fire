@@ -414,6 +414,21 @@ has a real ATBD. No pass, no template, no extraction.
 ### Phase 6 — deferred sub-tasks (not part of this plan)
 
 - [ ] Tidy `docs/notes/`: merge, prune, and decide which entries become ADRs.
+- [ ] **Reconcile `docs/notes/` against the code, once the Phase 2 passes have all landed.**
+      A note ages in two different ways and only one of them is a defect:
+      - **Its provenance header and its quotes go stale by design.** The section a header names
+        will usually not exist after that doc's Phase 2 pass — `notes/02-lr_term_reduction.md`
+        was already citing a section that had been rewritten hours later. The header is a
+        past-tense claim, so the fix is to **pin the commit** (done, and written into
+        `notes/README.md`), never to re-point it at today's nearest heading — that would assert
+        a correspondence nobody checked, which is the exact rot §0 found in the `docs/NN`
+        citations.
+      - **Its claims about live code are a real defect.** A note that names a script, path,
+        constant or asset that has since moved is misleading rather than archival. Sweep for
+        those: every path and identifier in `notes/` gets checked the way the four Phase 1 docs
+        were, and a dead one is either corrected or marked as historical in place.
+      Do this **after** Phase 2, not during: every pass adds notes, so an earlier sweep would be
+      redone. Until then a stale header is tolerated and flagged, not fixed piecemeal.
 - [ ] Write the **collection-1 ATBD**, in one deliberate pass: collection 0's ATBD supplies the
       **structure**, `00-overview.md` + the `Key decisions` sections supply the **content**.
 - [ ] **Reduction 2** (see §2): once the ATBD exists, the `Key decisions` sections shrink to

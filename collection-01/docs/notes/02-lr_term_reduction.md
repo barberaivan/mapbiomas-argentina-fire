@@ -1,6 +1,7 @@
 # 02 — How the predictor set got from 427 terms to 50
 
-> **Extracted from** `collection-01/docs/02-model_fitting.md` ("Approach" bullets), on 2026-09-18.
+> **Extracted from** `collection-01/docs/02-model_fitting.md`, the "Approach" bullets
+> @ `f6b287d` (2026-09-18) — that section is gone; the doc was restructured in `74e35c4`.
 > Lab notebook — the record of building the step, not documentation of it.
 
 The doc keeps only the outcome: **P=50 is deployed**, 52 coefficient rows. This is the route.
