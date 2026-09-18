@@ -8,9 +8,9 @@ read [`04-snic.md`](04-snic.md) first.
 
 ## Foundations
 
-**This step materializes the patch so that step 06 can judge it.** A patch has properties no
-pixel has — shape, size, vegetation composition, a spread of burn dates — and those are exactly
-what separates a real scar from a field of spectrally similar noise.
+**This step materializes the fire patch so that step 06 can judge it.** A patch has properties no
+pixel has — shape, size, vegetation composition, a spread of burn dates — variables that help
+separate a real scar from a field of spectrally similar noise.
 
 **Every stage is sized by burned cells, never by the grid.** Argentina's 30 m lattice is 9.16 B
 cells; a heavy fire year has ~116 M burned ones, three orders of magnitude fewer. The pipeline is
@@ -25,17 +25,16 @@ step-04 SNIC rasters → **`workflow/05-objects_metrics.R`** → one GPKG of geo
 
 | | What it is | Where |
 |---|---|---|
-| **in** | per-carta SNIC GeoTIFFs, **7 bands** (preferred layout: `04-snic.py --to-asset` + `download_snic.py`) | `data/snic-rasters/<fy>/` |
-| **in** | *legacy*: one Drive COG per fire-year, **4 bands**, no `burned_around` — **ROI scale only** | `data/objects-raw/` |
+| **in** | per-carta SNIC GeoTIFFs, **7 bands** (`04-snic.py --to-asset` + `download_snic.py`) | `data/snic-rasters/<fy>/` |
 | **out** | one polygon per object + **`oid` only**, no metrics | `data/objects-raw/objects_<fy>.gpkg` |
 | **out** | raster metrics (`aggregate_metrics`), keyed by `oid` | `data/objects-raw/objects_<fy>_raster_metrics.csv` |
 | **out** | geometry/shape metrics (`add_shape_metrics`), keyed by `oid` | `data/objects-raw/objects_<fy>_shape_metrics.csv` |
 
-The four SNIC bands are `candseed` (1 candidate, 2 seed, 3 Patagonia next-year dieback),
-`abs_date` (per-pixel burn mid-date, days since 1970-01-01), `veg_fire` (the burnable class) and
-`n` (Landsat observation count); the preferred layout adds `burned_around_{1,2,3}` precomputed in
-GEE as cell counts. All bands are masked to `candseed > 0`, so the files are sparse and terra
-reads the mask off the **NoData tag** — no COG structure is involved.
+The seven bands are `candseed` (1 candidate, 2 seed, 3 Patagonia next-year dieback), `abs_date`
+(per-pixel burn mid-date, days since 1970-01-01), `veg_fire` (the burnable class), `n` (Landsat
+observation count) and `burned_around_{1,2,3}` precomputed in GEE as cell counts. All are masked
+to `candseed > 0`, so the files are sparse and terra reads the mask off the **NoData tag** — no
+COG structure is involved.
 
 **Geometry and metrics are split with no redundancy**, each phase writing its own CSV keyed by
 `oid`, so there is no join-onto-geometry step and step 06 never opens the geometry. The GPKG is a
@@ -171,8 +170,11 @@ All five were forced by whole-country memory; the benchmarks behind them are in
   Track `MemTotal − MemAvailable`.
 - **`_shape_metrics.csv` is written last**, so it is the completion marker: a year with a GPKG but
   no shape CSV did not finish.
-- The legacy Drive COG layout is **ROI-scale only** — one big COG is a single tile, so it re-hits
-  the whole-mosaic extract limit at country scale.
+- **`snic_tifs()` silently falls back to a legacy Drive-COG layout** (`data/objects-raw/`, 4
+  bands, `burned_around` computed locally) when `data/snic-rasters/<fy>/` is empty. It is
+  **ROI-scale only** — one big COG is a single tile, so it re-hits the whole-mosaic extract limit
+  at country scale. Production has never used it: a run reporting `layout = "legacy"` means the
+  per-carta tiles are missing, not that a valid second route was taken.
 - Keep `NO_DILATE_VEG` and the enlarged-context rule above in sync; one decision written twice.
 
 ## Files
