@@ -35,7 +35,7 @@ read_year_objects <- function(fy) {
   r <- fread(file.path(POLY_DIR, sprintf("objects_%d_raster_metrics.csv", fy)))
   s <- fread(file.path(POLY_DIR, sprintf("objects_%d_shape_metrics.csv", fy)))
   m <- merge(r, s, by = "oid", all.x = TRUE)
-  m[, fire_year := fy]                    # the FY start year, == the oid prefix (docs/04 §2)
+  m[, fire_year := fy]                    # the FY start year, == the oid prefix (docs/04 "The fire-year")
   add_derived(m)
 }
 
@@ -65,7 +65,7 @@ read_all_objects <- function(years = object_years()) {
 #   doy_sin / doy_cos   WHEN IN THE SEASON it burned, encoded CIRCULARLY. Raw day-of-year is
 #                       wrong for this model even though it carries no year: doy_median is the
 #                       CALENDAR day of year, and the fire season straddles Dec/Jan — which is
-#                       the whole reason a fire-year exists (docs/04 §2). An axis-aligned tree
+#                       the whole reason a fire-year exists (docs/04 "The fire-year"). An axis-aligned tree
 #                       cannot express "December through February" as one region in raw DOY, but
 #                       a threshold on sin or cos selects a single arc of the circle, so the pair
 #                       represents wrap-around intervals in two splits. (A linear day-of-FIRE-year

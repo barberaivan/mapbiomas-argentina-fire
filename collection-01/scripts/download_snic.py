@@ -2,7 +2,8 @@
 collection-01/scripts/download_snic.py
 
 Direct, tiled download of the step-04 SNIC products from GEE to local disk,
-bypassing Drive + Insync (docs/04 §5, docs/notes/05-whole_country_redesign.md). For each fire-year it builds
+bypassing Drive + Insync (docs/04 "The R-facing bands and the download",
+docs/notes/05-whole_country_redesign.md). For each fire-year it builds
 
     stack = snic_metrics_<y>.addBands( snic_<y>.select('candseed') )
 

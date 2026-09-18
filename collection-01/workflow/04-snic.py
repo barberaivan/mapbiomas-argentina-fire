@@ -12,36 +12,38 @@ sharing one construction across stages:
                              asset, WITHOUT re-storing `candseed`. Feeds the tiled direct
                              download `download_snic.py`, which re-attaches `candseed` and
                              pulls the stack per *carta* to local disk — no Drive, no Insync
-                             (docs/04 §5, docs/notes/05-whole_country_redesign.md).
+                             (docs/04 "The R-facing bands and the download",
+                             docs/notes/05-whole_country_redesign.md).
 
 All tunable settings live in `utils/constants.py` (Step 04 section); this file
 holds only procedure.
 
-Design: docs/04-snic.md §2–§5. Summary, per fire-year `Y1`
-(FY = 1 May Y1 → 30 Apr Y2, Y2 = Y1+1; named by the START year Y1 — §2):
+Design: docs/04-snic.md "How it works". Summary, per fire-year `Y1`
+(FY = 1 May Y1 → 30 Apr Y2, Y2 = Y1+1; named by the START year Y1):
 
-  1. Load the TWO calendar `bpts` images the fire-year spans (Y1 and Y2), decoded
-     (§4.1). Either may be absent at the archive edges (FY1998 has only the 1999
+  1. Load the TWO calendar `bpts` images the fire-year spans (Y1 and Y2), decoded.
+     Either may be absent at the archive edges (FY1998 has only the 1999
      image; FY2025 has only the 2025 image) — whichever exists is used, and the
      two TRIMMED edge fire-years (jan99-apr99, may25-dec25) are still mapped, with
      `system:time_start`/`time_end` set to their actual coverage and `partial=true`.
   2. Per image, classify seed / candidate with the per-veg, per-pixel-K thresholds
      (C.VEG_TABLE), and compute the K=2 mid-date (`date_post2 − jumpgap2/2`) as an
-     ABSOLUTE day count since epoch (§4.1, cross-year safe).
+     ABSOLUTE day count since epoch (cross-year safe).
   3. Window-filter each image to the fire-year (Y1 img → keeps May–Dec Y1; Y2 img →
      keeps Jan–Apr Y2) and combine per pixel: **seed > candidate > none** (`max`).
      Each pixel's `abs_date` follows the image that won the max.
-  4. Patagonia slow-dieback forward padding (§4.3): in `forest_pat`/`shrubland_pat`
-     west of C.PAT_LON_MAX, a pixel that is seed-or-candidate in the Y2 image with
+  4. Patagonia slow-dieback forward padding (docs/04 "Patagonia dieback padding"):
+     in `forest_pat`/`shrubland_pat` west of C.PAT_LON_MAX, a pixel that is
+     seed-or-candidate in the Y2 image with
      mid-date in [Jun, Nov] Y2 is added as a **candidate** (code `3`) where focal is 0.
   5. Supervised SNIC (seeds grown through the candidate footprint, seedless islands
      dropped) with `neighborhoodSize = C.SNIC_NEIGHBORHOOD_SIZE`.
-  6. Export ONLY `candseed ∈ {1,2,3}` (int16) to asset (§5): 1 = candidate,
+  6. Export ONLY `candseed ∈ {1,2,3}` (int16) to asset: 1 = candidate,
      2 = seed, 3 = next-year (Patagonia dieback) candidate.
 
 `abs_date` / `veg_fire` are NOT stored in the asset. They are recreated at the
 metrics-asset stage (`--to-asset`) by re-running this construction (steps 1–4) and
-masking to the exported `candseed` asset (§5). SNIC is NOT recomputed at that
+masking to the exported `candseed` asset. SNIC is NOT recomputed at that
 stage — the asset already holds the segmented mask.
 
 Assets land in the COLLECTION-1 `snic` ImageCollection (`C.SNIC_COL`) as
@@ -137,7 +139,7 @@ def classify_image(metrics, thr, cal_year, san_ramon_boost=False):
     For one decoded calendar-year bpts mosaic, return:
       seed_raw  — boolean, passes the per-pixel-K seed threshold + gap gate
       cand      — boolean, passes the K=2 candidate threshold
-      abs_mid   — absolute mid-date (days since epoch), from the K=2 fit (§4.1)
+      abs_mid   — absolute mid-date (days since epoch), from the K=2 fit
     No windowing yet — the caller masks to the fire-year / padding windows.
     `san_ramon_boost` ORs the pmax-based easy candidate inside SAN_RAMON_RECT.
     """
@@ -190,7 +192,7 @@ def _status_in_window(seed_raw, cand, abs_mid, lo_day, hi_day):
 
 
 # ---------------------------------------------------------------------------
-# fire-year candseed construction (§3–§4)
+# fire-year candseed construction (docs/04 "How it works")
 # ---------------------------------------------------------------------------
 def build_candseed_pre(fire_year):
     """
@@ -201,13 +203,13 @@ def build_candseed_pre(fire_year):
     `abs_date` is the per-pixel K=2 mid-date (days since epoch) of the observation
     that SET the candseed value — the Y1 or Y2 image that won seed>cand>none. For a
     code-3 dieback pixel it is that pixel's OWN next-year dieback date; R later
-    overrides code-3 with the parent object's date (§5). Masked where candseed == 0.
+    overrides code-3 with the parent object's date. Masked where candseed == 0.
 
     `n` is the Landsat observation count of that SAME winning image (Y1 or Y2), so
     it tracks `abs_date` pixel-for-pixel. Masked where candseed == 0.
 
     `meta` carries the ACTUAL data-coverage window (trimmed at the archive edges,
-    §2) and a `partial` flag. Full FY covers May Y1 → Apr Y2; the two TRIMMED edge
+    docs/04 "The fire-year") and a `partial` flag. Full FY covers May Y1 → Apr Y2; the two TRIMMED edge
     fire-years, mapped so the products span the whole 1999–2025 calendar archive:
       - FY1998 has no 1998 image → only its Jan–Apr 1999 tail  ("jan99-apr99").
       - FY2025 has no 2026 image → only its May–Dec 2025 head   ("may25-dec25").
@@ -218,9 +220,9 @@ def build_candseed_pre(fire_year):
     if m_y1 is None and m_y2 is None:
         return None, None, None, None
 
-    veg_fire = F.veg_fire_image(y1)                # MB(y1-1); governs whole FY (§2)
+    veg_fire = F.veg_fire_image(y1)                # MB(y1-1); governs the whole FY
     thr = veg_threshold_images(veg_fire)
-    boost = fire_year in C.SAN_RAMON_FIRE_YEARS    # San Ramón easy-candidate exception (§4.5)
+    boost = fire_year in C.SAN_RAMON_FIRE_YEARS    # San Ramón candidate exception
 
     fy_lo = _day_num(y1, C.FY_START_MONTH, 1)      # 1 May Y1  (inclusive)
     fy_hi = _day_num(y2, C.FY_START_MONTH, 1)      # 1 May Y2  (exclusive)
@@ -268,7 +270,7 @@ def build_candseed_pre(fire_year):
     abs_date = date.updateMask(combined.gt(0)).toInt16().rename("abs_date")
     n_out = n.updateMask(combined.gt(0)).toInt16().rename("n")
 
-    # Data-coverage window, trimmed to whichever calendar image(s) exist (§2).
+    # Data-coverage window, trimmed to whichever calendar image(s) exist.
     time_start = ee.Date.fromYMD(y1, 5, 1) if m_y1 is not None else ee.Date.fromYMD(y2, 1, 1)
     time_end = ee.Date.fromYMD(y2, 4, 30) if m_y2 is not None else ee.Date.fromYMD(y1, 12, 31)
     meta = {"time_start": time_start, "time_end": time_end,
@@ -378,7 +380,8 @@ def process_fire_year(fire_year, region, crs, transform, launch, name_prefix,
 # stage 2 — read the candseed asset, attach abs_date + veg_fire, export COG to Drive
 # ---------------------------------------------------------------------------
 # stage 2b — read the candseed asset, materialize the R-facing metric bands to
-#            a companion asset (for the tiled direct download; docs/04 §5, docs/notes/05-whole_country_redesign.md)
+#            a companion asset (for the tiled direct download; docs/04 "The R-facing
+#            bands and the download", docs/notes/05-whole_country_redesign.md)
 # ---------------------------------------------------------------------------
 def burned_around_bands(candseed_asset):
     """Pixel-level "context_burned" (sparseness) bands, GEE-native (ported from collection-00
@@ -411,7 +414,8 @@ def process_fire_year_metrics_asset(fire_year, region, crs, transform, launch,
     """Stage 2b (--to-asset): materialize the R-facing per-pixel metric bands to an asset.
 
     Reads candseed from the SNIC_COL asset (SNIC is NOT recomputed), rebuilds
-    abs_date / veg_fire / n from the §4 construction and the burned_around_* context bands,
+    abs_date / veg_fire / n from the build_candseed_pre construction and the burned_around_*
+    context bands,
     masks everything to the candseed burned footprint, and exports them — WITHOUT candseed —
     to SNIC_METRICS_COL as snic_metrics_<fire_year>. download_snic.py re-attaches candseed
     from SNIC_COL, so it is never stored twice. Baking these once lets the tiled download be
@@ -436,7 +440,7 @@ def process_fire_year_metrics_asset(fire_year, region, crs, transform, launch,
         print(f"[skip] {description} has a PENDING/RUNNING task")
         return
 
-    # abs_date + n from the §4 construction; candseed + its burned mask from the asset.
+    # abs_date + n from the same construction; candseed + its burned mask from the asset.
     _pre, abs_date, n_img, meta = build_candseed_pre(fire_year)
     candseed = ee.Image(src_id).select("candseed")
     burned = candseed.mask()

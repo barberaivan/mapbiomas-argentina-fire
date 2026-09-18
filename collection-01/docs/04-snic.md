@@ -1,273 +1,226 @@
 # 04 — Burned-area segmentation (fire-year SNIC)
 
-Step 04 grows the per-pixel burn-probability metrics from step 03 (`bpts`) into **spatial
-objects** (fire scars). Seeds and candidates are thresholded from the `bpts` metrics, then
-**supervised SNIC** grows seeds through connected candidates into scar objects. Downstream (steps
-05–06, in R) vectorizes, filters false positives, and builds the final products.
+Step 04 grows the per-pixel annual metrics of step 03 into **spatial objects** — fire scars. It
+thresholds each pixel into a *seed* or a *candidate*, then lets **supervised SNIC** grow the seeds
+through the connected candidate footprint, and exports one image per **fire-year** holding a
+single band, `candseed`. It is the first spatial stage; steps 05–06 turn those pixels into objects
+and decide which of them are fires. Read [`03-bpts.md`](03-bpts.md) first — step 04 consumes its
+annual metrics.
 
-**Read `docs/03-bpts.md` first** — step 04 consumes its annual metrics.
+## Foundations
 
-Production: `workflow/04-snic.py`. Tuning/inspection tools live in the **fuego** GEE repo (see
-CLAUDE.md → "GEE Code Editor scripts"), listed in §6.
+**A fire is an object in space *and* time, and this step buys the time axis with a calendar, not
+an algorithm.** Segmenting calendar years independently splits every scar that straddles 31
+December and duplicates it across two years; the obvious repairs — a temporal firebreak inside the
+segmentation, a backward gap-fill from the previous year — were built first and did not work,
+because the step-03 per-pixel dates are too noisy to be a barrier
+([`notes/04-snic3d_firebreaks.md`](notes/04-snic3d_firebreaks.md)). The whole problem disappears
+if the year boundary is placed where nothing is burning: **fire-years partition the calendar, so
+each fire belongs to exactly one of them** and there is no firebreak, no gap-fill and no
+cross-year de-duplication to manage.
 
----
+**Seeds and candidates are how the step avoids deciding early.** A single probability cut would
+force one threshold to be both sensitive and specific. Instead a permissive cut defines where a
+scar *could* extend and a strict cut defines where one certainly started, and region growing
+resolves the two: a candidate joins a scar only if it is connected to a seed, and a candidate
+island with no seed in it is dropped. SNIC is thereby doing the classifying, and it errs toward
+**recall** on purpose — precision is recovered at the step-06 object model, which can see the
+patch's shape, size and seed density. The same "keep quantities, decide late" logic as the rest of
+the chain ([`00-overview.md`](00-overview.md)).
 
-## 1. What we tried first, and why we dropped it (SNIC-3D) — [SHELVED]
+## Inputs → Outputs
 
-The **ideal** is a full 3D (space × space × time) clustering of the Landsat archive into fire
-events — out of reach (custom clustering + the whole stack exported out of GEE).
+step-03 `bpts` images for Y1 and Y2 → **`workflow/04-snic.py`** → `candseed` asset → (`--to-asset`)
+metric bands → `download_snic.py` → per-carta GeoTIFFs for step 05
 
-The **first approximation** ran per-year 2D SNIC and faked the time axis with two devices:
-a **temporal firebreak** (mask any pixel whose absolute burn date jumps > `D` from a neighbour, so
-SNIC can't grow across two events that merely touch) and a **backward gap-fill** (import late
-`y−1` pixels so a New-Year-straddling scar stays spatially whole). It **did not work well**:
-step-03 per-pixel dates are too noisy, so the firebreak masked a lot of genuinely-burned area, and
-without it the prev-year join leaked neighbouring fires. **Shelved, not abandoned** — worth
-revisiting with more time.
+| | What it is | Where |
+|---|---|---|
+| **in** | two calendar-year `bpts` images (Y1 and Y2 = Y1+1), mosaicked and decoded | `C.BP_TS_METRICS_COL` (+ `…_CHACO` for 1999–2009) |
+| **in** | `veg_fire`, the burnable class of the previous year | `F.veg_fire_image(Y1)`, i.e. MapBiomas Y1−1 |
+| **out** | one image per fire-year, single band `candseed`, masked to the segmented burned region | `C.SNIC_COL` / `snic_<fy>` |
+| **out** | companion metric bands `abs_date`, `veg_fire`, `n`, `burned_around_{1,2,3}` | `C.SNIC_METRICS_COL` / `snic_metrics_<fy>` |
+| **out** | the two stacked, 7 bands, int16, one GeoTIFF per *carta* | `data/snic-rasters/<fy>/` |
 
-- Where it lives: fuego `visualization-misc/explore_snic_firebreaks_IB-01`; original notes in
-  `misc/SNIC 3D notes.odt`. The old `candseed {1,2,3,4}` encoding, the `D = f(n)` firebreak, the
-  terra erode-then-restore, and the cross-year overlap-merge all belong to this shelved path.
-
-The **current approach (below) replaces all of that** with a single time-partitioning trick: a
-non-calendar fire-year. Because fire-years partition the calendar, each fire belongs to exactly one
-of them — so there is **no cross-year duplication, no firebreak, and no gap-fill** to manage.
-
----
-
-## 2. Current approach: whole-country, one non-calendar fire-year
-
-- **Fire-year FY = 1 May Y1 → 30 Apr Y2**, **whole country, one boundary**, named by its start year
-  Y1 (e.g. May 2024 → Apr 2025 = "fire-year 2024").
-- **Why May.** May is the country-wide activity **trough** in *both* MODIS/VIIRS and our `bpts`
-  mid-dates, so no region's fire season is split by the seam (summer burners Dec–Apr and the
-  winter–spring `centro_norte` season both fall inside a May→Apr year). Naming by Y1 is correct for
-  most of the country; it only mis-labels Patagonia's Feb–Apr tail. Analysis + the deciding charts:
-  fuego `visualization-misc/explore_fire_seasons_regions` (source CSVs
-  `notebooks/regions_monthly_{modis,bpts}_ee-chart.csv`).
-- **Coverage.** Collection-1 `bpts` runs calendar years **1999–2025**, so step 04 maps fire-years
-  **1998 … 2025**, with two **trimmed** edge years spanning the archive ends:
-  - **FY1998 = jan99–apr99** (no 1998 image → only the Jan–Apr 1999 tail);
-  - **FY2025 = may25–dec25** (no 2026 image → only the May–Dec 2025 head).
-  Each edge asset carries a `partial = true` flag and `system:time_start`/`time_end` set to its
-  **actual** coverage (not the nominal full fire-year). Completing them later means extending `bpts`
-  back to May 1998 and forward through 2026.
-
----
-
-## 3. The `candseed` product
-
-`workflow/04-snic.py` exports **one image per fire-year**, a single band `candseed`, to
-`…/COLLECTION-1/WORKFLOW-EXPORTS/snic/candseed_<Y1>`, on the `bpts` 30 m grid over Argentina
-(`C.ARG_BUFFER_FC`), tagged `fire_year = Y1`, `partial`, and the coverage `system:time_start/end`.
+Everything is on the `bpts` 30 m grid over Argentina buffered ~2 km (`C.ARG_BUFFER_FC`). Each
+asset is tagged `fire_year`, `partial`, and `system:time_start`/`time_end` set to its **actual**
+coverage.
 
 | `candseed` | meaning |
 |---|---|
 | 1 | candidate (focal fire-year) |
 | 2 | seed (focal fire-year) |
-| 3 | next-year candidate — **Patagonia `forest_pat`/`shrubland_pat` slow-dieback padding** only (§4.3) |
+| 3 | next-year candidate — Patagonia slow-dieback padding only |
 
-Derived: `burned = candseed > 0`, `seed = candseed == 2`, `candidate = candseed ∈ {1,3}`,
-`seed_mean = mean(candseed == 2)`. Only the sparse burned pixels survive the mask, which is what
-makes the (compressed) download tiny (§5).
+Downstream reads `burned = candseed > 0`, `seed = candseed == 2`, `candidate = candseed ∈ {1,3}`.
+Only burned pixels survive the mask — ~0.3–1 % of the country — which is what makes the download
+tens of MB per year.
 
----
+## How it works
 
-## 4. Building `candseed` for one fire-year (what `04-snic.py` does)
+### The fire-year
 
-A fire-year spans **two calendar `bpts` images** (Y1 and Y2 = Y1+1). Either may be absent at the
-archive edges (§2) — whichever exists is used.
+**FY Y1 = 1 May Y1 → 30 Apr Y2**, whole country, one boundary, named by its **start** year Y1 (May
+2024 → Apr 2025 is "fire-year 2024"). May is the country-wide activity trough in MODIS/VIIRS *and*
+in our own `bpts` mid-dates, so no region's season is cut in half: the summer burners (Dec–Apr)
+and the winter–spring `centro_norte` season both fall inside one May→Apr year. Naming by Y1 only
+mis-labels Patagonia's Feb–Apr tail.
 
-### 4.1 Per-image seed / candidate + mid-date
-For each calendar image (thresholds hand-copied from fuego `explore_snic_IB-02` — **keep in sync**):
+`bpts` covers calendar 1999–2025, so step 04 maps fire-years **1998…2025** with two **partial**
+edges: FY1998 is only the Jan–Apr 1999 tail, FY2025 only the May–Dec 2025 head. Completing them
+means extending `bpts` back to May 1998 and forward through 2026.
 
-- **candidate** = `delta2_peak ≥ candidate_cut` (K=2, the broadest footprint).
-- **seed** = `deltaK_peak ≥ seed_cut`, with **K chosen per pixel** by `(veg_fire, n)` — a pixel uses
-  `delta3_peak` where its observation density `n ≥` the veg's `n_break`, else `delta2_peak` — **and**
-  a temporal-gap gate (`min(jumpgap2, jumpgap3) ≤` an `n`-adaptive ceiling). Cuts are per-veg with
-  global defaults; non-vegetated classes get an unreachable cut so they never fire.
-- **mid-date** = `date_post2 − jumpgap2/2` (K=2), converted to an **absolute day count** (days since
-  epoch, using the image's calendar year) so all date logic is **cross-year safe**.
+### Seed and candidate
 
-### 4.2 Window-filter, then combine (seed > candidate > none)
-Keep only pixels whose mid-date falls in the fire-year `[1 May Y1, 1 May Y2)` — this turns the two
-calendar images into one non-calendar year (Y1 image contributes May–Dec Y1; Y2 image contributes
-Jan–Apr Y2; a Y1 detection dated before May Y1 belongs to the *previous* fire-year and is dropped).
-Combine the two per pixel by **rank: seed (2) > candidate (1) > none (0)** (`max`). Each pixel's
-**`abs_date`** follows the image that won the `max` (the Y2 image wins only if it is strictly higher
-rank; ties keep the Y1 date). `abs_date` is built here alongside `candseed` but is **not stored in
-the asset** — it is recreated at the Drive stage (§5).
+A fire-year spans two `bpts` images; at the archive edges only one exists and whichever exists is
+used. For each:
 
-### 4.3 Patagonia slow-dieback forward padding (`candseed = 3`)
-Andean Patagonian forest dies **slowly** after fire, so part of a real scar only crosses the change
-thresholds the *following* fire-year. For **`forest_pat` (8) / `shrubland_pat` (21)** pixels **west
-of −70.3° longitude**: a pixel that is seed-or-candidate in the **Y2 image with mid-date in
-[Jun, Nov] Y2** is added to the focal year as a **candidate** (code 3) where focal is 0 — even if it
-is a seed there (dieback must never *seed* a fire, only *extend* one). It needs no third image: that
-window lives in the Y2 image already loaded. Padding pixels survive SNIC only if connected to a real
-focal seed, so it **extends** detected scars, never manufactures one. **[OPEN]** whether the
-**steppe** (`grassland_pat`) needs the same padding — check in fuego `explore_snic_IB-03`.
+- **candidate** = `delta2_peak ≥ candidate_cut` — always the K=2 form, the broadest footprint.
+- **seed** = `deltaK_peak ≥ seed_cut`, with **K chosen per pixel** from `(veg_fire, n)`: a pixel
+  uses `delta3_peak` where its observation count `n` reaches the class's `n_break`, else
+  `delta2_peak`. A temporal-gap gate also applies (`min(jumpgap2, jumpgap3)` under an `n`-adaptive
+  ceiling). Cuts are per-`veg_fire` class with global defaults; non-vegetated classes get an
+  unreachable cut so they can never fire.
+- **mid-date** = `date_post2 − jumpgap2/2`, converted to an **absolute day count** since epoch, so
+  every later date comparison is cross-year safe.
 
-### 4.4 Supervised SNIC → asset (stage 1, default)
-`ee.Algorithms.Image.Segmentation.SNIC` grows the **seed** pixels (after a connected-speck drop of
-≤5-px seed clumps) through the candidate footprint; **seedless candidate islands get no cluster and
-fall out** (SNIC *is* the seed/candidate classifier). Keep the **burned mask** (cluster ids
-discarded — R relabels globally), export `candseed` masked to it. `neighborhoodSize = 512`. All the
-cuts/params above are in `utils/constants.py` (Step 04 section), not the script.
+### Window-filter and combine
 
-This is the script's **default stage**: it writes `snic_<fire_year>` (a single-band `candseed`
-asset) to `C.SNIC_COL`. The idempotent launcher skips a fire-year whose asset exists or that has a
-PENDING/RUNNING task.
+Keep only pixels whose mid-date falls in `[1 May Y1, 1 May Y2)`. This is what turns two calendar
+images into one non-calendar year: the Y1 image contributes May–Dec Y1, the Y2 image Jan–Apr Y2,
+and a Y1 detection dated before May Y1 belongs to the *previous* fire-year and is dropped. The two
+are then combined per pixel by **rank — seed (2) > candidate (1) > none (0)** (a `max`). Each
+pixel's `abs_date` follows the image that won: the Y2 image only where it is strictly higher rank,
+ties keeping the Y1 date.
 
-### 4.5 San Ramón exception (fire-year 1998 only)
-The Jan–Apr 1999 San Ramón fire (fire-year 1998, "jan99-apr99") is very sparse ("ralo") — its
-`delta` is too low to seed enough candidate footprint for SNIC to grow it. Inside a small box
-(`SAN_RAMON_RECT`), and **only for fire-year 1998**, the candidate is loosened to also accept
-high-max-probability pixels (`pmax3 ≥ 0.3`). It is scoped this tightly on purpose: a pmax-based
-candidate breaks other years/areas (valle de río negro), and San Ramón maps largely as agriculture
-so it can't be separated by veg cover. From the `explore_snic_IB-02` Observaciones; both the box and
-the cut are in `utils/constants.py` (Step 04 section).
+### Patagonia dieback padding (`candseed = 3`)
 
----
+Andean Patagonian forest dies **slowly** after fire, so part of a real scar first crosses the
+change thresholds in the *following* fire-year. For `forest_pat` and `shrubland_pat` pixels west of
+`C.PAT_LON_MAX`, a pixel that is seed-or-candidate in the **Y2** image with a mid-date in Jun–Nov
+Y2 is added to the focal year as a **candidate**, coded 3, wherever the focal value is 0 — even
+where it is a seed in Y2, because dieback must never *seed* a fire, only extend one. It needs no
+third image: that window is already in the Y2 image. And since padding survives SNIC only where it
+connects to a real focal seed, it can extend a detected scar but never manufacture one.
 
-## 5. Handoff to R (steps 05–06)
+Whether the Patagonian **steppe** (`grassland_pat`) needs the same padding was settled downstream,
+negatively: step 05 drops `candseed == 3` east of −70.6° because the steppe-edge strip is mostly
+false positives ([`05-object_metrics.md`](05-object_metrics.md) "Extract"). That cut tightens
+the padding's western limit rather than re-running SNIC.
 
-Object work is done in R (`terra`/`sf`) — GEE vector topology is its weak spot and objects cross
-tiles. **Everything done to the step-04 output (vectorization, metrics, filtering, final products)
-lives in `docs/05-object_metrics.md` and `docs/06`.** The handoff is the **direct tiled download**
-(`--to-asset` + `download_snic.py`), detailed in §5b.
+### Supervised SNIC
 
-- **The asset stores only `candseed`; the R-facing bands are materialized separately.** The
-  metrics stage **reads `candseed` (and its burned mask) straight from the `snic_<fire_year>`
-  asset — SNIC is NOT recomputed** — and recreates `abs_date` + `veg_fire` + `n` by re-running the
-  §4 construction, masking all to the asset. They are thus computed per pixel, **not** looked up
-  from the `candseed` code. `abs_date` and `n` both follow the Y1/Y2 image that won the
-  seed>cand>none max, so they track each other.
-  `candseed == 3` flags a dieback pixel so R gives it the **parent object's** date for the
-  month-of-burn raster, never its own (next-year) dieback date. Idempotent: skips a fire-year whose
-  asset is missing (run stage 1 first) or that has a PENDING/RUNNING task.
-- **The masked image is tiny**: burned is ~0.3–1 % of area, so a fire-year collapses to tens of
-  MB. GEE may auto-split a big export into sub-tifs — R re-mosaics with `terra::vrt()`.
-- **Permissive SNIC by design:** loose cuts protect **recall** at segmentation; **precision** is
-  recovered at the step-06 object filter (real scars are compact and seeded throughout, noise is
-  sparse and unseeded).
-- **No cross-year de-dup.** Fire-years partition time, so each fire lands in exactly one — the
-  SNIC-3D overlap-merge is gone. Output-file seams are healed by the R re-mosaic (ids are global).
+Seed clumps of ≤ `C.SNIC_SEED_MAX_DROP` connected pixels are demoted to candidate — they no longer
+seed, but stay in the footprint so a genuine cluster can still grow through them. SNIC then grows
+the surviving seeds through the whole `candseed > 0` footprint at `neighborhoodSize = 512` px;
+seedless candidate islands get no cluster and fall out. Only the **mask** of the result is kept —
+cluster ids are discarded, because R relabels globally in step 05 — and `candseed` is exported
+masked to it.
 
-## 5b. Direct tiled download (`--to-asset` + `download_snic.py`)
+### The San Ramón exception
 
-Replaces the Drive+Insync round-trip. Two commands:
+The Jan–Apr 1999 San Ramón fire is very sparse ("ralo"): its `delta` is too low to raise enough
+candidate footprint for SNIC to grow it. Inside `C.SAN_RAMON_RECT_COORDS`, and **only** for
+fire-year 1998, the candidate rule also accepts high max-probability pixels. It is scoped that
+tightly on purpose — a pmax-based candidate breaks other years and areas (valle de río negro), and
+San Ramón maps largely as agriculture, so vegetation cover cannot separate it either.
 
-1. **`04-snic.py --to-asset [--project mapbiomas-argentina]`** — stage 2b. Reads `candseed` from
-   the `snic_<fy>` asset (SNIC not recomputed) and materializes the R-facing metric bands to a
-   companion **`snic_metrics_<fy>`** asset in `C.SNIC_METRICS_COL`:
-   **`abs_date` + `veg_fire` + `n` + `burned_around_{1,2,3}`**. `candseed` is **not re-stored** — it
-   already lives in `snic_<fy>`, and the downloader re-attaches it. Baking these once means the
-   download is a pure pixel **read**, not a per-tile recompute of the §4 construction (the prep that
-   empirically outran the SNIC itself). `burned_around_<r>` (pixel-level "context_burned") is
-   computed **GEE-native** (`reduceNeighborhood` **sum** of the 0/1 burned mask over a (2r+1)²
-   window, ported from collection-00 `07-objects_metrics`) and belongs here — a local focal, cheap
-   and non-densifying in GEE, vs terra where it densified the grid (supersedes the terra
-   `burned_around_*` in `docs/05` "Metrics" for this path). **Kept the collection-00 name, but its scale is
-   a plain int16 CELL COUNT, not the proportion** (so the download stays integer, no scale factor);
-   **R divides by (2r+1)² for the [0,1] proportion**.
+### The R-facing bands and the download
 
-2. **`download_snic.py --year <fy>` (or `--all-years`)** (`collection-01/scripts/download_snic.py`) — builds
-   `snic_metrics_<fy>.addBands(candseed)` (7 bands) and downloads it **one carta at a time** via
-   `geedim`, which sub-tiles each carta to the compute-pixels limits (≤32 MB / ≤10000 px / ≤1024
-   bands) and fetches tiles concurrently. Output `data/snic-rasters/<fy>/<carta_id>.tif` (int16,
-   masked→`NoData=0`). The carta set is the **248 cartas intersecting the ARG 2 km buffer**
-   (`C.ARG_BUFFER_FC`, the bpts/SNIC footprint), not the full ~286-carta grid.
-   - **carta = outer partition, geedim = inner tiling.** geedim tiles for the request limit either
-     way; the carta loop adds (a) a land-only footprint (Argentina's bbox is ~half ocean/neighbours),
-     (b) resumability (skip cartas whose `.tif` exists), and (c) **cross-account parallelism** via
-     `--shard i/n` — disjoint carta shards under different accounts at once (swap credentials per
-     shard). Each carta is `clip`ped to its polygon so a burned pixel lands in exactly one tile (no
-     double-count); `crs_transform` pins every tile to the bpts lattice so they `vrt()` cleanly.
-   - **No COG, and none needed** (`docs/05` "Inputs → Outputs"): the read-speed/OOM win was the **NoData tag +
-     sparse tiling**, not the cloud-optimized overviews (which only help partial/zoomed reads; step
-     05 reads full-res full-coverage). geedim writes the mask → NoData tag, which terra honours. At
-     carta granularity (~20 M cells) there is no OOM risk regardless.
+`candseed` is the only band stored in `snic_<fy>`. The bands R needs are recreated by **re-running
+the construction above** and masking it to the exported asset — SNIC is *not* recomputed — and
+baked into the companion `snic_metrics_<fy>`: `abs_date`, `veg_fire`, `n` and
+`burned_around_{1,2,3}`. Baking them once makes the download a pure pixel **read** rather than a
+per-tile recompute, which empirically outran the SNIC itself. `burned_around_<r>` (pixel-level
+sparseness, ported from collection-00) is a `reduceNeighborhood` **sum** of the 0/1 burned mask
+over a (2r+1)² window — cheap and non-densifying in GEE, where terra densified the grid. It keeps
+the collection-00 name but is a plain int16 **cell count**, so the download stays integer with no
+scale factor: **R divides by (2r+1)²**.
 
-**R side (step 05), done:** `load_snic` reads `data/snic-rasters/<fy>/` and `terra::vrt()`s the
-per-carta tifs into one year mosaic *before* labelling (objects stay global), in the band order
-`abs_date, veg_fire, n, burned_around_{1,2,3}, candseed`; `burned_around_*` arrive as **cell
-counts** and R divides by (2r+1)².
+`download_snic.py` then stacks the two and pulls the 7 bands **one carta at a time** via `geedim`,
+which sub-tiles each carta to the compute-pixels limits and fetches tiles concurrently. The carta
+set is the **248 cartas intersecting `C.ARG_BUFFER_FC`**, not the full ~286-sheet grid. Each carta
+is clipped to its polygon so a burned pixel lands in exactly one tile, and `crs_transform` pins
+every tile to the `bpts` lattice so they `vrt()` cleanly in step 05. The carta loop is not the
+tiling — geedim tiles anyway — it buys a land-only footprint (Argentina's bbox is about half ocean
+and neighbours), resumability, and **cross-account parallelism** through `--shard i/n`.
 
-## 5c. Whole-country vectorization benchmark (FY2000)
+## Run
 
-> **Input:** one whole-country `snic_2000` image (16 sub-tifs, **9,156,980,085 cells** =
-> 123601 × 74085), not the per-carta tiles of §5b. It measures the vectorize primitive at real
-> whole-country scale; numbers on the tiled input will differ. Machine: 31 GB RAM + 8 GB swap; GDAL 3.8.4.
+```bash
+# stage 1 — candseed asset (tiny-ROI feasibility test first)
+$PYTHON collection-01/workflow/04-snic.py --fire-year 1998 --test --launch
+$PYTHON collection-01/workflow/04-snic.py --fire-year 2015 --launch
 
-Steps share a burned-mask prep (terra writes a sparse `candseed>0` uint8 tif), then the mask is
-vectorized three ways. Wall time / peak RSS from `/usr/bin/time -v`:
+# stage 2 — the R-facing metric bands, once the candseed asset exists
+$PYTHON collection-01/workflow/04-snic.py --fire-year 2015 --to-asset --launch
 
-| step | wall | peak RSS | output |
-|---|---|---|---|
-| **prep** — build sparse burned-mask tif (terra, out-of-core, 9.16 B-cell scan) | 18:48 | 8.7 GB | 18 MB sparse mask |
-| **OLD** — `terra::as.polygons(dissolve=TRUE)` | 7:48 | 8.5 GB | **1** dissolved feature |
-| **NEW-compute** — `rasterio.features.shapes` (streaming Band, count-only) | 3:33 | 2.8 GB | 82,025 polygons |
-| **NEW-native** — `osgeo gdal.Polygonize` → GPKG (polygonize **+ write**) | 4:20 | 2.4 GB | 82,025 scars, 365 MB GPKG |
+# the whole archive (1998..2025): ~28 whole-country tasks each, use tmux
+tmux new-session -d -s snic '$PYTHON -u collection-01/workflow/04-snic.py --all --launch'
 
-Reading:
+# stage 3 — pull to disk for step 05 (add --project mapbiomas-argentina under the comahue account)
+$PYTHON collection-01/scripts/download_snic.py --all-years
+```
 
-- **Streaming `gdal_polygonize` vectorizes the whole country at ~2.4 GB in ~4.3 min** and yields
-  the **82,025 per-scar polygons directly** (one per 8-connected burned blob), writing straight to
-  GPKG. Native (osgeo, C→OGR) even beats the rasterio count on RAM (2.4 vs 2.8 GB) because geometries
-  never round-trip through Python — same GDAL engine, better output path.
-- **terra `as.polygons` on the same sparse mask is ~2× slower and ~3.5× heavier (7:48 / 8.5 GB), and
-  returns a single dissolved feature** — it has no per-object ids without a `pid` raster. Which is
-  the real blocker: building that `pid` raster in RAM is the **34 GB densification** at 9.16 B cells
-  (`values(pr) <- NA_integer_` → 9.16e9 × 4 B) — **> the 31 GB RAM**, so the in-memory terra path
-  **cannot complete** at country scale (§8.3).
-- **The prep scan (18:48 / 8.7 GB) is the real cost, and it's a monolithic-COG artifact** — reading
-  9.16 B cells single-threaded. From the per-carta direct-download tiles it is far cheaper and
-  parallelizable (though we run **untiled** by choice — [`docs/notes/05-whole_country_redesign.md`](notes/05-whole_country_redesign.md)).
+Without `--launch` the script builds and sanity-checks without submitting. Both GEE stages are
+idempotent: a fire-year is skipped if its asset exists or a PENDING/RUNNING task targets it; the
+download skips cartas whose `.tif` is already on disk.
 
-**Caveat:** the benchmark polygonized the **raw** burned mask (no 1-px dilation / ag-suppression,
-§2), so it times the vectorize *primitive*; production polygonizes the `pid` raster (same cost
-order). **Conclusion:** streaming `gdal_polygonize` over a **disk-backed** `pid` (built out-of-core,
-not the 34 GB in-RAM fill) makes the whole-country, **untiled** run feasible at bounded RAM within
-~1 h/year (decision + architecture in [`docs/notes/05-whole_country_redesign.md`](notes/05-whole_country_redesign.md)).
+## Key decisions
 
----
+- **A non-calendar fire-year, one boundary for the whole country.** It removes the cross-year
+  problem instead of patching it; the route it replaced is shelved, not refuted
+  ([`notes/04-snic3d_firebreaks.md`](notes/04-snic3d_firebreaks.md)).
+- **Whole country, not regions.** SNIC's memory footprint is per internal ~256-px tile plus the
+  `neighborhoodSize` buffer, **independent of export extent**, so country-wide costs what a region
+  costs, and `neighborhoodSize = 512` heals the internal seams (only seed-to-candidate reach across
+  a seam matters — R relabels the mask anyway). Regions stay a memory fallback should a larger
+  neighbourhood ever OOM; `scripts/trial-snic_wholecountry.py` picked the value.
+- **Permissive cuts.** Recall is protected here, precision at the step-06 object filter.
+- **The asset stores `candseed` only.** Every other band is reproducible from the same
+  construction, so storing it would duplicate state that can fall out of sync.
+- **Thresholds live in `utils/constants.py`, not in the script**, so a new collection re-tunes in
+  one place — but they are *tuned* in GEE JS (below).
 
-## 6. Tools
+## Gotchas
 
-| Tool (fuego `visualization-misc/`, unless noted) | Purpose |
+- **The seed/candidate thresholds exist in three places with no automatic sync**:
+  `explore_snic_IB-02` (JS, where they are tuned by eye and hand-copied from), the Step 04 section
+  of `utils/constants.py` (what production reads), and `explore_snic_IB-03`. Update all three
+  together.
+- **`config/snic_seed_candidate_thresholds.csv` is not live.** It holds the earlier
+  data-calibrated per-veg cuts, kept as reference only; they failed out of sample and the deployed
+  cuts are the by-eye globals.
+- **`veg_fire` is `MB(Y1−1)` for the whole fire-year** (MapBiomas covers 1986–2024, capped at
+  `MB_LIMIT_YEAR`). For a scar that actually burns in Y2 the pre-fire cover is a year stale —
+  accepted, since there is no pixel-level fire-date raster to do better with at this stage.
+- **A `candseed == 3` pixel carries a *next-year* date.** It must never contribute a date:
+  step 05 excludes dieback pixels from every date and year statistic, and step 07 substitutes the
+  parent object's date for them.
+- **The edge fire-years are `partial = true`** and their `system:time_start`/`time_end` describe
+  real coverage, not the nominal year. Anything that averages across fire-years has to know.
+
+## Files
+
+| File | Role |
 |---|---|
-| `explore_fire_seasons_regions` (+ `_bpts_ARG`, `_firms_ARG`) | fire-year boundary — monthly burn-season charts, region layout |
-| `explore_snic_IB-02` | tune seed/candidate thresholds by eye (single calendar year); **source of the Step 04 thresholds in `utils/constants.py`** |
-| `explore_snic_IB-03` | visualize the **production fire-year `candseed`** on the fly; the steppe-padding check (§4.3) |
-| `explore_snic_firebreaks_IB-01` | the **shelved** SNIC-3D firebreak experiment (§1) |
-| `snic_regions_definition` | trace SNIC regions — only needed if the whole-country memory fallback is triggered |
-| `scripts/trial-snic_wholecountry.py` (this repo) | whole-country SNIC trial that picked `neighborhoodSize` |
-| `workflow/04-snic.py` (this repo) | **production** fire-year `candseed` export |
+| `workflow/04-snic.py` | the step — both GEE stages, procedure only |
+| `utils/constants.py` (Step 04 section) | every threshold, the fire-year calendar, SNIC params, the ROIs |
+| `scripts/download_snic.py` | per-carta tiled download to `data/snic-rasters/<fy>/` |
+| `config/snic_seed_candidate_thresholds.csv` | reference only — the rejected calibrated cuts |
+| `scripts/trial-snic_wholecountry.py` | the whole-country trial that picked `neighborhoodSize` |
+| fuego `explore_snic_IB-02` | tunes the thresholds by eye on one calendar year — their source |
+| fuego `explore_snic_IB-03` | views the production fire-year `candseed` on the fly |
+| fuego `explore_fire_seasons_regions` (+ `_bpts_ARG`, `_firms_ARG`) | the monthly burn-season charts that set the fire-year boundary (source CSVs in `notebooks/`) |
+| fuego `snic_regions_definition` | traces SNIC regions — only if the whole-country memory fallback is ever triggered |
 
-**Whole-country, not regions — [DECIDED].** SNIC's memory footprint is per **internal ~256-px
-tile + `neighborhoodSize` buffer**, independent of export extent, so country-wide costs the same
-per-tile memory as a region. `neighborhoodSize = 512` (the trial value) heals the internal seams
-(only seed-to-candidate reach across a seam matters — R relabels the mask). Regions stay a **memory
-fallback** only if a larger `neighborhoodSize` ever OOMs.
+The `fuego` scripts are GEE Code Editor files in a separate repo — see CLAUDE.md, "GEE Code Editor
+scripts".
 
-**SYNC:** the seed/candidate thresholds exist in three places — `explore_snic_IB-02` (JS, the
-tuning source), `utils/constants.py` (Step 04 section, consumed by `04-snic.py`), and
-`explore_snic_IB-03` — with **no automatic sync**. Update all three together. `config/snic_seed_candidate_thresholds.csv` holds the earlier data-calibrated
-per-veg cuts, kept only as a **reference** (they failed out of sample; the live cuts are the by-eye
-globals in `explore_snic_IB-02`).
+## Related
 
----
-
-## 7. Open questions / to-dos
-
-- **[§4.3]** Does the **steppe** (`grassland_pat`) need dieback padding? Decide from
-  `explore_snic_IB-03` (Bari 1999).
-- **[§2]** Complete the trimmed edge fire-years by extending `bpts` back to **May 1998** (FY1998)
-  and through **2026** (FY2025 focal + its Jun–Nov padding).
-- **[§4.4]** Confirm whole-country SNIC @512 **completes** (memory) on a real fire-year.
-- **[§5]** Object filter: empirical tree vs object-level model; the shape/sparseness feature set and
-  cuts; the exact per-pixel (month, year-band) rule for the month-of-burn raster.
-- **veg_fire is `MB(Y1−1)`** for the whole fire-year (MapBiomas covers 1986–2024, capped at
-  `MB_LIMIT_YEAR`). Sub-optimal for a scar that actually burns in Y2 (its pre-fire cover is then
-  stale), but there is no pixel-level fire-region raster to do better now — accepted.
+- [`03-bpts.md`](03-bpts.md) — the annual metrics this step thresholds.
+- [`05-object_metrics.md`](05-object_metrics.md) — what R does with these pixels.
+- [`notes/04-snic3d_firebreaks.md`](notes/04-snic3d_firebreaks.md) — the shelved SNIC-3D route.
+- [`notes/04-vectorization_benchmark.md`](notes/04-vectorization_benchmark.md) — the FY2000
+  whole-country vectorize benchmark measured across this handoff.
+- `notebooks/snic_candidates_seeds_definition.qmd` — the threshold exploration.

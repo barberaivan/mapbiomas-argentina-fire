@@ -67,7 +67,7 @@ collection-01/
 ├── scripts/                # Ad-hoc utilities — not mandatory pipeline steps
 │   ├── status.py                          # Check GEE export status across all regions
 │   ├── download_observations.py           # Download training observations to local CSV
-│   ├── download_snic.py                   # Direct tiled download of step-04 SNIC products (per-carta GeoTIFFs) — feeds step 05 (docs/04 §5b)
+│   ├── download_snic.py                   # Direct tiled download of step-04 SNIC products (per-carta GeoTIFFs) — feeds step 05 (docs/04 "The R-facing bands and the download")
 │   ├── data_cleaning.R                     # Add the `fit` gate column (base window filter + per-fire edits) — REQUIRED before step 02; see docs/02-data_cleaning.md
 │   ├── export_region_raster.py            # Export region-ID raster to GEE asset
 │   ├── veg-fire_remap_clean-google-sheet.R # Regenerate config/veg_fire_remap.csv from the Google Sheet

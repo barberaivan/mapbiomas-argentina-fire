@@ -6,8 +6,8 @@ training points, and download one raw CSV per region.
 
 ROLE (revised): the seed/candidate threshold study now recomputes the metrics
 LOCALLY from the training observations, period-based, in
-scripts/bp_ts_metrics_local_train.R (docs/04-snic.md §"Ground seeds & candidates
-in the data") — that path needs no GEE and runs on all downloaded data now. This
+scripts/bp_ts_metrics_local_train.R (docs/04-snic.md "Seed and
+candidate") — that path needs no GEE and runs on all downloaded data now. This
 script is retained as the VALIDATION sampler: it pulls the exported year-based
 `bpts` values at a fire's points so the local computation can be hard-checked
 against production on a single mid-year fire (scripts/test-bp_ts_metrics_local.R).
@@ -23,8 +23,8 @@ What it does, per training fire (from that region's `training_fires`):
        - straddling Dec 31/Jan 1    -> BOTH {fire_year-1, fire_year}
      A straddling fire is ambiguous about which annual image shows a given
      point (and it varies point-to-point), so we sample both and let R pick
-     the max-`delta3_peak` year per BURNED point (docs/04-snic.md §4).  Missing
-     window bounds -> conservative double.
+     the max-`delta3_peak` year per BURNED point (docs/04-snic.md "Seed and
+     candidate").  Missing window bounds -> conservative double.
   2. For each such year, mosaic that year's `bpts` tiles (Argentina + the
      mapbiomas-chaco 1999-2009 overflow) and `sampleRegions` at the fire's
      training points.
@@ -40,9 +40,9 @@ simple and compact.
 NOTE ON COVERAGE: `bpts` is still exporting.  A fire whose year(s) are not yet
 exported contributes nothing (its points fall on masked/absent tiles).  We
 pre-check which years exist and log per-fire skips, so this is safe to run now
-on the ready subset and re-run once exports complete (docs/04-snic.md §"Do it
-now?").  Only production `bpts_YYYY_<tile>` assets are sampled (the merged
-collections), never the eecutest/tilemerge test assets.
+on the ready subset and re-run once exports complete.  Only production
+`bpts_YYYY_<tile>` assets are sampled (the merged collections), never the
+eecutest/tilemerge test assets.
 
 Usage
 -----

@@ -290,7 +290,7 @@ PREV_SUFFIX_MAP = {
 # 2026-07-21) and also mirrored in `explore_snic_IB-03` / `explore_snic_asset`.
 # There is NO automatic
 # sync between the fuego JS repo and this repo — if the JS thresholds change,
-# update these to match (docs/04-snic.md §6, Tools / SYNC).
+# update these to match (docs/04-snic.md "Gotchas").
 
 # Output ImageCollection (asset name pattern: snic_<fire_year>; --test → snic_test_<fy>).
 SNIC_COL = f"{_FIRE_ROOT}/COLLECTION-1/WORKFLOW-EXPORTS/snic"
@@ -299,13 +299,15 @@ SNIC_COL = f"{_FIRE_ROOT}/COLLECTION-1/WORKFLOW-EXPORTS/snic"
 # the burned_around_<r> context bands. candseed is NOT duplicated here — the direct
 # downloader (download_snic.py) re-attaches it from SNIC_COL at download time. Baking
 # these to an asset lets the tiled direct download be a cheap pixel READ (no per-tile
-# recompute of the §4 construction). Asset pattern: snic_metrics_<fy> / snic_metrics_test_<fy>.
+# recompute of the candseed construction). Asset pattern: snic_metrics_<fy> /
+# snic_metrics_test_<fy>.
 SNIC_METRICS_COL = f"{_FIRE_ROOT}/COLLECTION-1/WORKFLOW-EXPORTS/snic_metrics"
-# Fire-year calendar (§2): FY Y1 = 1 May Y1 → 30 Apr (Y1+1), named by START year Y1.
+# Fire-year calendar (docs/04 "The fire-year"): FY Y1 = 1 May Y1 → 30 Apr (Y1+1),
+# named by START year Y1.
 FY_START_MONTH = 5
 FIRST_FIRE_YEAR, LAST_FIRE_YEAR = 1998, 2025   # start years
 
-# SNIC segmentation params (§4.4 / §6).
+# SNIC segmentation params (docs/04 "Supervised SNIC").
 SNIC_NEIGHBORHOOD_SIZE = 512   # px; SNIC internal-tile buffer. 15.4 km @30 m.
 SNIC_COMPACTNESS = 0
 SNIC_CONNECTIVITY = 8
@@ -372,16 +374,18 @@ NBREAK_DEF, THR_DEF = 99999, 9
 # Denser pixels (n >= N_DENSE) get the tighter ceiling.
 S_GAP_DENSE, S_GAP_SPARSE, N_DENSE = 60, 90, 20
 
-# Patagonia slow-dieback forward padding (§4.3): a candidate/seed in the NEXT-year
-# (Y2) image with mid-date in [PAD_MONTH_LO, PAD_MONTH_HI] of Y2, west of
+# Patagonia slow-dieback forward padding (docs/04 "Patagonia dieback padding"): a
+# candidate/seed in the NEXT-year (Y2) image with mid-date in
+# [PAD_MONTH_LO, PAD_MONTH_HI] of Y2, west of
 # PAT_LON_MAX, in a Patagonia forest/shrubland class, becomes candseed=3 where
 # the fire-year focal value is 0.
 PAD_MONTH_LO, PAD_MONTH_HI = 6, 11
 PAT_LON_MAX = -70.3
 PAT_VEG_CODES = [8, 21]        # forest_pat (8), shrubland_pat (21)
 
-# San Ramón exception (fire-year 1998 only; §4.5): inside SAN_RAMON_RECT, also
-# accept high max-probability pixels as candidates (the sparse Jan-Apr 1999 fire).
+# San Ramón exception (fire-year 1998 only; docs/04 "The San Ramón exception"):
+# inside SAN_RAMON_RECT, also accept high max-probability pixels as candidates
+# (the sparse Jan-Apr 1999 fire).
 SAN_RAMON_FIRE_YEARS = [1998]
 SAN_RAMON_PMAX_BAND = "pmax3"
 SAN_RAMON_PMAX_MIN = 0.3

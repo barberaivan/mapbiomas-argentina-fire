@@ -3,7 +3,7 @@
 #
 # Local, PERIOD-BASED analogue of workflow/03-bp_ts_metrics.py, computed on the
 # already-downloaded training observations — for the SNIC seed/candidate
-# threshold study (docs/04-snic.md §"Ground seeds & candidates in the data").
+# threshold study (docs/04-snic.md "Seed and candidate").
 #
 # Rather than sample the exported annual `bpts` images at the training points,
 # we recompute the burn-probability time-series metrics DIRECTLY from the

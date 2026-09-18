@@ -325,8 +325,8 @@ What remains, in detail:
   trend — an improving archive masquerading as a rising fire regime, in a collection built for trend
   analysis. Dropping it is cheap because `seed_mean` already carries observation quality
   **density-normalised**: the step-04 seed threshold K is chosen per pixel by `(veg_fire, n)`
-  (docs/04 §4.1), which is why the two are near-orthogonal per object (Spearman **+0.014**) and
-  seed_mean's own era trend is much weaker (+0.45 vs +0.81). Identical grid-5 folds:
+  (docs/04 "Seed and candidate"), which is why the two are near-orthogonal per object
+  (Spearman **+0.014**) and seed_mean's own era trend is much weaker (+0.45 vs +0.81). Identical grid-5 folds:
 
   | | with `n_mean` (21) | **deployed, without (20)** |
   |---|---|---|

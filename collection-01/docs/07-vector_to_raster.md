@@ -438,8 +438,8 @@ Lattice: `NC = 74086`, `NR = 123601` (9.16 B cells, matching docs/05).
 
 ## 4. `candseed == 3`: dieback pixels take the parent object's date
 
-A `candseed==3` pixel is Patagonian slow-dieback padding (docs/04 §4.3): it was a candidate in the
-*next* year's image with a mid-date in Jun–Nov of *fy*+1. That date is when the **dieback was
+A `candseed==3` pixel is Patagonian slow-dieback padding (docs/04 "Patagonia dieback
+padding"): it was a candidate in the *next* year's image with a mid-date in Jun–Nov of *fy*+1. That date is when the **dieback was
 detected**, a different physical event from the burn — the pixel has no burn date of its own.
 
 Measured across the 28 fire-years: **881 k such pixels (~79 kha) survive** the step-05 longitude
@@ -549,7 +549,7 @@ single-paint change — identical to the pixel):
 
 | ROI | Result |
 |---|---|
-| San Ramón test ROI, calendar 1999 | 13,082 px, all in months 1–4, entirely from FY1998 (the Feb 1999 fire, docs/04 §4.5); painted = burned = 13,082, residual 0 |
+| San Ramón test ROI, calendar 1999 | 13,082 px, all in months 1–4, entirely from FY1998 (the Feb 1999 fire, docs/04 "The San Ramón exception"); painted = burned = 13,082, residual 0 |
 | Chaco 0.5° box, calendar 2020 | 13,064 px in months 1–4 from FY2019 + 19,482 px in months 5–12 from FY2020 = 32,546; residual 0 in both fire-years |
 
 The second is the merge working: the two fire-years land in disjoint month ranges and sum exactly.

@@ -402,8 +402,42 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
 > the cap is soft. `TEMPLATE.md` §1 now says so, with the test that matters — *is the excess
 > history, or the live algorithm?* — and this doc as the worked precedent. **Do not cut a live rule
 > out of a step doc to hit a number.**
+
 - [ ] `03-bpts.md` (5.7 k) — §§9–11 are status/handoff/decision records.
-- [ ] `04-snic.md` (2.9 k) — §1 (the shelved SNIC-3D) and §5c (benchmark) are `notes/`.
+- [x] `04-snic.md` (2,694 → 2,115 words) — §1 (the shelved SNIC-3D) →
+      `notes/04-snic3d_firebreaks.md`; §5c (the FY2000 vectorize benchmark) →
+      `notes/04-vectorization_benchmark.md`, both verbatim. §7 "Open questions" dissolved: three
+      of its five items had been **answered by the code** since (see the box below). ~35 inbound
+      citations repointed from `§N` to named sections across 13 files.
+
+> **What the step-04 pass found, beyond the extraction (2026-09-18).**
+>
+> **(a) A doc's "Open questions" section rots faster than anything else in it.** Three of §7's five
+> items were settled in code and nowhere else: whole-country SNIC @512 *does* complete (28
+> fire-years are mapped), the object filter *is* the step-06 BART, and the steppe-padding question
+> was answered **negatively downstream** — step 05 drops `candseed == 3` east of −70.6°, which is a
+> live rule that existed only as a `[OPEN]` question in step 04's doc and a code comment in step
+> 05's script. The two genuinely live items (the trimmed edge fire-years; `veg_fire = MB(Y1−1)`)
+> became `Gotchas`. **An open question that the code has since answered is not history — it is a
+> live rule with no home**, so look for its answer in the code before extracting it to `notes/`.
+>
+> **(b) Named citations need short headings, so the pass renames them.** `docs/04 §4.3` became
+> `docs/04 "Patagonia dieback padding"`; a heading like "Patagonia slow-dieback forward padding
+> (`candseed = 3`)" is unquotable in a code comment. Six `###` headings were shortened for that
+> reason alone, which is worth doing while rewriting rather than after.
+>
+> **(c) Naming is not immunity — three citations named sections that had been DELETED.**
+> `§"Ground seeds & candidates in the data"` (2 call sites), `§"Tune seeds…"` and `§"Do it now?"`
+> all pointed at headings that existed in earlier versions of the doc and were removed long before
+> this pass; one of them was already a misquote of its own heading ("…in the burned/unburned
+> data"). A name survives *insertion above it*, which is the failure mode `§N` has; it does not
+> survive deletion. The difference is that it then fails **loudly** — unfindable rather than
+> silently pointing at the wrong section — which is why they were caught here at all. Same fix as
+> for a dead `§N`: repoint it at what the reader actually needs.
+>
+> **(d) Over target at 2,115 words, and it stays** (`TEMPLATE.md` §1, the step-05 precedent). What
+> is left is live mechanism — the fire-year construction, the per-pixel K selection, the dieback
+> rule, the two-stage asset handoff — every piece of it cited from `constants.py` or a script.
 - [ ] `06-object_model.md` (8.0 k).
 - [ ] `validation/docs/design.md` (5.3 k, was `docs/11`).
       ⚠️ **NOT WRITTEN BY IVÁN — someone else on the team authored the validation design.**
@@ -468,7 +502,7 @@ has a real ATBD. No pass, no template, no extraction.
 - [ ] One-line header on `collection-00/README_00.md`: completed pilot, see the ATBD, not
       maintained. Nothing else in `collection-00/` is touched.
 
-### Phase 6 — deferred sub-tasks (not part of this plan)
+### Phase 6 — sub-tasks
 
 - [ ] Tidy `docs/notes/`: merge, prune, and decide which entries become ADRs.
       **Not in scope: the heading numbers inside a note.** Asked and settled 2026-09-18 — a note
@@ -514,6 +548,11 @@ Append one line per completed item: date — what — commit.
   `notes/05-whole_country_redesign.md` + `notes/05-memory_profile.md` extracted verbatim;
   ~30 inbound citations repointed from `§N` to named sections across 14 files; CLAUDE.md's step-05
   index row corrected (it still claimed `igraph` labelling, replaced by union-find in July).
+- 2026-09-18 — **Phase 2, `04-snic.md`**: 2,694 → 2,115 words; `notes/04-snic3d_firebreaks.md` +
+  `notes/04-vectorization_benchmark.md` extracted verbatim; the "Open questions" section dissolved
+  (3 of 5 items already answered by the code, 2 promoted to `Gotchas`); six headings shortened so
+  they can be cited by name; ~35 citations repointed across 13 files, including three that named
+  long-deleted sections; CLAUDE.md's step-04 index row rewritten.
 - 2026-09-18 — **Phase 0 done**: 3 `git mv`s, `docs/notes/` + `docs/external/` created with
   their conventions, ~120 citations rewritten across 30 files, ROADMAP pointed here.
   Uncommitted at time of writing.

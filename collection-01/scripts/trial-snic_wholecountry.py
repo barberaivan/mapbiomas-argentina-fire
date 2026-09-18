@@ -4,7 +4,7 @@ collection-01/scripts/trial-snic_wholecountry.py
 TRIAL (not the production step 04): run supervised SNIC over the WHOLE COUNTRY for
 a single year and export the `candseed` result, to validate the whole-country
 approach and pick `neighborhoodSize` by diffing internal tile seams
-(docs/04-snic.md §7.3).
+(docs/04-snic.md "Key decisions" — whole country, not regions).
 
 What it does — for `--year` (default 2015), NO previous-year padding (§4), so
 `candseed ∈ {1,2}` only (focal candidate / seed; the `{3,4}` prev-year codes are a

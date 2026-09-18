@@ -34,7 +34,7 @@ d <- fread("../data/annual_data_resolved.csv")
 lab <- c(`0` = "unburned", `1` = "burned")
 
 # Seeds (strict, K=3) vs candidates (loose, K=2): magnitude (pmaxK) + change
-# (deltaK_peak) + persistence (minforeK_peak). docs/04-snic.md §"Tune seeds…".
+# (deltaK_peak) + persistence (minforeK_peak). docs/04-snic.md "Seed and candidate".
 seed_metrics <- c("pmax3", "delta3_peak", "minfore3_peak")
 cand_metrics <- c("pmax2", "delta2_peak", "minfore2_peak")
 ```
@@ -44,7 +44,7 @@ cand_metrics <- c("pmax2", "delta2_peak", "minfore2_peak")
 Whether a simple **empirical threshold / shallow tree on the recomputed `bpts`
 metrics** separates burned from unburned points well enough to define the SNIC
 **seed** and **candidate** surfaces — or whether a **second (annual) model** is
-warranted (docs/04-snic.md §2). Rule of thumb: if a depth-2/3 tree on 3–4
+warranted (docs/04-snic.md "Foundations"). Rule of thumb: if a depth-2/3 tree on 3–4
 metrics reaches near-ceiling separation (§4), the second model is unnecessary; a
 GEE random forest stays a fallback, not the plan.
 

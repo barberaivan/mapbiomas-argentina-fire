@@ -4,7 +4,7 @@ collection-01/scripts/trial-snic_padding.py
 TRIAL (not yet the production step 04): whole-country supervised SNIC for a focal
 year WITH the §4 backward gap-fill (prev-year padding) — and, for size comparison,
 the same year WITHOUT padding. Exports the self-describing `candseed` band
-(docs/04-snic.md §4/§7.4):
+(the shelved route: docs/notes/04-snic3d_firebreaks.md):
 
     1 = focal-year candidate    2 = focal-year seed
     3 = prev-year  candidate    4 = prev-year  seed      (padded run only)

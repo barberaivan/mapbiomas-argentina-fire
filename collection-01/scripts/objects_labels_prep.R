@@ -56,7 +56,7 @@
 # Do NOT "fix" that by st_cast()ing the labels to POINT — a polygon label silently collapses to
 # its first vertex and loses its objects (one 1999 polygon label went from 131 objects to 4).
 #
-# Fire-year, not calendar year (docs/04 §2): `fire_year` on a label is the FY start year Y1
+# Fire-year, not calendar year (docs/04 "The fire-year"): `fire_year` on a label is the FY start year Y1
 # (FY = 1 May Y1 -> 30 Apr Y2) and step 05 names its outputs the same way, so the label's
 # fire_year maps straight onto objects_<fire_year>.gpkg. A label drawn for a year RANGE was
 # already written once per year by the GEE export, so nothing special happens here.
