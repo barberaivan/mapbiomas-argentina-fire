@@ -9,11 +9,11 @@ The doc keeps only the outcome: **P=50 is deployed**, 52 coefficient rows. This 
 ## Reduction 1 — 427 → 129 terms (fit-side)
 
 By choosing logistic regression over more flexible machine learning models, we wanted to
-compensate, so we built an extensive set of terms to include, based on many interaction 
-terms, defined by the large team in the workshop at Bariloche (May 2026; "canonical-team" version). 
-We thought this models would be cheap in GEE, despite its size, but reality hit us when
-fitting: the models did not converge. We thought it was a size problem, so we started 
-prunning. Later we learnt it was a tolerance problem, but model size had a huge effect on
+compensate, so we built an extensive set of terms to include, based on many interaction
+terms, defined by the large team in the workshop at Bariloche (May 2026; "canonical-team" version).
+We thought these models would be cheap in GEE, despite their size, but reality hit us when
+fitting: the models did not converge. We thought it was a size problem, so we started
+pruning. Later we learnt it was a tolerance problem, but model size had a huge effect on
 GEE compute time, so reducing it was valuable anyway.
 
 Verbatim from the doc:
