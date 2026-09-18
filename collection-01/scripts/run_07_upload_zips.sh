@@ -3,7 +3,7 @@
 #
 # WHY A LAUNCHER: `earthengine upload table` ingests only from `gs://`, and neither GEE account can
 # reach a bucket (mapbiomas-fire-485203 has no billing account; no storage permission on
-# mapbiomas-argentina) — see docs/06 §12. So the zip IS the deliverable and the upload is
+# mapbiomas-argentina) — see docs/06 "Upload to GEE". So the zip IS the deliverable and the upload is
 # done by hand: Code Editor → Assets → NEW → Table upload → Shapefile, max vertices 1000000.
 # 28 of those by hand is the price; building the 28 zips should at least be one command.
 #

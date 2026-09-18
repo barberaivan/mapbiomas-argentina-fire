@@ -7,7 +7,7 @@ Step 07c — the scar-size chain, from the uploaded calendar-year scar vectors.
 Runs AFTER:
   * `07-calendar_scars.R scars` has built `data/scars-upload-cache/scars_<Y>.zip`, and
   * Iván has ingested each one by hand as `C.ANNUAL_BURNED_VECTORS/scars_<Y>`
-    (no GCS bucket is reachable, so the zip is the deliverable — same hand-off as docs/06 §12).
+    (no GCS bucket is reachable, so the zip is the deliverable — same hand-off as docs/06 "Upload to GEE").
 
 Produces the network's three scar subproducts, each a SINGLE MULTIBAND image with one band per
 calendar year — that is the published shape, confirmed by the launch guide ("Imagen multibanda

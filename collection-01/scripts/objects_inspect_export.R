@@ -2,7 +2,7 @@
 # =============================================================================
 # objects_inspect_export.R — look at the model on a map WITHOUT uploading to GEE
 # =============================================================================
-# A full-year ingest into GEE is a by-hand Code Editor upload (docs/06 §12: no GCS bucket,
+# A full-year ingest into GEE is a by-hand Code Editor upload (docs/06 "Upload to GEE": no GCS bucket,
 # so `earthengine upload table` cannot be used). For *inspection* that is wasted
 # time — the step-05 GPKG is already on disk, so this joins the model output onto it and
 # writes layers you can open locally, today.
@@ -19,7 +19,7 @@
 #       `Map.add_geojson(path)` puts it on the map next to GEE tiles with NO asset upload.
 #       Inspection is done in QGIS off the GPKG, so this is opt-in: pass `--sample 20`.
 #
-# WHY A CURATED FIELD SET, NOT EVERYTHING (docs/06 §11): the 23 raw
+# WHY A CURATED FIELD SET, NOT EVERYTHING (docs/06-object_inspection.md "The field set"): the 23 raw
 # frac_c* columns are not model predictors (they are summed into 5 groups) and 28 years of them is dead weight in an
 # attribute table you have to read by eye. `--fields all` brings them back for one year.
 #

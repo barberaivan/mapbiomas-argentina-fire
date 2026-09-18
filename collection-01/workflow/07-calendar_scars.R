@@ -24,7 +24,7 @@
 # (docs/08 §5.4 has the reference-vs-Workspace conflict).
 #
 # ONLY ACCEPTED OBJECTS CONTRIBUTE: `fire == 1 & area_ha >= MIN_FIRE_HA`. `fire` is the
-# deployed call — the collected label where there is one, else the model (docs/06 §5); note
+# deployed call — the collected label where there is one, else the model (docs/06 "The three call columns"); note
 # `fire_tag == -1` means "unlabelled", NOT "not fire". Positive selection is deliberate: 36
 # objects in the collection are all-dieback with a null `fire`/`date_median`, so "not
 # rejected" would wrongly admit them.
@@ -439,7 +439,7 @@ pass_scars <- function(Y) {
   fwrite(hist, file.path(SCAR_DIR, sprintf("scars_%d_months.csv", Y)))
 
   # Zipped Shapefile for the manual GEE ingest (every field name is already <= 10 chars, so
-  # there is nothing for OGR to truncate — unlike the step-06 object upload, docs/06 §12).
+  # there is nothing for OGR to truncate — unlike the step-06 object upload, docs/06 "Upload to GEE").
   # Two traps, both hit here first: `delete_dsn = TRUE` on a path that does not exist yet makes
   # the ESRI Shapefile driver error out, and the zip path must be made ABSOLUTE *before* the
   # setwd() — normalizePath(mustWork = FALSE) leaves a not-yet-existing path relative, so the

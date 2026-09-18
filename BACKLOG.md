@@ -316,7 +316,7 @@ What remains, in detail:
   The pooled AUC fell because the leak is gone; **within-year discrimination held**, which is the
   signature of removing leakage without losing real skill. Thresholds re-derived (all four cuts
   moved) and all 28 years re-scored. Old outputs kept under
-  `data/objects-pred/stale-leaky-model/`. Full record: docs/06 §4; the standing diagnostic is
+  `data/objects-pred/stale-leaky-model/`. Full record: notes/06-predictor_selection.md; the standing diagnostic is
   `notebooks/objects-analysis.qmd` §8.
 - [x] **`n_mean` dropped — deployed model is 20 predictors** (2026-07-28). `n_mean` was carried as a
   **proxy for polygon quality** (how well-observed each object is) but is a **soft era proxy**: Landsat
@@ -340,7 +340,7 @@ What remains, in detail:
   Trend roughly halved for **0.0014** of within-year AUC. The 21-predictor variant and all the
   variant-selection machinery have been removed — a single model, no `OBJ_VARIANT`. Deployed cuts:
   0.250 / 0.202 / 0.436 / 0.690. The residual 0.407 trend is **unattributed**, not proven clean:
-  don't publish it as a fire-regime finding without an independent record. Record: docs/06 §4;
+  don't publish it as a fire-regime finding without an independent record. Record: notes/06-predictor_selection.md;
   standing diagnostic `notebooks/objects-analysis.qmd` §8.1.
 - [x] **docs/06 rewritten and its stale statistics refreshed** (2026-07-28). Every figure in the doc
   is now measured on the deployed 20-predictor model: the whole-population uncertainty table (mean
@@ -356,29 +356,29 @@ What remains, in detail:
   `n_mean` is an era proxy (see the closed item above). `n_pixels` is not a size — the pixel scale is
   latitude-dependent — and the importance analysis puts it **last of 20** on every measure
   (permutation |Δp| 0.0006, AUC drop 0.0000, ALE range 0.008), so `area_ha` carries everything it
-  does. Recorded at docs/05 "Metrics" and docs/06 §4.
+  does. Recorded at docs/05 "Metrics" and docs/06 "Collection 2: two metrics to stop computing".
 - [x] **Aggregated vegetation fractions in the object model** (2026-07-27). Five summed fractions
   (`frac_agri`, `frac_grass_inund`, `frac_pasture`, `frac_grass_temp`, `frac_woody`, derived from
   `config/veg_fire_remap.csv` by name) replaced the 23 raw class fractions: 22 predictors instead of
   40. Better on every grid-blocked metric (AUC 0.902 → 0.921, accuracy 0.786 → 0.812), gain
   concentrated in the weak 1–50 ha band (0.872 → 0.903). The 40-column alternative has been removed
-  from the code. See docs/06 §4.
+  from the code. See notes/06-predictor_selection.md.
 - [x] **Classification threshold chosen on out-of-fold predictions** (2026-07-27,
   `scripts/objects_threshold.R`). Youden's J per size band, on `oof_grid_5.csv`: the cut
   RISES with size — then 1–50 ha 0.180, 50–300 ha 0.405, ≥300 ha 0.598 — with barely
   overlapping bootstrap intervals, so the per-band difference is real. Written to
   `config/object_model_thresholds.csv` and applied by `06-object_model.R predict`. *(Those cuts were
   measured on the pre-leak-fix model; the deployed set is **0.250 / 0.202 / 0.436 / 0.690** — the
-  rises-with-size finding survived the refit. Current figures: docs/06 §6.)*
+  rises-with-size finding survived the refit. Current figures: docs/06 "The classification threshold".)*
 - [x] **All 28 fire-years scored + whole-population size/uncertainty exploration** (2026-07-27).
   `scripts/run_06_predict.sh` (parallel, one process per year — stochtree prediction is
   single-threaded) scored 1 689 383 objects in **4m33s**. `notebooks/objects-analysis.qmd`
   holds the result: uncertainty falls with size but the model is unsure **everywhere**, so the
   minimum-size case is cost/benefit — 1 ha drops 3.4 % of objects for 0.044 % of area — not "the model
   can't classify them". *(On the deployed model: mean `p_width` 0.412 → 0.129 across size classes,
-  global 0.317, 31.3 % of intervals straddling their cut. docs/06 §9.)*
+  global 0.317, 31.3 % of intervals straddling their cut. docs/06 "The population and the labelled sample".)*
 - [ ] **Decide and record the collection's minimum mapped fire size.** The evidence is now in
-  (docs/06 table); 1 ha is the defensible default, 0.5 ha if we want to keep everything that costs
+  (notes/06-population_and_size.md); 1 ha is the defensible default, 0.5 ha if we want to keep everything that costs
   nothing (0.005 % of area). Needs to be stated in the ATBD and applied consistently in step 07.
 - [ ] **Explain the `n_pixels` dip at 3–5 px** (3796 objects at 1 px, 778 at 5 px, then a monotone
   climb to 12 474 at 20 px). Not a segmentation floor — a floor cuts, it does not dip. Prime suspect

@@ -27,7 +27,7 @@
 # removed and each cut reported. Uneven label density across objects is deliberately NOT
 # corrected: a label is a label, and reweighting by it would invent information.
 #
-# WHY probit BART VIA stochtree (docs/06 §3): no CV tuning to do honestly on ~5 k
+# WHY probit BART VIA stochtree (docs/06 "Foundations"): no CV tuning to do honestly on ~5 k
 # labels, and the posterior gives a per-object interval — the targeting signal for a round-2
 # collection. stochtree's num_threads parallelises the GFR sampler and the MCMC, which is
 # genuine within-chain scaling of the fit.
@@ -81,7 +81,7 @@ GRID_DEG   <- 0.5          # ~50 km spatial blocks for `cv grid` (see do_cv)
 # Size-band cuts on p_mean live in THRESH_CSV (objects_data_functions.R), chosen on out-of-fold
 # predictions by scripts/objects_threshold.R. Absent -> predict falls back to 0.5 and says so.
 # The bands rise with size (0.18 / 0.41 / 0.60) because the model is far more confident on big
-# objects; docs/06 §6.
+# objects; docs/06 "The classification threshold".
 
 msg <- function(...) write(sprintf(...), stderr())
 hdr <- function(s) { msg(""); msg("== %s ==", s) }
@@ -244,7 +244,7 @@ do_predict <- function(years) {
     msg("  -> %s (%.1f MB)", f, file.size(f) / 1024^2)
 
     # what the same rate implies for the whole country, the number that decides whether
-    # per-year chunked prediction is viable at all (docs/06 §3)
+    # per-year chunked prediction is viable at all (docs/06 "The model")
     all_n <- 1689419
     msg("  extrapolated to all %s objects: %.1f min at this rate", format(all_n, big.mark = ","),
         dt_pred / nrow(X) * all_n / 60)

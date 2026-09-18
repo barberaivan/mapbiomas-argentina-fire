@@ -155,7 +155,7 @@ def accepted_objects(fire_year, rules=True, t_grass=None, window=None, t_agri=No
     exclusion rule (docs/07 §1.1).
 
     `fire` is the DEPLOYED call — the collected label where there is one, else the model
-    (docs/06 §5).  `fire_tag = -1` means "unlabelled", never "not fire", which is why we
+    (docs/06 "The three call columns").  `fire_tag = -1` means "unlabelled", never "not fire", which is why we
     filter on `fire` and not on the tag.  Positive selection is deliberate: 36 objects in
     the collection are all-dieback and have a null `fire`/`date_med`, so "not rejected"
     would wrongly admit them.
@@ -263,7 +263,7 @@ def month_of_burn(cal_year, **rule_kw):
         "region": C.PRODUCT_REGION,
         "fire_years": f"{cal_year - 1},{cal_year}",
         "min_fire_ha": C.MIN_FIRE_HA,
-        "fire_call": "fire",                        # docs/06 §5
+        "fire_call": "fire",                        # docs/06 "The three call columns"
         "dieback_parent_date": int(C.DIEBACK_USE_PARENT_DATE),
         "lulc_mask": "embedded-upstream (veg_fire non-burnable classes are unreachable "
                      "as SNIC candidates; stricter than the reference water-only rule)",

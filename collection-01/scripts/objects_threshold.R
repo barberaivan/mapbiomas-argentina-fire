@@ -24,7 +24,7 @@
 #   acc      plain accuracy at the cut. Same caveat, worse.
 #   J_area   Youden's J with every object WEIGHTED BY area_ha. The product is a burned-AREA
 #            product, so this is the criterion that matches the deliverable — but read it
-#            knowing a handful of huge objects dominate the weights (docs/06 §6).
+#            knowing a handful of huge objects dominate the weights (docs/06 "The classification threshold").
 #
 # STRATA: five disjoint size bands (<1, 1-50, 50-300, 300-1000, >=1000 ha) — the collection-00
 # cases with the open-ended >=300 one split in two, because the optimal cut turned out to keep

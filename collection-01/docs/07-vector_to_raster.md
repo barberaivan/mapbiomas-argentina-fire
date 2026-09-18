@@ -90,14 +90,14 @@ Two traps it had to be taught, both of which bit on the first run:
 
 **The fire layer is the object-level classification.** Only objects with **`fire == 1` and
 `area_ha >= 1`**, and which survive the two exclusion rules of §1.1**, contribute a pixel. `fire` is the deployed call — the collected label where there
-is one, else the model (docs/06 §5); `fire_tag == -1` means *unlabelled*, never *not fire*. The
+is one, else the model (docs/06 "The three call columns"); `fire_tag == -1` means *unlabelled*, never *not fire*. The
 filter is a **positive** selection, not "everything not rejected": 36 objects in the collection are
 entirely `candseed==3` dieback, so they have a null `date_median` and a null `fire`, and
 "not rejected" would admit them.
 
 **The whole object set is what was uploaded** in step 06 (`objects_raw_<fy>`, 28 FCs, every object
 with all 20 predictors), because a fire-only layer can show commission error but never omission,
-and the rejected objects are what aims the next label campaign (docs/06 §12). Step 07 filters at
+and the rejected objects are what aims the next label campaign (docs/06 "Upload to GEE"). Step 07 filters at
 read time; nothing about the upload changes.
 
 **Calendar year and month are assigned PER PIXEL, from `abs_date`** — not per object from
@@ -772,7 +772,7 @@ the exported assets (§9.1, §12.8), and docs/08 §7 is the delivery checklist. 
   rules: **1,012,648 rows / 1,012,645 objects** (§13).
 - ~~The 27 scar FCs must be ingested by hand~~ — **done**, 27/27, both gates passing (§8.1). The
   hand-ingest route stands for any future re-upload: no GCS bucket is reachable, so the zip is the
-  deliverable (docs/06 §12).
+  deliverable (docs/06 "Upload to GEE").
 - ~~The stage-4 raster subproducts~~ — **done**, 9/9 landed and re-verified (§12.8). The LULC-to-2025
   item was never a blocker: duplicating the last year forward is the network's own answer, and col-3
   v1 made it moot (§12.4).
@@ -1091,7 +1091,7 @@ The honest answer beforehand was *probably, but this is the one export in step 0
 - precedent is against it: Brazil ships `mbfogo_col5_<year>_v1` **per year**, our scars are 27
   per-year assets, `objects_raw` is 28. Nobody in the network ships one merged all-years vector;
 - building it locally and ingesting is worse — >2 GB breaks the Shapefile limit and no GCS bucket is
-  reachable (docs/06 §12).
+  reachable (docs/06 "Upload to GEE").
 
 So: **`--year 2012` first** (22,224 polygons — landed in **3 m 09 s**, schema and count exact on the
 asset), then the merged task, with `--per-year` as a fallback that wastes nothing because the 2012

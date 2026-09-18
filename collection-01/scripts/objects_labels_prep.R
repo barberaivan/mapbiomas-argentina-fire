@@ -3,7 +3,7 @@
 # objects_labels_prep.R — step-06 labels: GEE polygons-data assets -> one table
 # =============================================================================
 # Turns the per-collaborator fire/non-fire collections exported by the GEE
-# `training_polygons_*` scripts (docs/06 §1) into the single labelled table the
+# `training_polygons_*` scripts (docs/06-object_labels.md "Collecting the labels in GEE") into the single labelled table the
 # step-06 object model is fitted on. Two stages, either runnable on its own:
 #
 #   [download] one asset -> ONE FILE, GeoPackage, in collection-01/data/objects-labels/

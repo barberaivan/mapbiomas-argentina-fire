@@ -101,7 +101,7 @@ NON_VEG    <- c("n_pixels", "area_ha", "burned_around_1", "burned_around_2", "bu
 # Five summed fractions in place of the 23 raw class fractions. Why: 23 sparse columns were most
 # of the design matrix, many classes are near-empty in the labels, and BART draws split variables
 # uniformly over what is available, so the sparse fractions diluted the split budget. Measured
-# better on every grid-blocked metric (docs/06 §4).
+# better on every grid-blocked metric (docs/06 "Why no predictor may identify the year").
 #
 # Membership is derived from config/veg_fire_remap.csv BY NAME, not from a hand-typed list of
 # codes, so a remap change follows through — and a code landing in two groups is an error, not
@@ -326,7 +326,7 @@ band_lower <- function(s) {
 #   * config/object_model_thresholds.csv has FOUR bands (<1, 1-50, 50-300, >=300) because a
 #     band only earns its own threshold if it has enough labels to place one — below 1 ha there
 #     are 114 labels total, and above 300 ha the two halves were statistically indistinguishable
-#     (docs/06 §6).
+#     (docs/06 "The classification threshold").
 # So a QGIS row can sit in display class ">=1000 ha" while its fire call came from band ">=300 ha".
 # NOTE ON THE QUANTUM: area_ha is NOT n_pixels * 0.09. The objects are in EPSG:4326 with ~30 m
 # cells defined at the equator and area measured on the ellipsoid, so a pixel is 900*cos(lat) m²

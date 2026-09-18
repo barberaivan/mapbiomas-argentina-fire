@@ -282,7 +282,7 @@ earlier draft of this file got it wrong, the correction.
 
 **Vectors only; GEE does the pixel work.** Nothing new is uploaded for the month layer — step 06
 already put the whole object set in GEE (`objects_raw_<fy>`, 28 FCs, every object with all 20
-predictors and the three call columns, docs/06 §12). Step 07 filters it at read time to
+predictors and the three call columns, docs/06 "Upload to GEE"). Step 07 filters it at read time to
 `fire == 1 & area_ha >= 1` and paints it against the SNIC assets that are already there
 (`snic_metrics_<fy>.abs_date`, `snic_<fy>.candseed`). The per-pixel calendar year and month that R
 computed locally are knowingly recomputed in GEE; that redundancy is the price of not moving 28

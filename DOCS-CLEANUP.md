@@ -507,7 +507,68 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
 > is left is live mechanism — the fire-year construction, the per-pixel K selection, the dieback
 > rule, the two-stage asset handoff — every piece of it cited from `constants.py` or a script.
 
-- [ ] `06-object_model.md` (8.0 k).
+> ## 🔻 IVÁN, REVIEW FROM THIS ITEM BELOW 🔻
+>
+> Everything from here down was done in **one unattended session on 2026-09-18** (you were at the
+> GIM), so the per-item review the protocol calls for has not happened. Each item was committed
+> separately, so any one of them can be reverted on its own. The per-pass boxes below say what was
+> decided and what needs your sign-off.
+
+- [x] `06-object_model.md` (7,958 → **4,592**) — **split into three docs on your suggestion**
+      (mid-session: *"perhaps doc 06 can be separated in data collection and modelling"*):
+      `06-object_labels.md` (1,010 — collection in GEE, the join, the fitting set),
+      `06-object_model.md` (4,592 — the classifier and the upload) and `06-object_inspection.md`
+      (995 — the QGIS review layer). Seven `notes/` entries extracted verbatim, 4.6 k words. ~45
+      inbound citations repointed from `§N` to named sections across 20 files; two dead *named*
+      citations found; CLAUDE.md's one step-06 row replaced by three. **Two live defects the doc
+      had never recorded — see the box.**
+
+> **What the step-06 pass found (2026-09-18).**
+>
+> **(a) The doc was wrong about what the upload does, and the error had already cost a product
+> 5.1 Mha.** It said the max-vertices dialog setting makes GEE "subdivide the geometry *inside* the
+> feature, so `oid` and the properties survive". It does not: it writes **several features sharing
+> one `oid`**, each repeating the whole object's attributes. That is documented in `docs/07`
+> ("`oid` is unique per OBJECT, not per row") because that is where it hurt — a naive
+> `aggregate_sum('area_ha')` over-counted the polygon layer by 5,118,513 ha — but step 06 *owns the
+> upload*, and its own doc asserted the opposite. Likewise **`objects_raw_2021` carries 1,249
+> duplicated features** that no metadata count reveals; that too was recorded only in `docs/07`,
+> under the consumer that had to guard against it. Both are now `Gotchas` in `06-object_model.md`.
+> **The general lesson is new and worth keeping**: the step-03 pass found *a change the code made
+> that the doc never heard about*, and the step-04 pass found *an open question the code had since
+> answered*. This is the third of the family — **a defect that a DOWNSTREAM doc discovered and
+> recorded, in the wrong doc.** It is the hardest of the three to find, because nothing in the step
+> doc looks stale and nothing in `git log` for the step's own scripts shows it. The way it was
+> found: `grep` for the step's output asset (`objects_raw`) across the whole repo, not just its own
+> directory. **Add that to the per-doc protocol** — grep the step's *outputs*, not only its inputs
+> and its scripts.
+>
+> **(b) The three-way split, and why it is three and not two.** Your message said two, "depending on
+> length". The labels/model line is yours and is the `01-training_data.md` ↔ `02-model_fitting.md`
+> shape one step later. The third file is the **`02-diagnostic_plots.md` precedent you set in Phase
+> 1** — the QGIS layer produces nothing the pipeline consumes, `objects-inspect-cache/` is
+> explicitly regenerable, and it exists so a human can look: a diagnostic tool, not a step. If you
+> want two, folding `06-object_inspection.md` back in is a `cat` and three link fixes. **This is the
+> one thing in this pass that is genuinely your call rather than mine.**
+>
+> **(c) 4,592 words is still the largest step doc, and I do not think more should come out.** The
+> first rewrite landed at 6.0 k; three tightening passes bought only ~300 words, which is the signal
+> `TEMPLATE.md` §1 describes — the excess was not padding. What is left after the three-way split is
+> the model, the 20 predictors, the leak rule, the call columns, the thresholds, the CV design, the
+> importance analysis and the upload: eight live topics, every one cited from code. The real
+> reduction came from moving 4.6 k words of measurement into `notes/` and 2.0 k into the two sibling
+> docs.
+>
+> **(d) Two more dead *named* citations**, continuing the step-04 finding that naming is not
+> immunity: `README.md` cited `docs/06 "Looking at it on a map without uploading to GEE"`, a heading
+> that never existed under that name (it was "11. Inspecting it in QGIS, without uploading to GEE"),
+> and `docs/05`'s Related list cited "§4 on why no predictor may proxy for the year". Both now point
+> at real names. The count of *numbered* citations repointed in this pass was ~45, the most of any
+> pass so far, because step 06 is cited from step 07's four scripts as well as its own.
+>
+> **(e) `notes/` conventions held with no friction.** Seven entries, all verbatim, all with pinned
+> provenance headers naming sections this same pass deleted — which `notes/README.md` says is
+> correct and not to be repaired. Nothing needed inventing.
 - [ ] `validation/docs/design.md` (5.3 k, was `docs/11`).
       ⚠️ **NOT WRITTEN BY IVÁN — someone else on the team authored the validation design.**
       Two consequences that apply to nothing else in this plan:
@@ -631,6 +692,13 @@ Append one line per completed item: date — what — commit.
   product had no doc, though `00-overview.md` already promised it); the join — the per-year
   precomputation — stays in 03 as "What is precomputed per year"; §3 of this plan amended with
   the general rule.
+- 2026-09-18 — **Phase 2, `06-object_model.md`**: 7,958 → 4,592 words, **split three ways** on
+  Iván's mid-session suggestion — `06-object_labels.md` (1,010) and `06-object_inspection.md` (995,
+  the `02-diagnostic_plots.md` precedent) alongside it; seven `notes/` entries extracted verbatim
+  (`06-predictor_selection`, `06-threshold_sweep`, `06-importance_ale`, `06-population_and_size`,
+  `06-c00_baseline`, `06-upload_decisions`, `06-label_prep_engineering`); ~45 citations repointed
+  across 20 files; two live upload defects recorded in the step doc for the first time (they were
+  only in `docs/07`); CLAUDE.md's step-06 row replaced by three.
 - 2026-09-18 — **Phase 0 done**: 3 `git mv`s, `docs/notes/` + `docs/external/` created with
   their conventions, ~120 citations rewritten across 30 files, ROADMAP pointed here.
   Uncommitted at time of writing.

@@ -11,7 +11,7 @@
 #       inputs" — it is "what an expert needs to see to adjudicate a call". Importance ranks the
 #       candidates; the ALE shape says whether a variable carries a LEGIBLE effect or just noise.
 #   [2] Is any predictor doing something it should not? This is how `fire_year` /
-#       `year_calendar` were caught taking the top two split shares (docs/06 §4).
+#       `year_calendar` were caught taking the top two split shares (docs/06 "Why no predictor may identify the year").
 #
 # FOUR MEASURES, because no single one is trustworthy here — the predictors are strongly
 # correlated (area_ha / n_pixels / perimeter_m are near-collinear; burned_around_{1,2,3} are

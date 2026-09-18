@@ -3,7 +3,7 @@ collection-01/scripts/objects_upload.py
 
 Package one fire-year of step-05 objects — geometry + ALL 20 predictors + the model/label calls —
 for the GEE table upload, and ingest it if a GCS bucket is reachable (as of 2026-07 none is, so the
-zip IS the deliverable and the upload is done by hand). docs/06 §12.
+zip IS the deliverable and the upload is done by hand). docs/06 "Upload to GEE".
 
 EVERY object goes up, not only the ones called fire: a fire-only layer can show commission error
 but never omission, and the rejected objects with their predictors are what aims the next label
@@ -120,7 +120,7 @@ INT_FIELDS = {"fire", "fire_model", "fire_tag"}
 TAG_NONE = -1
 
 # Present in the step-05 metrics but deliberately NOT uploaded. `n_mean` is an era proxy that was
-# removed as a predictor (docs/06 §4); collection 2 should
+# removed as a predictor (docs/06 "Why no predictor may identify the year"); collection 2 should
 # not compute it at all. Dropped explicitly rather than left to trip the RENAME check, so the
 # omission is a stated decision instead of an error someone "fixes" by adding it back.
 DROP_COLS = {"n_mean"}

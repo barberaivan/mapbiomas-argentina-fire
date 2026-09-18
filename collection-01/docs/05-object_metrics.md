@@ -115,7 +115,7 @@ to be GForce-optimizable in `data.table`.
   burned fraction in the (2r+1)² window.
 - **`n_mean`** — mean Landsat observation count. Computed here but **not a model predictor, and
   collection 2 should not compute it at all**: it is an era proxy and reintroduced a spurious time
-  trend in the fire rate. See [`06-object_model.md`](06-object_model.md) §4.
+  trend in the fire rate. See [`06-object_model.md`](06-object_model.md) "Why no predictor may identify the year".
 
 **Dieback pixels are excluded from every date computation.** `candseed == 3` cells carry *next*
 fire-year dates and inherit the parent object's date downstream, so they are dropped before the
@@ -185,8 +185,8 @@ All five were forced by whole-country memory; the benchmarks behind them are in
 ## Related
 
 - [`04-snic.md`](04-snic.md) — the SNIC product this step consumes.
-- [`06-object_model.md`](06-object_model.md) — the classifier these metrics feed, and §4 on why no
-  predictor may proxy for the year.
+- [`06-object_model.md`](06-object_model.md) — the classifier these metrics feed, and "Why no
+  predictor may identify the year".
 - [`notes/05-whole_country_redesign.md`](notes/05-whole_country_redesign.md) — what broke at
   9.16 B cells and every road not taken.
 - [`notes/05-memory_profile.md`](notes/05-memory_profile.md) — the FY2000 profile, the

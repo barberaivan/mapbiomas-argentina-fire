@@ -41,7 +41,7 @@ collection-01/
 │   ├── constants.py        # All paths, feature lists, MB reclass table, LR terms
 │   └── functions.py        # Shared cross-step GEE helpers ONLY (Landsat, indices, MB sampling, veg_fire); step-specific code lives with its step
 ├── config/                 # veg_fire_remap.csv — canonical MB→fire-class remap (source of truth)
-│                           # object_model_thresholds.csv — step-06 fire-call cut per size band (docs/06 §6)
+│                           # object_model_thresholds.csv — step-06 fire-call cut per size band (docs/06 "The classification threshold")
 ├── models/                 # Tracked: *_coefficients.csv (the GEE deliverable) + README; see models/README.md
 ├── models-store/           # symlink → Insync store (gitignored): heavy fits, CV metrics, tuning, OOF preds
 ├── workflow/               # Numbered pipeline steps (mixed Python + R)
@@ -249,7 +249,7 @@ fractions summed by group, which measured better than using them raw). **No pred
 year, and none proxies for it** — `fire_year` and `year_calendar` were removed after they were found
 to be reading the per-year label prevalence rather than the fire regime, `n_mean` after it was found
 to track the growth of the Landsat record, and day-of-year enters circularly as `doy_sin`/`doy_cos`.
-Read `docs/06-object_model.md` §4 before touching the predictor set.
+Read `docs/06-object_model.md` "Why no predictor may identify the year" before touching the predictor set.
 
 **Three call columns** come out of `predict`: `fire_model` (the model at its size-band cut),
 `fire_tag` (the collected label, `-1` where there is none) and **`fire`** — the deployed call, which
@@ -281,7 +281,7 @@ Rscript collection-01/scripts/objects_importance_ale.R   # -> data/objects-analy
 Map inspection with **no GEE upload** — joins the predictions onto the step-05 geometry
 already on disk: a full GPKG for QGIS, plus a small decile-stratified GeoJSON light enough
 to drop into geemap/leafmap as a client-side layer next to GEE imagery tiles
-(`docs/06-object_model.md` "Looking at it on a map without uploading to GEE"):
+(`docs/06-object_inspection.md`):
 
 ```bash
 Rscript collection-01/scripts/objects_inspect_export.R 2020            # both products
@@ -300,7 +300,7 @@ fractions and the 6 shape metrics. Useful QGIS filters: `"verdict" != 'both'` (d
 (the collected labels). Note the layer name starts with a digit, so SQL contexts need it
 double-quoted. **Where to start:** `"verdict" = 'c00 only' AND "area_ha" >= 300` — 5872 objects /
 6397 kha (7.5 % of all object area) that the old filter keeps and the model rejects without
-confidence. Full guidance: docs/06 §11.
+confidence. Full guidance: docs/06-object_inspection.md.
 
 Data exploration behind the size cuts and the collection-00 filter comparison — reads the
 full 1.69 M-object table and the clean labelled table, writes CSVs + PNGs to
@@ -341,7 +341,7 @@ tmux new-session -d -s validate '$PYTHON collection-01/scripts/validate_upload_z
 The validator exists because a hand upload has no failing pipeline to catch a bad zip — it would
 surface weeks later as a wrong map. Its sharpest check is that `fire`/`fire_model`/`fire_tag` are
 never NULL: OGR writes an unset DBF integer as null and GEE reads it as `0`, indistinguishable from
-"a human said NOT fire", hence the `-1` sentinel. Full detail: docs/06 §12.
+"a human said NOT fire", hence the `-1` sentinel. Full detail: docs/06 "Upload to GEE".
 
 ### Step 07 — the calendar-year products
 
@@ -499,7 +499,7 @@ Downloads the per-collaborator fire/non-fire collections exported by the GEE
 re-downloadable) and matches every label to the step-05 objects of its own
 fire-year, attaching their metrics → `data/objects-labels/polygons_data_merged.csv`,
 the table the object model is fitted on. Details + measured timings:
-`docs/06-object_model.md` "Label prep".
+`docs/06-object_labels.md` "Label prep — objects, not pixels".
 
 ```bash
 Rscript collection-01/scripts/objects_labels_prep.R              # download missing, then merge
@@ -576,7 +576,7 @@ Export status across regions: `python collection-01/scripts/status.py`.
 | 03 — burn-probability time series | Running (per-carta export; `docs/03-bpts.md`). |
 | 04 — SNIC segmentation | Whole-country fire-year SNIC settled; per-carta direct-download handoff to R (`docs/04-snic.md`). |
 | 05 — object metrics (R/terra) | 2001–2025 measured and run; 1.69 M objects (`docs/05-object_metrics.md`). |
-| 06 — object model (R, BART) | **Done.** 20 predictors, fitted on 5255 labels, grid-blocked OOF AUC 0.891 (within-year 0.845); per-size-band cuts deployed; all 28 fire-years scored (1 689 419 objects, 36 unscored); 28 QGIS layers built and inspected (`docs/06-object_model.md`). |
+| 06 — object model (R, BART) | **Done.** 20 predictors, fitted on 5255 labels, grid-blocked OOF AUC 0.891 (within-year 0.845); per-size-band cuts deployed; all 28 fire-years scored (1 689 419 objects, 36 unscored); 28 QGIS layers built and inspected (`docs/06-object_model.md`, `docs/06-object_labels.md`, `docs/06-object_inspection.md`). |
 | 07 — calendar-year products | **All 12 images + 27 scar FCs landed and verified on the exported assets** (2026-07-30): **07a** month-of-burn collection 27/27, **07b** calendar-year scars 27/27 built, gated and ingested, **07c** scar rasters 3/3, **07d** the nine derived subproducts 9/9. **07e** the fire-object polygon layer for early users is exporting. Delivery checklist: `docs/08-postprocessing.md` §7; detail and verification numbers: `docs/07-vector_to_raster.md`. Still owed: the whole-country month-histogram cross-check (its local half needs regenerating) and the network's visual validation pass. |
 | 08 — network post-processing & published subproducts | Not started; design notes only (`docs/08-postprocessing.md`). Assets due **31 Jul 2026** |
 | 09 — statistics & factsheet | **Numbers and figures done.** Burned area from the network's toolkit run on our ecorregiones; burnable denominator exported (251.09 Mha over the 12 mapped ecorregiones); 1,012,645 mapped fires counted locally; the `factsheet_*` tables and 170 figures built (`statistics/docs/statistics.md`), including **análisis 6** — how land cover changes around fire, with a control: q = 3.74 nationally, 10.9 for bosque → agropecuario. Gate 6 — toolkit vs object database — closes at **63.23 vs 63.25 Mha, 0.03 %**. Still owed: the staging cross-check, the ATBD, Workspace registration. Launch **24 Sep 2026** |

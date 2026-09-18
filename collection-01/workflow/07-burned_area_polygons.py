@@ -16,7 +16,7 @@ carrying the whole object's `area_ha` (see below).
     fire == 1  AND  area_ha >= C.MIN_FIRE_HA
 
 the same POSITIVE selection step 07a paints (docs/07 §1).  `fire` is the deployed call — the
-collected label where there is one, else the probit-BART model (docs/06 §5) — so `fire_tag == -1`
+collected label where there is one, else the probit-BART model (docs/06 "The three call columns") — so `fire_tag == -1`
 means *unlabelled*, never *not fire*, and "not rejected" is not the same filter: 36 objects are
 entirely `candseed==3` dieback with a null `fire`, and this excludes them.
 
@@ -155,7 +155,7 @@ such tasks succeed and the failure mode is `User memory limit exceeded` AFTER ho
 against it — Brazil ships `mbfogo_col5_<year>_v1` per year, our scars are 27 per-year assets,
 `objects_raw` is 28; nobody in the network ships one merged all-years vector.  Building it locally
 and ingesting instead is worse: >2 GB breaks the Shapefile limit and no GCS bucket is reachable
-(docs/06 §12).
+(docs/06 "Upload to GEE").
 
 SETTLED: it works.  Three tasks have now completed at 1.26 M features, in 2.6-3.7 h each, and the
 predicted `User memory limit exceeded` never appeared.  The per-fire-year fallback that guarded this
@@ -394,7 +394,7 @@ def properties(years, n_features=None):
         "fire_years": f"{years[0]}-{years[-1]}",
         "fire_year_definition": "non-calendar: 1 May <fire_year> to 30 Apr <fire_year>+1",
         "fire_call": ("fire == 1 — the deployed call: the collected label where there is one, "
-                      "else the probit-BART object model (docs/06 §5)"),
+                      "else the probit-BART object model (docs/06 "The three call columns")"),
         "min_fire_ha": C.MIN_FIRE_HA,
         "calendar_year_definition": (
             "MODE of the object's per-pixel calendar years. The published RASTER products assign "

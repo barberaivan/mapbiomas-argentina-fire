@@ -405,7 +405,7 @@ TEST_ROI_COORDS = [[[-71.04026772918293, -41.14289047797963],
 
 # ─── Step 06 — uploaded object FeatureCollections ─────────────────────────────
 # One FC per fire-year, the WHOLE object set with all 20 predictors and the three
-# call columns (docs/06 §12).  Field names are the <=10-char Shapefile ones from
+# call columns (docs/06 "Upload to GEE").  Field names are the <=10-char Shapefile ones from
 # scripts/objects_upload.py::RENAME — `fire`, `area_ha`, `date_med`, `year_cal`.
 OBJECTS_RAW_COL = f"{_FIRE_ROOT}/COLLECTION-1/WORKFLOW-EXPORTS/objects_raw"
 

@@ -78,7 +78,7 @@ next stage needs.
 | **Spectral** | [01 training data](01-training_data.md); 02 [vegetation remap](02-vegetation_remap.md), [cleaning](02-data_cleaning.md), [model fitting](02-model_fitting.md), [burn probability](02-burn_probability.md) | burn probability per observation |
 | **Temporal** | [03 burn-probability time-series metrics](03-bpts.md) | annual per-pixel metrics + burn date |
 | **Spatial (1)** | [04 SNIC segmentation](04-snic.md) | scar objects, grown from seeds through candidates |
-| **Spatial (2)** | [05 object metrics](05-object_metrics.md); [06 object model](06-object_model.md) | a fire probability and a fire call per object |
+| **Spatial (2)** | [05 object metrics](05-object_metrics.md); 06 [object labels](06-object_labels.md), [object model](06-object_model.md), [QGIS inspection](06-object_inspection.md) | a fire probability and a fire call per object |
 | *Publication* | [07 calendar-year products](07-vector_to_raster.md) | the layers MapBiomas ships |
 
 **Steps 01–06 are the algorithm; step 07 is the delivery.** If the goal were burned-area data as

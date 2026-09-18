@@ -50,7 +50,7 @@ Four things that have to be read together, because each one decides how to read 
    `p_mean` into the `fire` call, with the sensitivity/specificity they buy and how well the
    labels actually identify them.
 4. **The per-year sanity check** (§8). This is the diagnostic that caught the `fire_year` /
-   `year_calendar` label-prevalence leak (docs/06 §4), and it
+   `year_calendar` label-prevalence leak (docs/06 "Why no predictor may identify the year"), and it
    is the first thing to look at after any refit.
 
 Sections 1–4 need only the step-05 metrics. Sections 5–8 need a `predict all` run; §7 also needs
@@ -485,7 +485,7 @@ c1 / c2
 artifact of where collaborators drew, ranging 0.00 to 1.00 across years and absent entirely in seven
 fire-years. If any predictor lets the model identify the year, it learns that sampling pattern and
 reports it back as a fire rate. That is exactly what happened when `fire_year` and `year_calendar`
-were predictors (docs/06 §4): Spearman(label prevalence,
+were predictors (docs/06 "Why no predictor may identify the year"): Spearman(label prevalence,
 predicted fire %) reached **0.83**, fire-year 1998 came out **100.0 % fire**, and grid-blocked CV
 could not see any of it because every fold contains 17–20 of the 21 labelled years.
 

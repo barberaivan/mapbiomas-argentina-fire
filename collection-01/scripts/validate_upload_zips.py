@@ -3,7 +3,7 @@ collection-01/scripts/validate_upload_zips.py
 
 Pre-upload gate for the 28 zipped Shapefiles in data/objects-upload-cache/ (built by
 scripts/run_07_upload_zips.sh). The upload is done BY HAND, one Code Editor dialog per fire-year
-(docs/06 §12 — no GCS bucket), so a bad zip is not discovered by a failing pipeline: it is
+(docs/06 "Upload to GEE" — no GCS bucket), so a bad zip is not discovered by a failing pipeline: it is
 discovered weeks later as a wrong map. Everything cheap enough to check is checked here.
 
 WHAT IT CHECKS, per year
@@ -11,7 +11,7 @@ WHAT IT CHECKS, per year
   crs         EPSG:4326 — GEE-native; a reprojection here would silently shift every polygon
   schema      all 20 model predictors present under their renamed names, plus oid / fire /
               fire_model / fire_tag / p_mean / p_width / year_cal / date_medd; and n_mean ABSENT
-              (dropped on purpose — docs/06 §4)
+              (dropped on purpose — docs/06 "Why no predictor may identify the year")
   count       feature count == rows in the year's prediction CSV (nothing lost in the join)
   oid         unique, non-empty
   codes       fire / fire_model / fire_tag are NEVER NULL and only ever -1/0/1. This is the check
