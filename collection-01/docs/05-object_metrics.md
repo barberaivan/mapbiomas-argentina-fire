@@ -130,9 +130,8 @@ carries NA predictors through step 06.
 ## Run
 
 ```bash
-OBJ_CORES=13 Rscript collection-01/workflow/05-objects_metrics.R 2000   # union-find (default)
+OBJ_CORES=13 Rscript collection-01/workflow/05-objects_metrics.R 2000   # one fire-year
 Rscript collection-01/workflow/05-objects_metrics.R test 1998           # small ROI → objects_test_*
-Rscript collection-01/workflow/05-objects_metrics.R terra 2000          # dense fallback, ROI only
 
 # all years overnight, one Rscript per year, resumable — launch with an ABSOLUTE path
 tmux new-session -d -s obj05 '/abs/path/to/collection-01/scripts/run_05_years.sh 2001 2025'

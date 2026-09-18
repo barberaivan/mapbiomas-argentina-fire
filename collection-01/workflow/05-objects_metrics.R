@@ -19,14 +19,11 @@
 #     as a WIDER-WINDOW union with a veg-class distance threshold — no halo raster (§2 below).
 #   * VECTORIZE per-object in parallel (tiny local rasters), not by densifying a country-wide
 #     34 GB `pid` raster for one big as.polygons().
-# The old dense route survives as the `terra` method (ROI-scale fallback only).
 #
 # Run from the repo ROOT (paths below are repo-relative):
-#   Rscript collection-01/workflow/05-objects_metrics.R [test] [terra] [fire_year ...]
+#   Rscript collection-01/workflow/05-objects_metrics.R [test] [fire_year ...]
 #     fire_year…  one or more START years (e.g. 2000). Default: every year present.
 #     test        read the small-ROI snic_test_<year> products → objects_test_<year>.
-#     terra       use the dense terra::patches() labelling (ROI-scale fallback); default is
-#                 the scalable union-find path.
 #   OBJ_CORES=<n> parallelises the per-object vectorize (default: ~half the cores; 1 = serial).
 #   e.g.  OBJ_CORES=13 Rscript collection-01/workflow/05-objects_metrics.R 2000
 #
@@ -104,7 +101,7 @@ snic_tifs <- function(fy, test = FALSE) {
 }
 
 load_snic <- function(fy, test = FALSE) {
-  # Named whole-country mosaic (terra vrt) — used by the `terra` fallback and for grid geometry.
+  # Named whole-country mosaic (terra vrt) — grid geometry + band naming for the extract.
   tifs <- snic_tifs(fy, test)
   r <- if (length(tifs) > 1L) terra::vrt(tifs, overwrite = TRUE) else terra::rast(tifs)
   if (!all(names(r) %in% EXPECT_BANDS)) {              # vrt() drops names → assign by stack order
@@ -189,18 +186,6 @@ label_uf <- function(dt, nc, dilate = TRUE) {
   dt
 }
 
-# terra (dense) fallback labelling — ROI-scale only. Dilate → patches() → drop halo.
-object_ids <- function(candseed, veg_fire) {
-  burned   <- terra::ifel(candseed > 0, 1, NA)
-  ring     <- terra::focal(burned, w = matrix(1, 3, 3), fun = "max", na.rm = TRUE)
-  keep_veg <- terra::ifel(burned & !(veg_fire %in% NO_DILATE_VEG) & candseed != 3, 1, NA)
-  has_keep <- terra::focal(keep_veg, w = matrix(1, 3, 3), fun = "max", na.rm = TRUE)
-  conn     <- terra::cover(burned, terra::mask(ring, has_keep))
-  pid_grown <- terra::patches(conn, directions = 8, zeroAsNA = FALSE,
-                              filename = tempfile(fileext = ".tif"), overwrite = TRUE)
-  terra::mask(pid_grown, burned, filename = tempfile(fileext = ".tif"),
-              overwrite = TRUE) |> stats::setNames("pid")
-}
 
 # ── [3] per-object raster summaries ───────────────────────────────────────────
 # Mode of an integer vector (ties → smallest). Cheap per-object; not data.table-GForce.
@@ -308,25 +293,7 @@ vectorize_sparse <- function(geom, g, ncores = OBJ_CORES) {
   sf::st_as_sf(v)
 }
 
-# ── [5] terra (dense) fallback metrics ────────────────────────────────────────
-# metrics from a patches()-labelled `pid` raster (ROI fallback; the sparse path uses the
-# data.table directly). Returns the same single metrics data.table as aggregate_metrics.
-raster_metrics <- function(r, pid) {
-  burned <- terra::ifel(is.na(pid), NA, 1)
-  has_n  <- "n" %in% names(r)
-  if (!has_n) warning("no 'n' band — n-summaries skipped (04 §5).", call. = FALSE)
-  ba <- terra::mask(r[[sprintf("burned_around_%d", BA_RADII)]], pid)
-  for (i in seq_along(BA_RADII)) ba[[i]] <- ba[[i]] / (2L * BA_RADII[i] + 1L)^2
-  names(ba) <- sprintf("burned_around_%d", BA_RADII)
-  cell_area <- terra::mask(terra::cellSize(pid, unit = "m"), pid)
-  bands <- c("candseed", "veg_fire", "abs_date", if (has_n) "n")   # candseed → seed_mean
-  stk   <- c(pid, r[[bands]], cell_area, ba)
-  names(stk)[names(stk) == "area"] <- "cell_area"
-  dt <- as.data.table(terra::as.data.frame(stk, na.rm = TRUE))
-  aggregate_metrics(dt, has_n)
-}
-
-# ── [6] geometry shape / sparsity metrics ─────────────────────────────────────
+# ── [5] geometry shape / sparsity metrics ─────────────────────────────────────
 # Ported from collection-00 addShapeMetrics (fuego collection-00/utils/functions.js).
 add_shape_metrics <- function(polys_sf) {
   v  <- terra::vect(polys_sf)
@@ -350,25 +317,17 @@ add_shape_metrics <- function(polys_sf) {
 }
 
 # ── driver ────────────────────────────────────────────────────────────────────
-process_year <- function(fy, test = FALSE, method = "sparse") {
+process_year <- function(fy, test = FALSE) {
   t0  <- Sys.time()
   tag <- sprintf("FY%d%s", fy, if (test) "-test" else "")
-  message(sprintf("\n══ %s ── start [%s, %d core(s)] ══", tag, method,
-                  if (method == "sparse") OBJ_CORES else 1L))
+  message(sprintf("\n══ %s ── start [%d core(s)] ══", tag, OBJ_CORES))
   tifs <- snic_tifs(fy, test); r <- load_snic(fy, test)
 
-  if (method == "sparse") {                       # union-find + per-object vectorize (default)
-    os          <- objects_sparse(tifs, r, tag)
-    raster_mets <- os$mets
-    message(sprintf("[%s] vectorize: %d objects across %d core(s)…",
-                    tag, length(unique(os$geom$pid)), OBJ_CORES))
-    polys       <- vectorize_sparse(os$geom, grid_of(r))
-  } else {                                        # terra patches() dense fallback (ROI only)
-    message(sprintf("[%s] terra dense labelling + metrics…", tag))
-    pid         <- object_ids(r[["candseed"]], r[["veg_fire"]])
-    raster_mets <- raster_metrics(r, pid)
-    polys       <- sf::st_as_sf(stats::setNames(terra::as.polygons(pid, dissolve = TRUE), "pid"))
-  }
+  os          <- objects_sparse(tifs, r, tag)
+  raster_mets <- os$mets
+  message(sprintf("[%s] vectorize: %d objects across %d core(s)…",
+                  tag, length(unique(os$geom$pid)), OBJ_CORES))
+  polys       <- vectorize_sparse(os$geom, grid_of(r))
 
   message(sprintf("[%s] shape metrics…", tag))
   polys <- add_shape_metrics(polys)
@@ -399,15 +358,14 @@ process_year <- function(fy, test = FALSE, method = "sparse") {
 main <- function() {
   args   <- commandArgs(trailingOnly = TRUE)
   test   <- "test"  %in% args
-  method <- if ("terra" %in% args) "terra" else "sparse"
-  args   <- setdiff(args, c("test", "terra"))
+  args   <- setdiff(args, "test")
   years <- if (length(args)) as.integer(args) else {
     dpat   <- if (test) "^test_(\\d{4})$" else "^(\\d{4})$"
     dnames <- if (dir.exists(SNIC_DIR)) list.files(SNIC_DIR, pattern = dpat) else character(0)
     sort(as.integer(sub(dpat, "\\1", dnames)))
   }
   if (!length(years)) stop("no fire-years to process (none given; none found in ", SNIC_DIR, "/)")
-  for (fy in years) process_year(fy, test, method)
+  for (fy in years) process_year(fy, test)
 }
 
 if (sys.nframe() == 0L) main()

@@ -10,13 +10,17 @@ The doc keeps only the outcome: every stage is sized by burned cells and objects
 (untiled). This is the route, and the measured walls that forced it. Memory and wall-clock of the
 resulting pipeline are in [`05-memory_profile.md`](05-memory_profile.md).
 
-> **Two of the alternatives below were still in the code when this note was written, and one is
-> now gone.** The **legacy Drive COG** input layout (`04-snic.py --to-drive` → `objects-raw/`) was
-> **deleted on 2026-09-18**, together with step 05's fallback that read it: no `snic_*.tif` existed
-> anywhere on disk, all 28 fire-years came from the per-carta tiles, and the fallback could only
-> reach its own `stop()`. The dense **`terra`** labelling mode is still callable
-> (`Rscript 05-objects_metrics.R terra <fy>`) but has not been used since the whole-country run —
-> read both of them below as abandoned roads, not as routes on offer.
+> **Everything below is an abandoned road — none of it is in the code any more.** Two of these
+> alternatives outlived the decision as fallbacks and were both **deleted on 2026-09-18**:
+>
+> - the **legacy Drive COG** input layout (`04-snic.py --to-drive` → `objects-raw/`), together with
+>   step 05's fallback that read it — no `snic_*.tif` existed anywhere on disk, all 28 fire-years
+>   came from the per-carta tiles, and the fallback could only reach its own `stop()`;
+> - the dense **`terra`** labelling mode (`object_ids()` + `raster_metrics()`, invoked as
+>   `Rscript 05-objects_metrics.R terra <fy>`), which had served as the independent oracle for the
+>   ROI equivalence check recorded in §6 and was never run again after it.
+>
+> Read the list below as history, not as routes on offer.
 
 ---
 
@@ -75,7 +79,7 @@ Chronological, so a future reader sees why the current design is what it is:
   component at ~1024 px (real scars silently split). Labelling stays local.
 - **`terra::patches()` dense labelling** (the original) — correct and simple, but O(all cells)
   and needs a 34 GB int32 `pid` grid at 9 B cells. Kept only as the ROI `terra` fallback.
-  *(2026-09-18: still callable, never used since.)*
+  *(2026-09-18: deleted — never run again after the equivalence check above.)*
 - **Whole-mosaic `as.data.frame(cells=TRUE)`** — the burned-cell extract. Crashes on the
   `1:ncell` long vector at country scale. Replaced by the per-tile extract.
 - **`igraph` sparse labelling** — was the default; ~8.4× faster than terra on the ROI. But the
