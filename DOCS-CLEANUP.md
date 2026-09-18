@@ -337,14 +337,28 @@ The same rule applies to any future doc of this kind (the network's statistics t
 > doc keeps the **result** plus at most one clause of route — a reader must not open a second
 > file to learn what production does. `TEMPLATE.md` §2 has the worked example.
 
-- [ ] Write `docs/00-overview.md` (~800 words): the spectral / temporal / spatial framing and
-      the step→section map. Iván supplies the framing; the session only expands it.
+- [x] `docs/00-overview.md` written (819 words) from Iván's framing: the spectral → temporal →
+      spatial order, the two parts of the spatial stage (region growing, then object
+      classification), **the unifying principle** — quantities are preserved as long as possible
+      so every later stage weighs the evidence instead of inheriting a verdict — and the
+      step→stage table. Steps 07–08 are marked as publication, not a fourth analysis.
 - [ ] Consider promoting the template to `.claude/skills/step-doc/SKILL.md` so every future doc
       starts from the same rules instead of from that day's prompt.
 
 ### Phase 2 — per-doc pass (one doc per session)
 
 Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inbound links.
+
+> **`docs/notes/` is written during Phase 2, and reconciled only in Phase 6.** A pass moves text
+> **verbatim** into a note, pins the source commit in the provenance header, and moves on — it
+> does not rewrite the note, merge it with a neighbour, or decide whether it is an ADR. Keeping
+> the extraction cheap is what makes a per-doc pass finishable in one session; all the judgement
+> is deliberately pooled into one later pass, with the whole folder visible. The same shape as
+> the two reductions in §2.
+>
+> It follows that **a note is expected to be stale on arrival** in one specific way: its header
+> names a section that the same pass just deleted. That is correct and is not repaired — see
+> `notes/README.md` and the Phase 6 item.
 
 - [ ] `05-object_metrics.md` (4.4 k) — **do this one first, as calibration**: medium size,
       self-contained, and §8 "Roads taken and abandoned" + §9 "the bug that killed the run" are
@@ -441,6 +455,8 @@ has a real ATBD. No pass, no template, no extraction.
 Append one line per completed item: date — what — commit.
 
 - 2026-09-18 — plan written.
+- 2026-09-18 — **Phase 1 done** (bar the optional skill box): `00-overview.md` written from
+  Iván's framing; `notes/` write-vs-reconcile rule split across Phases 2 and 6.
 - 2026-09-18 — **Phase 1, first three boxes**: `TEMPLATE.md` written as a guide not a form;
   the four early docs restructured to it; `02-diagnostic_plots.md` split out;
   `notes/02-lr_term_reduction.md` extracted; three amendments recorded in Phase 1.

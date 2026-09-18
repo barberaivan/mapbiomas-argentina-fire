@@ -34,6 +34,7 @@ one step, e.g. the remap and the fit are both inputs to step 02):
 
 | Doc | Covers |
 |---|---|
+| `collection-01/docs/00-overview.md` | **read first** — the method in one page: spectral → temporal → spatial, and which step is which |
 | `collection-01/docs/01-training_data.md` | step 01 — training-data export, labels, inputs |
 | `collection-01/docs/02-vegetation_remap.md` | the `veg_fire` fire-class remap (input to step 02) |
 | `collection-01/docs/02-data_cleaning.md` | the `fit`-column cleaning gate (input to step 02) |
