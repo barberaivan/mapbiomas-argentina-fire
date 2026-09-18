@@ -13,7 +13,7 @@ nc <- ncol(r); nr <- nrow(r)
 e  <- terra::ext(r); x0 <- e$xmin; y0 <- e$ymax; dx <- terra::xres(r); ady <- terra::yres(r)
 parts <- vector("list", length(tifs))
 for (i in seq_along(tifs)) {
-  tl <- terra::rast(tifs[i]); if (!"candseed" %in% names(tl)) names(tl) <- EXPECT_BANDS_DIRECT[seq_len(nlyr(tl))]
+  tl <- terra::rast(tifs[i]); if (!"candseed" %in% names(tl)) names(tl) <- EXPECT_BANDS[seq_len(nlyr(tl))]
   d  <- as.data.table(terra::as.data.frame(tl[["candseed"]], cells = TRUE, na.rm = TRUE))[candseed > 0]
   if (!nrow(d)) next
   tnc <- ncol(tl); te <- terra::ext(tl)

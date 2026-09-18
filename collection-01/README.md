@@ -574,7 +574,7 @@ Export status across regions: `python collection-01/scripts/status.py`.
 | 01 — training data export | Complete for all 5 regions (BA, CHACO, PAMPA, CUYO, PAT), v1. |
 | 02 — model fitting (R, glmnet) | All 23 `veg_fire` classes fitted (v1); see `models/cv_metrics_v1.csv`. |
 | 03 — burn-probability time series | Running (per-carta export; `docs/03-bpts.md`). |
-| 04 — SNIC segmentation | Whole-country fire-year SNIC settled; Drive-COG handoff to R (`docs/04-snic.md`). |
+| 04 — SNIC segmentation | Whole-country fire-year SNIC settled; per-carta direct-download handoff to R (`docs/04-snic.md`). |
 | 05 — object metrics (R/terra) | 2001–2025 measured and run; 1.69 M objects (`docs/05-object_metrics.md`). |
 | 06 — object model (R, BART) | **Done.** 20 predictors, fitted on 5255 labels, grid-blocked OOF AUC 0.891 (within-year 0.845); per-size-band cuts deployed; all 28 fire-years scored (1 689 419 objects, 36 unscored); 28 QGIS layers built and inspected (`docs/06-object_model.md`). |
 | 07 — calendar-year products | **All 12 images + 27 scar FCs landed and verified on the exported assets** (2026-07-30): **07a** month-of-burn collection 27/27, **07b** calendar-year scars 27/27 built, gated and ingested, **07c** scar rasters 3/3, **07d** the nine derived subproducts 9/9. **07e** the fire-object polygon layer for early users is exporting. Delivery checklist: `docs/08-postprocessing.md` §7; detail and verification numbers: `docs/07-vector_to_raster.md`. Still owed: the whole-country month-histogram cross-check (its local half needs regenerating) and the network's visual validation pass. |

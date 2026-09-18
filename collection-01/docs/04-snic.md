@@ -137,15 +137,6 @@ tiles. **Everything done to the step-04 output (vectorization, metrics, filterin
 lives in `docs/05-object_metrics.md` and `docs/06`.** The handoff is the **direct tiled download**
 (`--to-asset` + `download_snic.py`), detailed in §5b.
 
-A Drive-COG route (`--to-drive`) existed first and was **deleted in September 2026**, along with
-step 05's fallback that read it — the direct download had superseded it for every fire-year.
-`toDrive` was slow for a bad reason: its write target is the **Drive API** (a rate-limited consumer
-service), then **Insync** dribbles the file down — two slow stages the asset path skips entirely
-(pyramids are *not* the cause; `toAsset` builds those too). The removal is recorded in
-[`docs/notes/05-whole_country_redesign.md`](notes/05-whole_country_redesign.md).
-
-The handoff:
-
 - **The asset stores only `candseed`; the R-facing bands are materialized separately.** The
   metrics stage **reads `candseed` (and its burned mask) straight from the `snic_<fire_year>`
   asset — SNIC is NOT recomputed** — and recreates `abs_date` + `veg_fire` + `n` by re-running the
@@ -205,10 +196,9 @@ counts** and R divides by (2r+1)².
 
 ## 5c. Whole-country vectorization benchmark (FY2000)
 
-> **Retired input.** Run on the `snic_2000` **Drive COG** (16 sub-tifs, **9,156,980,085
-> cells** = 123601 × 74085) — the monolithic object since **replaced by the direct-download
-> per-carta images** (§5b), and deleted in September 2026. It measures the vectorize primitive at
-> real whole-country scale; numbers on the tiled input will differ. Machine: 31 GB RAM + 8 GB swap; GDAL 3.8.4.
+> **Input:** one whole-country `snic_2000` image (16 sub-tifs, **9,156,980,085 cells** =
+> 123601 × 74085), not the per-carta tiles of §5b. It measures the vectorize primitive at real
+> whole-country scale; numbers on the tiled input will differ. Machine: 31 GB RAM + 8 GB swap; GDAL 3.8.4.
 
 Steps share a burned-mask prep (terra writes a sparse `candseed>0` uint8 tif), then the mask is
 vectorized three ways. Wall time / peak RSS from `/usr/bin/time -v`:
