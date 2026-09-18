@@ -17,8 +17,9 @@ year, so aggregating the raw Landsat information by year is the natural shape fo
 upstream of it. That decision is what makes the per-observation probability an *intermediate*.
 
 **And the intermediate is not materialized, which is a size argument.** Over the padded window a
-*carta* is covered by roughly 150 image **dates** (~294 raw scenes, collapsed by
-`mosaic_by_date`), so storing the probability per observation would mean ~150 layers per
+*carta* — one tile of the grid every image-based step runs over, defined in
+[`03-bpts.md`](03-bpts.md) "Inputs → Outputs" — is covered by roughly 150 image **dates**
+(~294 raw scenes, collapsed by `mosaic_by_date`), so storing the probability per observation would mean ~150 layers per
 tile-year where the annual summary exported by step 03 has 16 bands — an order of magnitude more
 data than a product that is itself ~55 GiB per year, over 248 tiles × 27 years. And nothing
 downstream wants a single observation's probability: what carries the evidence is the *shape* of
@@ -31,13 +32,6 @@ product, recomputing it inside the graph is cheaper than writing it out and read
 > dates leave a *valid* observation at a given pixel after cloud masking: tens, not hundreds
 > (mean 25, max 54 over a 2015 Patagonian carta; up to ~75 where coverage is best). A pixel is
 > judged on `n` observations; the tile is billed for ~150.
-
-> **A *carta*** is one sheet of the MapBiomas Argentina working grid
-> (`C.CARTAS_FC` = `projects/mapbiomas-chaco/BASE/cartas-argentina`), the national 1:250,000
-> chart series: the id in `grid_name` names the million-sheet and its subdivisions
-> (`SK-19-Y-A`), and each sheet covers ~14,000 km². The grid has ~286 sheets and **248 intersect
-> the buffered country**, which is the tile set every image-based GEE step here runs over —
-> *not* Landsat WRS-2 path/row, and not an arbitrary bounding box.
 
 **One model per vegetation class, applied without branching.** 23 fittable `veg_fire` classes
 mean 23 coefficient sets, and the obvious implementation — evaluate each model on its own masked

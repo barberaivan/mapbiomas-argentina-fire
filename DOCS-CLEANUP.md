@@ -73,7 +73,7 @@ collection-01/
     00-overview.md             NEW — the bridge: spectral → temporal → spatial, and which step
                                is which.  ~800 words.  Later becomes the ATBD skeleton.
     TEMPLATE.md                NEW — the fixed skeleton + quotas every step doc obeys.
-    01..08-<step>.md           one per step.  Target 800–1500 words.
+    01..08-<step>.md           one per step.  Target 800–2000 words, more if needed.
     external/                  NEW — readings of code we do not own, commit-pinned (§3).
     notes/                     NEW — the lab notebook: benchmarks, abandoned roads, post-mortems,
                                status snapshots.  No length limit.  Provenance header required.
@@ -355,7 +355,8 @@ own, find the step doc that is carrying it. A doc that documents two stages will
       — see the box below.
 - [x] Wrote `docs/TEMPLATE.md`: a **guide, not a form**. Four always-present sections
       (orientation, Inputs → Outputs, How it works, Files/Related) plus **Foundations**, `Run`,
-      `Key decisions` and `Gotchas` offered when the step has one. 800–1500 words.
+      `Key decisions` and `Gotchas` offered when the step has one. 800–2000 words
+      (widened from 1500 by Iván on 2026-09-18, after three passes landed over it).
       `01-training_data.md` is named in it as the model doc.
 - [x] The four docs restructured to it, and `02-diagnostic_plots.md` split out of
       `02-model_fitting.md` (a diagnostic tool, not a step). History →

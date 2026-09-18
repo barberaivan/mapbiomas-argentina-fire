@@ -10,6 +10,18 @@ the probabilities it is computed from are never written anywhere.
 
 ## Foundations
 
+**This is the fire team's annual mosaic — except it is a prediction, not an aggregation.** Every
+MapBiomas initiative reduces the raw Landsat archive to one annual layer per tile and builds
+everything downstream on it; for land cover that layer is the **annual mosaic**, a summary of
+*reflectance* (medians, wet/dry composites, dispersion) — and we consume that one too, as the
+previous-year context. `bpts` is the fire equivalent, one level up, with a difference that
+decides a great deal: the model has already been applied, so what gets annualised
+is a **burn probability**. That buys more per byte — the vegetation-specific model, the
+previous-year context and the cloud masking are all resolved once, and steps 04–06 never touch a
+Landsat scene again — and it costs a dependency the plain mosaic does not have: this layer
+**inherits the model, its training data and the LULC collection that defines `veg_fire`**, so
+improving any of the three means recomputing it.
+
 **Burn probability has to be smoothed before it is read as detection** — a single high
 observation is as likely to be shadow, ash or a wet scene as fire. Collection 0 smoothed with a
 median over K=5 observations; here vegetation types recover at very different speeds and image
@@ -33,6 +45,17 @@ why `workflow/03-bp_ts_metrics.py` also holds the model code documented in
 [`02-burn_probability.md`](02-burn_probability.md), and why the per-year precomputation below is
 required rather than cosmetic.
 
+**And it is the most expensive artifact in the collection, in compute and in storage.** A
+complete year is ~55 GiB over the 248 cartas at ~20–25 min of wall-clock per tile-year; the 27
+years are **≈ 1.4 TiB (1.6 TB)** — enough to exhaust the project's asset quota, which is why
+1999–2009 live in a second collection. Per-account parallelism caps at ~3 simultaneous tasks, so
+a whole-country year cannot be produced by one person in reasonable time: production ran as a
+**distributed multi-account export**, one contributor per year off a shared sign-out sheet
+([`03-colab_multi_export.md`](03-colab_multi_export.md)). Two consequences for anyone planning a
+change. The optimisation levers are all *product-level* (term count, window length, band set),
+never late tweaks — each one changes the model or the output. And **re-running this layer is a
+collection-level decision**, not a step-level one: see "What collection 2 has to decide".
+
 ## Inputs → Outputs
 
 `burn probability per observation (over a padded Landsat window)` → **`bpts`** →
@@ -44,6 +67,15 @@ required rather than cosmetic.
 | Landsat C2 SR | L5/L7/L8/L9 over the padded window, cloud-masked, deduped by date (`mosaic_by_date`) | `F.get_landsat`, `F.add_indices` |
 | Tiles | the 248 cartas intersecting the buffered-Argentina FC | `C.CARTAS_FC`, `C.ARG_BUFFER_FC` |
 | **Output** | `bpts_YYYY_<tile-id>`, 16 bands, int16, EPSG:4326 @ 30 m | `C.bpts_target_col(year)` |
+
+A ***carta*** is one sheet of the MapBiomas Argentina working grid
+(`C.CARTAS_FC` = `projects/mapbiomas-chaco/BASE/cartas-argentina`), the national 1:250,000 chart
+series: the id in `C.CARTAS_ID_PROPERTY` (`grid_name`) names the million-sheet and its
+subdivisions — `SK-19-Y-A` — and each sheet covers ~14,000 km². The grid has ~286 sheets, of
+which **248 intersect the buffered country** (`C.ARG_BUFFER_FC`) and are the tile set this step
+exports. Every image-based GEE step in this collection is tiled this way — **not** by Landsat
+WRS-2 path/row, and not by an arbitrary bounding box — which is what lets step 04 read a
+`bpts` tile and step 05 `vrt()` the results together on one lattice.
 
 Years are `C.YEARS` (1999–2025). Each asset carries `year`, `tile_id` and a mid-year
 `system:time_start` (for the inspector). **The destination is year-dependent**: the
@@ -168,6 +200,12 @@ wrapping to a huge unsigned value, and downstream reads stay uniform. Missing da
 given a probability — masked pixels contribute no array elements, so a fittable pixel with no
 observations comes back with `n = 0`.
 
+**Not all output bands are used downstream.** This algorithm was designed on the fly, and when
+this part was written we did not yet know which bands would define seeds and candidates for the
+region-growing step ([`04-snic.md`](04-snic.md) "Seed and candidate"). Dropping the unused ones
+would shrink the asset proportionally — but the larger opportunity is the other direction: making
+better use of these metrics in step 04 is one of the obvious paths of improvement.
+
 ## Run
 
 ```bash
@@ -209,6 +247,28 @@ exactly the missing tiles.
   plumbing over ~150 scenes, which is why the two levers that ever mattered are *term count*
   (hence the deployed P=50 set, ~25 % less EECU per tile) and *window length*, neither of which
   is in this file's array code. `notes/03-performance_profile.md`.
+
+## What collection 2 has to decide
+
+Recomputing `bpts` is the single largest commitment in a collection — ≈ 1.4 TiB and weeks of
+distributed export — so these belong on the table early, with time to think, not in the run-up to
+a launch.
+
+- **Whether to recompute against a newer LULC collection.** `veg_fire` comes from
+  `C.MAPBIOMAS_LULC` (col-2 v8), frozen on purpose: it decides *which model judges each pixel*
+  and therefore the entire downstream candidate set. A newer land-cover collection re-assigns
+  that everywhere a class changed, so the layer cannot be half-migrated — either the whole
+  collection moves or none of it does.
+- **Whether a model improvement can be applied to part of the country.** In principle yes: the
+  coefficients enter through a per-pixel `veg_fire.remap`, so improving one class's model changes
+  nothing in a tile where that class is absent, and only those tiles need re-exporting. What
+  makes it risky today is bookkeeping — an exported asset records `year` and `tile_id` but **not
+  which coefficient set produced it**, so a partially recomputed collection would be of
+  undocumented provenance. Whichever way this goes, **stamp `C.DEPLOYED_MODEL` on every exported
+  asset**; it costs nothing and it is what makes a partial re-run auditable.
+- **Which bands to keep.** The 16 bands were fixed before step 04 existed (see "Output bands and
+  encoding"): some are never read downstream, and storage scales with the band count. The
+  question is not only which to drop but which step 04 *should* have been using.
 
 ## Gotchas
 

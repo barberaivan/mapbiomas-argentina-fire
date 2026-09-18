@@ -26,20 +26,21 @@ In this order. **Bold = always present.**
 | **Files** | a table | production/reference files and their role | descriptions that restate the doc |
 | **Related** | bullets | notebooks, `notes/` entries, sibling docs | anything not actually linked |
 
-Whole doc: **800–1500 words — a target, not a limit.** The quotas in the table above are the
-same: they describe the shape a step doc usually wants, and none of them is a rule that overrides
-the content.
+Whole doc: **800–2000 words ideally — use more if the step needs it.** It is a target, not a
+limit, and so are the quotas in the table above: they describe the shape a step doc usually wants,
+and none of them overrides the content.
 
 Going over is a **prompt to check one thing**, not a failure: *is the excess history, or is it the
-live algorithm?* History goes to `notes/` however short the doc already is. What the code actually
-does today **stays**, even if that puts the doc over 1500 — a doc that omits a rule the code
-enforces is worse than a long one, and a reader who needs it will not find it in `notes/`.
+live algorithm?* History goes to `notes/` however short the doc already is. What the code does
+today **stays** — a doc that omits a rule the code enforces is worse than a long one, and a reader
+who needs that rule will not go looking for it in `notes/`.
 
-> **Worked precedent — `05-object_metrics.md`, 2026-09-18.** Its Phase 2 pass cut 4,376 → ~1,720
-> words and moved 2.4 k words of benchmarks, post-mortems and abandoned roads into two `notes/`
-> entries. It still sits ~15 % over, and stays there: what remains is the enlarged-context distance
-> table, the metric definitions and the `pid`/`oid` scheme — all of them cited from code. Nothing
-> left to move; the doc is the right length for that step.
+> **Worked precedents, 2026-09-18.** `05-object_metrics.md` cut 4,376 → ~1,750 words by moving
+> 2.4 k of benchmarks, post-mortems and abandoned roads into two `notes/` entries, and `04-snic.md`
+> 2,694 → 2,115 the same way. `03-bpts.md` ran to ~3.4 k **after** four extractions, because it
+> documents a step that carries two stages' worth of live mechanism plus the decisions the next
+> collection has to take about it. In all three the test was the same and the answer was the same:
+> there was nothing left that was history, so the remainder stays.
 
 Not every step has a Foundations or Key decisions section. `02-data_cleaning.md` has neither —
 its "why" is one clause in the orientation paragraph, and nothing about it was a choice worth

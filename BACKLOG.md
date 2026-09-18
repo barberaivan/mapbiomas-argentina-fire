@@ -404,7 +404,7 @@ What remains, in detail:
 
 - [ ] For collection 2, correct the application of late dieback in Patagonian forests.
   Read docs/05, section **The Patagonia steppe dieback cut**. That should be applied before
-  SNIC, not afterwards (in Col1 we discovered the problem too late).
+  SNIC is run (step 4), not afterwards (in Col1 we discovered the problem too late).
 
 ---
 
