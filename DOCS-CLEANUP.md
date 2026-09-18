@@ -382,7 +382,11 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
       Then the ordinary pass: it is the only doc where code blocks dominate (21 %, the two GEE-JS
       appendices) — decide per appendix whether it becomes a real file in `validation/` or stays
       inline. Inline GEE JS is a fifth home for code that cannot be run or linted.
-- [ ] `08-postprocessing.md` (5.3 k) — **split first** (§3): our step 08 stays numbered, the
+- [ ] `08-postprocessing.md` (5.3 k) — **when this splits, revisit the closing paragraphs of
+      `00-overview.md`**, which describe today's 08 as "mostly our reading of the reference
+      implementation". After the split that is `docs/external/`, and what stays numbered is only
+      Argentina's route — which docs/07 already implements, so decide there whether a step-08 doc
+      survives at all or folds into 07. — **split first** (§3): our step 08 stays numbered, the
       reading of the network's repo moves to `docs/external/` with a pinned commit. The four
       `CORRECTION —` sections are `notes/`.
 - [ ] `03-colab_multi_export.md` (0.6 k) — small; mark as how-to.

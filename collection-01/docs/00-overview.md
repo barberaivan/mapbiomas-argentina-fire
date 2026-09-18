@@ -5,8 +5,8 @@ each workflow step onto it, so a step doc can open with "this is the spatial sta
 and get on with its own business. For the full algorithm, see the ATBD; for any single step, see
 its `NN-*.md`.
 
-The algorithm detects burned area at **the finest temporal and spatial resolution Landsat
-allows** — one 30 m pixel on one observation date — by exploiting the **spectral, temporal and
+The algorithm detects burned area at the finest temporal and spatial resolution Landsat
+allows: one 30 m pixel on one observation date — by exploiting the **spectral, temporal and
 spatial** signature of fire, **in that order**. Each stage consumes what the previous one
 produced and adds a kind of evidence the previous one could not see.
 
@@ -76,11 +76,20 @@ next stage needs.
 | **Temporal** | [03 burn-probability time-series metrics](03-bpts.md) | annual per-pixel metrics + burn date |
 | **Spatial (1)** | [04 SNIC segmentation](04-snic.md) | scar objects, grown from seeds through candidates |
 | **Spatial (2)** | [05 object metrics](05-object_metrics.md); [06 object model](06-object_model.md) | a fire probability and a fire call per object |
-| *Publication* | [07 calendar-year products](07-vector_to_raster.md); [08 network post-processing](08-postprocessing.md) | the published layers |
+| *Publication* | [07 calendar-year products](07-vector_to_raster.md) | the layers MapBiomas ships |
 
-Steps 07–08 are not a fourth kind of analysis: they re-partition the fire-year objects into
-**calendar years**, assigning year and month **per pixel** from its burn date, and derive the
-subproducts the MapBiomas Fuego network publishes.
+**Steps 01–06 are the algorithm; step 07 is the delivery.** If the goal were burned-area data as
+such, the chain could stop at 06 — the scored fire objects, each with its dates and its fire
+probability, already are the map. Step 07 exists because MapBiomas Fuego publishes a *specific*
+set of layers in a specific shape: the fire-year objects are re-partitioned into **calendar
+years**, with year and month assigned **per pixel** from its burn date, and derived into the nine
+subproducts the network defines. It is a change of packaging, not of evidence.
+
+The network's shared post-processing is the spec those products conform to.
+[`08-postprocessing.md`](08-postprocessing.md) is mostly **our reading of the reference
+implementation** the other countries run, rather than a stage we execute: several of its stages
+are already embedded upstream here, and Argentina's actual route is
+[`07-vector_to_raster.md`](07-vector_to_raster.md), which wins wherever the two disagree.
 
 **Statistics and validation are not stages of this chain.** They consume the finished map — see
 [`../statistics/docs/statistics.md`](../statistics/docs/statistics.md) and
