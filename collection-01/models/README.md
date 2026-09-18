@@ -7,7 +7,8 @@ Inputs/reference data live in `data/`; this directory is outputs only.
 ## Per-model folders (`P<NNN>/`)
 
 Coefficient CSVs live **one folder per model variant**, named `P<NNN>` (3-digit, leading
-zeros). All variants share CV scheme **K=3** (so it's *not* in the name — recorded here once):
+zeros). Every variant is fit by the same CV — grouped K-fold on region-unique fire ids, K
+adaptive at `min(10, n_fires_with_positives)` — so the fold count is not in the name:
 
 | Folder | Model | Rows (incl. intercept) |
 |--------|-------|------------------------|
@@ -24,6 +25,11 @@ prediction builds only the deployed bands — see `docs/03-bpts.md` §9/§11. Ea
 (re)produced by `02-model_fitting.R` writing to `models/<COEF_TAG>/` (`COEF_TAG` defaults to
 `P129`; `scripts/refit_pruning_sweep.R` sets `P030`…`P080`). Only `*_coefficients.csv` are tracked
 (see `.gitignore`); heavy artifacts stay in `models-store/`.
+
+> The `K3` in the sweep's artifact paths (`models-store/pruning/K3_P<P>/`, `keep_K3_P<P>.csv`)
+> is **not a fold count**. It is the area weighting used to rank terms globally — scheme
+> `area_cbrt_K3`, i.e. `area^(1/3)`, chosen in `notebooks/lr_term_pruning.qmd` and carried in
+> `config/pruning_terms.csv`.
 
 The fitting unit is the **class**, not the region: the driver reads each class's
 regions from `config/veg_fire_remap.csv`, loads only those `data/training_observations_{region}_v{ver}.csv`

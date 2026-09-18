@@ -612,8 +612,10 @@ so align the export tiling to the hand-drawn fire-regions where export limits al
 the full step-02 fit (130 terms).
 
 **Where the coefficients live.** Each model variant has its own git-tracked folder under
-`collection-01/models/`, named `P<NNN>` (3-digit, leading zeros; all are CV scheme **K=3**, so K is
-not in the name):
+`collection-01/models/`, named `P<NNN>` (3-digit, leading zeros; the fold count is not in the
+name because every variant uses the same step-02 CV — grouped K-fold on region-unique fire ids,
+K adaptive at `min(10, n_fires_with_positives)`. The `K3` in the sweep's artifact paths is the
+term-ranking area weighting `area^(1/3)`, not a fold count):
 
 | Folder | Model | Rows |
 |---|---|---|

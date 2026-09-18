@@ -13,11 +13,21 @@ lives in the notebook; this note is the operational map.
   from a 427-term "canonical-team" design that was too collinear to fit quickly — the full
   story (correlation pruning, exact-linear-combo cut, VIF/eigenvalue analysis) is in
   `notebooks/logistic_regression_design.qmd`.
+- **A second, later reduction decides what GEE actually runs.** The 129 terms are what gets
+  *fit*; term count dominates per-tile prediction cost in step 03, so a top-P cut on the global
+  standardized-coefficient ranking was swept (P ∈ {30,40,50,60,80}) and **P=50 deployed**. The
+  fitting code is unchanged — the sweep drives it through its `KEEP_TERMS_CSV` / `COEF_TAG`
+  hooks. Ranking: `notebooks/lr_term_pruning.qmd`; sweep: `scripts/refit_pruning_sweep.R`;
+  the decision and its evidence: [`03-bpts.md`](03-bpts.md) §9/§11.
 - **Tuning**: α grid `{0.25, 0.5, 0.75}` (ridge & lasso dropped), `lambda.min`,
-  `nlambda=50`, `thresh=1e-4` (the real convergence-speed lever). Interactions fit on
-  mean-centered factors, folded back to raw-product scale at export.
-- **CV**: grouped K-fold (K=10), grouped by **region-unique fire id** (whole fires held
-  out), stratified packing. Out-of-fold `p_i` saved per observation.
+  `nlambda=50`, `lambda.min.ratio=1e-4`, `thresh=1e-4` (the real convergence-speed lever).
+  The tolerance is **adaptive**: each α gets a wall-clock budget (`FIT_TIMEOUT_SEC`, 600 s) and
+  is refit looser if it blows it, so no slow-class list is hardcoded; `THRESH_START` pre-seeds
+  the classes already known to crawl (today only `shrubland_cuyo-pampa`, at 5e-3). Interactions
+  fit on mean-centered factors, folded back to raw-product scale at export.
+- **CV**: grouped K-fold grouped by **region-unique fire id** (whole fires held out), stratified
+  packing. K is adaptive — `min(10, n_fires_with_positives)`, so 21 of the 23 classes fit at
+  K=10 and two at 7 and 6. Out-of-fold `p_i` saved per observation.
 - The fitting unit is the **`veg_fire` class** (may span regions); the driver loads whichever
   region CSVs a class needs, from `config/veg_fire_remap.csv`.
 
@@ -39,13 +49,18 @@ block sizes, α grid and CV are defined there). Memory is auto-sized per class t
 
 ## Outputs (`models/` + `models-store/`)
 
-Per class `class_NN_*`: `coefficients.csv` (tracked, in `models/` — the small GEE deliverable)
-and `cv_metrics.csv`, `tuning.csv`, `fit.rds`, `oof_predictions.csv` (git-ignored, large —
-live in `models-store/`, the Insync-synced store symlinked in by `setup.sh`).
-`cv_metrics_v1.csv` is the cross-class summary, also in `models-store/`. The `class_NN` ↔
-`veg_fire_name` mapping follows `config/veg_fire_remap.csv`. See
-[`../models/README.md`](../models/README.md) for the output schema and the coefficient
-fold-back / GEE-export details.
+Coefficients are tracked **one folder per model variant**, `models/P<NNN>/class_NN_coefficients.csv`
+— `P129/` is the full fit, `P080/ P060/ P050/ P040/ P030/` the top-P cuts, each holding only
+`intercept + kept terms`. **`P050/` is the deployed one**: `C.DEPLOYED_MODEL` in
+`utils/constants.py` selects it and `C.COEF_DIR` points at it, so redeploying is that one
+constant. `COEF_TAG` chooses the destination folder at write time (default `P129`).
+
+The heavy per-class artifacts — `cv_metrics.csv`, `tuning.csv`, `fit.rds`, `oof_predictions.csv`
+— are git-ignored and live in `models-store/` (the Insync-synced store symlinked in by
+`setup.sh`), with `cv_metrics_v1.csv` as the cross-class summary and `models-store/pruning/` as
+the sweep's own runs. The `class_NN` ↔ `veg_fire_name` mapping follows
+`config/veg_fire_remap.csv`. See [`../models/README.md`](../models/README.md) for the output
+schema and the coefficient fold-back / GEE-export details.
 
 ## Production / reference files
 
@@ -54,13 +69,17 @@ fold-back / GEE-export details.
 | `workflow/02-model_fitting.R` | the fit (source of truth for the design) |
 | `config/veg_fire_remap.csv` | defines the classes to fit (see [`02-vegetation_remap.md`](02-vegetation_remap.md)) |
 | `scripts/cv_feasibility_report.py` | pre-flight CV feasibility per class |
-| `models/class_*_coefficients.csv` | tracked fitted outputs (GEE deliverable) |
+| `models/P<NNN>/class_*_coefficients.csv` | tracked fitted outputs; `P050/` is the GEE deliverable |
+| `utils/constants.py` (`DEPLOYED_MODEL`, `COEF_DIR`) | which variant production reads |
+| `scripts/refit_pruning_sweep.R` | refits every top-P variant through the hooks above |
 | `models-store/class_*`, `models-store/cv_metrics_v1.csv` | heavy fitted outputs (gitignored) |
 | `models/README.md` | output schema + coefficient export details |
 
 ## Related notebooks
 
 - `notebooks/logistic_regression_design.qmd` — the full design story (renders on full data).
+- `notebooks/lr_term_pruning.qmd` — ranks the 129 terms by standardized coefficient and picks
+  the common reduced set the sweep refits; writes `config/pruning_terms.csv`.
 - `notebooks/model_fit_diagnostics.qmd` — per-class diagnostics (tuning, coefficients,
   calibration, OOF, omission/commission, by-fire OOF breakdown); auto-discovers every fitted
   `class_*`. The per-fire time-series panels are **not** in this notebook — they are produced
