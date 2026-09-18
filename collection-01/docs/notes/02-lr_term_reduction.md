@@ -47,6 +47,23 @@ under an area weighting. Three weightings were compared — `area` (K=1), `√ar
 `models-store/pruning/K3_P<P>/` and `keep_K3_P<P>.csv` comes from; it has nothing to do with CV
 folds, and it has been misread as a fold count in this repo's own docs at least twice.
 
+**What survived.** The cut is not uniform across blocks — the previous-year mosaic terms lose
+far more than the focal ones:
+
+| block | 129-term fit | deployed P050 |
+|---|---|---|
+| `focal` (focal mains) | 11 | 10 |
+| `prev` (prev-year mosaic mains) | 32 | 14 |
+| `pairs` (focal×focal) | 22 | 10 |
+| `sameband` (prev band × its own focal band) | 10 | 4 |
+| `cross_idx` (prev × fire index) | 22 | 6 |
+| `cross_band` (prev × fire band) | 32 | 7 |
+| **total** | **129** | **51** |
+
+Almost the whole focal block survives; the prev-year blocks are cut to a fifth or less. The kept
+set is **common to all 23 classes** — the ranking is global, so only the coefficients differ per
+class, which is what lets the GEE prediction build one band set for everything.
+
 **Why P=50** (from `docs/03-bpts.md` §11, decided 2026-06-27): area-weighted mean ΔAUC is ~0 at
 P≥50 under all three weightings, with a real drop only below it.
 

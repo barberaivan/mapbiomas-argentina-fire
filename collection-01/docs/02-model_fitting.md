@@ -10,10 +10,11 @@ Landsat pixel-date in Argentina.
 **The model has to be deployable inside GEE, and that constraint chose it.** A fitted logistic
 regression is a set of coefficients plus a simple equation: trivial to store, to version, to
 ship as a CSV, and cheap to evaluate over billions of pixel-dates. The richer classifiers GEE
-offers natively — random forest, boosted trees — fail on both ends here: they could not be
+offers natively — random forest, boosted trees — fail on both ends here: it's likely they could not be
 fitted on this many training observations, and a fitted one cannot be saved as an asset, which
 is what deploying over the whole Landsat archive requires. External ML/DL models on Vertex AI
-would lift both limits, at a large step up in complexity.
+would lift both limits, at a large step up in complexity, but that implies an economic cost to
+MapBiomas.
 
 **We also wanted a natively probabilistic model**, because everything downstream consumes a
 probability rather than a hard class — the time-series metrics of step 03 read the shape of
@@ -24,7 +25,7 @@ against `N` — a dependency that would have to be re-tuned per class. Logistic 
 the probability by construction, with nothing to tune for it.
 
 Fitting happens **locally in R**, not in GEE. The training set is a few million observations,
-`glmnet` handles it, and only the coefficients need to cross into GEE.
+which `glmnet` handles well, and only the coefficients need to cross into GEE.
 
 ## Inputs → Outputs
 
@@ -54,9 +55,16 @@ there.
 
 ### Predictors
 
-129 terms (+ intercept): 11 focal mains, 32 previous-year mosaic mains, 22 focal×focal, 10
-same-band, 22 prev×fire-index, 32 prev×fire-band. Interactions are fit on mean-centered factors
-and folded back to raw-product scale at export, so GEE evaluates raw products directly.
+**The deployed model carries 51 terms + intercept** (52 coefficient rows): 10 focal mains, 14
+previous-year mosaic mains, 10 focal×focal, 4 same-band, 6 prev×fire-index, 7 prev×fire-band.
+It is the top-P=50 cut of the 129-term set the fit works in — see the Key decisions below.
+
+**The kept term set is common to all 23 classes**, not chosen per class: only the coefficients
+differ. That is what lets the GEE prediction pipeline build one band set once and reuse it for
+every class, instead of a different design per vegetation type.
+
+Interactions are fit on mean-centered factors and folded back to raw-product scale at export, so
+GEE evaluates raw products directly.
 
 ### Tuning and cross-validation
 
@@ -89,7 +97,8 @@ Memory is auto-sized per class to a RAM budget; `FIT_CORES` overrides.
 
 - **P=50 is the deployed predictor set, not the 129 it was fit with.** Term count dominates
   per-tile prediction cost in step 03, so the 129 terms were ranked globally and cut to a top-P
-  subset; predictive skill is flat from the full fit down to P≈50 and drops below it. The route
+  subset; predictive skill is flat from the full fit down to P≈50 and drops below it. `P` is a
+  **percentile cut on that ranking, not a term count** — P=50 keeps 51 terms. The route
   — two separate reductions, from 427 terms and then from 129 — is in
   [`notes/02-lr_term_reduction.md`](notes/02-lr_term_reduction.md); the decision record is
   [`03-bpts.md`](03-bpts.md) §9/§11.
