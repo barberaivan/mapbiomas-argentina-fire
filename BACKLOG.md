@@ -90,15 +90,22 @@ This is probably for collection 2.
   line per training point (`point_id`); colour by burned vs unburned. Reading: if burned
   points' predicted probability stays low across the post-fire window, the post-fire date was
   likely set too generously.
-  - Use the **OOF** probability (`p_oof` from `models/class_NN_oof_predictions.csv`), not an
+  - Use the **OOF** probability (`p_oof` from `models-store/class_NN_oof_predictions.csv`), not an
     in-sample refit.
   - Auto-flag fires: plot only those whose **median `p_oof` over burned obs** is below a
     threshold (notebook param, default 0.6); allow an optional manual `fire_id` override.
   - Data (both git-ignored — download separately): `data/training_observations_{region}_v1.csv`
     (`NBR`, `NBR2`, `date`, `point_id`, `fire_id`, `region`, `burned`) joined to
-    `models/class_NN_oof_predictions.csv` on `(region, fire_id, point_id, date)`. Key fires
+    `models-store/class_NN_oof_predictions.csv` on `(region, fire_id, point_id, date)`. Key fires
     region-uniquely (`region_fire_id = paste(region, fire_id)`).
   - Lican has reference code from collection-00 that produced this plot (not in this repo) — adapt it.
+  - **As built, it diverges from this spec on three points** — see
+    `collection-01/docs/02-model_fitting.md` ("Per-fire time-series diagnostic plots"). It is
+    **not** in `model_fit_diagnostics.qmd` but a standalone PNG per fire from
+    `scripts/ts_plot_by_fire.R`; it has **4 rows**, not 3 (raw *and* smoothed probability); and it
+    predicts **in-sample** from `class_NN_fit.rds`, not OOF — the tradeoff is argued in
+    `collection-01/models/README.md` ("Predicting burn probability"). Held-out (`fit == FALSE`)
+    dates are flagged with a red asterisk instead of the auto-flag threshold proposed here.
 
 ---
 
