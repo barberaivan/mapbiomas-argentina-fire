@@ -229,7 +229,7 @@ Not every file in `docs/` is a step doc. Proposed:
 | `08-postprocessing` | **half** — §6 is our step 08; §§1–5 are a reading of the network's repo | **split**, see below |
 | `09-statistics` | **no** — episodic, consumes the map | → `statistics/docs/statistics.md`, still to `TEMPLATE.md` |
 | `10-factsheet_design` | **no** — a per-launch deliverable spec, in Spanish | → `statistics/docs/factsheet-sep2026-spec.md`; stays Spanish |
-| `11-validation` | **no** — episodic, consumes the map | → `validation/docs/design.md`; drops the number (it was "Step 10" in its own title and is cited as `docs/10` in code — both go away) |
+| `11-validation` | **no** — episodic, consumes the map | → `validation/docs/design.md`; drops the number (it was "Step 10" in its own title and is cited as `docs/10` in code — both gone, 2026-09-18). ⚠️ An earlier version of this plan said it was *not* written by Iván; `git log --follow` says otherwise — **the design is his, the implementation and the status section are Ramón Peña Agrest's** |
 
 `10-factsheet_design.md` is a **spec** — a specification of what to build — and it is tied to
 *one* launch, so the launch goes in the filename. It is **not** `notes/` material: `notes/` is
@@ -569,21 +569,64 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
 > **(e) `notes/` conventions held with no friction.** Seven entries, all verbatim, all with pinned
 > provenance headers naming sections this same pass deleted — which `notes/README.md` says is
 > correct and not to be repaired. Nothing needed inventing.
-- [ ] `validation/docs/design.md` (5.3 k, was `docs/11`).
-      ⚠️ **NOT WRITTEN BY IVÁN — someone else on the team authored the validation design.**
-      Two consequences that apply to nothing else in this plan:
-      **(a) review before editing.** Every other doc here can be cut on the author's own
-      judgement; this one cannot. Read it for *correctness and current applicability* first —
-      what it claims, what was actually implemented, and where the two have drifted — and get
-      the author's or Iván's sign-off before cutting anything. A shortening pass that silently
-      drops someone else's design decision is worse than a long doc.
-      **(b) attribute it.** The header box should name the author and the date, the way
-      `docs/external/` pins what it read. Right now the repo does not record that this doc has a
-      different provenance from its neighbours, which is exactly how an assumption gets
-      inherited without anyone noticing it was ever a choice.
-      Then the ordinary pass: it is the only doc where code blocks dominate (21 %, the two GEE-JS
-      appendices) — decide per appendix whether it becomes a real file in `validation/` or stays
-      inline. Inline GEE JS is a fifth home for code that cannot be run or linted.
+- [x] `validation/docs/design.md` (5,285 → 4,849, and **the premise of this item was wrong** — see
+      the box). Three `notes/` entries extracted verbatim into a new
+      `validation/docs/notes/`: the dated implementation status, and **both GEE-JS appendices**,
+      which are superseded by the Python (`01_strata_export.py` is a direct port of A;
+      `02_sample_pool.py` replaced B, which does not scale). That removes the 21 % code-block
+      problem entirely. Title de-numbered, all 16 headings de-numbered and ~35 internal + ~20
+      inbound `§N` citations converted to names across 8 files. An attribution box and a **status
+      box** were added; the design prose itself was **not cut**. A correctness finding is recorded
+      in the doc and below.
+
+> **What the validation pass found (2026-09-18).**
+>
+> **(a) The item's premise — "NOT WRITTEN BY IVÁN" — is wrong, and the correct split matters.**
+> `git log --follow` says the design doc was written by **Iván** on 2026-08-21 (`8b2e859`), two days
+> *before* the first implementation commit. What is **Ramón Peña Agrest's** is all four
+> `validation/*.py`, the Colab notebook, and the §0 implementation-status section he added to the
+> doc while fixing the OOMs (`bccc973`, `60df891`). So the sign-off rule applies to §0 and to the
+> code, not to the design — which is why the design prose was left alone here and only §0 and the
+> appendices were moved. Both authorships are now stated in the doc's header box, which the item
+> asked for. **The plan's own text should be corrected**; it is the one place in this file that
+> asserts a provenance nobody had checked, which is the exact failure mode it warns about elsewhere.
+>
+> **(b) ⚠️ The strata rasters were built against the `_v1` map, and the product is now `_v2`.**
+> This is the substantive finding and it was not recorded anywhere. The strata and the nine frozen
+> lists were exported 2026-08-31, when `C.MONTH_OF_BURN_COL` resolved to `collection1_fire_mask_v1`;
+> `C.PRODUCT_VERSION = 2` landed 2026-09-11 in `8cf4b7f`, applying exclusion rules A and B
+> (`docs/07` "The `_v2` re-export"). **The sample is still valid** — the estimators need only that
+> the strata partition the population with known weights, and a stratum may be defined by anything,
+> including a superseded map. **One rule breaks**: "Estimators and outputs" says the map class is
+> the frozen `burned` band and is never looked up later, and against v2 it must be. The stored
+> `col`/`row` addresses make that possible. Recorded in the doc twice — the status box and an
+> inline warning at the rule it breaks — and flagged as *to settle before interpretation*, not
+> fixed, because whether to rebuild the strata on v2 (new lists, discarding the frozen ones) is a
+> team decision.
+>
+> **(c) Both appendices were a second home for code that already exists in Python**, which is a
+> stronger reason to move them than "inline JS cannot be linted". Appendix A's own header even says
+> so from the other side: `01_strata_export.py` opens with *"Traducción directa a Python del
+> Appendix A"*. And Appendix A had gone stale in the way a duplicate does — it hardcodes
+> `collection1_fire_mask_v1` while the Python reads `C.MONTH_OF_BURN_COL`, so the code followed the
+> `_v2` rename and the doc did not. **That is how (b) was found.**
+>
+> **(d) One artefact is superseded and still in the repo**: `colab_sample_pool_export.ipynb`
+> (Ramón, 2026-08-28) implements the Appendix-B recipe that the 2026-08-31 post-mortem rejected.
+> It is now named as such in the doc's `Files` table rather than silently sitting there. Deleting
+> or rewriting it is Ramón's call.
+>
+> **(e) `validation/docs/notes/` is new.** `notes/` conventions are defined for
+> `collection-01/docs/notes/`; validation's docs are colocated with its code, so its lab notebook
+> is too. Its `README.md` points at the main one rather than restating the rules. Same question
+> will arise for `statistics/` — flagging it now so the frozen statistics pass does not have to
+> decide it under time pressure.
+>
+> **(f) Two Phase-0 leftovers fixed in passing**: `statistics/docs/statistics.md` still linked
+> `10-factsheet_design.md` (renamed in Phase 0), and CLAUDE.md's factsheet and validation rows had
+> been **merged into one table cell** by a missing newline (`… comes from || \`…/design.md\` | step
+> 11 — …`), so the validation row had not been rendering as a row at all since the move.
+
 - [ ] `08-postprocessing.md` (5.3 k) — **when this splits, revisit the closing paragraphs of
       `00-overview.md`**, which describe today's 08 as "mostly our reading of the reference
       implementation". After the split that is `docs/external/`, and what stays numbered is only
@@ -699,6 +742,11 @@ Append one line per completed item: date — what — commit.
   `06-c00_baseline`, `06-upload_decisions`, `06-label_prep_engineering`); ~45 citations repointed
   across 20 files; two live upload defects recorded in the step doc for the first time (they were
   only in `docs/07`); CLAUDE.md's step-06 row replaced by three.
+- 2026-09-18 — **Phase 2, `validation/docs/design.md`**: 5,285 → 4,849 words; new
+  `validation/docs/notes/` with the implementation log and **both GEE-JS appendices** (superseded by
+  the Python); headings and ~55 citations de-numbered across 8 files; attribution box added (design
+  Iván, implementation Ramón — the item's premise was wrong); **the strata were built on the `_v1`
+  map and the product is `_v2`** — recorded, not fixed, because rebuilding is a team call.
 - 2026-09-18 — **Phase 0 done**: 3 `git mv`s, `docs/notes/` + `docs/external/` created with
   their conventions, ~120 citations rewritten across 30 files, ROADMAP pointed here.
   Uncommitted at time of writing.

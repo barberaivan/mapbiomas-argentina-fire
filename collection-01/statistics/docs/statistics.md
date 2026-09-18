@@ -4,7 +4,7 @@ How we compute fire statistics from the published maps. **None of this is part o
 product** — it exists to communicate results. The maps themselves are
 [`07-vector_to_raster.md`](07-vector_to_raster.md) (what we build) and
 [`08-postprocessing.md`](08-postprocessing.md) (what the network expects); what each graphic
-*says* is [`10-factsheet_design.md`](10-factsheet_design.md). This file is where each of its
+*says* is [`factsheet-sep2026-spec.md`](factsheet-sep2026-spec.md). This file is where each of its
 **numbers** comes from. [`ROADMAP.md`](../../ROADMAP.md) is the *when*.
 
 **Three sources, and every figure must say which one it used.**

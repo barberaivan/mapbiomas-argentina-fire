@@ -23,7 +23,7 @@ falta más preciso.
 ASSET DE SALIDA — carpeta separada de producción, no puede colisionar
 --------------------------------------------------------------------------
 `.../FIRE/VALIDATION/sampling_strata_demo/...` — `02_sample_pool.py` filtra la ImageCollection de
-PRODUCCIÓN por `year`+`collection` (validation/docs/design.md §4.4), nunca por este path, así que un asset acá jamás
+PRODUCCIÓN por `year`+`collection` (validation/docs/design.md "Dilation, partition, export"), nunca por este path, así que un asset acá jamás
 se cuela en el sorteo real aunque alguien corra `02` sin querer contra el año equivocado.
 
 USO

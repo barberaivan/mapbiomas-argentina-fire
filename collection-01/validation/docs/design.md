@@ -1,63 +1,72 @@
-# Step 10 — validation: sampling design and how to build it
+# Validation — sampling design
 
 How the collection-1 burned-area product is validated: a **stratified random sample of pixels**
 with known inclusion probabilities, analysed with the **Olofsson / Stehman** design-based
 estimators, producing accuracy metrics **and an error-adjusted national burned-area estimate with
-confidence intervals**.
+confidence intervals**. Validation is **episodic** — it is not a stage of the mapping chain, it
+consumes the finished map — which is why it lives beside its code rather than in `docs/`.
 
 Everything here is fixed by design and must be frozen before any interpretation begins. The two
-artefacts that cannot be retrofitted are **the strata rasters** (§4) and **the ordered sample
-lists** (§5).
+artefacts that cannot be retrofitted are **the strata rasters** and **the ordered sample lists**.
+
+> **Provenance.** The design was written by **Iván Barberá** (2026-08-21). The implementation —
+> `01_strata_export.py`, `02_sample_pool.py`, `03_ceo_export.py`, `demo_small_region.py` and the
+> Colab notebook — and the implementation-status section that used to open this file are
+> **Ramón Peña Agrest's** (2026-08-23 → 2026-08-31). **Where this document and the Python
+> disagree, the Python wins**: it is what produced the landed assets, and in two places it
+> deliberately departs from what is written here (see "Status" below).
 
 ---
 
-## 0. Implementation status (2026-08-31)
+## ⚠️ Status, and one thing to settle before interpreting
 
-The strata rasters (§4) are landed for all three fire-years (2003, 2013, 2022) exactly as
-Appendix A specifies — unchanged.
+**Nothing has moved since 2026-08-31.** Landed: the three strata rasters (fire-years 2003, 2013,
+2022) and nine frozen ordered lists, 3 years × 3 strata, plus the three `ceo_points_fy<FY>` GEE
+table assets. The dated build log, including the two-week OOM saga, is
+[`notes/implementation-log.md`](notes/implementation-log.md).
 
-**Appendix B's point-drawing recipe (`stratifiedSample` per stratum) does not scale — do not use
-it as written.** It OOMs (GEE error code 8) at country scale in every variant tried: direct,
-tuned `tileScale`/`classValues`, partitioned across the ~248 MapBiomas cartas, even a plain
-`reduceRegion` for the pixel counts. The cause is not `stratum`, not `stratifiedSample` itself —
-it is the **region geometry**: `FRAME` (`ARG-Political_Level_1-Pais`) has 2M+ edges, and any op
-that receives it as `region=` pays the cost of evaluating "is this candidate inside?" against
-that geometry, regardless of what's being sampled or reduced. A controlled test confirmed it: the
-identical call, only swapping that geometry for a plain `ee.Geometry.Rectangle`, went from 5/5
-failures to 3/3 successes in ~15-20 s.
+**Two places where the code deliberately departs from this document**, both live rules:
 
-**The actual, working implementation** is in `collection-01/validation/02_sample_pool.py` —
-draws an *unstratified* pool with `Image.sample()` (no `classBand`, so no per-class scan of the
-whole country — cost scales with how many points are requested, not with the country's size),
-then splits by stratum locally in pandas. Statistically identical to sampling within each stratum
-separately (conditioning on stratum commutes with random draw); only the order of operations
-changed. See that file's module docstring ("LA SAGA DEL OOM Y LA CAUSA REAL") for the full
-post-mortem and the exact working recipe (`--pilot-launch` → `--pilot-report` → `--launch-pool`
-→ `--freeze --from-pool`).
+- **The sample is drawn unstratified and split by stratum locally**, not with `stratifiedSample`
+  per stratum. The per-stratum recipe OOMs at country scale — the cause is the 2 M-edge national
+  frame geometry, not the sampling — and the two are statistically identical, since conditioning
+  on stratum commutes with a random draw. `02_sample_pool.py` is the implementation;
+  [`notes/appendix-b-stratifiedsample.md`](notes/appendix-b-stratifiedsample.md) is the recipe it
+  replaced. **`colab_sample_pool_export.ipynb` still implements the superseded one.**
+- **The reserve is 5,000 per stratum per year, not 30,000** — a cost decision, not a statistical
+  one, and still comfortably above every scenario in "Sample size, and how to extend".
 
-Two-stage by design (not in Appendix B, decided 2026-08-30): a first "pool 1" is sized only to
-clear the **initial 100/stratum/year** (§1) comfortably, not the 5,000-unit reserve — cheap
-(~100-150k points/year, seconds to minutes), so a wrong bet costs little. A larger "pool 2" to
-reach the 5,000/stratum reserve is **not built yet** — it reuses the same `draw_pool()` with a
-bigger N, combined with pool 1 by de-duplicating on exact `(col, row)` (collision rate at these
-scales is negligible, computed at ≈0.03% — not worth an exclusion-mask instead), appended after
-pool 1's existing ranks. Pool 1's frozen rows/ranks are never touched — satisfies §5 rule 6.
+**Still open**: the second pool (to reach the 5,000 reserve); the exact-`Nh` pixel census, whose
+`weights_launch()` was never re-tested after the geometry fix and very plausibly now works; and
+the validator-facing `ceo_val_00_template` script in the `fuego` repo, which still points at the
+demo asset.
 
-**Landed as of 2026-08-31**: 9 frozen lists (3 years × 3 strata, `outputs/frozen/`), all comfortably
-above the initial-100 floor. `03_ceo_export.py` produced and this session manually uploaded the 3
-`ceo_upload_fy<FY>.csv` (LON/LAT/PLOTID only — never `stratum`/`burned`, per the CEO-hygiene rule
-in that script's docstring) as GEE table assets:
-`projects/mapbiomas-argentina/assets/FIRE/VALIDATION/ceo_points/ceo_points_fy<2003|2013|2022>`.
-**Still open**: pool 2 (above); the exact-`Nh` pixel census (§4.4) — `weights_launch()` in
-`01_strata_export.py` is still the old `reduceRegion`-at-country-scale approach and was **not
-re-tested** with the geometry fix (verify before assuming it's still broken — it very plausibly
-isn't); the validator-facing `ceo_val_00_template` GEE script (repo `fuego`, not this repo) still
-points `POINTS_ASSET_PREFIX` at the `ceo_points_demo_sierras_cordoba_fy` demo asset and needs
-updating to `ceo_points_fy` before real interpretation starts.
+> ### ⚠️ The strata were built against the **v1** map, and the product is now **v2**
+>
+> Found in this review (2026-09-18), not previously recorded. The strata rasters were exported on
+> 2026-08-31, when `C.MONTH_OF_BURN_COL` resolved to `collection1_fire_mask_v1`;
+> `C.PRODUCT_VERSION = 2` landed on 2026-09-11 (`8cf4b7f`), and the published month-of-burn
+> collection is now `_v2` — the layer with exclusion rules A and B applied
+> (`docs/07` "The `_v2` re-export"). So **`S1` is v1's burned pixel set, and the frozen `burned`
+> band records v1's call.**
+>
+> This does **not** invalidate the sample. The estimators require only that the strata partition
+> the population and that the weights are known, and both still hold — a stratum is allowed to be
+> defined by anything, including a superseded map. What it does invalidate is one rule below:
+> **"Estimators and outputs" says the map class is the frozen `burned` band and is never looked up
+> later.** Against v2 it must be looked up again, at the same pixel addresses, or the confusion
+> matrix describes the wrong map. The `col`/`row` addresses stored with every unit exist precisely
+> so that is possible.
+>
+> **To settle before interpretation**: re-sample `burned` from v2 at the frozen addresses and add
+> it as a second column (keeping v1's, which is what defines the strata), and recompute `W2` — v2
+> is a smaller burned set, so `W1` shrinks and some S1 pixels are no longer mapped-burned. Whether
+> the strata themselves should be rebuilt on v2 is a bigger call: rebuilding means new lists and
+> discards the frozen ones.
 
 ---
 
-## 1. Decisions already taken
+## Decisions already taken
 
 | | |
 |---|---|
@@ -67,7 +76,7 @@ updating to `ceo_points_fy` before real interpretation starts.
 | Temporal unit | **Fire year** (1 May Y → 30 Apr Y+1), named by start year — never calendar year |
 | Strata | S1 mapped burned · S2 independent fire evidence, dilated, minus S1 · S3 the rest |
 | Strata asset | `projects/mapbiomas-argentina/assets/FIRE/VALIDATION/sampling_strata` — one 2-band image (`stratum`, `burned`) per fire year, keyed by the `year` + `collection` properties |
-| Years | **Three, to be defined** — see §8 for the constraints |
+| Years | **Three, to be defined** — see "Choosing the three years" for the constraints |
 | Initial sample | **100 units per stratum per year** (n = 300/year) |
 | Pre-drawn reserve | **5,000 units per stratum per year**, ordered, fixed seed — the sample can be extended later without redesign |
 | Regionalization | None. Per-ecoregion figures, if ever wanted, come from the same sample as subpopulation estimates |
@@ -78,9 +87,9 @@ producer's accuracy with standard errors are secondary.
 
 ---
 
-## 2. Why not the Alencar et al. (2022) design
+## Why not the Alencar et al. (2022) design
 
-Alencar (MapBiomas Fogo Brasil col-1, §2.5) stratifies 2 × 2 km cells by FIRMS burned fraction,
+Alencar (MapBiomas Fogo Brasil col-1, their §2.5) stratifies 2 × 2 km cells by FIRMS burned fraction,
 then has interpreters segment each cell and records **the centroid of each interpreter-drawn
 segment** as the sample unit. Three consequences:
 
@@ -98,7 +107,7 @@ single-proportion formula, the same one Olofsson gives as a starting point. What
 
 ---
 
-## 3. Every layer must be a fire-year layer
+## Every layer must be a fire-year layer
 
 Our product is published as calendar-year images, but the objects, and therefore the thing being
 validated, are fire-year entities. So **every** layer entering the design — ours and every external
@@ -120,11 +129,11 @@ to validate. It requires calendar year Y+1 to exist, so the validatable range is
 **External products** are ImageCollections with dates, so the same window is just
 `filterDate(YYYY-05-01, (YYYY+1)-05-01)`. MCD64A1, VNP64A1 and FireCCI51 are *monthly composites*:
 a composite straddling the window boundary is included **whole** rather than split by its
-`Burn_Date` band. S2 favours recall (§4.1), so over-inclusion at the boundary is the safe error.
+`Burn_Date` band. S2 favours recall ("Why a union, dilated"), so over-inclusion at the boundary is the safe error.
 
 ---
 
-## 4. Building the strata rasters
+## Building the strata rasters
 
 One raster per validated fire-year. Pure raster algebra — dilation on binary masks plus boolean
 logic, no vectorization anywhere. Export once as a GEE asset, record the fingerprint, **never
@@ -150,7 +159,7 @@ free consistency assertion on every drawn list — and it stops being redundant 
 collection changes the map, because the frozen band still says what the map said when the strata
 were fixed.
 
-### 4.1 Why a union, dilated, and why recall beats precision
+### Why a union, dilated, and why recall beats precision
 
 A **union**, not an intersection: intersecting our buffered scars with MODIS burn would return only
 near-misses next to scars we already found, and would exclude a fire we missed entirely — the case
@@ -167,10 +176,10 @@ the coarse sensors never detect; edge-only misses whole fires.
 
 **Design rule: favour recall over precision in S2.** Over-inclusion only enlarges `W2`, which costs
 a little sample efficiency. Under-inclusion pushes omission into S3, which carries ~94 % of the area
-weight and therefore most of the variance (§6). Two direct consequences: no `confidence` filter on
-FIRMS, and **`max`, never `mode`, as the aggregation reducer** (§4.3).
+weight and therefore most of the variance ("Sample size, and how to extend"). Two direct consequences: no `confidence` filter on
+FIRMS, and **`max`, never `mode`, as the aggregation reducer** ("The aggregation rule").
 
-### 4.2 The coarse grid must be nested in the product grid
+### The coarse grid must be nested
 
 The dilation runs at ~500 m so the kernel stays a 3 × 3 instead of a 33 × 33. But the coarse
 lattice must be **our product grid decimated by an integer**, not an independent 500 m grid and not
@@ -193,7 +202,7 @@ nothing.
 `crs` + `crsTransform` on **every** reprojection and export. `scale: 30` in EPSG:4326 is a
 *different* grid and a half-pixel shift would misalign S1 against the strata raster.
 
-### 4.3 Per-product aggregation rule — `max`, and which direction
+### The aggregation rule — `max`, never `mode`
 
 | relation to COARSE | operation | why |
 |---|---|---|
@@ -214,7 +223,7 @@ Note that `.reproject(COARSE)` on a 463 m product using nearest neighbour would 
 (output cells are slightly larger than input), which is why the first row of the table uses
 `reduceResolution` even where the ratio is only 1.04.
 
-### 4.4 Dilation, partition, export
+### Dilation, partition, export
 
 - **Dilation**: `focalMax({radius: 1, units: 'pixels', kernelType: 'square'})` on the coarse union
   — a 3 × 3 coarse window, ±480 m. Because `max`-aggregation already inflates by up to one coarse
@@ -250,9 +259,10 @@ Note that `.reproject(COARSE)` on a 463 m product using nearest neighbour would 
   the reproducibility fingerprint. Log it with the asset id, the export timestamp, the fire year,
   the dilation radius and the decimation factor.
 
-The script is in the appendix.
+The implementation is `01_strata_export.py`; the GEE-JS prototype it was ported from is
+[`notes/appendix-a-strata-gee.md`](notes/appendix-a-strata-gee.md).
 
-### 4.5 Which external products exist for which fire year
+### Which external products exist for which fire year
 
 Verified in the GEE catalogue on 2026-08-21:
 
@@ -276,7 +286,7 @@ the strata partition the population and that the weights are known. There is no 
 recent year for consistency with an old one — but years must never be compared without reporting
 their intervals.
 
-### 4.6 Check `W2` before freezing
+### Check `W2` before freezing
 
 `W2 = N2 / ΣNh` is computable from pixel counts alone, before a single unit is interpreted. Expect
 a few per cent. If a year comes out very small (< 2 %) or very large (> 15 %), revisit the dilation
@@ -285,7 +295,7 @@ samples cannot be merged.
 
 ---
 
-## 5. Drawing the frozen ordered sample lists
+## Drawing the frozen ordered sample lists
 
 This is the mechanism that makes every later extension legitimate, and it must be done once, before
 any interpretation.
@@ -299,7 +309,7 @@ justification.
 Rules:
 
 1. **Simple random selection within each stratum, never systematic.** Systematic selection would
-   force variance approximations and make extension awkward (Olofsson §2.1.3; Stehman et al. 2012).
+   force variance approximations and make extension awkward (Olofsson et al. 2014 §2.1.3; Stehman et al. 2012).
    It costs nothing to avoid.
 2. **One export per stratum per year** (9 exports for three years), so a shortfall is visible
    instead of being silently redistributed. `stratifiedSample` can return fewer points than
@@ -311,7 +321,7 @@ Rules:
 4. **Store the pixel address, not only the coordinates.** From the pixel-centre lon/lat,
    `col = round((lon − x0)/dx − 0.5)`, `row = round((y0 − lat)/dy − 0.5)`. The address makes the
    unit recoverable years later independently of coordinate formatting.
-5. **Store per row**: `fire_year`, `stratum`, **`burned`** (the sampled map call, §4), `rank`,
+5. **Store per row**: `fire_year`, `stratum`, **`burned`** (the sampled map call, "Building the strata rasters"), `rank`,
    `lon`, `lat`, `col`, `row`. **Store per list**: the seed, `Nh`, the strata asset id, the draw
    date.
 6. **Never regenerate a list, never re-sort one, never discard or substitute a drawn unit.** If a
@@ -322,10 +332,10 @@ Rules:
    looks bad, let us check further" makes the sample size a function of the observed data, which is
    the one thing that biases the estimator.
 
-5,000 per stratum per year still covers every scenario in §6's table with room to spare — the most
+5,000 per stratum per year still covers every scenario in "Sample size, and how to extend" with room to spare — the most
 demanding one shown (±9% on area) asks for 3,100 in S3, the stratum that needs the most — and
 absorbs units discarded as uninterpretable. This is a smaller cushion than the original 30,000
-(which had a full order of magnitude to spare over any scenario in §6); 5,000 was chosen instead to
+(which had a full order of magnitude to spare over any scenario there); 5,000 was chosen instead to
 keep the GEE draw itself cheap at country scale (`stratifiedSample` over the whole country was
 hitting GEE memory limits at 40,000), not for a statistical reason. All three strata hold far more
 than 5,000 pixels — even S1 holds on the order of ten million in a typical year — so drawing
@@ -338,7 +348,7 @@ measured `Wh` and the interpretation rate.
 
 ---
 
-## 6. Sample size: what 100 per stratum buys, and how to extend
+## Sample size, and how to extend
 
 Illustrative, for a typical fire year with `W = 0.009 / 0.050 / 0.941` and true-burned fractions
 inside the strata of `0.85 / 0.042 / 0.00053` (≈ 2.9 Mha truly burned, ~25 % of it omitted by the
@@ -370,7 +380,7 @@ and S3. Under those shares:
 
 Standard errors scale as `1/√n`: **doubling the work narrows the interval by 41 %, not 50 %.** Plan
 on square roots. And before buying precision with interpretation effort, buy it with a better S2
-(§4.1, §4.6) — reducing residual omission in S3 is far cheaper than adding units.
+("Why a union, dilated" and "Check `W2` before freezing") — reducing residual omission in S3 is far cheaper than adding units.
 
 Recompute all of this with the **measured** `Nh` once the strata rasters are frozen. The numbers
 above are illustrative; only `Wh` is known exactly before interpretation, and `θh` is what the
@@ -378,7 +388,7 @@ validation itself estimates.
 
 ---
 
-## 7. Response design and interpretation
+## Response design and interpretation
 
 - A **written protocol before any interpretation**: what counts as burned, minimum detectable scar,
   how to treat partial burns within a pixel, how to handle agricultural residue burning. These are
@@ -410,11 +420,11 @@ the accuracy estimates are optimistic.
 
 ---
 
-## 8. Choosing the three years
+## Choosing the three years
 
 Constraints, not a decision:
 
-- **FY 1999–2024** is the validatable range (§3).
+- **FY 1999–2024** is the validatable range ("Every layer must be a fire-year layer").
 - **FY 2012 onwards** has all four auxiliary products, so the strongest S2 and the tightest interval
   for a given effort. **FY 2001–2011** has MCD64A1 + FireCCI51 + FIRMS. **FY 1999–2000** has only
   partial MODIS coverage and would get a markedly weaker S2.
@@ -425,12 +435,12 @@ Constraints, not a decision:
   moderate one. Large contiguous scars are easy; smoke, repeated burns and saturated composites are
   not. Rank the candidate fire years by mapped burned area from the product itself, and by national
   SNMF statistics, before deciding.
-- Reference-imagery quality improves monotonically with year (§7), which argues for at least one
+- Reference-imagery quality improves monotonically with year ("Response design and interpretation"), which argues for at least one
   recent year.
 
 ---
 
-## 9. Estimators and outputs
+## Estimators and outputs
 
 Our strata **nest within** the map classes: S1 is exactly the mapped-burned class, and
 S2 ∪ S3 is exactly the mapped-unburned class. That is a special case of "strata different from map
@@ -438,8 +448,13 @@ classes", so use **Stehman (2014)** — `mapaccuracy::stehman2014()` in R, which
 Do **not** use `mapaccuracy::olofsson()`, which assumes strata = map classes.
 
 The map class of each unit is not looked up later — it is the **`burned` band sampled at draw
-time** (§4), already in the CSV. Interpretation adds one column, the reference label, and the
-confusion matrix follows.
+time** ("Building the strata rasters"), already in the CSV. Interpretation adds one column, the
+reference label, and the confusion matrix follows.
+
+> ⚠️ **That rule has an exception as of the `_v2` re-export**: the frozen `burned` band records
+> the **v1** map's call, so for v2 the map class *must* be re-sampled at the frozen `col`/`row`
+> addresses. See the status box at the top. The strata themselves, and therefore `Wh`, are
+> unaffected in their validity — only the map class is.
 
 Report, per validated fire year:
 
@@ -451,12 +466,12 @@ Report, per validated fire year:
 
 ---
 
-## 10. References
+## References
 
 - Olofsson, P., Foody, G.M., Herold, M., Stehman, S.V., Woodcock, C.E., Wulder, M.A. (2014). Good
   practices for estimating area and assessing accuracy of land change. *RSE* 148:42–57.
   DOI 10.1016/j.rse.2014.02.015 — the canonical reference: sampling design, response design,
-  estimators, sample size (§5.1).
+  estimators, sample size.
 - Olofsson, P. (2025). Accuracy and Area Estimation. In *Comprehensive Remote Sensing*, 2nd ed. —
   more readable synthesis, good entry point.
 - Stehman, S.V. (2014). Estimating area and map accuracy for stratified random sampling when the
@@ -477,151 +492,38 @@ R implementation: package **`mapaccuracy`**.
 
 ---
 
-## Appendix A — the strata raster (GEE)
+## Run
 
-```javascript
-// ---------------------------------------------------------------- parameters
-var FY      = 2015;                 // fire year = 1 May FY -> 30 Apr FY+1
-var FACTOR  = 16;                   // coarse grid = product grid / FACTOR  (~480 m)
-var RAD_PX  = 1;                    // focalMax radius, coarse pixels, square kernel
-
-var BASE_CRS = 'EPSG:4326';
-var BASE_T   = [0.000269494585236, 0, -73.58468801489491,
-                0, -0.000269494585236, -21.764113209062533];
-var COARSE_T = [BASE_T[0]*FACTOR, 0, BASE_T[2],
-                0, BASE_T[4]*FACTOR, BASE_T[5]];
-var COARSE = ee.Projection(BASE_CRS, COARSE_T);
-
-var MOB   = 'projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/' +
-            'CLASSIFICATION_COLLECTIONS/collection1_fire_mask_v1';
-var FRAME = ee.FeatureCollection('projects/mapbiomas-argentina/assets/ANCILLARY_DATA/' +
-            'VECTOR/ARG/ARG-Political_Level_1-Pais').geometry();
-
-var t0 = ee.Date.fromYMD(FY, 5, 1), t1 = t0.advance(1, 'year');
-
-// ------------------------------------------------- 1. our fire-year layer = S1
-// per-pixel month/year from abs_date, so the two-slice OR is exact (S3)
-function mob(y) {
-  return ee.Image(ee.ImageCollection(MOB)
-    .filter(ee.Filter.eq('year', y)).first()).select('burned_monthly').unmask(0);
-}
-var mNext   = mob(FY + 1);
-var ourBurn = mob(FY).gte(5)                             // May-Dec of FY
-                .or(mNext.gte(1).and(mNext.lte(4)));     // Jan-Apr of FY+1
-
-// ------------------------------------------ 2. external evidence, fire-year
-// monthly composites straddling the window boundary are taken WHOLE: recall > precision (S4.1)
-var mcd64   = ee.ImageCollection('MODIS/061/MCD64A1')
-                .filterDate(t0,t1).select('BurnDate').max().gte(1).unmask(0);
-var vnp64   = ee.ImageCollection('NASA/VIIRS/002/VNP64A1')          // VIIRS BURNED AREA, 2012->
-                .filterDate(t0,t1).select('Burn_Date').max().gte(1).unmask(0);
-var firecci = ee.ImageCollection('ESA/CCI/FireCCI/5_1')             // 2001-2020 only
-                .filterDate(t0,t1).select('BurnDate').max().gte(1).unmask(0);
-var firms   = ee.ImageCollection('FIRMS')                           // no confidence filter (S4.1)
-                .filterDate(t0,t1).select('T21').max().gt(0).unmask(0);
-
-// -------------------------------- 3. one nested coarse grid, MAX aggregation
-// finer-or-equal than COARSE -> reduceResolution(max); NEVER mode (S4.3).
-// maxPixels must exceed FACTOR^2 = 256; the default of 64 is too small.
-function toCoarseFine(img) {
-  return img.reduceResolution({reducer: ee.Reducer.max(), maxPixels: 1024})
-            .reproject(COARSE);
-}
-// coarser than COARSE (FIRMS, 927 m) -> nearest replicates the cell, loses nothing
-function toCoarseCoarse(img) { return img.reproject(COARSE); }
-
-var parts = [toCoarseFine(ourBurn), toCoarseFine(mcd64), toCoarseCoarse(firms)];
-var products = ['ours', 'MCD64A1', 'FIRMS'];                     // recorded on the asset (S4.4)
-if (FY >= 2012 && FY <= 2024) { parts.push(toCoarseFine(vnp64));   products.push('VNP64A1'); }
-if (FY >= 2001 && FY <= 2019) { parts.push(toCoarseFine(firecci)); products.push('FireCCI51'); }
-
-var union = parts.reduce(function(a, b) { return a.or(b); });
-
-// ------------- 4. dilate on the coarse grid, then back to the product grid
-// projection is already COARSE, so the 3x3 kernel is fixed to the coarse lattice
-var dilated = union
-      .focalMax({radius: RAD_PX, units: 'pixels', kernelType: 'square'})
-      .reproject({crs: BASE_CRS, crsTransform: BASE_T});   // exact block replication
-
-// ------------------------ 5. mutually exclusive, exhaustive partition at 30 m
-// S1 subtracted at 30 m so it is exactly the product's own pixel set
-var s1 = ourBurn;
-var s2 = dilated.and(s1.not());
-var s3 = s1.not().and(s2.not());
-
-var stratum = s1.multiply(1).add(s2.multiply(2)).add(s3.multiply(3)).rename('stratum');
-
-// TWO bands: the partition, and our map's own call so the sample carries it (S4)
-var out = stratum.addBands(s1.rename('burned')).toByte().clip(FRAME)
-  .set({
-    year:               FY,       // FIRE year   -- mandatory
-    collection:         1,        // integer     -- mandatory
-    source:             'mapbiomas-fuego',
-    region:             'argentina',
-    fire_year_definition: 'non-calendar: 1 May <year> to 30 Apr <year>+1',
-    coarse_factor:      FACTOR,
-    dilation_radius_px: RAD_PX,
-    products:           products.join(','),
-    frame:              'ARG-Political_Level_1-Pais',
-    bands:              'stratum(1=mapped burned,2=evidence buffer,3=rest);burned(our map 0/1)'
-  });
-
-// ------------------------------------------------------------- 6. freeze it
-var COL = 'projects/mapbiomas-argentina/assets/FIRE/VALIDATION/sampling_strata';
-Export.image.toAsset({
-  image: out,
-  description: 'val10_strata_fy' + FY,
-  assetId: COL + '/sampling_strata_fy' + FY,    // one image per fire year, in the existing IC
-  region: FRAME,
-  crs: BASE_CRS, crsTransform: BASE_T,          // NEVER scale: 30
-  maxPixels: 1e13,
-  pyramidingPolicy: {'.default': 'mode'}        // categorical, both bands
-});
-
-// ------------------------------- 7. Nh = the weights AND the fingerprint (S4.4)
-print('Nh -- record this', stratum.clip(FRAME).reduceRegion({
-  reducer: ee.Reducer.frequencyHistogram(), geometry: FRAME,
-  crs: BASE_CRS, crsTransform: BASE_T, maxPixels: 1e13, tileScale: 4}));
+```bash
+$PYTHON collection-01/validation/01_strata_export.py --launch        # the strata rasters
+$PYTHON collection-01/validation/02_sample_pool.py --pilot-launch    # size the pool
+$PYTHON collection-01/validation/02_sample_pool.py --pilot-report
+$PYTHON collection-01/validation/02_sample_pool.py --launch-pool
+$PYTHON collection-01/validation/02_sample_pool.py --freeze --from-pool
+$PYTHON collection-01/validation/03_ceo_export.py                    # the CEO upload CSVs
 ```
 
-Namespace every task description (`val10_…`) — the compute project is shared with the whole
+Namespace every task description (`val10_…`): the compute project is shared with the whole
 MapBiomas Fuego network and `ee.data.listOperations()` returns every user's tasks.
 
-## Appendix B — the frozen ordered lists (GEE)
+## Files
 
-One export per stratum per year. Draw 6,000, keep the first 5,000 by rank (§5 rule 2).
+| File | Role |
+|---|---|
+| `validation/01_strata_export.py` | build and export the strata rasters; the `Nh` census |
+| `validation/02_sample_pool.py` | draw the pool, split by stratum, freeze the ordered lists |
+| `validation/03_ceo_export.py` | the CEO upload CSVs — `LON`/`LAT`/`PLOTID` only, shuffled |
+| `validation/demo_small_region.py` | a tutorial over a small region; not part of the frozen design |
+| `validation/colab_sample_pool_export.ipynb` | ⚠️ still implements the superseded per-stratum draw |
+| `ceo_val_00_template` (GEE, `fuego` repo) | the validator-facing script; still points at the demo asset |
 
-```javascript
-var FY = 2015, H = 1, SEED = 42;      // stratum H in {1,2,3}; SEED fixed and recorded forever
-var img = ee.Image(ee.ImageCollection(
-      'projects/mapbiomas-argentina/assets/FIRE/VALIDATION/sampling_strata')
-    .filter(ee.Filter.eq('collection', 1))
-    .filter(ee.Filter.eq('year', FY)).first());   // 'year' is the FIRE year
+## Related
 
-// sample the map call alongside the stratum, so the CSV is self-contained (S4)
-var pool = img.select('stratum').eq(H).selfMask().rename('sel')
-             .addBands(img.select('stratum'))
-             .addBands(img.select('burned'))
-             .addBands(ee.Image.random(SEED).rename('order_key'));
-
-var pts = pool.stratifiedSample({
-  numPoints: 6000,                    // over-draw; truncate to 5000 after sorting
-  classBand:  'sel',
-  region:     ee.FeatureCollection('projects/mapbiomas-argentina/assets/ANCILLARY_DATA/' +
-                'VECTOR/ARG/ARG-Political_Level_1-Pais').geometry(),
-  projection: ee.Projection('EPSG:4326', [0.000269494585236, 0, -73.58468801489491,
-                                          0, -0.000269494585236, -21.764113209062533]),
-  seed: SEED, geometries: true, tileScale: 8, dropNulls: true
-}).sort('order_key');
-
-Export.table.toDrive({
-  collection:  pts,
-  description: 'val10_sample_fy' + FY + '_s' + H,
-  fileFormat:  'CSV'});
-```
-
-Each row comes out with `stratum`, `burned`, `order_key` and a point geometry. Then, locally and
-once: verify the row count, assert `burned == (stratum == 1)` (§4), keep the first 5,000 rows, add
-`rank` as the row index, derive `col` / `row` from the pixel-centre lon/lat (§5 rule 4), drop `sel`
-and `order_key`, and archive the CSV together with the seed, `Nh`, the strata asset id and the date.
-**Never regenerate or re-sort it.**
+- [`../../docs/07-vector_to_raster.md`](../../docs/07-vector_to_raster.md) — the product being
+  validated, the pinned grid, and the `_v2` re-export.
+- [`notes/implementation-log.md`](notes/implementation-log.md) — the dated build log and the OOM
+  post-mortem.
+- [`notes/appendix-a-strata-gee.md`](notes/appendix-a-strata-gee.md),
+  [`notes/appendix-b-stratifiedsample.md`](notes/appendix-b-stratifiedsample.md) — the two GEE-JS
+  appendices this document used to carry inline.
+- `notebooks/validation_year_selection.qmd` — the evidence behind "Choosing the three years".

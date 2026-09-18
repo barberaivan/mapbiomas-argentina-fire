@@ -14,13 +14,13 @@ before taking on them.
 
 ## Validation (step 10)
 
-The point-drawing recipe in `collection-01/validation/docs/design.md` Appendix B (`stratifiedSample` per stratum)
+The point-drawing recipe in `collection-01/validation/docs/notes/appendix-b-stratifiedsample.md` (`stratifiedSample` per stratum)
 does not scale — OOMs at country scale in every variant (direct, tuned, by-carta partitioned,
 even plain `reduceRegion`). Root cause found 2026-08-31: not `stratum`, not the algorithm — the
 **region geometry** (`ARG-Political_Level_1-Pais`, 2M+ edges) makes any op that receives it as
 `region=` pay to evaluate containment against it. Fixed by swapping it for a plain
 `ee.Geometry.Rectangle` bounding box everywhere it's used as a sampling/reduction region (5/5
-failures → 3/3 successes in a controlled test). Full post-mortem in `collection-01/validation/docs/design.md` §0
+failures → 3/3 successes in a controlled test). Full post-mortem in `collection-01/validation/docs/notes/implementation-log.md`
 and `collection-01/validation/02_sample_pool.py`'s module docstring.
 
 Working implementation pivoted to an **unstratified pool** (`Image.sample()`, no `classBand`,
@@ -54,7 +54,7 @@ split by stratum locally in pandas) instead of Appendix B's per-stratum `stratif
   verify first; it very plausibly works now given the same fix applied cleanly to `sample()` and
   `reduceRegions`-by-carta both use the same region-geometry mechanism. If it still fails, the
   pool's own realized per-stratum proportions are already a usable `Wh` estimate (tight — see
-  `collection-01/validation/docs/design.md` §0/§7) as a fallback, pending the team's sign-off on using an estimate
+  `collection-01/validation/docs/notes/implementation-log.md`) as a fallback, pending the team's sign-off on using an estimate
   vs. an exact census as the frozen fingerprint.
 
 ---

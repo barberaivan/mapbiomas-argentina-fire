@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Whole-country burned area per FIRE YEAR, per product — the input to choosing which
-years to validate (validation/docs/design.md §8).
+years to validate (validation/docs/design.md "Choosing the three years").
 
 One row per (product, fire_year): area in ha over `ARG-Political_Level_1-Pais`
 (279.27 Mha), the population frame of the validation design.
@@ -19,7 +19,7 @@ Two ways of measuring area, chosen per product:
     times the coarse cell area. NOT a coarse `reduceRegion`: the month-of-burn band's
     pyramidingPolicy is MODE, so reading it at 480 m through the pyramid would return
     the modal month of each 16x16 block and erase every sparse burn — the same trap
-    validation/docs/design.md §4.3 rejects for the strata. reduceResolution forces the native read.
+    validation/docs/design.md "The aggregation rule" rejects for the strata. reduceResolution forces the native read.
 
 Resumable: rows are appended one at a time and completed (product, year) pairs are
 skipped, so a killed run can be relaunched.
@@ -44,7 +44,7 @@ import utils.constants as C  # noqa: E402
 FRAME_FC = ("projects/mapbiomas-argentina/assets/ANCILLARY_DATA/VECTOR/ARG/"
             "ARG-Political_Level_1-Pais")
 
-COARSE_FACTOR = 16          # validation/docs/design.md §4.2 — our grid decimated x16, ~480 m
+COARSE_FACTOR = 16          # validation/docs/design.md "The coarse grid must be nested" — our grid decimated x16, ~480 m
 OUT_CSV = os.path.join(os.path.dirname(__file__), "..", "validation",
                        "burned_area_by_fire_year.csv")
 FIELDS = ["product", "fire_year", "area_ha", "scale_m", "partial", "note"]
@@ -88,7 +88,7 @@ def fire_year_window(fy):
 
 
 def mask_ours(fy):
-    """(burned_monthly[fy] >= 5) OR (burned_monthly[fy+1] in 1..4) — validation/docs/design.md §3.
+    """(burned_monthly[fy] >= 5) OR (burned_monthly[fy+1] in 1..4) — validation/docs/design.md "Every layer must be a fire-year layer".
 
     Exact, because step 07 assigned the month and calendar year PER PIXEL from abs_date.
     """

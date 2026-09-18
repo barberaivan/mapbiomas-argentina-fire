@@ -11,7 +11,7 @@ depende de sortear sobre el raster de estratos ya fijo.
 
 LA SAGA DEL OOM Y LA CAUSA REAL (2026-08-30/31) — leer antes de tocar este archivo
 --------------------------------------------------------------------------------------
-El plan original (Appendix B de `validation/docs/design.md`, un `stratifiedSample` por estrato)
+El plan original (`validation/docs/notes/appendix-b-stratifiedsample.md`, un `stratifiedSample` por estrato)
 murió por OOM (GEE error code 8) en TODAS las variantes probadas esa noche: país-completo, con
 `tileScale`/`classValues` altos, partido en las ~248 cartas de MapBiomas, con `reduceRegion` en
 vez de `stratifiedSample` — seis intentos distintos, misma falla. La causa NO era `stratum`, ni
@@ -61,7 +61,7 @@ POR QUÉ LEE EL ASSET POR `year`+`collection`, NO POR EL PATH ARMADO
 -----------------------------------------------------------------------
 El Appendix B filtra la ImageCollection por las dos propiedades mandatorias
 (`ee.Filter.eq('collection', 1)` + `ee.Filter.eq('year', FY)`) en vez de construir
-`sampling_strata_fy<FY>` a mano — es a propósito (validation/docs/design.md §4.4): esas dos propiedades son
+`sampling_strata_fy<FY>` a mano — es a propósito (validation/docs/design.md "Dilation, partition, export"): esas dos propiedades son
 "cómo los pasos de abajo eligen una imagen". Acá se hace lo mismo, aunque también validamos con
 `asset_exists()` antes de lanzar para no mandar una tarea sobre una imagen que todavía no existe.
 
@@ -123,7 +123,7 @@ VAL_PROJECT = _s1.VAL_PROJECT
 # ---------------------------------------------------------------------------
 N_DRAW = 6_000        # sobre-muestreo por estrato por año (§5 regla 2) — 20% de colchón sobre
                        # N_KEEP, misma lógica proporcional que el diseño original (40k/30k = 33%)
-N_KEEP = 5_000         # tamaño final de la lista congelada — bajado de 30.000 (validation/docs/design.md §5),
+N_KEEP = 5_000         # tamaño final de la lista congelada — bajado de 30.000 (validation/docs/design.md "Drawing the frozen ordered sample lists"),
                        # ver justificación en el doc mismo
 SEED = 42              # fija y se registra para siempre (§5 regla 5) — la misma para todo el diseño
 TILE_SCALE = 16        # subido de 8 -> 16 (2026-08-30): fy2003 S1/S2/S3 murieron por OOM (code 8)
@@ -244,7 +244,7 @@ def task_name(fy, h):
 # Para que el sorteo por carta sea estadísticamente IDÉNTICO a un muestreo aleatorio simple
 # país-completo (no un diseño distinto), la cuota de cada carta tiene que ser EXACTAMENTE
 # proporcional a cuánto de ese estrato hay en esa carta (`Nh_carta / Nh_total × N_DRAW`):
-# asignación proporcional + SRS dentro de cada parte = SRS del total (ver validation/docs/design.md §5 — el mismo
+# asignación proporcional + SRS dentro de cada parte = SRS del total (ver validation/docs/design.md "Drawing the frozen ordered sample lists" — el mismo
 # principio que ya justifica "truncar a 5.000 por orden es un SRS válido"). Por eso hace falta
 # el paso de pesos POR CARTA antes de poder sortear — no se puede adivinar una cuota pareja.
 CARTAS_ID = C.CARTAS_ID_PROPERTY
@@ -398,13 +398,13 @@ def launch_by_carta(fy, quotas):
 #
 # DOS ETAPAS, no una sola tirada gigante (decisión del usuario, 2026-08-30): el pool 1 (este
 # bloque) se dimensiona SOLO para cubrir con margen la muestra inicial de 100/estrato/año
-# (validation/docs/design.md §1) — no las 5.000 congeladas del diseño completo. Si más adelante hace falta
+# (validation/docs/design.md "Decisions already taken") — no las 5.000 congeladas del diseño completo. Si más adelante hace falta
 # extender, un pool 2 independiente (más grande) se puede sumar sin re-sortear nada — dedup por
 # (col,row) contra lo que el pool 1 ya usó, nunca tocar/resortear una lista ya congelada
 # (§5 regla 6). El pool 2 no se implementa acá.
 N_PILOT = 20_000       # prueba chica y barata: confirmar que sample() no revienta ANTES de
                        # comprometerse a nada más grande, y medir la prevalencia real por año
-W_FLOOR = 10_000_000 / 3_103_000_000   # ≈ 0.0032 — piso documentado para S1 (validation/docs/design.md §5: "S1
+W_FLOOR = 10_000_000 / 3_103_000_000   # ≈ 0.0032 — piso documentado para S1 (validation/docs/design.md "Drawing the frozen ordered sample lists": "S1
                                         # tiene del orden de diez millones de píxeles en un año
                                         # típico" / ~3.1e9 píxeles totales del país)
 

@@ -3,7 +3,8 @@
 collection-01/validation/01_strata_export.py
 
 Paso 1 de la validación — LA IMAGEN DE ESTRATOS, en la grilla del producto (30 m), por año-fuego.
-Traducción directa a Python del Appendix A de `validation/docs/design.md` (§4) — ese doc es el
+Traducción directa a Python del Appendix A (hoy `validation/docs/notes/appendix-a-strata-gee.md`);
+`validation/docs/design.md` "Building the strata rasters" es el
 diseño CERRADO, no un borrador; acá no se innova, se implementa.
 
     projects/mapbiomas-argentina/assets/FIRE/VALIDATION/sampling_strata/sampling_strata_fy<FY>
@@ -104,7 +105,7 @@ STRATA_COL = "projects/mapbiomas-argentina/assets/FIRE/VALIDATION/sampling_strat
 WEIGHTS_COL = "projects/mapbiomas-argentina/assets/FIRE/VALIDATION/sampling_strata_weights"
 
 # El frame de POBLACIÓN es el país SIN buffer — no es C.ARG_BUFFER_FC, que es un superset usado
-# para exportar los productos (§4.4). Hardcodeado tal cual el Appendix A, no vive en C.*.
+# para exportar los productos ("Dilation, partition, export"). Hardcodeado tal cual el Appendix A, no vive en C.*.
 FRAME_FC = ("projects/mapbiomas-argentina/assets/"
             "ANCILLARY_DATA/VECTOR/ARG/ARG-Political_Level_1-Pais")
 

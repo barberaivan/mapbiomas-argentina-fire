@@ -13,11 +13,11 @@ congeladas en `outputs/frozen/`.
 QUÉ HACE
 --------
 Por año-fuego: toma las primeras 100 filas (`frozen_rank < 100`) de cada una de las 3 listas
-congeladas — la "muestra inicial" de 100/estrato/año que fija validation/docs/design.md §1 — las junta (300 filas),
+congeladas — la "muestra inicial" de 100/estrato/año que fija validation/docs/design.md "Decisions already taken" — las junta (300 filas),
 las baraja con una semilla propia y fija (`CEO_SHUFFLE_SEED`, distinta de la que usa el sorteo en
 GEE), y numera `PLOTID` 1..300 según ese orden ya barajado.
 
-Barajar es necesario porque validation/docs/design.md §7 exige que los lotes mezclen estratos y años — un lote de
+Barajar es necesario porque validation/docs/design.md "Response design and interpretation" exige que los lotes mezclen estratos y años — un lote de
 100 filas seguidas, todas estrato 1, le delata al intérprete que ese tramo es "quemado por
 construcción" y rompe el blind labelling.
 
@@ -76,7 +76,7 @@ STRATA = _s2.STRATA
 task_name = _s2.task_name
 
 # ---------------------------------------------------------------------------
-N_INITIAL = 100          # por estrato, por año (validation/docs/design.md §1 — "muestra inicial")
+N_INITIAL = 100          # por estrato, por año (validation/docs/design.md "Decisions already taken" — "muestra inicial")
 CEO_SHUFFLE_SEED = 43    # fija y se registra para siempre — distinta de SEED=42 del sorteo en GEE
 
 # lo único que sube a CEO (y lo único que sube como asset de puntos para el inspector)
