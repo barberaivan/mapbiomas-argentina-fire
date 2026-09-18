@@ -14,18 +14,25 @@ separate a real scar from a field of spectrally similar noise.
 
 **Every stage is sized by burned cells, never by the grid.** Argentina's 30 m lattice is 9.16 B
 cells; a heavy fire year has ~116 M burned ones, three orders of magnitude fewer. The pipeline is
-built around that ratio — a per-tile extract, union-find over a parent array, one small raster per
-object — because the obvious dense formulations (a country-wide `pid` grid, an explicit edge list,
-a materialized dilation halo) each need tens of GB and OOM'd a 31 GB box. The measured walls are
-in [`notes/05-whole_country_redesign.md`](notes/05-whole_country_redesign.md).
+built around that ratio — a per-tile extract, union-find over a parent array, one small raster
+per object — because the obvious dense formulations (a country-wide object-id grid, an explicit
+edge list, a materialized dilation halo) each need tens of GB and OOM'd a 31 GB box. The measured
+walls are in [`notes/05-whole_country_redesign.md`](notes/05-whole_country_redesign.md).
 
 ## Inputs → Outputs
 
 step-04 SNIC rasters → **`workflow/05-objects_metrics.R`** → one GPKG of geometry + two metric CSVs
 
+### Object ids — `pid` and `oid`
+
+`pid` is the label the step assigns to an object, unique **within a fire-year only**, because
+labelling restarts each year. The globally unique key is **`oid = "<fire_year>_<pid>"`** (e.g.
+`2015_4213`) — every output below is keyed by it, and it is the join key everything downstream
+uses. Since it embeds the fire-year, **no separate `fire_year` column is written**.
+
 | | What it is | Where |
 |---|---|---|
-| **in** | per-carta SNIC GeoTIFFs, **7 bands** (`04-snic.py --to-asset` + `download_snic.py`) | `data/snic-rasters/<fy>/` |
+| **in** | SNIC GeoTIFFs, **7 bands**, one per *carta* — the 248-sheet MapBiomas grid Argentina is tiled on (`04-snic.py --to-asset` + `download_snic.py`) | `data/snic-rasters/<fy>/` |
 | **out** | one polygon per object + **`oid` only**, no metrics | `data/objects-raw/objects_<fy>.gpkg` |
 | **out** | raster metrics (`aggregate_metrics`), keyed by `oid` | `data/objects-raw/objects_<fy>_raster_metrics.csv` |
 | **out** | geometry/shape metrics (`add_shape_metrics`), keyed by `oid` | `data/objects-raw/objects_<fy>_shape_metrics.csv` |
@@ -86,9 +93,9 @@ dilate→label→drop-halo route pixel-for-pixel on an ROI.
 Per `pid`: build a tiny local-bbox raster holding that `pid`'s cells and `as.polygons(dissolve =
 TRUE)` → one (multi)polygon. Disconnected fragments of one `pid` — the dilation-bridge case —
 dissolve into a single multipolygon, so the bridge is preserved **natively**. Objects are
-independent, so this is an `mclapply` fan-out across `OBJ_CORES`; workers return `terra::wrap`ped
-chunks and the master concatenates with `terra::vect()`. The country-wide `pid` raster is never
-built.
+independent, so this is an `mclapply` fan-out across `OBJ_CORES` workers (default ~half the
+cores; 1 = serial); they return `terra::wrap`ped chunks and the master concatenates with
+`terra::vect()`. The country-wide `pid` raster is never built.
 
 ### Metrics — raster-native, then geometry
 
@@ -120,12 +127,6 @@ carries NA predictors through step 06.
 **Geometry/shape metrics** (ported from collection-00's `addShapeMetrics`): `perimeter_m`,
 `convexity` (area/hull), `mbr_fill` (area/bbox), `mbr_elongation`, `circularity` (4πA/P²),
 `shape_index` (P/2√πA), the bbox being the axis-aligned envelope with spans converted to metres.
-
-### Object ids — `pid` and `oid`
-
-`pid` is unique **within a year only**, because labelling restarts each year. The globally unique
-key is **`oid = "<fire_year>_<pid>"`** (e.g. `2015_4213`) — the join key everything downstream
-uses. Since it embeds the fire-year, **no separate `fire_year` column is written**.
 
 ## Run
 
