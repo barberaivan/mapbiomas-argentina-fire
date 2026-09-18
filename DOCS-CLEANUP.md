@@ -142,13 +142,25 @@ one-liner. By that rule:
      link, never restate.
    - *Why it is like this* → **the step doc's `Key decisions`** (≤ 5 items), and in the end the ATBD.
    - *What we tried, what broke, what we measured on a date* → **`docs/notes/`**.
-2. **The docstring carries usage, not explanation.** The workflow docstrings today hold measured
+2. **Cite a section by name, never by number** — `docs/05 "Metrics"`, not `docs/05 §2.4`. A
+   heading number is a *position*: insert or drop anything above it and every citation to it now
+   points somewhere else, silently. This is the same failure as the `docs/NN` rot in the Phase 0
+   box, one level down, and it was **measured in the step-05 pass** — `docs/05 §3` meant two
+   different sections depending on which file was citing it, and `§7b`/`§7c` were cited seven
+   times having never existed. Applies to code comments and docstrings as much as to docs.
+   `notes/` entries are cited by filename; a `notes/` provenance header is the one exception,
+   because it is a past-tense claim pinned to a commit.
+   **This is not a repo-wide sweep to run now.** Hundreds of `docs/06 §x`, `docs/07 §x` and
+   `docs/08 §x` citations are still live and still correct, because those docs have not had their
+   Phase 2 pass. **Each pass converts the citations pointing at the doc it rewrites** — that is
+   when the numbers actually move, and it is already part of the per-doc protocol in §4.
+3. **The docstring carries usage, not explanation.** The workflow docstrings today hold measured
    results and `WHY …` sections — that is a fourth home for explanation. Strip to: what it does
-   (3 lines), usage, pointer to `docs/NN §x`.
-3. **A step doc has no long code chunks.** Named packages, functions, GEE methods — yes; blocks — no.
-4. **Every step doc is self-sufficient for its first paragraph.** A reader gets what the step is
+   (3 lines), usage, pointer to `docs/NN "<section name>"`.
+4. **A step doc has no long code chunks.** Named packages, functions, GEE methods — yes; blocks — no.
+5. **Every step doc is self-sufficient for its first paragraph.** A reader gets what the step is
    for without opening the ATBD.
-5. **Nothing is deleted, it is moved.** History goes to `docs/notes/` with a provenance header.
+6. **Nothing is deleted, it is moved.** History goes to `docs/notes/` with a provenance header.
 
 ### `docs/notes/` conventions
 
@@ -375,8 +387,9 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
 > today's (`objects_upload.py:173`). `§7b` and `§7c` were cited 7 times and have never existed.
 > Since `TEMPLATE.md` rule 4 drops heading numbers anyway, **all 30-odd inbound citations were
 > rewritten to named sections** — `docs/05 "Metrics"`, `docs/05 "Label"`, `docs/05 "Run"` — and the
-> history citations now point at the `notes/` file directly. Recommend this becomes the rule for
-> every remaining Phase 2 pass: **cite a doc section by name, never by number.**
+> history citations now point at the `notes/` file directly. **Iván adopted this as a rule**
+> (2026-09-18): it is now §2 rule 2 above and `TEMPLATE.md` rule 5, and it binds every remaining
+> Phase 2 pass.
 >
 > **(b) What counted as history here** — the rule applied, for sign-off: a passage left the doc if
 > it was *dated*, a *benchmark*, a *rejected alternative*, or a *bug post-mortem*. It stayed if it
@@ -424,7 +437,8 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
 ### Phase 3 — how-to consolidation and the signposts (rule 1)
 
 - [ ] Workflow docstrings: strip explanation and measured results, leave *what it does (3 lines)
-      + usage + `docs/NN §x`*. Touches `.py`/`.R` only, independent of Phase 2 — can run in parallel.
+      + usage + `docs/NN "<section name>"` (§2 rule 2 — by name, never by number)*. Touches
+      `.py`/`.R` only, independent of Phase 2 — can run in parallel.
 - [ ] Each step doc gets its `Pipeline` section (the sequence, in commands, no why).
 - [ ] `scripts/run_*.sh` launchers: one line each in the relevant step doc's `Pipeline`, nothing more.
 - [ ] **`scripts/README.md`** — NEW, the one real signpost gap: 66 files, no README. Group them by
@@ -488,6 +502,9 @@ Append one line per completed item: date — what — commit.
 - 2026-09-18 — **Phase 1, first three boxes**: `TEMPLATE.md` written as a guide not a form;
   the four early docs restructured to it; `02-diagnostic_plots.md` split out;
   `notes/02-lr_term_reduction.md` extracted; three amendments recorded in Phase 1.
+- 2026-09-18 — **"cite by name, never by number" adopted as a rule** (Iván): §2 rule 2 +
+  `TEMPLATE.md` rule 5; the plan's own two `docs/NN §x` prescriptions and the three bare-number
+  citations of the plan itself corrected to match.
 - 2026-09-18 — **Phase 2, `05-object_metrics.md`** (the calibration pass): 4,376 → 1,748 words;
   `notes/05-whole_country_redesign.md` + `notes/05-memory_profile.md` extracted verbatim;
   ~30 inbound citations repointed from `§N` to named sections across 14 files; CLAUDE.md's step-05

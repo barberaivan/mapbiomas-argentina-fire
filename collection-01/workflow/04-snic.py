@@ -433,7 +433,7 @@ def process_fire_year_drive(fire_year, region, crs, transform, launch, name_pref
 
 # ---------------------------------------------------------------------------
 # stage 2b — read the candseed asset, materialize the R-facing metric bands to
-#            a companion asset (for the tiled direct download; docs/04 §5, 05 §7b)
+#            a companion asset (for the tiled direct download; docs/04 §5, docs/notes/05-whole_country_redesign.md)
 # ---------------------------------------------------------------------------
 def burned_around_bands(candseed_asset):
     """Pixel-level "context_burned" (sparseness) bands, GEE-native (ported from collection-00

@@ -27,8 +27,8 @@ does not re-make collection 1's mistakes.
 A provenance header says where this text *was*, not where to find something now. Once the step
 doc is rewritten, the section it names is usually gone — that is expected and is not a broken
 link to repair. **Do not update a header to point at today's nearest heading**: that would assert
-a correspondence nobody checked, which is precisely the rot `DOCS-CLEANUP.md` §0 found in the
-`docs/NN` citations. Pin the commit instead, so the address stays resolvable by `git show`.
+a correspondence nobody checked, which is precisely the rot `DOCS-CLEANUP.md`'s Phase 0 citation
+sweep found in the `docs/NN` citations. Pin the commit instead, so the address stays resolvable by `git show`.
 
 The same applies inside a note: quoted doc text and cited line numbers are snapshots. A note that
 quotes a doc paragraph keeps that paragraph even after the doc drops it — that is the point.
@@ -40,4 +40,4 @@ than archival. Reconciling them across the whole folder is a Phase 6 item.
 - Tidying this folder — merging, pruning, deciding what becomes an ADR, and the reconciliation
   above — is deliberately deferred; see `DOCS-CLEANUP.md` Phase 6.
 
-See `DOCS-CLEANUP.md` §2 for why this folder exists.
+See `DOCS-CLEANUP.md` "The target shape" for why this folder exists.

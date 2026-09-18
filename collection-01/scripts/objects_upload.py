@@ -246,7 +246,7 @@ def build_shapefile(gpkg: Path, df: pd.DataFrame, out_dir: Path, year: int) -> P
 
     drv = ogr.GetDriverByName("ESRI Shapefile")
     dst = drv.CreateDataSource(str(shp_path))
-    # Force MultiPolygon: the dilation-bridge objects (05 SS2.3) are multipart, and a
+    # Force MultiPolygon: the dilation-bridge objects (docs/05 "Vectorize") are multipart, and a
     # Shapefile layer holds a single geometry type.
     dst_layer = dst.CreateLayer(
         shp_path.stem, srs, ogr.wkbMultiPolygon, options=["ENCODING=UTF-8"]

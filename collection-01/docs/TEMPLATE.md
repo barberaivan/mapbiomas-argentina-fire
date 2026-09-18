@@ -81,13 +81,22 @@ rationale lives in the notebook".
    passage explains one numbered rule or one sub-step, it is a `###` under it.
 4. **Name a heading for what it does, not for its number.** The filename already carries the
    number, so `## Export`, not `## Step 01 — export` — which implies a step 02 that never comes.
-5. **No long code blocks.** Named packages, functions, GEE methods — yes. Blocks — no, except
+5. **Cite a section by name, never by number** — `docs/05 "Metrics"`, not `docs/05 §2.4`. A
+   heading number is a *position*, so it silently re-points at a different section the next time
+   anything above it is inserted or removed, and nothing anywhere will notice. Measured: when
+   step 05 was rewritten, `docs/05 §3` was found to mean **two different sections** depending on
+   which file was citing it, and `§7b`/`§7c` had been cited seven times without ever existing.
+   Names break loudly instead of lying quietly. This applies to citations **from code comments
+   and docstrings** as much as between docs, and to a `notes/` entry, which is cited by filename.
+   The one exception is a provenance header in `notes/`, which is a past-tense claim about a
+   commit and keeps the number it was extracted from (`notes/README.md`).
+6. **No long code blocks.** Named packages, functions, GEE methods — yes. Blocks — no, except
    the one `Run` block.
-6. **Parameters, paths, thresholds and asset ids live in `config/` and `utils/constants.py`.**
+7. **Parameters, paths, thresholds and asset ids live in `config/` and `utils/constants.py`.**
    Docs link to them and never restate a value that code owns.
-7. **How to invoke one script lives in its docstring / `--help`.** The doc's `Run` block carries
+8. **How to invoke one script lives in its docstring / `--help`.** The doc's `Run` block carries
    the sequence and the outcome-changing flags, nothing more.
-8. **Nothing is deleted, it is moved** — to `docs/notes/`, with the provenance header in
+9. **Nothing is deleted, it is moved** — to `docs/notes/`, with the provenance header in
    `notes/README.md`.
 
 ---
@@ -126,4 +135,4 @@ rationale lives in the notebook".
 ## Related
 ```
 
-See `DOCS-CLEANUP.md` §2 for why this folder is shaped this way.
+See `DOCS-CLEANUP.md` "The target shape" for why this folder is shaped this way.

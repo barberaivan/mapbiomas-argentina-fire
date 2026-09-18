@@ -8,11 +8,11 @@ the call — is uploaded to GEE as one FeatureCollection per fire-year.
 
 "Object" (not "polygon") is the deliberate name: a fire *is* an object, and the metrics are
 object-level, even though the layer is sparse rather than a wall-to-wall OBIA partition. Many
-objects are multipolygons (the step-05 dilation-bridge case, 05 §2.3). The globally-unique key is
-**`oid = "<fire_year>_<pid>"`** (05 §3); every join — labels ↔ objects, predictions ↔ geometry — is
+objects are multipolygons (the step-05 dilation-bridge case, `05` "Vectorize"). The globally-unique key is
+**`oid = "<fire_year>_<pid>"`** (`05` "Object ids"); every join — labels ↔ objects, predictions ↔ geometry — is
 on `oid`.
 
-**Geometry and metrics are split (05 §4):** the per-year GPKG holds `oid` + geometry only; the
+**Geometry and metrics are split (`05` "Inputs → Outputs"):** the per-year GPKG holds `oid` + geometry only; the
 metrics live in `objects_<fy>_raster_metrics.csv` and `objects_<fy>_shape_metrics.csv`, both keyed
 by `oid`. Fitting and prediction run **from the CSVs alone** — geometry is read only when a QGIS
 layer or an upload package is built.
@@ -127,7 +127,7 @@ fire-years): **6597 pairs over 5266 objects**, **234 labels (5 %) hit no object*
 kept no cluster — there is nothing to classify), **10 objects carry both classes**, and labels are
 very unevenly spread (up to 40 on one object). One matched object (`2011_57456`, 1 px) has NA
 `seed_mean`/`date_median` in step 05 itself — all-dieback objects have no seed/date stats by design
-(05 §3), not a join failure.
+(`05` "Metrics"), not a join failure.
 
 ## 2. The fitting set
 
@@ -310,7 +310,7 @@ conflicting classes are dropped, so a tag is never ambiguous). Reporting inside 
 **Why `-1` and not `NA`:** the upload is a Shapefile, and OGR writes an unset DBF integer as null,
 which GEE reads back as **`0`** — indistinguishable from "a human said NOT fire". The sentinel is
 explicit for that reason, and it covers a second kind of missingness: `fire_model = fire = -1` marks
-the **36 objects that could not be scored at all** (an NA predictor — all-dieback objects, 05 §3).
+the **36 objects that could not be scored at all** (an NA predictor — all-dieback objects, `05` "Metrics").
 The CSVs keep R-native `NA`; the sentinel exists only because DBF cannot express it.
 
 ## 6. The classification threshold — 0.5 is wrong, and the right cut rises with size
@@ -632,7 +632,7 @@ Suggested setup: categorise the fill on `verdict`, add an XYZ satellite basemap,
 That covers Lican's suggestion without a Shiny app: the sampling-by-predictor-range panel is a QGIS
 filter expression or a geemap cell. Build the app only if a *shared* review tool is wanted — for one
 analyst it adds a UI to maintain and no capability QGIS lacks. A whole-country raster overview is
-the other option not taken: rasterizing `p_mean` at 30 m country-wide is 9.16 B cells (05 §7), so it
+the other option not taken: rasterizing `p_mean` at 30 m country-wide is 9.16 B cells (`05` "Foundations"), so it
 would have to be coarsened to ~300 m, which erases the small objects that are precisely the ones in
 doubt.
 
@@ -715,6 +715,6 @@ objects, 1 295 006 called fire, 36 unscored.
 
 The month-of-burn raster per **calendar** year is built server-side by combining the uploaded
 objects with the SNIC metrics images; objects are placed into a calendar year by their
-`year_calendar` metric (05 §2.4), and `candseed==3` dieback pixels take the parent object's date,
+`year_calendar` metric (`05` "Metrics"), and `candseed==3` dieback pixels take the parent object's date,
 never their own next-year date (04 §4.3). See `docs/07-vector_to_raster.md`, then `docs/08` for the
 network-wide post-processing.
