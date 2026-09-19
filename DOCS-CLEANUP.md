@@ -551,6 +551,12 @@ has a real ATBD. No pass, no template, no extraction.
         were, and a dead one is either corrected or marked as historical in place.
       Do this **after** Phase 2, not during: every pass adds notes, so an earlier sweep would be
       redone. Until then a stale header is tolerated and flagged, not fixed piecemeal.
+      **One is already measured and waiting** (Phase 3, 2026-09-18): a mechanical link check over
+      every `.md` in `collection-01/` found exactly one dead link in `notes/` —
+      `notes/08-corrections_and_delivery.md` points at `09-statistics.md`, which Phase 0 moved to
+      `statistics/docs/statistics.md`. Left unfixed on purpose: one link is the piecemeal this item
+      exists to avoid. Re-run that check at the start of this sweep; it is cheap and it is the
+      right entry point.
 - [ ] Write the **collection-1 ATBD**, in one deliberate pass: collection 0's ATBD supplies the
       **structure**, `00-overview.md` + the `Key decisions` sections supply the **content**.
 - [ ] **Reduction 2** (see §2): once the ATBD exists, the `Key decisions` sections shrink to
