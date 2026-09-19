@@ -751,6 +751,31 @@ docs/06 3 files and solve the comments I left for you.]
       launch lands.** Stays Spanish. Lightest pass of all: it is a spec, and it is already done
       its job; strip status chatter, leave the figure-by-figure content.
 
+> ## Phase 2 is done except the two frozen docs
+>
+> **Everything not frozen is ticked** (2026-09-18, one unattended session). The two that remain are
+> the statistics pair, frozen by this plan until the launch lands on **24 Sep 2026** — six days
+> away at the time of writing. They were not touched, beyond repointing citations that pointed *at*
+> the docs being rewritten (Phase 0 left four broken links in `statistics.md`, which were fixed
+> because a dead relative link is not a rewrite) and the ~6 `docs/07 §N` references inside them.
+>
+> **Three things to carry into those two passes**, all learned here:
+>
+> 1. **Parse everything you touched, last.** `.py`, `.R`, `.sh`, `.ipynb`. Citing by name puts
+>    quotes inside string literals, and one such rewrite shipped a file that did not parse for four
+>    commits.
+> 2. **Grep the step's OUTPUTS, not only its inputs and its scripts.** Two of the three real defects
+>    found in this session were recorded in a *downstream* doc, under the consumer that had to work
+>    around them.
+> 3. **Check what the constants say before trusting a value in the doc.** `C.PRODUCT_LULC`,
+>    `C.MONTH_OF_BURN_COL` and `C.bpts_target_col` had all moved under docs that still named the old
+>    asset. `statistics.md` cites LULC, the product version and the toolkit's assets throughout, so
+>    it is the most exposed doc in the repo to exactly this.
+>
+> The Phase-0 warning about the **9 `docs/11` citations that kept their old section numbers** is
+> still live and lands in the `statistics.md` pass: `workflow/07-month_of_burn.py` and
+> `scripts/objects_region_tag.R` point at the right file with the wrong `§`.
+
 ### Phase 3 — how-to consolidation and the signposts (rule 1)
 
 - [ ] Workflow docstrings: strip explanation and measured results, leave *what it does (3 lines)
