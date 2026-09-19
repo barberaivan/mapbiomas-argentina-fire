@@ -266,12 +266,12 @@ def properties(years, n_features=None):
                        "straddles the window edge. The real span is date_min..date_max"),
         "area_encoding": "area_ha: pixel-count area, not a geodesic polygon area",
         "oid_uniqueness": (
-            "oid identifies an OBJECT, not a row: one FY2000 object (2000_57529, 1,706,171 ha) is "
-            "stored as 4 features with disjoint geometry parts, each repeating the whole object's "
-            "area_ha and dates — a vertex split inherited from the source upload. Every other "
-            "object is exactly one row. Consequence: summing area_ha over ROWS over-counts the "
-            "layer by 5,118,513 ha (74,234,381 instead of 69,115,868) — dissolve by oid, or "
-            "subtract the split, before quoting an area"),
+            "oid identifies an OBJECT, not a row: one FY2000 object (2000_57529) is stored as 4 "
+            "features with disjoint geometry parts, each repeating the whole object's area_ha and "
+            "dates — a vertex split inherited from the source upload. Every other object is "
+            "exactly one row. Consequence: summing area_ha over ROWS counts that object 4 times "
+            "and so over-states the layer — dissolve by oid, or subtract the split, before "
+            "quoting an area. `--verify` prints both totals for the asset in hand"),
         "p_mean": "posterior mean fire probability (probit BART, docs/06)",
         "p_width": "width of the probability's credible interval (p_q95 - p_q05)",
         "seed_mean": "mean SNIC seed burn probability over the object",
@@ -326,15 +326,16 @@ def verify(asset_id, years):
 
     The count that matters is **rows AND distinct `oid`, per fire-year**.  Two exports reached
     COMPLETED carrying 1,249 duplicate FY2021 features (docstring) and no other check noticed: the
-    schema was right, every object was present, and a spot-checked feature was perfect.  Expected:
+    schema was right, every object was present, and a spot-checked feature was perfect.
 
-        1,263,079 rows / 1,263,076 distinct oid
-        69,115,868 ha per OBJECT  (74,234,381 ha if summed over rows — see below)
-        the 3-row surplus is FY2000's vertex-split object, and belongs there.
+    No expected total is written down here, deliberately — it would be version-bound and would go
+    stale the next time the object selection changes.  The invariant is what is checked, and it is
+    measured against the sources on every run: **rows == distinct source `oid` + KNOWN_VERTEX_SPLITS,
+    asset `oid` == source `oid`, and area agreeing to under 1 ha**, per fire-year.
 
-    The expectation for rows is built from the source's DISTINCT oid plus `KNOWN_VERTEX_SPLITS`,
-    NEVER from the source's row count: a stored table can hold duplicate features that every
-    metadata-level count denies, and the source's `size()` is precisely the number that hid this.
+    The row expectation is built from the source's DISTINCT oid, NEVER from its row count: a stored
+    table can hold duplicate features that every metadata-level count denies, and the source's
+    `size()` is precisely the number that hid this for two whole exports.
 
     Runs 28 filtered aggregations on the asset plus 28 on the sources — a few minutes, not free, and
     worth it before a path is shared with anyone.

@@ -361,8 +361,10 @@ def stats_read(years, csv_path=None):
       * PIXEL COUNTS, NOT HECTARES, and the naive conversion is badly wrong. The lattice step
         is 0.000269494585236 DEGREES, so a pixel is ~30 m north-south everywhere but only
         ~30*cos(lat) m east-west: 0.09 ha is the equatorial figure. Measured against the object
-        database, px x 0.09 gives 81.93 Mha where the truth is 69.12 Mha -- **an 18.5 %
-        overstatement**, i.e. a mean effective pixel of 0.0759 ha (lat ~32 deg).
+        database, px x 0.09 overstates the national total by **roughly 18 %** -- a mean effective
+        pixel nearer 0.076 ha (lat ~32 deg). The exact factor moves with WHICH objects are
+        selected, since that shifts their mean latitude, so treat it as an order of magnitude and
+        never as a conversion constant.
         And the bias is not uniform across months: Patagonian fires (lat ~45 deg, 0.064 ha/px)
         peak in summer while Chaco fires (lat ~25 deg, 0.082 ha/px) peak in late winter, so
         even the PIROGRAM'S SHAPE is skewed toward the southern months by this.

@@ -28,7 +28,3 @@ Four kinds of thing live here, and it is worth knowing which you are looking at:
 | **07 · the published products, and driving their export** | `run_07_v2_driver.py`, `v2_driver_tick.sh`, `test-07-v2_driver_stall.py`, `watch_07c.py`, `watch_07c_tick.sh`, `audit_product_properties.py`, `delete_07e_by_year_assets.py` | [`07-published_products.md`](../docs/07-published_products.md) |
 | **09 · statistics (episodic)** | `objects_region_tag.R`, `region_areas.py` | [`../statistics/`](../statistics/) |
 | **validation (episodic)** | `10_burned_area_by_fire_year.py` | [`../validation/`](../validation/) |
-
-**`export_region_raster_v2.py` is on no path.** It is a faster two-stage rebuild of the region
-raster, but `C.REGION_RASTER` still points at the v1 output, so v2's asset was never adopted.
-Keep or delete is Iván's call; until then, `export_region_raster.py` is the live one.

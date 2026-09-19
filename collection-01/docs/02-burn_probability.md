@@ -119,8 +119,11 @@ the probability is never materialized, so the invocation is `03-bpts.md` "Run". 
 here is the one-time prerequisite and the two checks:
 
 ```bash
-# one-time: paint C.REGION_RASTER, which `veg_fire` needs to pick a model per pixel
-$PYTHON collection-01/scripts/export_region_raster.py
+# one-time: paint C.REGION_RASTER, which `veg_fire` needs to pick a model per pixel.
+# Two stages; the default --phase orchestrate submits the FC, waits, then the raster — so
+# it blocks for the length of both exports. Idempotent: it skips an asset that exists.
+tmux new-session -d -s regionras \
+  '$PYTHON -u collection-01/scripts/export_region_raster.py --phase orchestrate'
 # the deployed CSVs parse into the expected term set, one band per term
 $PYTHON collection-01/scripts/test-03-model_load.py
 # sample the probability on a single Landsat image (it cannot be inspected whole — Gotchas)

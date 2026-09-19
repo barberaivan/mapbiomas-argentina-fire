@@ -131,19 +131,18 @@ CLAUDE.md "GEE accounts".
 
 ---
 
-## Status
+## Where things stand
 
-| Step | Status |
-|------|--------|
-| 01 — training data | Complete, all 5 regions, v1. |
-| 02 — model fitting | All 23 `veg_fire` classes fitted (v1); `models/cv_metrics_v1.csv`. `P050` deployed. |
-| 03 — burn-probability time series | **Done.** All years per *carta*; 1999–2009 live in `mapbiomas-chaco`. |
-| 04 — SNIC segmentation | Whole-country fire-year SNIC settled; per-carta download hands off to R. |
-| 05 — object metrics | 2001–2025 run; 1.69 M objects. |
-| 06 — object model | **Done.** 20 predictors on 5 255 labels, grid-blocked OOF AUC 0.891; per-size-band cuts deployed; all 28 fire-years scored; 28 QGIS layers built and inspected. |
-| 07 — calendar-year products | **All 12 images, the 27 scar FCs and the polygon layer landed and verified.** Live state of the `_v2` re-export: `logs/v2-driver/STATUS.md`. Still owed: the whole-country month-histogram cross-check and the network's visual validation pass. |
-| 08 — network post-processing | **Delivered 2026-07-30** — the spec is satisfied by step 07. |
-| 09 — statistics & factsheet | **Numbers and figures done.** 1 012 645 mapped fires; gate 6 closes at 63.23 vs 63.25 Mha (0.03 %). Still owed: the staging cross-check, the ATBD, Workspace registration. Launch **24 Sep 2026**. |
-| validation | Strata and frozen sample lists landed; interpretation not begun, and **the strata are `_v1` while the product is `_v2`**. |
+**There is no status table here, on purpose.** One kept drifting: it still said step 05 was
+"2001–2025" when all 28 fire-years had been on disk for months, and it called step 07 "landed and
+verified" while the `_v2` re-export was running at 3/27. A hand-maintained done-list is wrong in
+the reassuring direction by default, and ROADMAP.md's own rule already says not to keep one.
 
-[`ROADMAP.md`](../ROADMAP.md) is what to do next.
+Ask the thing that knows:
+
+| question | answer |
+|---|---|
+| what should I do next? | [`ROADMAP.md`](../ROADMAP.md) |
+| what is running right now? | `logs/v2-driver/STATUS.md` — written every 15 min by the step-07 supervisor. **If its stamp is over ~20 min old the driver is not running.** |
+| did a given step finish? | its assets, or its outputs in `data/` — both are the source of truth. `scripts/status.py` reports the step-01 exports |
+| what state is a doc's step in? | that doc's `Gotchas` and, where it has one, its own status box (`validation/docs/design.md` has the one that matters) |

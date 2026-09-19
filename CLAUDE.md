@@ -65,7 +65,8 @@ one step, e.g. the remap and the fit are both inputs to step 02):
 Other documentation:
 
 - `collection-01/README.md` — **the map**: what is in each directory and which doc explains it,
-  the pipeline overview, per-step status and the **notebooks table**. It carries **no commands** —
+  the pipeline overview and the **notebooks table**. It carries **no commands and no status
+  table** — what is running is `collection-01/logs/v2-driver/STATUS.md`, what is next is ROADMAP;
   how to run a step is that step's `Run` section in `docs/`, and how to invoke one script is its
   own `--help` or header comment.
 - `collection-01/scripts/README.md` — the 57 non-pipeline scripts, grouped by the step they serve.
@@ -169,7 +170,7 @@ stages can be inspected and limits avoided:
    solitary-pixel filter — are **already embedded upstream** in our pipeline and stricter there, so
    running them again is a no-op at best.
 
-See `collection-01/README.md` for the directory map and per-step status, each step doc's `Run`
+See `collection-01/README.md` for the directory map, each step doc's `Run`
 section for the commands, and the `docs/` notes above for per-step design.
 
 ## Conventions & gotchas
