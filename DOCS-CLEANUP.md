@@ -482,7 +482,17 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
       before opening anything (validation is all fire-year; statistics has three sources), and the
       pointers. `validation/`'s carries the `_v1`-strata-vs-`_v2`-product warning at the door,
       because that is the thing you must not skip past.
-- [ ] `models/README.md` (1.1 k words), `samples/README.md` — check they are signposts, not encyclopedias.
+- [x] `models/README.md`, `samples/README.md` — checked, and **the premise needed adjusting**.
+      `models/README.md` is not a directory signpost that grew too long; it is the **reference for
+      the model artifacts** — folder layout, file schema, and the raw-scale prediction recipe that
+      nothing else owns. Rule 1 says that is exactly right, so it keeps its length. What was wrong
+      was its two tail sections, which duplicated `docs/02-model_fitting.md`'s explanation, and
+      one of them carried a **factual error**: it gave the elastic-net grid as
+      `alpha ∈ {0, .25, .5, .75, 1}` when the code fits `{0.25, 0.5, 0.75}` and drops ridge and
+      lasso on purpose — the kind of wrong that reproduces a different model. Its
+      "full rationale in CLAUDE.md" pointer was also dead; the rationale is in `docs/02`. Both
+      sections are now one, keeping only what you need to *read* a file. `samples/README.md` (215
+      words) was already a good signpost and only gained a pointer to `docs/01`.
 - [ ] **`collection-01/README.md` → map + links, NO commands** (currently ~half bash). ≤ 1.2 k words.
 - [ ] Root `README.md` — check it stays a tutorial and does not duplicate the pipeline.
 

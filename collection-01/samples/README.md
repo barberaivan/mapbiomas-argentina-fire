@@ -5,7 +5,8 @@ meant to be re-run as-is.
 
 They document the interactive data-collection procedure used to build the
 training locations in GEE Code Editor, so that other groups can deploy a
-similar workflow for a new region or collection.
+similar workflow for a new region or collection. What is *done* with the
+resulting assets is [`docs/01-training_data.md`](../docs/01-training_data.md).
 
 ## What is here
 

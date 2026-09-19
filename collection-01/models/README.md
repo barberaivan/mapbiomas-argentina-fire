@@ -4,6 +4,10 @@ Fitted model outputs from `workflow/02-model_fitting.R` (one elastic-net logisti
 regression per **veg_fire class**, pooling regions where a class spans regions).
 Inputs/reference data live in `data/`; this directory is outputs only.
 
+**This file is the reference for the artifacts** — the folder layout, the file schema and how to
+predict from them. *Why* the model is like this is [`docs/02-model_fitting.md`](../docs/02-model_fitting.md);
+how it is deployed in GEE is [`docs/02-burn_probability.md`](../docs/02-burn_probability.md).
+
 ## Per-model folders (`P<NNN>/`)
 
 Coefficient CSVs live **one folder per model variant**, named `P<NNN>` (3-digit, leading
@@ -129,23 +133,22 @@ design to machine precision (max |Δp| ≈ 1.6e-14). This is the same band-multi
 GEE prediction step performs, so it doubles as a local check of the deployed model. (Note the
 training CSVs carry MIRBI etc.; the design uses only the 11 FOCAL + 32 PREV columns above.)
 
-## CV design (summary; full rationale in CLAUDE.md)
+## What produced these files
 
-- **Grouped K-fold, K=10**, group = `(region, fire_id)` → "leave-several-fires-out".
-- Folds built **per class** by stratified greedy packing (balance obs + positive count).
-- **Pure-negative fires** (ash/drought, crops) are distributed across folds at the
-  point level, not held out as a group — keeps every fold supplied with positives.
-- Adaptive `K = min(10, n_fires_with_positives)`; run `cv_feasibility_report.py` first.
-- Elastic net: `alpha ∈ {0, .25, .5, .75, 1}`, **same foldid across all alphas**.
-- Tune on binomial **deviance** (log-loss); report deviance + Brier + reliability + AUC.
+The design and the tuning are [`docs/02-model_fitting.md`](../docs/02-model_fitting.md)
+"Predictors" and "Tuning and cross-validation"; only what you need to *read* a file is repeated
+here.
 
-## Predictors & region exceptions (in `02-model_fitting.R`)
-
-- `build_design()` builds the **reduced 129-term** design (6 blocks: 11 focal mains + 32
-  prev-year mains + 22 focal×focal + 10 sameband + 22 cross-idx + 32 cross-band; see
-  `notebooks/logistic_regression_design.qmd`). Interactions are fit on mean-centered
-  factors, then the centering is folded back so the exported coefficients act on raw products.
-- All region/class sample exceptions live in one `SAMPLE_RULES` table; the generic
-  fold/CV/fit code never branches on region. Current PAT rules:
-  `forest_pat`/`shrubland_pat` train on the **merged forest+shrubland ash** negatives;
-  `grassland_pat` **downsamples ash to 10%** of its unburned.
+- **Grouped K-fold**, group = `(region, fire_id)` → "leave-several-fires-out", so a
+  `class_NN_oof_predictions.csv` row is a prediction from folds that never saw that fire. `K` is
+  adaptive, `min(10, n_fires_with_positives)`, which is why it is not in any filename — run
+  `scripts/cv_feasibility_report.py` first.
+- **Elastic net over `alpha ∈ {0.25, 0.5, 0.75}`**, same `foldid` across alphas, selected at
+  `lambda.min` on binomial deviance. Ridge (0) and lasso (1) are **not** in the grid: neither was
+  ever best in CV, and the interior keeps the ridge component that conditions this collinear
+  design. `class_NN_tuning.csv` is that α/λ surface.
+- The **129-term design** is 11 focal mains + 32 prev-year mains + 22 focal×focal + 64 prev×focal.
+  Interactions are fit on mean-centered factors and the centering is folded back at export, which
+  is what makes the recipe above a plain dot product on raw bands.
+- All region/class sample exceptions live in one `SAMPLE_RULES` table in `02-model_fitting.R`; the
+  generic fold/CV/fit code never branches on region.
