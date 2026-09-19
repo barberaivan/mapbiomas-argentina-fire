@@ -508,8 +508,9 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
 > rule, the two-stage asset handoff — every piece of it cited from `constants.py` or a script.
 
 > ## 🔻 IVÁN, REVIEW FROM THIS ITEM BELOW 🔻
-[Claude, I'm back, You will have to go back here and search for my comments here and 
-in the docs that I mention.]
+> **Iván's comments up to and including the step-06 item were addressed on 2026-09-18** (his
+> review of the items below it was still in progress, so nothing from the `validation/docs/design.md`
+> item down was touched). What each comment asked and what came of it is recorded under its own item.
 
 >
 > Everything from here down was done in **one unattended session on 2026-09-18** (you were at the
@@ -546,8 +547,32 @@ in the docs that I mention.]
 > directory. **Add that to the per-doc protocol** — grep the step's *outputs*, not only its inputs
 > and its scripts.
 
-[Still unsure if this duplication brought problems. Is the asset in GEE still duplicated?
-My memory is that it was solved afterwards, Claude noticed it.]
+> **Iván asked (2026-09-18): did this duplication ever bite, is the GEE asset still duplicated, and
+> wasn't it solved afterwards? Measured, and the answer is no — it is still there.**
+>
+> It bit exactly once and was contained: two `07e` exports landed with the 1,249 extra FY2021 rows and
+> were thrown away; the third carried the `distinct('oid')` guard, and every product since is built
+> through it. Nothing published is wrong. But the *asset* was never fixed — `updateTime` is still
+> `2026-07-28T20:12:31Z`, the hand ingest — and `fires(2021)` with the guard disabled still
+> materialises **54,514 rows for 53,263 distinct `oid`**, the July figure to the row. What was
+> "noticed afterwards" was the guard, not a repair.
+>
+> Three things are new, and all three are now in `docs/06` "Gotchas" (the table),
+> `docs/07` "`objects_raw_2021` is duplicated in storage", the `07-burned_area_polygons.py` docstring,
+> `notes/07-export_post_mortems.md` (a dated entry, July text untouched) and the BACKLOG item:
+>
+> - **What we uploaded is clean.** `objects_raw_2021.shp/.dbf` is 66,393 records for 66,393 distinct
+>   `oid`, matching `objects_2021_pred.csv` row for row. The duplication is on GEE's side of the
+>   ingest, so the re-ingest is just the ingest again — there is nothing to rebuild first.
+> - **The surplus is query-dependent**, which one export could not reveal: 1,251 rows under
+>   `fire == 1 & area_ha >= 1`, **241** under `area_ha >= 1` alone, **none** under `fire == 1` alone or
+>   an unfiltered read. "How many duplicates does this asset hold" has no answer, so **no count is an
+>   acceptance gate** for the re-ingest.
+> - **A bare `.map()` does not materialise**, so the July lesson needed tightening — and the old
+>   BACKLOG note ("insert a `.map()` before trusting a feature count") would have produced a false
+>   clean bill. `map(f => f.set(…))` and a map that rebuilds the feature from its geometry both come
+>   back at the clean 53,263 under the filter that yields 1,251; it takes a `Feature.select()` in the
+>   map — what `fires()`'s `one()` does.
 
 
 > **(b) The three-way split, and why it is three and not two.** Your message said two, "depending on
@@ -577,8 +602,30 @@ My memory is that it was solved afterwards, Claude noticed it.]
 > provenance headers naming sections this same pass deleted — which `notes/README.md` says is
 > correct and not to be repaired. Nothing needed inventing.
 
-[Claude, it's all fine with this step 06 docs and notes; just review the 
-docs/06 3 files and solve the comments I left for you.]
+> **Signed off by Iván (2026-09-18)** — the three-way split, the notes and the pass itself. The two
+> comments he left inside the docs are done: the duplication question is answered in the box above,
+> and **"Why no predictor may identify the year" was cut 475 → 247 words**, keeping the rule, the two
+> predictors it cost, what the rule leaves in the set (`doy_sin`/`doy_cos`, `date_span`, no absolute
+> time coordinate) and the do-not-publish warning on the residual trend, with every measurement now
+> only in [`notes/06-predictor_selection.md`](collection-01/docs/notes/06-predictor_selection.md).
+>
+> The read-through of the three files turned up **one wrong number and two more dead *named*
+> citations** (the step-04 finding again — naming is not immunity):
+>
+> - **the QGIS layer has 34 curated fields, not 32.** `FIELDS` in `objects_inspect_export.R` is
+>   29 names + `VEG_GROUP_COLS`, and the landed `2020_objects_pred.gpkg` has 36 columns = 34 + `fid`
+>   + `geom`. The doc's own group table already listed 34; only the summary row, `README.md` (two
+>   places) and CLAUDE.md said 32. Fixed in all four.
+> - **`06-object_model.md` cited `04` "Seeds and candidates"** — the heading is "Seed and candidate",
+>   singular. Repointed.
+> - **`06-object_model.md` and `objects_upload.py` cited `05` "Object ids"** — a heading that does not
+>   exist; `oid` is defined in docs/05's `Foundations`. Repointed both.
+>
+> Everything else verified against code rather than read: `PREDICTORS` is 20 (15 + 5),
+> `clean_tagged()` reproduces **5255 / 2788 fire / 2467 non-fire** and every cut in the cascade
+> (−234 / −10 / −1315 / −1) exactly, the four deployed cuts match
+> `config/object_model_thresholds.csv` to the digit, `size_class` is 6 display classes against
+> `th_band`'s 4, and every named cross-doc citation in the three files now resolves.
 
 
 - [x] `validation/docs/design.md` (5,285 → 4,849, and **the premise of this item was wrong** — see
@@ -592,7 +639,9 @@ docs/06 3 files and solve the comments I left for you.]
       in the doc and below.
 
 > **What the validation pass found (2026-09-18).**
->
+
+[Claude, I left instructions for you at validation/docs/design.md]
+
 > **(a) The item's premise — "NOT WRITTEN BY IVÁN" — is wrong, and the correct split matters.**
 > `git log --follow` says the design doc was written by **Iván** on 2026-08-21 (`8b2e859`), two days
 > *before* the first implementation commit. What is **Ramón Peña Agrest's** is all four
@@ -615,6 +664,9 @@ docs/06 3 files and solve the comments I left for you.]
 > inline warning at the rule it breaks — and flagged as *to settle before interpretation*, not
 > fixed, because whether to rebuild the strata on v2 (new lists, discarding the frozen ones) is a
 > team decision.
+
+[I knew it, not a problem, but it must be documented, as you did.]
+
 >
 > **(c) Both appendices were a second home for code that already exists in Python**, which is a
 > stronger reason to move them than "inline JS cannot be linted". Appendix A's own header even says
@@ -622,17 +674,26 @@ docs/06 3 files and solve the comments I left for you.]
 > Appendix A"*. And Appendix A had gone stale in the way a duplicate does — it hardcodes
 > `collection1_fire_mask_v1` while the Python reads `C.MONTH_OF_BURN_COL`, so the code followed the
 > `_v2` rename and the doc did not. **That is how (b) was found.**
->
+[Claude, remove that appendix a, that's not needed.]
+
 > **(d) One artefact is superseded and still in the repo**: `colab_sample_pool_export.ipynb`
 > (Ramón, 2026-08-28) implements the Appendix-B recipe that the 2026-08-31 post-mortem rejected.
 > It is now named as such in the doc's `Files` table rather than silently sitting there. Deleting
 > or rewriting it is Ramón's call.
->
+
+[Claude, just leave in a note all the paths that the validation took and hit problems, like that
+in appendix B. Just mention like a list of abandoned paths, brief, not to take again. 
+No need for such long notes. There may be notes, but smaller]
+
+
 > **(e) `validation/docs/notes/` is new.** `notes/` conventions are defined for
 > `collection-01/docs/notes/`; validation's docs are colocated with its code, so its lab notebook
 > is too. Its `README.md` points at the main one rather than restating the rules. Same question
 > will arise for `statistics/` — flagging it now so the frozen statistics pass does not have to
 > decide it under time pressure.
+
+[Claude, ok with that above]
+
 >
 > **(f) Two Phase-0 leftovers fixed in passing**: `statistics/docs/statistics.md` still linked
 > `10-factsheet_design.md` (renamed in Phase 0), and CLAUDE.md's factsheet and validation rows had
@@ -684,8 +745,6 @@ docs/06 3 files and solve the comments I left for you.]
 > `statistics.md` still linked `07-vector_to_raster.md`, `08-postprocessing.md`, `../../ROADMAP.md`
 > and `11-validation.md` as if it were still in `docs/`. A `.md`-link resolver over
 > `collection-01/` now reports clean except one archived link inside a `notes/` file, which stays.
-
-[NOTE FROM IVÁN: Claude on mapbiomas account got out of tokens processing the next item]
 
 - [x] `07-vector_to_raster.md` (13,298 → **11,014**) — **two passes, as the plan asked**
       (extraction `5653986`, rewrite in the commit below). 4.0 k words verbatim to three `notes/`

@@ -147,3 +147,29 @@ measured to work, FY2021 54,512 → 53,263 — but it hashes the serialised geom
 The root cause belongs upstream — `objects_raw_2021` should be re-ingested by step 06 (BACKLOG). Until
 it is, the guard in `fires()` is what stands between that asset and every product derived from it.
 
+
+#### Re-measured 2026-09-18 — still there, and the count depends on the query
+
+A new lab entry, appended: the text above is the July record and stands as written.
+
+The asset was never re-ingested (`updateTime` `2026-07-28T20:12:31Z`), and `fires(2021)` with the
+guard disabled still materialises **54,514 rows for 53,263 distinct `oid`** — the July figure to the
+row. Three things are new:
+
+- **What we uploaded is clean.** `objects_raw_2021.shp/.dbf` in `data/objects-upload-cache/` holds
+  **66,393 records for 66,393 distinct `oid`**, and `objects_2021_pred.csv` matches it row for row.
+  Whatever duplicates the rows is on the GEE side of the ingest, so a re-ingest from the zip already
+  on disk is the fix — there is nothing to rebuild first.
+- **The surplus is query-dependent**, which one export could not reveal. Measured the same day with
+  a `select()`-bearing map: unfiltered **66,393 → 66,393**; `fire == 1` **54,602 → 54,602**;
+  `area_ha >= 1` **64,551 → 64,792** (241 surplus); `fire == 1 & area_ha >= 1` **53,263 → 54,514**
+  (1,251 surplus). A *range* filter on `area_ha` exposes rows an equality filter on `fire` does not,
+  and the number moves with the predicate. "How many duplicates does this asset hold" has no answer.
+- **A bare `.map()` does not materialise**, so lesson 1 above needs tightening. Under the export's
+  own filter, `map(f => f.set(…))` and a map that rebuilds each feature from its geometry both come
+  back at the clean 53,263; only a **`Feature.select()`** in the map — what `one()` does — surfaces
+  the 1,251. The July table's `+ .map(one)` row is right about `one`, not about `.map`.
+
+Consequence for the re-ingest: **no count is an acceptance gate**, because the counts are per-query.
+The only check that means anything is `fires()` with the guard disabled, compared against the local
+66,393 / 53,263.

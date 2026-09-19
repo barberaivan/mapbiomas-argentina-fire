@@ -125,21 +125,34 @@ stored source, not in the export.  Where it hides (all measured on `objects_raw_
 | `+ .map(one)` | 53,263 | **54,514** |
 
 `size()`, and any aggregation over a *plain filtered stored* collection, is answered from the
-asset's metadata and cannot see this.  Insert a `.map()` and the aggregation can no longer be pushed
-down to storage, so GEE has to ITERATE the table — and iterating yields ~1,251 features that the
-metadata count denies.  An export iterates, so it writes them.
+asset's metadata and cannot see this.  Insert a map that CHANGES THE SCHEMA — `Feature.select()`,
+which is what `one()` does — and the aggregation can no longer be pushed down to storage, so GEE has
+to ITERATE the table, and iterating yields ~1,251 features that the metadata count denies.  An
+export iterates, so it writes them.
+
+Re-measured 2026-09-18: unchanged under THIS query (54,514 / 53,263 distinct `oid`), the asset never
+re-ingested, and the surplus is NOT in what we uploaded — the ingest package on disk is 66,393
+records for 66,393 distinct `oid`.  Two things measured that day that the table above cannot show:
+the surplus is QUERY-DEPENDENT (`area_ha >= 1` alone surfaces 241 rows, `fire == 1` alone and an
+unfiltered read surface none), and a bare `.map()` is not enough — `map(f => f.set(...))` and a map
+that rebuilds the feature from its geometry both return the clean 53,263 under the filter that
+yields 1,251.  So a clean count proves nothing about the next query.  Full table: docs/06
+"Gotchas".
 
 Two lessons worth more than the bug:
 
 1. **A count that agrees with itself is not a clean bill of health.** `size()`,
    `aggregate_count('oid')` and `len(aggregate_array('oid'))` all said 53,263 on the filtered
    source — three numbers, one pushed-down answer, and all three wrong about what a read returns.
-   The honest check materialises: put a `.map()` in front, or count on the LANDED asset.
+   The honest check materialises, and a bare `.map()` does not materialise: put a `select()`-bearing
+   map in front, or count on the LANDED asset.
 2. **A COMPLETED task is not evidence that each feature was written once**, and the ~0 EECU of a
    table export tells you nothing either way.
 
-The fix is `distinct(['oid', '.geo'])` inside `fires()` — see there for why the `.geo` matters.  The
-root cause belongs upstream: `objects_raw_2021` should be re-ingested by step 06 (BACKLOG).
+The fix is `distinct('oid')` inside `fires()` — see there for why NOT `distinct(['oid', '.geo'])`,
+and why the guard skips FY2000.  The root cause belongs upstream: `objects_raw_2021` should be
+re-ingested by step 06 (BACKLOG), and the acceptance gate must be the `select()`-map probe above,
+because every metadata count passes the bad asset.
 
 `--per-year` would NOT have helped, which is worth recording because it was kept as insurance
 against exactly this symptom: the FY2021 single-year export reads the same stored table and

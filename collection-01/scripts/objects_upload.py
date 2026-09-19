@@ -170,7 +170,7 @@ def load_metrics(poly_dir: Path, pred_dir: Path, year: int) -> pd.DataFrame:
 
     # The model output is the point of the layer: the deployed call `fire`, the two inputs it is
     # built from (`fire_model` / `fire_tag`), and the posterior summaries an expert needs to judge
-    # a call. `fire_year` is dropped -- it is already the `oid` prefix (docs/05 "Object ids").
+    # a call. `fire_year` is dropped -- it is already the `oid` prefix (docs/05 "Foundations").
     df_p = pd.read_csv(pred, usecols=["oid", "p_mean", "p_width", "fire", "fire_model", "fire_tag"])
     df = df.merge(df_p, on="oid", how="left", validate="one_to_one")
     df_d = pd.read_csv(derived)

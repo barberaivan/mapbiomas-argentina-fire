@@ -148,9 +148,14 @@ landed and verified on the exported assets** — docs/08 "What Argentina deliver
      guards on the merged layer existing with 1,263,079 features, asserts type and path per asset,
      and refuses a non-empty folder). The `--per-year` / `--year` code is already gone.
    - [ ] **Re-ingest `objects_raw_2021` (step 06) — the root cause.** The `distinct('oid')` guard in
-     `fires()` protects this one layer; the stored duplication is still there for anything else that
-     reads that asset. Note the audit method: any count over a *plain filtered stored* collection is
-     answered from metadata, so insert a `.map()` before trusting a feature count.
+     `fires()` protects this one layer; the duplication is still there (re-measured 2026-09-18) for
+     anything else that reads that asset. **What we uploaded is clean** — the zip on disk is 66,393
+     records for 66,393 distinct `oid` — so the re-ingest is just the ingest again, nothing to
+     rebuild. Two corrections to the audit method: a bare `.map()` is **not** enough to force a
+     materialised count (it takes a `Feature.select()` in the map), and the surplus is
+     **query-dependent** (1,251 rows under `fire == 1 & area_ha >= 1`, 241 under `area_ha >= 1`, none
+     unfiltered) — so no count is an acceptance gate. Compare `fires(2021)` with the guard disabled
+     against the local 66,393 / 53,263. Full table: docs/06 "Gotchas".
    - [ ] **Look at `2000_57529` in QGIS.** A single fire object of **1,706,171 ha** is extraordinary —
      it may be genuine for FY2000 or a segmentation artifact merging many fires. It is 22 % of FY2000's
      mapped area and the reason the layer's area figure needed a 5.1 Mha correction, so it is worth an

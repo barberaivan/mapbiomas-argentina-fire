@@ -60,7 +60,7 @@ step-05 metric CSVs + collected labels → **`workflow/06-object_model.R`** → 
 | **out** | the per-size-band fire-call cut — **tracked in git** | `config/object_model_thresholds.csv` |
 | **out** | the whole scored object set, 28 FeatureCollections | `C.OBJECTS_RAW_COL` / `objects_raw_<fy>` |
 
-**`oid = "<fire_year>_<pid>"`** (`05` "Object ids") is the key of every join — labels ↔ objects,
+**`oid = "<fire_year>_<pid>"`** (`05` "Foundations") is the key of every join — labels ↔ objects,
 predictions ↔ geometry, upload ↔ raster. "Object" and not "polygon" is the deliberate name: a fire
 *is* an object and the metrics are object-level, even though the layer is sparse rather than a
 wall-to-wall OBIA partition, and many objects are multipolygons (`05` "Vectorize"). **Geometry and
@@ -117,44 +117,24 @@ veg grouping (which would drift).
 
 #### Why no predictor may identify the year
 
-[Claude, reduce this section "Why no predictor may identify the year"
-significantly. Mention very briefly, this is fully explained in its note.]
+**No predictor may name the year or proxy for it**, and the rule has already cost two. Per-year label
+prevalence in the fitting set is an artifact of *where people drew* — it runs 0.00 to 1.00 and seven
+fire-years have no labels at all — so a model given the year learns that sampling pattern and applies
+it to every object of that year. Out went `fire_year` and `year_calendar`, which were leaking the
+labels (out of fold, the prediction for a year *was* its label prevalence), and `n_mean`, a **soft era
+proxy** — observation density rises as sensors come online, which lets an improving archive
+masquerade as a rising fire regime. All three keep their **product** roles. The same rule is why the
+set carries **`doy_sin` + `doy_cos`** and not `doy_median` (season is legitimate, but must be
+**circular**: the fire season straddles Dec/Jan, `04` "The fire-year") and why **no absolute time
+coordinate is a predictor**, `date_{median,min,max}` included. Grid-blocked CV cannot see this class
+of leak — it blocks *space*, so the year sits on both sides of every split — hence the standing
+per-year check in `notebooks/objects-analysis.qmd`.
 
-**This is the rule the predictor set is built around, it has cost two predictors, and it is easy to
-reintroduce.** Per-year label prevalence in the fitting set is an artifact of *where people drew*,
-not of the fire regime: it runs 0.00 to 1.00 and seven fire-years have no labels at all. Give the
-model the year and it learns that sampling pattern, then applies it to every object of that year.
-
-- **`fire_year` and `year_calendar` were predictors and were leaking the labels.** Removed
-  2026-07-28: out of fold, the prediction for a year *was* its label prevalence. Pooled OOF AUC fell
-  0.9211 → 0.8948 and **within-year** OOF AUC rose 0.8400 → 0.8467 — pooled falls, within-year
-  holds, which is what removing leakage looks like. They keep their **product** roles (`oid` carries
-  the fire-year; `year_calendar` places an object in a calendar year for step 07), and they stay in
-  the step-05 metrics and in the upload.
-- **`n_mean` was dropped for the same class of reason** — a **soft era proxy**. Observation density
-  rises across the record as sensors come online, so carrying it let an improving satellite archive
-  masquerade as a rising fire regime in a collection built for trend analysis. It is cheap to drop
-  because `seed_mean` already carries observation quality density-normalised (the step-04 seed
-  threshold K is chosen per pixel by `(veg_fire, n)`, `04` "Seeds and candidates") and the two are
-  near-orthogonal per object.
-- **`doy_median` → `doy_sin` + `doy_cos`** (period 365.25). Day-of-year carries season, not year, so
-  it is legitimate — but it must be **circular**: the fire season straddles Dec/Jan (`04` "The
-  fire-year"), so an axis-aligned tree cannot express "December through February" as one region in
-  raw DOY, whereas a threshold on `sin` or `cos` selects an arc.
-- **`date_span` is kept** — a duration names neither a year nor a season — and **no absolute time
-  coordinate is a predictor**, including the raw `date_{median,min,max}` columns, which never were
-  (restated at `objects_data_functions.R::add_derived`).
-
-**Grid-blocked CV structurally could not detect the leak**: each fold contains 17–20 of the 21
-labelled years, so the year lookup sits on both sides of every split and reads as skill. The fold
-design blocks *space*, not *time*, so a per-year diagnostic exists as a standing check in
-`notebooks/objects-analysis.qmd`.
-
-**What remains after the fix.** The residual time trend in the deployed product is **Spearman 0.407
-/ Pearson 0.325** over a range of 71.0–83.7 % fire. Some interannual structure is real, but this is
-**unattributed, not proven clean**: do not publish it as a fire-regime finding without an
-independent record. Measurements, including the symptom that exposed the leak — 1998 called 100.0 %
-fire — are in [`notes/06-predictor_selection.md`](notes/06-predictor_selection.md).
+The residual trend that survives the fix is **Spearman 0.407** over 71.0–83.7 % fire:
+**unattributed, not proven clean**, so do not publish it as a fire-regime finding without an
+independent record. Everything else — the measurements, the AUC arithmetic, the symptom that exposed
+the leak — is fully explained in
+[`notes/06-predictor_selection.md`](notes/06-predictor_selection.md).
 
 #### Collection 2: two metrics to stop computing
 
@@ -284,7 +264,7 @@ do not exist, such as a 1-pixel object with a 10 km perimeter, and invents effec
 | `n_pixels` | 0.021 | **0.0006** | 0.008 |
 
 **Two predictors carry the model** — the temperate-grassland fraction and the seed share — which is
-the intended story: real scars are densely seeded (`04` "Seeds and candidates") and the fuel type
+the intended story: real scars are densely seeded (`04` "Seed and candidate") and the fuel type
 decides how a burned patch looks. **The size/shape block is nearly inert**, `n_pixels` outright so
 (hence the collection-2 note above), while `area_ha` earns its place by selecting the threshold
 band. And no predictor shows the signature that caught `fire_year`: a large split share concentrated
@@ -391,13 +371,32 @@ sentinel exists in all three columns.
 
 ## Gotchas
 
-- **`objects_raw_2021` carries 1 249 duplicated features in storage** — byte-identical geometry and
-  properties — and **no metadata count reveals them**: `size()` over the plain stored collection is
-  answered from metadata, while anything that iterates (an export, a `.map()` in the chain) returns
-  them. It came in through the hand ingest. Every consumer must guard; `docs/07` does, with
-  `distinct('oid')` in `fires()`. Re-ingesting the year is a BACKLOG item, and until it happens that
-  guard is what stands between the asset and every derived product (`docs/07` "`objects_raw_2021` is
-  duplicated in storage").
+- **`objects_raw_2021` is still duplicated, the defect is in the GEE asset — not in what we
+  uploaded — and the surplus is QUERY-DEPENDENT.** The ingest package on disk is clean:
+  `objects_raw_2021.shp/.dbf` holds **66,393 records for 66,393 distinct `oid`**, matching
+  `objects_2021_pred.csv` row for row. The asset was never re-ingested (`updateTime` is still
+  `2026-07-28`, the hand ingest), and re-measured on **2026-09-18** it reproduces the July figures to
+  the row — but only under the July query. Measured that day on the same asset:
+
+  | read | metadata | iterated | distinct `oid` |
+  |---|---|---|---|
+  | unfiltered | 66,393 | 66,393 | 66,393 |
+  | `fire == 1` | 54,602 | 54,602 | 54,602 |
+  | `area_ha >= 1` | 64,551 | **64,792** | 64,551 |
+  | `fire == 1 & area_ha >= 1` (the export's own filter) | 53,263 | **54,514** | 53,263 |
+
+  So there is no single *"how many duplicated features does this asset hold"*: the surplus is 1,251
+  rows under the export's selection, 241 under `area_ha >= 1` alone, and zero under `fire == 1` alone
+  or an unfiltered read. **And the map matters as much as the filter**: under the export's filter,
+  `map(f => f.set(…))` and a map that rebuilds each feature from its geometry both return the clean
+  53,263 — it takes a **`Feature.select()`** in the map, which is what
+  `07-burned_area_polygons.py::fires()` does, to make the surplus appear. A clean count therefore
+  proves nothing about the next query. Raster consumers are immune, because painting a polygon twice
+  is idempotent: `07-month_of_burn.py` and every product derived from it are unaffected. Anything
+  that **counts, sums or exports features** must guard, and `fires()` does, with `distinct('oid')`
+  per fire-year, skipped for FY2000 (`docs/07` "`objects_raw_2021` is duplicated in storage"). **The
+  only real fix is to re-ingest the year from the clean zip** (BACKLOG); no acceptance count can
+  substitute for it, because the counts are per-query.
 - **`oid` is unique per OBJECT, not per row, in the uploaded FeatureCollections.** The max-vertices
   setting does not subdivide inside one feature: it writes **several features sharing one `oid`**,
   each repeating the whole object's attributes. FY2000's `2000_57529` is 4 rows, the only case in 28
@@ -409,9 +408,6 @@ sentinel exists in all three columns.
   22° S down to 517 m² at 55° S**. A size class is therefore a pixel-count *range* (1 ha = 12 px in
   Formosa, 19 px in Santa Cruz), and the same 15-px object changes class between the north and
   Patagonia.
-
-  [Claude, check whether this duplication was resolved or not. Is it in the GEE asset, or only
-  in the store? How should we fix it?]
 
 ## Files, directories and scripts
 

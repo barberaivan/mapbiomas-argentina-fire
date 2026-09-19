@@ -82,7 +82,7 @@ collection-01/
 │   ├── objects_data_explore.R             # step 06: size distribution of the full table + how the c-00 empirical filter splits it
 │   ├── objects_threshold.R                # step 06: per-size-band fire-call threshold from out-of-fold preds -> config/object_model_thresholds.csv
 │   ├── objects_importance_ale.R           # step 06: 4 importance measures + 1-D ALE curves for the 20 predictors -> data/objects-analysis/
-│   ├── objects_inspect_export.R           # step 06: GPKG (QGIS, 32 curated fields) of predictions, to inspect without a GEE upload (--sample N adds a GeoJSON)
+│   ├── objects_inspect_export.R           # step 06: GPKG (QGIS, 34 curated fields) of predictions, to inspect without a GEE upload (--sample N adds a GeoJSON)
 │   ├── objects_upload.py                  # step 06/07: package one fire-year (geometry + all 20 predictors + the calls) as a zipped Shapefile for GEE
 │   ├── validate_upload_zips.py            # step 06/07: pre-upload gate over the 28 zips (schema, code fields, counts, geometry) -> upload_zip_validation.csv
 │   ├── run_06_predict.sh                  # step 06: parallel scoring — one Rscript per fire-year, 8 at a time, resumable (prediction is single-threaded)
@@ -294,7 +294,7 @@ Rscript collection-01/scripts/objects_inspect_export.R 2020 --fields all  # keep
 tmux new-session -d -s obj06i '/abs/path/to/collection-01/scripts/run_06_inspect.sh -j 6'
 ```
 
-The GPKG carries **32 curated fields**: identity/size, the verdicts (`fire`, `fire_model`,
+The GPKG carries **34 curated fields**: identity/size, the verdicts (`fire`, `fire_model`,
 `fire_tag`, `c00_pass`, and `verdict` = model-vs-c00 agreement), why the model called it (`p_mean`,
 `p_width`, `p_thresh`, `p_margin`, `th_band`), burn evidence + timing, the 5 aggregated veg
 fractions and the 6 shape metrics. Useful QGIS filters: `"verdict" != 'both'` (disagreement),

@@ -14,7 +14,7 @@ step-06 `objects_<fy>_pred.csv` + step-05 metrics + `objects_<fy>.gpkg` →
 
 | | What it is | Where |
 |---|---|---|
-| **out** | one QGIS layer per fire-year, every object of the year, **32 curated fields** | `data/objects-inspect-cache/<fy>_objects_pred.gpkg` |
+| **out** | one QGIS layer per fire-year, every object of the year, **34 curated fields** | `data/objects-inspect-cache/<fy>_objects_pred.gpkg` |
 | **out** | a QGIS project over all 28 layers | `data/objects-inspect-cache/inspect_objects.qgz` |
 | **out** | *(`--sample N`)* a decile-stratified GeoJSON for `geemap` | `data/objects-inspect-cache/<fy>_objects_sample.geojson` |
 

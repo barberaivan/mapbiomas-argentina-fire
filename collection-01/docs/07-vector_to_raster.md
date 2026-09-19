@@ -1038,18 +1038,30 @@ cheaper test. Feasibility measurements and the EECU trap:
 
 ### ⚠️ `objects_raw_2021` is duplicated in storage, and no count reveals it
 
-**`objects_raw_2021` holds 1,249 FY2021 features twice**, byte-identical in geometry and in every
-property. It came in through step 06's hand ingest, it is deterministic, and it is in the stored
-source — but **no metadata count shows it**: `size()`, `aggregate_count('oid')` and
+**`objects_raw_2021` hands the export 1,249 FY2021 features twice**, byte-identical in geometry and
+in every property. It came in through step 06's hand ingest, it is reproducible under a given read,
+and it is on the GEE side —
+**not** in what we uploaded: the ingest package on disk is 66,393 records for 66,393 distinct `oid`
+(`docs/06` "Gotchas"). But **no metadata count shows it**: `size()`, `aggregate_count('oid')` and
 `len(aggregate_array('oid'))` all agree on the wrong number, because an aggregation over a plain
-filtered *stored* collection is answered from the asset's metadata. Put a `.map()` in the chain and
-GEE has to **iterate**, which returns the extra features. An export iterates, so it writes them.
+filtered *stored* collection is answered from the asset's metadata. Force GEE to **iterate** and the
+extra features come back. An export iterates, so it writes them.
+
+**Still live as of 2026-09-18, and the surplus is query-dependent** — which is the part the
+post-mortem could not know from one export. The asset was never re-ingested (`updateTime` is still
+`2026-07-28`) and `fires()` reproduces the July figures to the row (**54,514 for 53,263 distinct
+`oid`**), but `area_ha >= 1` alone surfaces only 241 surplus rows and `fire == 1` alone surfaces
+none. It also takes a **`Feature.select()`** in the map: a bare `.map()` that only `set`s comes back
+clean under the very filter that yields 1,251. So a clean count proves nothing about the next query,
+and the only real fix is the re-ingest. The full 2026-09-18 measurement table is in
+[`06-object_model.md`](06-object_model.md) "Gotchas".
 
 Two rules outlast the bug:
 
 1. **A count that agrees with itself is not a clean bill of health.** Three numbers, one pushed-down
-   answer, all three wrong about what a read returns. The honest check materialises: put a `.map()`
-   in front, or count on the **landed asset**.
+   answer, all three wrong about what a read returns. The honest check materialises — and a bare
+   `.map()` does not materialise: it takes a `Feature.select()` in the map, or a count on the
+   **landed asset**.
 2. **A COMPLETED task is not evidence that each feature was written once.** The original `--verify`
    — size, schema, one feature — passed the bad asset without a murmur.
 
