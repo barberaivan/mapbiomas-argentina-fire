@@ -15,7 +15,7 @@ carrying the whole object's `area_ha` (see below).
 
     fire == 1  AND  area_ha >= C.MIN_FIRE_HA
 
-the same POSITIVE selection step 07a paints (docs/07 §1).  `fire` is the deployed call — the
+the same POSITIVE selection step 07a paints (docs/07 'The decisions this step rests on').  `fire` is the deployed call — the
 collected label where there is one, else the probit-BART model (docs/06 "The three call columns") — so `fire_tag == -1`
 means *unlabelled*, never *not fire*, and "not rejected" is not the same filter: 36 objects are
 entirely `candseed==3` dieback with a null `fire`, and this excludes them.
@@ -84,12 +84,12 @@ TWO THINGS TO TELL USERS, both recorded in the asset properties
 1. **`calendar_year` is the object's MAJORITY year, and the rasters do not agree with it.**  It is
    `mode_int(cyear)` over the object's pixels (`05-objects_metrics.R:239`).  The published rasters
    assign the calendar year and month PER PIXEL, so a fire straddling 31 December is split between
-   two years there and lands whole in one year here (docs/07 §1).  Neither is wrong; they answer
+   two years there and lands whole in one year here (docs/07 'The decisions this step rests on').  Neither is wrong; they answer
    different questions, and a user who cross-tabulates the two without knowing this will find
    "missing" area.
 2. **Fire-year 1998 is in this layer and in no published raster.**  3,845 polygons carry
    `calendar_year` 1998 or 1999; the calendar series starts at 1999, so FY1998's Nov–Dec 1998 tail
-   (1,058,206 px, ~76 kha) appears here only (docs/07 §2).
+   (1,058,206 px, ~76 kha) appears here only (docs/07 'The verified calendar-year partition').
 
 `oid` IS UNIQUE PER OBJECT, NOT PER FEATURE — one FY2000 object is 4 rows
 -------------------------------------------------------------------------
@@ -183,7 +183,7 @@ swaps it at completion, so the old one stays readable for the hours in between.
 
 Resumable: an asset that exists, or whose task is PENDING/RUNNING, is skipped.  Task descriptions
 are namespaced `arg07e_` because `ee.data.listOperations()` is PROJECT-scoped and this compute
-project is shared with every other country's team (docs/07 §12.7).
+project is shared with every other country's team (docs/07 'Namespace the task descriptions').
 """
 
 from __future__ import annotations
@@ -289,7 +289,7 @@ def merged_asset():
 # ---------------------------------------------------------------------------
 # the layer
 # ---------------------------------------------------------------------------
-# The exclusion rules (docs/07 §1.1), set once in main(). MODULE-LEVEL rather than parameters
+# The exclusion rules (docs/07 "Object exclusion ruleset"), set once in main(). MODULE-LEVEL rather than parameters
 # because fire_filter() has four call sites -- the build, --verify and two stats paths -- and a
 # verify that used a different filter from the build would report a mismatch that is not there,
 # or hide one that is.  ON by default: RULES=False is only for reproducing the pre-rule layer.
@@ -299,7 +299,7 @@ T_AGRI  = None          # None -> C.T_AGRI
 
 
 def fire_filter(fire_year):
-    """The accepted-fire filter for ONE fire year (docs/07 §1.1).
+    """The accepted-fire filter for ONE fire year (docs/07 'Object exclusion ruleset').
 
     A function, not a module constant: building an `ee.Filter` at import time runs before
     `ee.Initialize()` and dies with "client library not initialized".  It takes the fire year
@@ -313,7 +313,7 @@ def fire_filter(fire_year):
         # rule B drops on `>`, so the keep is `<=`
         keep.append(ee.Filter.lte("frac_agri", C.T_AGRI if T_AGRI is None else T_AGRI))
         # Rule A is CONFINED to small objects intersecting the agricultural-Pampa AOI
-        # (docs/07 §1.1). Byte-for-byte the same four conjuncts as
+        # (docs/07 "Object exclusion ruleset"). Byte-for-byte the same four conjuncts as
         # 07-month_of_burn.py::accepted_objects, PLANAR AOI included.
         lo, hi = C.grass_window_days(fire_year)
         keep.append(ee.Filter.Not(ee.Filter.And(
@@ -394,13 +394,13 @@ def properties(years, n_features=None):
         "fire_years": f"{years[0]}-{years[-1]}",
         "fire_year_definition": "non-calendar: 1 May <fire_year> to 30 Apr <fire_year>+1",
         "fire_call": ("fire == 1 — the deployed call: the collected label where there is one, "
-                      "else the probit-BART object model (docs/06 "The three call columns")"),
+                      "else the probit-BART object model (docs/06 'The three call columns')"),
         "min_fire_ha": C.MIN_FIRE_HA,
         "calendar_year_definition": (
             "MODE of the object's per-pixel calendar years. The published RASTER products assign "
             "the calendar year per PIXEL, so a fire straddling 31 December is split between two "
             "years there and lands whole in one year here — the two layers answer different "
-            "questions and will not cross-tabulate exactly (docs/07 §1)"),
+            "questions and will not cross-tabulate exactly (docs/07 'The decisions this step rests on')"),
         "date_encoding": "date_med / date_min / date_max: ISO 8601 YYYY-MM-DD (UTC calendar days)",
         "time_start": ("system:time_start is set from date_med — one fire, one instant, so "
                        "filterDate() results can be summed without double-counting a fire that "
@@ -418,7 +418,7 @@ def properties(years, n_features=None):
         "seed_mean": "mean SNIC seed burn probability over the object",
         "series_note": ("fire-year 1998 is included and appears in NO published raster: the "
                         "calendar series starts at 1999, so FY1998's Nov-Dec 1998 tail "
-                        "(~76 kha) is here only (docs/07 §2)"),
+                        "(~76 kha) is here only (docs/07 'The verified calendar-year partition')"),
         "derived_from": C.OBJECTS_RAW_COL,
         # The two object exclusion rules, in words, so the layer states its own selection.
         **C.exclusion_rules(t_grass=T_GRASS, t_agri=T_AGRI, applied=RULES),
@@ -605,11 +605,11 @@ def main():
                          "reproducing the pre-rule numbers; never for a published asset. "
                          "Recorded in the asset properties.")
     ap.add_argument("--t-agri", type=float, default=None, metavar="T",
-                    help="override rule B's threshold (docs/07 §1.1); exploration only. "
+                    help="override rule B's threshold (docs/07 'Object exclusion ruleset'); exploration only. "
                          "MUST match what 07a was painted with, or this layer and the rasters "
                          "disagree about what a fire is.")
     ap.add_argument("--t-grass", type=float, default=None, metavar="T",
-                    help="override rule A's threshold (docs/07 §1.1); exploration only, same "
+                    help="override rule A's threshold (docs/07 'Object exclusion ruleset'); exploration only, same "
                          "warning as --t-agri.")
     ap.add_argument("--project", default=C.GEE_PROJECT,
                     help="compute project (default %(default)s). Use `mapbiomas-argentina` with "

@@ -4,7 +4,7 @@ collection-01/workflow/07-subproducts.py
 
 Step 07d — the nine DERIVED subproducts, all of them from step 07a's month-of-burn
 collection plus the MapBiomas LULC.  No new vectors, no local work, no re-labelling
-(docs/07 §12).
+(docs/07 "07d — the nine derived subproducts").
 
     monthly_burned              annual_burned
     monthly_burned_coverage     annual_burned_coverage
@@ -20,9 +20,9 @@ same dtypes, same pyramiding (`mode` throughout).  Three deliberate departures, 
 about plumbing rather than pixel values:
 
   1. **The grid is pinned** (`crs=C.SNIC_CRS` + `crsTransform=C.SNIC_TRANSFORM`), never
-     `scale=30` — which in EPSG:4326 is a *different* grid (docs/07 §3).  Same rule as 07a/07c.
+     `scale=30` — which in EPSG:4326 is a *different* grid (docs/07 "One grid, pinned everywhere").  Same rule as 07a/07c.
   2. **The export region is `C.ARG_BUFFER_FC`** (Argentina + 2 km), because
-     `regiones_fuego_argentina_v1` does not exist as a FeatureCollection (docs/07 §11); the
+     `regiones_fuego_argentina_v1` does not exist as a FeatureCollection (docs/07 "What is still open"); the
      reference uses `regions.union().geometry()`.
   3. **All nine products read the 07a month collection**, whereas the reference exports
      `annual_burned` first and then has scripts 2 and 3 read that ASSET.  Ours is a plumbing
@@ -35,7 +35,7 @@ about plumbing rather than pixel values:
 
 And the reference's `accumulated_burned` filename typo is NOT copied: script 2 builds
 `..._accumulate1_burned_v1` where the publish list expects `..._accumulated_burned_v1`
-(docs/07 §12.3.2).
+(docs/07 "Four traps in the reference code").
 
 Usage (from the repo ROOT)
 --------------------------
@@ -53,7 +53,7 @@ Resumable: a product whose asset exists, or whose task is PENDING/RUNNING, is sk
 The LULC year, and the 2025 duplication
 ---------------------------------------
 `C.PRODUCT_LULC` — the PUBLISHED Argentina land-cover integration, NOT our internal `veg_fire`
-remap (docs/07 §12.1), and deliberately NOT `C.MAPBIOMAS_LULC` either: that one is the model-side
+remap (docs/07 "The four settled answers"), and deliberately NOT `C.MAPBIOMAS_LULC` either: that one is the model-side
 input `veg_fire` was derived from and stays frozen on the collection the model was fitted
 against, while these products must track whatever LULC Argentina publishes.  Currently LULC
 collection 3 (v1), whose bands run 1985-2025, so nothing is duplicated forward; when the source
@@ -95,7 +95,7 @@ import utils.constants as C  # noqa: E402
 FREQ_BAND_PREFIX = "fire_frequency"
 ACCUM_BAND_PREFIX = "fire_accumulated"
 
-# Default --check extent: the Chaco 0.5 deg audit box used throughout step 07 (docs/07 §7).
+# Default --check extent: the Chaco 0.5 deg audit box used throughout step 07 (docs/07 "07a — the GEE month-of-burn build").
 CHECK_ROI = "-61.6,-25.6,-61.1,-25.1"
 
 # Task descriptions are NAMESPACED, and that is not cosmetic.  `ee.data.listOperations()` is
@@ -112,7 +112,7 @@ TASK_PREFIX = "arg07d_"
 # (A `LEGACY_DESCRIPTIONS` fallback used to accept the BARE subproduct names the first launch went
 # out under, so that a re-run mid-batch could not double-submit. All nine of those tasks finished
 # 2026-07-29/30, so it was deleted — it reintroduced the very cross-country collision the prefix
-# exists to retire. docs/07 §12.7.)
+# exists to retire. docs/07 "Namespace the task descriptions".)
 
 
 # ---------------------------------------------------------------------------
@@ -233,7 +233,7 @@ def build(years, verbose=True):
     # `.add(0)` is not dead code.  `ee.Image.cat` carries the FIRST input's properties onto the
     # result, so `month` arrives holding the 1999 month image's own block — `year: 1999`,
     # `fire_years: 1998,1999`, `name: …fire_mask_v1_1999` — which is FALSE on a 27-band product and
-    # was published that way in the first launch (docs/07 §12.8).  There is no server-side "clear
+    # was published that way in the first launch (docs/notes/07-verification_log.md).  There is no server-side "clear
     # properties", and `.set()` only adds; a band-wise op drops them, which is why the other eight
     # products escaped this (they are all built by arithmetic).  Cheap, and it keeps the nine
     # property blocks uniform.
@@ -270,7 +270,7 @@ def build(years, verbose=True):
     #
     # ⚠️ THE BANDS ARE `classification_<year+1>`, NOT `classification_<year>`.  That off-by-one
     # is in the reference and in the publish map; it looks like a bug and the platform expects
-    # it (docs/07 §12.3.1).  So the 1999-2025 series is carried by bands 2000-2026.
+    # it (docs/07 "Four traps in the reference code").  So the 1999-2025 series is carried by bands 2000-2026.
     ylf, prev = [], ee.Image(0)
     for y in years:
         prev = prev.where(hits[y], y).rename(f"classification_{y + 1}")
@@ -318,7 +318,7 @@ def check(years, roi_str):
     for y in years:
         month = month_image(y)
         # .unweighted(): reduceRegion weights partial pixels at the region edge by default, so a
-        # plain sum() returns a FRACTIONAL pixel count (docs/07 §9 / 07-scar_rasters.py).
+        # plain sum() returns a FRACTIONAL pixel count (docs/07 "07c — the scar rasters" / 07-scar_rasters.py).
         d = (month.mask().rename("month")
              .addBands(month.gt(0).unmask(0).rename("annual"))
              .addBands(month.multiply(100).add(lulc[y]).mask().rename("coverage"))
@@ -373,7 +373,7 @@ def export(specs, years, launch, roi=None):
             continue
         task = ee.batch.Export.image.toAsset(
             image=img, description=description, assetId=asset_id, region=region,
-            crs=C.SNIC_CRS,                       # pin the grid — never scale=30 (docs/07 §3)
+            crs=C.SNIC_CRS,                       # pin the grid — never scale=30 (docs/07 "One grid, pinned everywhere")
             crsTransform=C.SNIC_TRANSFORM,
             maxPixels=int(1e13),
             pyramidingPolicy={".default": "mode"},

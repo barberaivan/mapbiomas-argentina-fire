@@ -2,7 +2,7 @@
 # =============================================================================
 # 07-calendar_scars.R — calendar-year burn mask -> 8-connected SCARS (id + area)
 # =============================================================================
-# Step 07b (docs/07 §5). The network publishes scar id / area / size-range per CALENDAR
+# Step 07b (docs/07 "07b — the local scar build"). The network publishes scar id / area / size-range per CALENDAR
 # year, defined as "sets of spatially connected pixels within the same year". Our objects
 # are FIRE-YEAR entities under a deliberately non-standard connectivity (the 1-px dilation
 # of step 05), so the scars are a SEPARATE labelling pass:
@@ -83,9 +83,9 @@ ZIP_DIR         <- "collection-01/data/scars-upload-cache"   # -cache = regenera
 
 FIRST_FIRE_YEAR <- 1998; LAST_FIRE_YEAR <- 2025
 CAL_YEARS       <- 1999:2025      # the published calendar series (docs/07)
-MIN_FIRE_HA     <- 1              # minimum mapped fire, on the OBJECT (docs/07 §1)
+MIN_FIRE_HA     <- 1              # minimum mapped fire, on the OBJECT (docs/07 "The decisions this step rests on")
 
-# ── the two object EXCLUSION rules (docs/07 §1.1) ─────────────────────────────
+# ── the two object EXCLUSION rules (docs/07 "Object exclusion ruleset") ─────────────────────────────
 # FINAL thresholds, confirmed with the team 2026-09-11, and ON BY DEFAULT: a run with no
 # environment overrides produces the PUBLISHED selection. MIRRORED from
 # utils/constants.py::{T_GRASS, GRASS_WINDOW, T_AGRI} -- there is no automatic sync between
@@ -99,7 +99,7 @@ RULES        <- Sys.getenv("RULES", "1") != "0"
 T_GRASS      <- as.numeric(Sys.getenv("T_GRASS", "0.70"))   # rule A: frac_c15 above this
 GRASS_WINDOW <- c("07-01", "11-15")                          # rule A: date_med inside (MM-DD)
 T_AGRI       <- as.numeric(Sys.getenv("T_AGRI",  "0.40"))   # rule B: frac_agri above this
-# Rule A's two CONFINEMENTS (docs/07 §1.1, added 2026-09-12). veg_fire 15 is the remap of
+# Rule A's two CONFINEMENTS (docs/07 "Object exclusion ruleset", added 2026-09-12). veg_fire 15 is the remap of
 # MapBiomas 11/12/15 in the PAMPA region, so the Delta del Parana marshes carry it like a
 # Pampa pasture; unconfined, rule A deleted 65.7 % of the Delta's FY2020 burned area.
 RULE_A_MAX_HA <- as.numeric(Sys.getenv("RULE_A_MAX_HA", "150"))
@@ -132,7 +132,7 @@ G_NR <- 123601L
 # dropped candseed==3 east of this BEFORE labelling, so the objects never contained them.
 DIEBACK_LON_CUT <- -70.6
 # A candseed==3 pixel takes its PARENT OBJECT's median date: its own abs_date is a next-year
-# spring dieback-detection date, not a burn date (docs/07 §4.3). Measured: 881k such pixels
+# spring dieback-detection date, not a burn date (docs/07 "candseed == 3"). Measured: 881k such pixels
 # (~79 kha) survive the cut over the 28 fire-years. Left raw they report austral-winter burn
 # months and, whenever the parent fire burned May-Dec, fall into the NEXT calendar year —
 # splitting the scar and minting a phantom scar with its own id and size class.
@@ -222,7 +222,7 @@ accepted_oids <- function(fy) {
     }
     # rule A -- Pampa grassland in the winter-spring window, CONFINED to objects under
     # RULE_A_MAX_HA that INTERSECT the agricultural-Pampa AOI; rule B -- agriculture anywhere.
-    # Both drop on `>`, so the keep is `<=` (docs/07 §1.1). `frac_c15` is the SINGLE veg_fire
+    # Both drop on `>`, so the keep is `<=` (docs/07 "Object exclusion ruleset"). `frac_c15` is the SINGLE veg_fire
     # class 15 grassland_pampa, not the aggregated frac_gr_tp. All four of rule A's conjuncts
     # must match 07a/07e exactly, `area_ha <` and the intersects included.
     a <- a[!(frac_c15 > T_GRASS & date_median >= w[1] & date_median <= w[2] &

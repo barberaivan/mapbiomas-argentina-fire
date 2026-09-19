@@ -5,7 +5,7 @@ collection-01/workflow/07-month_of_burn.py
 Step 07a — MONTH OF BURN per CALENDAR YEAR, server-side in GEE.
 
 This is the hand-off from our fire-year mapping to the network's calendar-year products
-(docs/07 §4, docs/07 "The verified calendar-year partition").  Nothing is uploaded here: the two inputs are already in GEE —
+(docs/07 "candseed == 3", docs/07 "The verified calendar-year partition").  Nothing is uploaded here: the two inputs are already in GEE —
 the step-06 object FeatureCollections (`objects_raw_<fy>`, one per fire-year, the WHOLE
 object set with the `fire` call) and the SNIC per-pixel assets (`snic_<fy>.candseed`,
 `snic_metrics_<fy>.abs_date`).  We paint the accepted objects, read each pixel's own burn
@@ -58,7 +58,7 @@ Usage (from the repo ROOT)
   # deploy the agriculture filter once the threshold is chosen (statistics/docs/statistics.md §2, §6)
   $PYTHON collection-01/workflow/07-month_of_burn.py --all --launch --overwrite --agri-max 0.4
 
-  # the local<->GEE cross-check (docs/07 §8). A year selector is always required, so use --all:
+  # the local<->GEE cross-check (docs/07 "07b — the local scar build"). A year selector is always required, so use --all:
   $PYTHON collection-01/workflow/07-month_of_burn.py --all --stats --launch   # submit the batch jobs
   $PYTHON collection-01/workflow/07-month_of_burn.py --all --stats-read       # compare vs local
 
@@ -152,7 +152,7 @@ def task_in_flight(description):
 # ---------------------------------------------------------------------------
 def accepted_objects(fire_year, rules=True, t_grass=None, window=None, t_agri=None):
     """The objects that contribute pixels: called fire, big enough, and matching NEITHER
-    exclusion rule (docs/07 §1.1).
+    exclusion rule (docs/07 "Object exclusion ruleset").
 
     `fire` is the DEPLOYED call — the collected label where there is one, else the model
     (docs/06 "The three call columns").  `fire_tag = -1` means "unlabelled", never "not fire", which is why we
@@ -185,13 +185,13 @@ def accepted_objects(fire_year, rules=True, t_grass=None, window=None, t_agri=No
         # RULE B — agriculture. `frac_agri` is the object's abundance of veg_fire 1-3
         # (agriculture_{chaco,cuyo-pat,pampa}), EXCLUDING class 4 agriculture-per. Already a
         # property of every objects_raw_<fy> FC, so this costs nothing to evaluate. The rule
-        # drops on `>`, so the keep is `<=` — not `<` (docs/07 §1.1).
+        # drops on `>`, so the keep is `<=` — not `<` (docs/07 "Object exclusion ruleset").
         keep.append(ee.Filter.lte("frac_agri", t_agri))
         # RULE A — Pampa grassland in the winter-spring window. `frac_c15` is the SINGLE
         # veg_fire class 15 `grassland_pampa`, not the aggregated `frac_gr_tp`. `date_med` is a
         # NUMBER of days since 1970-01-01, so the window is resolved to day numbers
         # client-side (C.grass_window_days) — no ee.Date round trip per feature.
-        # Rule A is CONFINED (docs/07 §1.1): it fires only on objects under
+        # Rule A is CONFINED (docs/07 "Object exclusion ruleset"): it fires only on objects under
         # C.RULE_A_MAX_HA that INTERSECT the hand-drawn agricultural-Pampa AOI.
         # `ee.Filter.bounds` is the exact-geometry intersects predicate and rides the
         # asset's spatial index; the AOI must be PLANAR (C.rule_a_aoi_ee) or its
@@ -285,7 +285,7 @@ def check(cal_year, roi, **rule_kw):
 
     The histogram is the number to compare against `07-calendar_scars.R`'s per-year
     validation CSV: if the local mask and this raster agree, the scar layer's mask is the
-    month raster's mask, which is what docs/07 §5.6 requires.
+    month raster's mask, which is what docs/07 "07c — the scar rasters" requires.
     """
     img = month_of_burn(cal_year, **rule_kw)
     hist = img.reduceRegion(ee.Reducer.frequencyHistogram(), roi,
@@ -359,7 +359,7 @@ def stats_year(cal_year, region, launch):
     # no unmask(0) and no dense pass over the 9.16 B-cell grid. And `.unweighted()` is not
     # optional: reduceRegion weights partial pixels at the region boundary by default, which
     # returns a FRACTIONAL pixel count and would put this check permanently a few pixels off the
-    # local build (the same artefact docs/07 §9 records for the scar check).
+    # local build (the same artefact docs/07 "07c — the scar rasters" records for the scar check).
     months = ee.Image.cat([img.eq(m).rename(f"m{m:02d}") for m in range(1, 13)])
     d = months.reduceRegion(ee.Reducer.sum().unweighted(), region,
                             crs=C.SNIC_CRS, crsTransform=C.SNIC_TRANSFORM,
@@ -432,7 +432,7 @@ def stats_read(years, csv_path=None):
         print(f"\n[csv] {len(rows)} rows -> {csv_path}   (PIXEL COUNTS, unfiltered map)")
     if any_bad:
         print("\nA divergence here is a BUG, not tolerance — both sides come from the same "
-              "object pixel set (docs/07 §6).")
+              "object pixel set (docs/07 'Why the object polygons can be trusted as the pixel set').")
 
 
 def export_year(cal_year, region, launch, overwrite=False,
@@ -512,10 +512,10 @@ def main():
                          "never for a published asset. Recorded in the asset properties.")
     ap.add_argument("--t-agri", type=float, default=None, metavar="T",
                     help=f"override rule B's threshold (default C.T_AGRI = {C.T_AGRI}); "
-                         "docs/07 §1.1. For exploration only — the default is FINAL.")
+                         "docs/07 'Object exclusion ruleset'. For exploration only — the default is FINAL.")
     ap.add_argument("--t-grass", type=float, default=None, metavar="T",
                     help=f"override rule A's threshold (default C.T_GRASS = {C.T_GRASS}); "
-                         "docs/07 §1.1. For exploration only — the default is FINAL.")
+                         "docs/07 'Object exclusion ruleset'. For exploration only — the default is FINAL.")
     ap.add_argument("--out-collection", default=None, metavar="ASSET",
                     help="write to this ImageCollection instead of the published one — for "
                          "benchmark/timing runs (statistics/docs/statistics.md §4.4). Created if missing.")
@@ -531,7 +531,7 @@ def main():
 
     initialize(args.project, args.credentials)
 
-    # The exclusion rules are ON unless explicitly disabled (docs/07 §1.1). Passed as one dict
+    # The exclusion rules are ON unless explicitly disabled (docs/07 "Object exclusion ruleset"). Passed as one dict
     # so every entry point below — check, export_year, month_of_burn — cannot disagree.
     rule_kw = {"rules": not args.no_exclusions,
                "t_grass": args.t_grass, "t_agri": args.t_agri}

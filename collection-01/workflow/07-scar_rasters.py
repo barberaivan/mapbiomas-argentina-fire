@@ -35,7 +35,7 @@ Two deliberate departures from the reference script `5-export_annual_burned_id_a
      re-export, not 27 re-uploads.
 
 And one invariant the reference cannot state, because its scars come from its own annual raster:
-**the scar mask is forced to equal the month-of-burn mask** (docs/07 §5.6). They are built from
+**the scar mask is forced to equal the month-of-burn mask** (docs/07 "07c — the scar rasters"). They are built from
 the same pixel set — verified exactly, see `07-calendar_scars.R`'s header — so `--check` reports
 the residual per year and the export intersects the two masks so it is zero by construction.
 
@@ -45,7 +45,7 @@ Usage (from the repo ROOT)
   $PYTHON collection-01/workflow/07-scar_rasters.py                  # dry run
   $PYTHON collection-01/workflow/07-scar_rasters.py --launch         # 3 export tasks
 
-Shape: three images of 27 BANDS, not 27 images of 3 bands (docs/07 §10) — also what the reference
+Shape: three images of 27 BANDS, not 27 images of 3 bands (docs/07 "Products, and the shape they take") — also what the reference
 does (script 5 exports `regions.union().geometry()` over `ee.List.sequence(1999, 2025)` in ONE task
 per subproduct, for a whole country, with no region split).
 
@@ -151,7 +151,7 @@ def _export_products(specs, years, launch):
         asset_id = f"{C.FINAL_PRODUCTS}/{C.product_name(sub)}"
         # Skip what is already there, so a re-run is resumable rather than three tasks that grind
         # through the whole country only to die on "Cannot overwrite asset". Deliberately NOT an
-        # --overwrite: replacing a published product is a decision, not a flag (docs/07 §9).
+        # --overwrite: replacing a published product is a decision, not a flag (docs/07 "07c — the scar rasters").
         if asset_exists(asset_id):
             print(f"[skip] {asset_id} already exists")
             continue
@@ -188,7 +188,7 @@ def _export_products(specs, years, launch):
         ee.batch.Export.image.toAsset(
             # NAMESPACED description: `ee.data.listOperations()` is project-scoped and the compute
             # project is shared with the whole network, so a bare `annual_burned_id` can collide with
-            # another country's export (CLAUDE.md, docs/07 §12.7).
+            # another country's export (CLAUDE.md, docs/07 "Namespace the task descriptions").
             image=img, description=f"{TASK_PREFIX}{sub}", assetId=asset_id, region=region,
             crs=C.SNIC_CRS, crsTransform=C.SNIC_TRANSFORM,
             maxPixels=int(1e13), pyramidingPolicy={".default": pyr},
@@ -251,7 +251,7 @@ def main():
         return
 
     # Both inputs are required: the scar FCs are painted, and the month-of-burn image supplies the
-    # mask that forces scar and month coverage to agree (docs/07 §9).
+    # mask that forces scar and month coverage to agree (docs/07 "07c — the scar rasters").
     missing_fc = [y for y in years
                   if not asset_exists(f"{C.ANNUAL_BURNED_VECTORS}/scars_{y}")]
     missing_mob = [y for y in years

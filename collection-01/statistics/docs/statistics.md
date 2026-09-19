@@ -321,7 +321,7 @@ database (`objects-pred/`, `objects-raw/*_raster_metrics.csv`, the territory tag
 `scripts/objects_region_tag.R`).
 
 - **The selection is the published one** — `fire == 1 & area_ha >= 1 & not(rule A) &
-  not(rule B)`, mirrored from `workflow/07-calendar_scars.R` (docs/07 §1.1). The factsheet
+  not(rule B)`, mirrored from `workflow/07-calendar_scars.R` (docs/07 "Object exclusion ruleset"). The factsheet
   counts the fires that are *in* the published map, no more and no fewer. The thresholds are
   repeated in the R file because R cannot import `utils/constants.py`; **keep them in sync**.
 - **Calendar year and month, both from `date_median`**, so a whole fire lands in exactly one
@@ -686,7 +686,7 @@ the same family of products.
 
 **The source** is `year_last_fire_v2`, band **`year_last_fire_2026`**. The `+1` is not a typo:
 the band naming is `<subproduct>_<year+1>` in the reference and the platform expects it
-(docs/07 §12.3.1), so `…_2026` is the complete 1999–2025 series and `…_2025` would stop at
+(docs/07 "Four traps in the reference code"), so `…_2026` is the complete 1999–2025 series and `…_2025` would stop at
 2024. (The publish map's `band_format` says `classification_{year}`; the exported **asset**
 carries the subproduct name. Verified 17 Sep 2026 on the v2.)
 
@@ -1593,5 +1593,5 @@ external sanity check available for a first collection.
 | 12c | **Non-burnable classes are out of both land-cover analyses** (§5.2.1): fire on water/glacier/city/bare ground is mapping error — 0.09 % of what burned — and keeping it put two invisible bars in every chart and stole a point from the 100 % | Iván, 2026-09-16 |
 | 12b | In análisis 5 the **mean over years is taken LAST** — per-year ratios, then averaged. `Σburned / Σarea` is a different number (Jensen) and double-counts every reburn | Iván, 2026-09-15 |
 | 13 | **We do not use Looker Studio.** The network builds one per country off these CSVs; Argentina's analysis is ours, in R, straight off the tables | Iván, 2026-09-11 |
-| 14 | The object exclusion rules and their thresholds are **FINAL** (docs/07 §1.1) — not a parameter these statistics may vary | Iván + team, 2026-09-11 |
+| 14 | The object exclusion rules and their thresholds are **FINAL** (docs/07 "Object exclusion ruleset") — not a parameter these statistics may vary | Iván + team, 2026-09-11 |
 | 15 | Statistics on our own **fire-year objects** (per-event size distributions, season-spanning fires) are worth a separate, clearly-unofficial output — but not before 24 September | Iván, 2026-09-11 |

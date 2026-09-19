@@ -73,7 +73,7 @@ MAPBIOMAS_LULC = (
 )
 
 # The PUBLISHED Argentina land-cover integration, crossed with burned area to make the four
-# `*_coverage` subproducts (step 07d, docs/07 §12).  DELIBERATELY SEPARATE from MAPBIOMAS_LULC:
+# `*_coverage` subproducts (step 07d, docs/07 "07d — the nine derived subproducts").  DELIBERATELY SEPARATE from MAPBIOMAS_LULC:
 # the coverage products answer "which published land cover burned in year Y" and so must track
 # whatever LULC collection Argentina publishes, while `veg_fire` stays frozen on the collection
 # the model was fitted against.  The two being different assets is not an inconsistency to fix.
@@ -82,7 +82,7 @@ MAPBIOMAS_LULC = (
 # publishes on 2026-09-11: `..._collection3_pb`.  The v1 value was a PRELIMINARY integration
 # (`..._integration_v1_buffer`, with v4/v7/v8_buffer in between), so the four `*_coverage`
 # products built against it encode a land cover that was never published — which is why they are
-# re-exported in September regardless of anything else (docs/07 §1.2).
+# re-exported in September regardless of anything else (docs/07 "The _v2 re-export").
 #
 # VERIFIED 2026-09-11 against the asset itself:
 #   * 41 bands classification_1985..2025 — 2025 is NATIVE, so no forward duplication is needed
@@ -91,7 +91,7 @@ MAPBIOMAS_LULC = (
 #   * origin -73.5666318776841 / -21.780821873347158 against the SNIC lattice's
 #     -73.58468801489491 / -21.764113209062533 — an offset of EXACTLY +67 columns and -62 rows.
 # An integer offset at the same step means the two grids share a phase: pinned to SNIC_TRANSFORM
-# nothing is resampled, so the docs/07 §12.4 lattice proof carries over unchanged.  (The _pb
+# nothing is resampled, so the docs/07 "The four settled answers" lattice proof carries over unchanged.  (The _pb
 # footprint is 144332 x 123501, different from v1_buffer's 89361 x 155938 — the footprint changed,
 # the lattice did not.)
 # If a col-3 v2 supersedes this, change this ONE line and re-export the four coverage products.
@@ -421,11 +421,11 @@ OBJECTS_RAW_COL = f"{_FIRE_ROOT}/COLLECTION-1/WORKFLOW-EXPORTS/objects_raw"
 CALENDAR_YEARS = list(range(1999, 2026))   # 1999-2025, matches YEARS
 
 # Minimum mapped fire: an OBJECT (fire-year entity) must reach this to contribute
-# any pixel (docs/07 §1).  Applied on the object, before the calendar-year split, so
+# any pixel (docs/07 "The decisions this step rests on").  Applied on the object, before the calendar-year split, so
 # a calendar-year part of a qualifying object may itself be smaller.
 MIN_FIRE_HA = 1.0
 
-# ─── Step 07 — the two object EXCLUSION rules (docs/07 §1.1) ──────────────────
+# ─── Step 07 — the two object EXCLUSION rules (docs/07 "Object exclusion ruleset") ──────────────────
 # An object that matches EITHER rule is not mapped.  The thresholds are FINAL,
 # confirmed with the team 2026-09-11: they are the values collection 1 is published
 # with, they are the DEFAULT everywhere (a run with no flags produces the published
@@ -473,7 +473,7 @@ def rule_a_aoi_ee(path=None):
     `geodesic=False` is not a detail: the ring has edges spanning several degrees, and
     a geodesic edge bows away from the straight lon/lat line R's `terra::is.related()`
     tests against.  Left geodesic, GEE and the local build would disagree about the
-    objects near those edges — which is exactly the drift docs/07 §1.1 forbids between
+    objects near those edges — which is exactly the drift docs/07 'Object exclusion ruleset' forbids between
     the three application points.  Measured at the settled thresholds, planar makes the
     two implementations agree to the object.
     """
@@ -505,7 +505,7 @@ def grass_window_days(fire_year, window=None):
 
 def exclusion_rules(t_grass=None, window=None, t_agri=None, applied=True,
                     max_ha=None):
-    """The human-readable rule block stamped into EVERY step-07 asset (docs/07 §1.1).
+    """The human-readable rule block stamped into EVERY step-07 asset (docs/07 'Object exclusion ruleset').
 
     Returned as a dict of asset properties so an asset always states its own
     selection: a product that does not say what it excluded cannot be told apart
@@ -514,7 +514,7 @@ def exclusion_rules(t_grass=None, window=None, t_agri=None, applied=True,
     and says so in the property rather than leaving it absent.
     """
     if not applied:
-        off = "NONE — unfiltered run, NOT the published selection (docs/07 §1.1)"
+        off = "NONE — unfiltered run, NOT the published selection (docs/07 'Object exclusion ruleset')"
         return {"exclusion_rule_a": off, "exclusion_rule_b": off}
     t_grass = T_GRASS if t_grass is None else t_grass
     (m_lo, d_lo), (m_hi, d_hi) = window or GRASS_WINDOW
@@ -528,11 +528,11 @@ def exclusion_rules(t_grass=None, window=None, t_agri=None, applied=True,
             f"{m_lo:02d}-{d_lo:02d} and {m_hi:02d}-{d_hi:02d} inclusive, anchored inside "
             f"the fire year, AND area_ha < {max_ha:g}, AND the object INTERSECTS the "
             f"rule-A AOI (the hand-drawn agricultural-Pampa polygon, "
-            f"config/rule_a_aoi.geojson, planar EPSG:4326; docs/07 §1.1)"),
+            f"config/rule_a_aoi.geojson, planar EPSG:4326; docs/07 'Object exclusion ruleset')"),
         "exclusion_rule_b": (
             f"agriculture: object dropped when frac_agri > {t_agri} "
             f"(veg_fire 1-3 agriculture_{{chaco, cuyo-pat, pampa}}, EXCLUDING class 4 "
-            f"agriculture-per; docs/07 §1.1)"),
+            f"agriculture-per; docs/07 'Object exclusion ruleset')"),
     }
 
 # The canonical 30 m grid of every SNIC asset.  VERIFIED 2026-07-29: all 56 assets
@@ -557,7 +557,7 @@ EPOCH = "1970-01-01"
 DIEBACK_LON_CUT = -70.6
 
 # candseed==3 dieback pixels take their PARENT OBJECT's median date, not their own
-# abs_date (docs/07 §4.3).  Their own date is a next-year spring DIEBACK-detection date,
+# abs_date (docs/07 "candseed == 3").  Their own date is a next-year spring DIEBACK-detection date,
 # a different physical event from the burn — Jun-Nov, measured: 881k such pixels (~79 kha)
 # survive the longitude cut over the 28 fire-years, 4.0 % of all candidate pixels west of
 # the cut and 14-18 % in FY2014/2015/2021/2024.  Left raw they would (a) report Andean
@@ -583,10 +583,10 @@ CLASSIFICATION_COLLECTIONS = f"{_FIRE_ROOT}/COLLECTION-1/CLASSIFICATION_COLLECTI
 
 # ─── Product version ─────────────────────────────────────────────────────────
 # Bumped 1 -> 2 on 2026-09-11 for the September re-export: the object EXCLUSION rules
-# (docs/07 §1.1) change what is mapped, and the four `*_coverage` products move to the
+# (docs/07 "Object exclusion ruleset") change what is mapped, and the four `*_coverage` products move to the
 # PUBLISHED land cover (PRODUCT_LULC).  Agreed with the Brazil team: we write `_v2` on
 # OUR side and they copy it over the public asset, so the public id and therefore the
-# Workspace registration and every download link are unaffected (docs/07 §14, statistics/docs/statistics.md §11).
+# Workspace registration and every download link are unaffected (docs/07 "The _v2 re-export", statistics/docs/statistics.md §11).
 #
 # Versioning rather than overwriting in place buys three things: the v1 products stay
 # readable while v2 is built, nothing is ever half-replaced, and the "all 27 month assets

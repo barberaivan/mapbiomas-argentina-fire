@@ -199,7 +199,7 @@ above for per-step design.
   (`bpts_…`, `mob_…`, `arg07d_…`) and never match one by a generic name: an in-flight check that
   matches a bare `annual_burned` can collide with another country's export and silently skip one of
   ours, which is indistinguishable from the resumable-skip working. `destinationUris` would
-  disambiguate by asset path but exists only on FINISHED operations. See docs/07 §12.7.
+  disambiguate by asset path but exists only on FINISHED operations. See docs/07 "Namespace the task descriptions".
 
 ## GEE Code Editor scripts (separate repos)
 

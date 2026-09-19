@@ -4,7 +4,7 @@ Step 06 takes the step-05 fire **objects** and their metrics and decides, per ob
 a burned scar or noise. The classifier is a **probit BART fitted locally in R on ~5 k collected
 labels**; it replaces collection-00's empirical threshold filter. It scores **all 28 fire-years /
 1.69 M objects**, and the whole scored object set — geometry plus every predictor plus the call —
-goes back up to GEE as one FeatureCollection per fire-year, which is what step 07 paints.
+goes back up to GEE as one FeatureCollection per fire-year, which is what step 07 paints into rasters.
 
 Step 06 is three files: the labels come from [`06-object_labels.md`](06-object_labels.md), this one
 is the model and the upload, and [`06-object_inspection.md`](06-object_inspection.md) is the QGIS
@@ -32,6 +32,18 @@ The 5255 labels were collected where fires were known, not sampled from the obje
 objects are under-sampled. The model's *ranking* and its *uncertainty* are therefore the product,
 not a calibrated probability; the deployed cuts are a **lower bound**; and the fold design has to
 be chosen with that sampling in mind.
+
+**Challenges in this step are partly explained by problems upstream.** When collecting data
+we noticed the SNIC clusters were really bad in agriculture areas: lots of polygons that included
+harvest patches, which in some cases where perhaps merged to a fire by SNIC. That's a problem that
+no spatial strategy can solve. Fire mapping in productive areas (pasture, agriculture) need an 
+improvement of the burn probability models (steps 1 and 2 of the workflow), collecting more data.
+This object-level model was inspired by the pilot, where we noticed lots of false positives easily
+separable from fire from shape and seed density: dendritic shapes were sometimes associated with 
+drought and ashes (once the observation model corrected that with data, those processes did not make
+huge blobs, just small threads of "burned" land). Also, other clearing-disturbances like roads, 
+urbanization, were also confounded and easily cleaned by this model. But in other regions this model
+is not helping much.
 
 ## Inputs → Outputs
 
@@ -104,6 +116,9 @@ The 8 predictors that do not exist on disk — `doy_sin`, `doy_cos`, `date_span`
 veg grouping (which would drift).
 
 #### Why no predictor may identify the year
+
+[Claude, reduce this section "Why no predictor may identify the year"
+significantly. Mention very briefly, this is fully explained in its note.]
 
 **This is the rule the predictor set is built around, it has cost two predictors, and it is easy to
 reintroduce.** Per-year label prevalence in the fitting set is an artifact of *where people drew*,
@@ -276,7 +291,7 @@ band. And no predictor shows the signature that caught `fire_year`: a large spli
 at the root with an effect that tracks the calendar. Full tables:
 [`notes/06-importance_ale.md`](notes/06-importance_ale.md).
 
-### The population and the labelled sample
+### Choosing the minimum fire size we map
 
 Scoring all **1 689 419** objects (28 fire-years; 36 unscored) answers the question the
 minimum-size decision was supposed to rest on — *is the model measurably less able to classify
@@ -394,6 +409,9 @@ sentinel exists in all three columns.
   22° S down to 517 m² at 55° S**. A size class is therefore a pixel-count *range* (1 ha = 12 px in
   Formosa, 19 px in Santa Cruz), and the same 15-px object changes class between the north and
   Patagonia.
+
+  [Claude, check whether this duplication was resolved or not. Is it in the GEE asset, or only
+  in the store? How should we fix it?]
 
 ## Files, directories and scripts
 

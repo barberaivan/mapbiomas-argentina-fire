@@ -2,7 +2,7 @@
 """Pull the hand-drawn rule-A AOI out of the GEE explorer into `config/rule_a_aoi.geojson`.
 
 Rule A's modification confines it to a hand-drawn polygon over the agricultural
-Pampa (docs/07 §1.1). That polygon is drawn in the Code Editor, where it lives as
+Pampa (docs/07 "Object exclusion ruleset"). That polygon is drawn in the Code Editor, where it lives as
 an `aoiA` geometry IMPORT serialised into the head of
 `collection-01/visualization-misc/explore_rules_kept_vs_gone` in the `fuego`
 repo — which means it is versioned, but only there, and the local side (07b) and

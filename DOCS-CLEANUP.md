@@ -508,6 +508,9 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
 > rule, the two-stage asset handoff — every piece of it cited from `constants.py` or a script.
 
 > ## 🔻 IVÁN, REVIEW FROM THIS ITEM BELOW 🔻
+[Claude, I'm back, You will have to go back here and search for my comments here and 
+in the docs that I mention.]
+
 >
 > Everything from here down was done in **one unattended session on 2026-09-18** (you were at the
 > GIM), so the per-item review the protocol calls for has not happened. Each item was committed
@@ -542,7 +545,11 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
 > found: `grep` for the step's output asset (`objects_raw`) across the whole repo, not just its own
 > directory. **Add that to the per-doc protocol** — grep the step's *outputs*, not only its inputs
 > and its scripts.
->
+
+[Still unsure if this duplication brought problems. Is the asset in GEE still duplicated?
+My memory is that it was solved afterwards, Claude noticed it.]
+
+
 > **(b) The three-way split, and why it is three and not two.** Your message said two, "depending on
 > length". The labels/model line is yours and is the `01-training_data.md` ↔ `02-model_fitting.md`
 > shape one step later. The third file is the **`02-diagnostic_plots.md` precedent you set in Phase
@@ -569,6 +576,11 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
 > **(e) `notes/` conventions held with no friction.** Seven entries, all verbatim, all with pinned
 > provenance headers naming sections this same pass deleted — which `notes/README.md` says is
 > correct and not to be repaired. Nothing needed inventing.
+
+[Claude, it's all fine with this step 06 docs and notes; just review the 
+docs/06 3 files and solve the comments I left for you.]
+
+
 - [x] `validation/docs/design.md` (5,285 → 4,849, and **the premise of this item was wrong** — see
       the box). Three `notes/` entries extracted verbatim into a new
       `validation/docs/notes/`: the dated implementation status, and **both GEE-JS appendices**,
@@ -673,7 +685,66 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
 > and `11-validation.md` as if it were still in `docs/`. A `.md`-link resolver over
 > `collection-01/` now reports clean except one archived link inside a `notes/` file, which stays.
 
-- [ ] `07-vector_to_raster.md` (13.3 k) — **two sessions**. Also re-order §12.7–12.8 vs §13.
+[NOTE FROM IVÁN: Claude on mapbiomas account got out of tokens processing the next item]
+
+- [x] `07-vector_to_raster.md` (13,298 → **11,014**) — **two passes, as the plan asked**
+      (extraction `5653986`, rewrite in the commit below). 4.0 k words verbatim to three `notes/`
+      entries; every heading de-numbered; §12.7 moved back where it belongs and §12.8 dropped into
+      the verification note, which is the re-order the plan asked for; **94 inbound `§N` citations**
+      repointed across 20 files — the most of any pass. **Two currency defects and one self-inflicted
+      bug — see the box. It is still by far the largest doc, and I did not split it.**
+
+> **What the step-07 pass found (2026-09-18).**
+>
+> **(a) I broke a production file in the step-06 commit and pushed it.**
+> `workflow/07-burned_area_polygons.py` did not parse from `54e3e8d` until the commit below: a
+> citation rewrite put a double-quoted section name **inside** a double-quoted Python string
+> (`"… (docs/06 "The three call columns")"`). It is fixed, and there is a lesson worth keeping in
+> the protocol: **naming sections instead of numbering them puts quotes into citations, and
+> citations live inside string literals as often as inside comments.** A `§` never had this
+> problem. Every `.py`, `.R`, `.sh` and `.ipynb` the whole cleanup has touched has now been parsed —
+> all clean — and **that sweep should be the last step of every remaining pass**, not an
+> afterthought here.
+>
+> **(b) The doc's status box said the `_v2` rebuild was in progress; it is not, and one part is
+> paused.** `logs/v2-driver/STATUS.md` (last tick 2026-09-18 20:15) reports 07a, 07b, 07c and 07e
+> complete on v2 and **07d paused — deprioritised 14 Sep because the statistics come first and do
+> not need it**. So the nine published subproducts are not on v2 while the month collection they
+> derive from is. The doc now points at the board as the source of truth instead of restating a
+> state that goes stale in a day. **A status table inside a doc competes with a status file that is
+> written every 15 minutes, and loses.**
+>
+> **(c) `C.PRODUCT_LULC` had moved and the doc still named the old asset.** It says
+> "currently `…collection3_integration_v1_buffer`, set 2026-07-29"; the constant is now the
+> published `mapbiomas_argentina_collection3_pb`. The distinction matters, because the **v1**
+> coverage products on the asset store really were built against the preliminary layer — that is
+> part of what the v2 re-export is *for*. Same family as the step-03 and step-08 findings: a
+> constant moved, the code followed, the doc did not.
+>
+> **(d) `docs/07 §5` meant two different sections depending on who was citing it** —
+> `07-calendar_scars.R` and `watch_07c.py` both used it for the scar build, while §5 of the doc was
+> "The LULC mask… embedded upstream". Third instance of the same rot, after `docs/05 §3` and
+> `docs/10`. Nothing new to decide; recording it because three instances in one repo is the
+> argument, not one.
+>
+> **(e) ⚠️ IT IS STILL 11.0 k WORDS, AND THAT IS THE ONE THING I WOULD NOT SIGN OFF ON.** The
+> extraction found only 4.0 k of history, because almost nothing in this doc is history: it is the
+> exclusion ruleset with three independent implementations, five sub-steps with their own scripts
+> and traps, nine encodings the platform decodes, and a user-facing layer with two storage defects.
+> Three tightening passes after the extraction bought ~300 words. **The remedy is structural, and
+> it is your call because the plan did not ask for a split here** (unlike `08`, and unlike `06`
+> where you asked mid-session). The line I would draw, if you want one:
+>
+> | | holds | ≈ words |
+> |---|---|---|
+> | `07-vector_to_raster.md` | what is mapped and how the pixels are made: the decisions, the exclusion ruleset, the calendar partition, the grid, dieback, 07a, 07b, 07c | 6.2 k |
+> | `07-published_products.md` | what is packaged from them: "Products, and the shape they take", 07d's nine subproducts, 07e's polygon layer | 4.4 k |
+>
+> The doc itself already draws that line — 07d and 07e need no vectors and no local work, and it
+> says of 07e that it "depends only on step 06, not on 07a–07d, so it can be rebuilt at any time
+> and in any order". Say the word and it is a 20-minute job; I did not do it unasked on the doc
+> that specifies the published product.
+
 - [ ] `statistics/docs/statistics.md` (16.8 k, was `docs/09`) — **two sessions. FROZEN, with its
       move, until the launch lands (24 Sep 2026).**
 - [ ] `statistics/docs/factsheet-sep2026-spec.md` (8.8 k, was `docs/10`) — **FROZEN until the
@@ -794,6 +865,14 @@ Append one line per completed item: date — what — commit.
 - 2026-09-18 — **Phase 2, `03-colab_multi_export.md`**: marked a how-to; the stale "current
   blocker" removed and the **two-collection writer access** (1999–2009 → `mapbiomas-chaco`) added,
   which was missing from this doc as well as from `03-bpts.md`.
+- 2026-09-18 — **Phase 2, `07-vector_to_raster.md`**: 13,298 → 11,014 words in two passes;
+  `notes/07-exclusion_rules_choice.md`, `notes/07-verification_log.md` and
+  `notes/07-export_post_mortems.md` extracted verbatim (4.0 k); §12.7 re-ordered back before §13 and
+  §12.8 folded into the verification note; **94 citations** repointed across 20 files; the stale
+  `_v2`-in-progress box replaced by a pointer to `logs/v2-driver/STATUS.md` (07d is **paused**), and
+  `C.PRODUCT_LULC` corrected to the published col-3. **A Python syntax error I introduced in the
+  step-06 commit was found and fixed**; every touched `.py`/`.R`/`.sh`/`.ipynb` now parses.
+  The doc remains 11 k words — the split proposal is in its box, for Iván.
 - 2026-09-18 — **Phase 0 done**: 3 `git mv`s, `docs/notes/` + `docs/external/` created with
   their conventions, ~120 citations rewritten across 30 files, ROADMAP pointed here.
   Uncommitted at time of writing.

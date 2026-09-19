@@ -12,7 +12,7 @@ re-exports.
 Run it as an audit whenever the products are re-exported or `C.PRODUCT_LULC` moves: a silent drift in
 these blocks is how a published asset ends up advertising the wrong land-cover collection.
 
-It was written to fix two real leftovers of the first launch (docs/07 §12.8), both repaired
+It was written to fix two real leftovers of the first launch (docs/notes/07-verification_log.md), both repaired
 2026-07-30:
 
   * the five NON-coverage products carried `lulc_asset` / `lulc_year` although they encode no land
@@ -51,7 +51,7 @@ for sub, band_format in SPECS:
     want = {"source": C.PRODUCT_SOURCE, "region": C.PRODUCT_REGION,
             "band_format": band_format, "years": f"{YEARS[0]}-{YEARS[-1]}",
             "derived_from": C.MONTH_OF_BURN_COL,
-            **C.exclusion_rules()}          # docs/07 §1.1 — every product states its selection
+            **C.exclusion_rules()}          # docs/07 "Object exclusion ruleset" — every product states its selection
     if sub.endswith("_coverage"):
         want["lulc_asset"] = C.PRODUCT_LULC
         want["lulc_year"] = "same calendar year as the burn"

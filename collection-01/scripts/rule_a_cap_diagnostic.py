@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Rule A vs the Delta del Paraná — what an area cap or an AOI would give back.
 
-Replays the docs/07 §1.1 selection on the LOCAL step-05/06 CSVs (no GEE round
+Replays the docs/07 "Object exclusion ruleset" selection on the LOCAL step-05/06 CSVs (no GEE round
 trip: it is the same predicate as `07-calendar_scars.R::accepted_oids`), and
 then asks what changes if rule A is applied only to objects below an area cap
 and/or only outside the wetland ecoregions.
@@ -58,7 +58,7 @@ def load(fy, data_dir):
     d = pr.merge(mt, on="oid")
     d = d[(d.fire == 1) & (d.area_ha >= MIN_FIRE_HA) & d.date_median.notna()].copy()
     lo, hi = C.grass_window_days(fy)
-    # Both rules drop on `>`, so the keep is `<=` (docs/07 §1.1).
+    # Both rules drop on `>`, so the keep is `<=` (docs/07 "Object exclusion ruleset").
     d["ruleA"] = ((d.frac_c15 > C.T_GRASS)
                   & (d.date_median >= lo) & (d.date_median <= hi))
     d["ruleB"] = (d.frac_c1 + d.frac_c2 + d.frac_c3) > C.T_AGRI

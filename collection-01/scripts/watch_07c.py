@@ -9,7 +9,7 @@ does the two things the roadmap asks for between the ingest and the launch:
 
   1. **stamps `exclusion_rule_a` / `exclusion_rule_b` on each ingested FeatureCollection** — a
      property, not a filter: the collection was already filtered when the scars were built
-     (docs/07 §1.1).  An asset that does not state its own selection cannot be told apart from
+     (docs/07 "Object exclusion ruleset").  An asset that does not state its own selection cannot be told apart from
      one built before the rules existed.  The write MERGES: `updateAsset(..., ["properties"])`
      REPLACES the whole dict, which is the trap ROADMAP records for `audit_product_properties.py`.
   2. **runs the `--ingested` gate before launching**, not after — `validate_scar_zips.py` compares
@@ -278,7 +278,7 @@ def stamp(years):
         "region": C.PRODUCT_REGION,
         "collection": 1,
         "unit": "one polygon per 8-connected burned-pixel group within the calendar year",
-        "scar_connectivity": "8-connected, calendar-year (docs/07 §5)",
+        "scar_connectivity": "8-connected, calendar-year (docs/07 '07b — the local scar build')",
         "area_encoding": "area_ha: pixel-count area, not a geodesic polygon area",
         "derived_from": C.MONTH_OF_BURN_COL,
     })

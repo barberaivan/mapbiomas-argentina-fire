@@ -48,11 +48,11 @@ collection-01/
 │   ├── 01-training_data_export.py   # Export training data (one GEE task per fire)
 │   ├── 02-model_fitting.R           # Fit LR per veg_fire class (R, glmnet)
 │   ├── 03–06-*.{py,R}      # Prediction pipeline (bp ts → SNIC → objects → object model)
-│   ├── 07-month_of_burn.py          # Month of burn per CALENDAR year, in GEE (docs/07 §7)
-│   ├── 07-calendar_scars.R          # 8-connected calendar-year scars, locally, two passes (docs/07 §8)
+│   ├── 07-month_of_burn.py          # Month of burn per CALENDAR year, in GEE (docs/07 "07a — the GEE month-of-burn build")
+│   ├── 07-calendar_scars.R          # 8-connected calendar-year scars, locally, two passes (docs/07 "07b — the local scar build")
 │   ├── 07-scar_rasters.py           # Scar id / area / size-range rasters from the ingested scar FCs
-│   ├── 07-subproducts.py            # The 9 derived subproducts, from the month collection (docs/07 §12)
-│   └── 07-burned_area_polygons.py   # All fires, 28 fire-years, one FC for early users (docs/07 §13)
+│   ├── 07-subproducts.py            # The 9 derived subproducts, from the month collection (docs/07 "07d — the nine derived subproducts")
+│   └── 07-burned_area_polygons.py   # All fires, 28 fire-years, one FC for early users (docs/07 "07e — the fire-object polygon layer")
 │                           # step 08 has no script — the spec is met by step 07; docs/08-postprocessing.md
 ├── statistics/             # Step 09 — every factsheet number and figure (statistics/docs/statistics.md)
 │   ├── legends.py                   # burnable class list, status codes, the 13 ecoregion names (literals)
@@ -430,7 +430,7 @@ $PYTHON collection-01/workflow/07-burned_area_polygons.py --launch \
 ⚠️ **Always `--verify` before sharing the path.** Two merged exports reached COMPLETED carrying 1,249
 FY2021 features **twice** — schema right, every object present, area inflated by 71 kha. The cause was
 `objects_raw_2021` being duplicated *in storage*, which **no metadata-level count reveals**: `size()`
-says 53,263, iterating the table says 54,514 (docs/07 §13.6). `--verify` audits rows *and* distinct
+says 53,263, iterating the table says 54,514 (docs/07 "objects_raw_2021 is duplicated in storage"). `--verify` audits rows *and* distinct
 `oid` per fire-year, which is the only check that catches it.
 
 ### Step 09 — the statistics and the factsheet

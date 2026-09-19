@@ -140,7 +140,7 @@ landed and verified on the exported assets** — docs/08 "What Argentina deliver
 1. **Share `burned_area_polygons_v1` with early users** — it is done and verified (2026-07-31).
    1,263,079 rows / 1,263,076 objects / **69.12 Mha per object**, `--verify` clean on all 28
    fire-years, 19 asset properties set, dates ISO `YYYY-MM-DD`, `filterDate()` working. Point users at
-   docs/07 §13.3 (`calendar_year` is the object's *modal* year and will not cross-tabulate exactly
+   docs/07 "Two things users must be told" (`calendar_year` is the object's *modal* year and will not cross-tabulate exactly
    against the rasters) and §13.7 (`oid` identifies an object, not a row — one FY2000 fire is 4 rows,
    so a row-sum of `area_ha` overstates the layer by 5.1 Mha).
    - [ ] **Run the prepared deletion** of the two per-fire-year test assets and their folder:
@@ -180,7 +180,7 @@ What remains, in detail:
   worked, and that one line is all the record it needs. `--roi` survives as the `--check` extent only.
   Two fixes went in with it: the export now **skips an asset that already exists** (a re-`--launch`
   would otherwise grind through the whole country and die on "cannot overwrite"), and task
-  descriptions are namespaced `arg07c_<subproduct>` for the shared-project reason in docs/07 §12.7.
+  descriptions are namespaced `arg07c_<subproduct>` for the shared-project reason in docs/07 "Namespace the task descriptions".
   - [x] **`FINAL_PRODUCTS/scar_year_parts` deleted** (2026-07-29) — an empty IMAGE_COLLECTION left by
     an early `--per-year` dry run (that dry-run-creates-assets bug is itself already fixed). Iván
     authorised this one deletion explicitly as an exception to the "user runs deletions" rule; the
@@ -191,7 +191,7 @@ What remains, in detail:
   histogram from the raster. They should match exactly — both derive from the same object pixel set,
   which was verified exact — so any divergence is a real bug, not tolerance.
   **The whole-country half has failed twice at export time and is on its third submission** — both
-  failures in how the result is WRITTEN, never in the reduce (docs/07 §7):
+  failures in how the result is WRITTEN, never in the reduce (docs/07 "07a — the GEE month-of-burn build"):
   1. `ee.Feature(None, …)` cannot go into a table **asset** — *"Unable to export features with null
      geometry"*. Fixed 2026-07-29 with a placeholder point.
   2. all 27 then FAILED with *"invalid type `Dictionary<Long>`"* — a table asset's properties are
@@ -209,10 +209,10 @@ What remains, in detail:
   `fire == 1 & area_ha >= 1`, stripped to ten properties (`oid`, `fire_year`, `calendar_year`,
   `area_ha`, `date_med/min/max`, `p_mean`, `p_width`, `seed_mean`), merged and flattened —
   **1,263,079 rows for 1,263,076 objects, 69.12 Mha** (a row-sum says 74.23 Mha — one FY2000 object is
-  4 rows, docs/07 §13.7). Dates are ISO `YYYY-MM-DD` and `system:time_start` is stamped from
+  4 rows, docs/07 "oid is unique per OBJECT, not per row"). Dates are ISO `YYYY-MM-DD` and `system:time_start` is stamped from
   `date_med`, so the layer answers `filterDate()` (§13.2.1). Verified: `--verify` clean on all 28
   fire-years, 19 asset properties set, `filterDate` and the ISO string filter returning the same
-  71,754 features for 2020. `workflow/07-burned_area_polygons.py`, docs/07 §13.
+  71,754 features for 2020. `workflow/07-burned_area_polygons.py`, docs/07 "07e — the fire-object polygon layer".
   - **It took three exports**, and the two failures are the lesson (§13.6): both landed COMPLETE with
     1,249 duplicate FY2021 rows because **`objects_raw_2021` is duplicated in storage and no
     metadata-level count reveals it** — `size()`, `aggregate_count('oid')` and `aggregate_array('oid')`
@@ -229,11 +229,11 @@ What remains, in detail:
     until IPAM rules on publishing them. If the ruling is no, the asset moves and the shared link dies.
 - [x] **Sub-step 07d built and launched** (2026-07-29) — `workflow/07-subproducts.py`, 9 export tasks.
   All nine derive from 07a's month collection plus the LULC; encodings copied verbatim from the
-  reference (docs/07 §12), the `accumulate1` filename typo not copied. Verified before launch: band
+  reference (docs/07 "07d — the nine derived subproducts"), the `accumulate1` filename typo not copied. Verified before launch: band
   counts 27/27/27/27/53/53/53/53/27, every coverage code decoding exactly (`mc//100 == month`,
   `mc mod 100 == L`, `fc//100 == freq`, `acc_cov == L`), `freq_2025_2025 == annual_2025` to the pixel,
   and `frequency`/`accumulated`/`accumulated_coverage`/`year_last_fire` agreeing on 241,281 px in the
-  audit box. See docs/07 §12.5-§12.6.
+  audit box. See docs/07 "What was verified".
 - [x] **LULC to 2025 — closed, and moot** (2026-07-29). The four `*_coverage` products now cross
   against **LULC collection 3 v1** (`C.PRODUCT_LULC`, Iván's call), which carries
   `classification_2025` natively — nothing is duplicated forward. `C.PRODUCT_LULC` is a **separate
@@ -242,7 +242,7 @@ What remains, in detail:
   the published products track whatever LULC Argentina publishes. Verified col-3 v1 has a
   byte-identical grid to col-2 v8 (so the lattice proof and decode audit transferred untouched), a
   footprint containing the 2 km buffer, and the same class codes with **max 77 < 100** — which is
-  what makes `M*100 + L` decodable and `mod 100` exact. docs/07 §12.1/§12.4.
+  what makes `M*100 + L` decodable and `mod 100` exact. docs/07 "The four settled answers".
   - If a **col-3 v2** lands, this is a one-line change to `C.PRODUCT_LULC` plus a re-export of the
     four coverage products (they will need deleting first, or `--overwrite` adding to the script).
 - [x] **`LEGACY_DESCRIPTIONS` dropped from `07-subproducts.py`** (2026-07-30), all nine tasks having
@@ -250,9 +250,9 @@ What remains, in detail:
   `arg07d_<subproduct>` (`TASK_PREFIX`) replaced it because `listOperations()` is **project-scoped and
   cross-user** — the shared `mapbiomas-fire` project had 226 tasks from other countries' teams, and a
   bare `annual_burned` colliding with one of theirs would make the in-flight check silently skip one
-  of our products. docs/07 §12.7. `07-scar_rasters.py` was checked at the same time and already
+  of our products. docs/07 "Namespace the task descriptions". `07-scar_rasters.py` was checked at the same time and already
   namespaces its descriptions `arg07c_` — nothing to do there.
-- [x] **The nine subproducts' property blocks repaired in place** (2026-07-30, docs/07 §12.8) —
+- [x] **The nine subproducts' property blocks repaired in place** (2026-07-30, docs/notes/07-verification_log.md) —
   `ee.data.updateAsset`, metadata only, no re-export; bands/dtypes/pyramiding re-read afterwards and
   untouched. The five non-coverage products were advertising a `lulc_asset` they never cross in (and a
   pre-col-3 one, since only the coverage products were re-exported against col-3), and
@@ -287,7 +287,7 @@ What remains, in detail:
 - [ ] **ATBD note: ~76 kha of mapped Nov–Dec 1998 burned area is in no published product.** The
   calendar series starts 1999, so FY1998's Nov–Dec 1998 part (1,058,206 px) has nowhere to go. Both
   edges of the series are therefore asymmetric: 1998 loses its Nov–Dec tail, 2025 loses its dieback
-  padding. Verified: every other fire-year's pixels are accounted for exactly (docs/07 §2).
+  padding. Verified: every other fire-year's pixels are accounted for exactly (docs/07 "The verified calendar-year partition").
 - [ ] Cosmetic: the month images are named
   `mapbiomas_argentina_fire_collection1_fire_mask_v1_<year>`, carrying `v1` mid-name. Only the `year`
   property is read downstream, so this is harmless — but rename before the publish copy if at all.

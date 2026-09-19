@@ -3,7 +3,7 @@
 # collection-01/scripts/rule_a_aoi_tag.R
 #
 # Tag every fire OBJECT with whether it intersects the rule-A AOI — the hand-drawn
-# agricultural-Pampa polygon that confines rule A (docs/07 §1.1).
+# agricultural-Pampa polygon that confines rule A (docs/07 "Object exclusion ruleset").
 #
 # WHY A TAG AND NOT A GEOMETRY TEST INSIDE THE RULE. Rule A is read in three
 # places (07a in GEE, 07b locally, 07e in GEE) and they must agree to the object.

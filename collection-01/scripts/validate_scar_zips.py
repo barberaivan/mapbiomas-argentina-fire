@@ -12,7 +12,7 @@ through the GEE asset manager and is discovered late. This checks every zip the 
   * it opens, and the layer's feature count matches `scars_<Y>_summary.csv` from the build
   * the field set is EXACTLY scar_id / area_ha / n_px / year, with the right types --
     `scar_id` must be an INTEGER (`ee.Image().paint` cannot use a string) and there must be
-    NO size class (that is applied server-side, docs/07 §8)
+    NO size class (that is applied server-side, docs/07 "07b — the local scar build")
   * `scar_id` is unique and gapless 1..n within the year
   * `area_ha` totals match the summary to within rounding, and no scar is 0 ha
   * the CRS is geographic WGS84 -- a projected .prj would silently misalign the painted raster
@@ -261,7 +261,7 @@ def main():
     # The destination is INTERPOLATED, never spelled out: it carries C.PRODUCT_VERSION, and a
     # hardcoded path here is how the v2 scars get hand-ingested into the v1 folder. A folder
     # holding a mix of v1 and v2 scars silently produces a scar raster from the wrong selection
-    # — which is the whole reason these are versioned (docs/07 §1.2).
+    # — which is the whole reason these are versioned (docs/07 "The _v2 re-export").
     print(f"All packages pass. Safe to ingest by hand into "
           f"{C.ANNUAL_BURNED_VECTORS}/scars_<Y>")
 

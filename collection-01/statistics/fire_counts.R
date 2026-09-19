@@ -20,7 +20,7 @@
 #   ecoregions13_simple.gpkg  the 13 polygons simplified for plotting (the map-legend)
 #
 # THE SELECTION IS THE PUBLISHED ONE. `fire == 1 & area_ha >= 1 & not(rule A) &
-# not(rule B)`, mirrored from workflow/07-calendar_scars.R (docs/07 §1.1) — the
+# not(rule B)`, mirrored from workflow/07-calendar_scars.R (docs/07 "Object exclusion ruleset") — the
 # factsheet counts the fires that are IN the published map, no more and no fewer.
 # The thresholds are repeated here rather than imported because R has no access to
 # utils/constants.py; they must be kept in sync with it and with 07-calendar_scars.R.
@@ -64,7 +64,7 @@ FIRE_YEARS <- 1998:2025      # the mapping years
 CAL_YEARS  <- 1999:2025      # the published calendar series (docs/07)
 EPOCH      <- as.Date("1970-01-01")
 
-# ── the published object selection (docs/07 §1.1) ────────────────────────────
+# ── the published object selection (docs/07 "Object exclusion ruleset") ────────────────────────────
 # KEEP IN SYNC with utils/constants.py and workflow/07-calendar_scars.R. There is
 # no automatic sync; a divergence here would report fires the map does not show.
 MIN_FIRE_HA   <- 1

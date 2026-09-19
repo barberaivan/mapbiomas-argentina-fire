@@ -17,22 +17,24 @@ Run in this order; each sub-step needs the one before it.
 |---|---|---|---|
 | **07a** | **Month of burn** per calendar year → `CLASSIFICATION_COLLECTIONS/collection1_fire_mask_v1` (ImageCollection, one 1-band uint8 image per year, 1–12, masked elsewhere). The pivot everything else reads. | `workflow/07-month_of_burn.py` (GEE) | ✅ **done** — 27/27 exported |
 | **07b** | **Calendar-year scars**, 8-connected, labelled locally → `data/scars-upload-cache/scars_<Y>.zip`, then ingested by hand as `FINAL_PRODUCTS/annual_burned_vectors/scars_<Y>` | `workflow/07-calendar_scars.R` + `scripts/run_07_scars.sh` (local, two passes) | ✅ **done** — 27/27 built, gated and ingested, all verified against the local build |
-| **07c** | **Scar rasters** — `annual_burned_id`, `annual_burned_area_ha`, `annual_burned_scar_size_range`, painted from the ingested scars and masked to 07a | `workflow/07-scar_rasters.py` (GEE) | ✅ **done** — 3/3 exported and verified on the landed assets (§9.1) |
-| **07d** | **The nine derived subproducts** — `monthly_burned`, `annual_burned`, both `*_coverage`, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`), `year_last_fire` | `workflow/07-subproducts.py` (GEE) | ✅ **done** — 9/9 landed and verified on the exported assets (§12.8) |
-| **07e** | **The fire-object polygon layer** — every mapped fire, all 28 fire-years, merged into one FC with ten properties, for early users → `FINAL_PRODUCTS/burned_area_polygons_v2` | `workflow/07-burned_area_polygons.py` (GEE) | ✅ **done** — **`_v2`: 1,012,648 rows / 1,012,645 objects / 63.33 Mha** (counted on the asset, 2026-09-15; the local object tables reproduce it to the object — statistics/docs/statistics.md §4). `_v1` (2026-07-31, third submission, 3.27 h) was **1,263,079 rows / 1,263,076 objects / 69.12 Mha** — that is the **pre-rule** layer, and the 250,431-object difference is exactly what exclusion rules A and B remove (§1.1). v1 took three goes: the first two carried 1,249 duplicate FY2021 rows because `objects_raw_2021` is duplicated *in storage* where no metadata count reveals it (§13.6) |
+| **07c** | **Scar rasters** — `annual_burned_id`, `annual_burned_area_ha`, `annual_burned_scar_size_range`, painted from the ingested scars and masked to 07a | `workflow/07-scar_rasters.py` (GEE) | ✅ **done** — 3/3 exported and verified on the landed assets (`notes/07-verification_log.md`) |
+| **07d** | **The nine derived subproducts** — `monthly_burned`, `annual_burned`, both `*_coverage`, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`), `year_last_fire` | `workflow/07-subproducts.py` (GEE) | ✅ **done** — 9/9 landed and verified on the exported assets (`notes/07-verification_log.md`) |
+| **07e** | **The fire-object polygon layer** — every mapped fire, all 28 fire-years, merged into one FC with ten properties, for early users → `FINAL_PRODUCTS/burned_area_polygons_v2` | `workflow/07-burned_area_polygons.py` (GEE) | ✅ **done** — **`_v2`: 1,012,648 rows / 1,012,645 objects / 63.33 Mha** (counted on the asset, 2026-09-15; the local object tables reproduce it to the object — statistics/docs/statistics.md §4). `_v1` (2026-07-31, third submission, 3.27 h) was **1,263,079 rows / 1,263,076 objects / 69.12 Mha** — that is the **pre-rule** layer, and the 250,431-object difference is exactly what exclusion rules A and B remove ("Object exclusion ruleset"). v1 took three goes: the first two carried 1,249 duplicate FY2021 rows because `objects_raw_2021` is duplicated *in storage* where no metadata count reveals it ("`objects_raw_2021` is duplicated in storage") |
 
-> ⚠️ **Every "done" above is the FIRST build (v1), and all of it is being rebuilt as `_v2` in
-> September 2026.** Two things changed underneath: the object selection gains the two exclusion
-> rules of **§1.1**, and the land cover the `*_coverage` products cross against was a preliminary
-> col-3 (`…_integration_v1_buffer`; the published one is `mapbiomas_argentina_collection3_pb`).
-> Asset names and the one constant that drives them: **§1.2**. The order of the re-run is
-> [`ROADMAP.md`](../../ROADMAP.md) — not this table.
+> ⚠️ **The `State` column above describes the build, not the version.** Everything was first built
+> as `_v1` and re-built as `_v2` in September 2026, after two things changed underneath: the object
+> selection gained the two exclusion rules (**"Object exclusion ruleset"**), and the land cover the
+> `*_coverage` products cross against moved from a preliminary col-3 to the published
+> `mapbiomas_argentina_collection3_pb` (**"The `_v2` re-export"**). **The live state of that re-run
+> is `logs/v2-driver/STATUS.md`, not this table** — as of 2026-09-18 it reports 07a, 07b, 07c and
+> 07e complete and **07d paused** (deprioritised 14 Sep: the statistics come first and do not need
+> it). Check the board before assuming a subproduct is on v2.
 
 Commands, in order:
 
 ```bash
-# 07a  (re-runnable, skips existing assets).  The exclusion rules of §1.1 are ON BY DEFAULT and
-# v2 is a NEW collection (§1.2), so no flags and no --overwrite are needed.
+# 07a  (re-runnable, skips existing assets).  The exclusion rules of "Object exclusion ruleset" are ON BY DEFAULT and
+# v2 is a NEW collection ("The `_v2` re-export"), so no flags and no --overwrite are needed.
 $PYTHON collection-01/workflow/07-month_of_burn.py --all --launch
 
 # 07b  (done) — pass 1 must finish before pass 2: a calendar year needs BOTH its fire-years
@@ -50,46 +52,45 @@ $PYTHON collection-01/workflow/07-subproducts.py --check     # band bookkeeping 
 $PYTHON collection-01/workflow/07-subproducts.py --launch     # 9 tasks
 #   one product only:  --only frequency_burned
 
-# 07e  — the polygon layer for early users (§13). Independent of 07b-07d; needs only step 06.
+# 07e  — the polygon layer for early users ("07e — the fire-object polygon layer"). Independent of 07b-07d; needs only step 06.
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --check
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --launch              # the merged FC
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --launch --overwrite  # re-export in place
-$PYTHON collection-01/workflow/07-burned_area_polygons.py --verify              # THE gate (§13.6)
+$PYTHON collection-01/workflow/07-burned_area_polygons.py --verify              # THE gate ("`objects_raw_2021` is duplicated in storage")
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --set-props           # after it lands
 ```
 
 `scripts/run_07_scars.sh` is the launcher for 07b (two modes, resumable, biggest-year first, one
 process per year — same pattern as `run_05_years.sh` / `run_06_predict.sh`).
 
-**The v2 re-run of all of the above is driven unattended** by `scripts/run_07_v2_driver.py`, one
-cron tick every 15 min (`scripts/v2_driver_tick.sh`). It exists because the gates here are hours
-apart — 07d waits for all 27 month assets, 07c for a manual ingest — and the obvious "sleep, then
-launch the next thing" shape dies with the session: a power cut takes the terminal, tmux and any
-sleeping process with it, while cron comes back at boot without a login. So it never sleeps. Each
-tick surveys the world (asset counts in both compute projects, `.done_fy*` markers, zips on disk,
-`pgrep`), runs whatever is unblocked, and exits; everything it invokes is already idempotent, so a
-repeated tick is a no-op and an interrupted one is retried by the next. Status board:
-`logs/v2-driver/STATUS.md`.
+**The whole sequence runs unattended** under `scripts/run_07_v2_driver.py`, one cron tick every
+15 min (`scripts/v2_driver_tick.sh`), writing `logs/v2-driver/STATUS.md`. It exists because the
+gates are hours apart — 07d waits for all 27 month assets, 07c for a manual ingest — and a "sleep,
+then launch the next thing" script dies with the session, while cron comes back at boot without a
+login. **So it never sleeps**: each tick surveys the world (asset counts in both compute projects,
+`.done_fy*` markers, zips on disk, `pgrep`), runs whatever is unblocked, and exits. Everything it
+invokes is idempotent, so a repeated tick is a no-op and an interrupted one is retried by the next.
 
-Two traps it had to be taught, both of which bit on the first run:
+Two traps it had to be taught, both live rules:
 
-* **`listOperations()` is project-scoped** (CLAUDE.md). 07a/07d go out as comahue on
-  `mapbiomas-argentina`, 07e/07c as gmail on `mapbiomas-fire-485203`. A one-project watcher reports
-  the other account's task as missing — indistinguishable from never having submitted it — so the
-  driver polls **both** projects and maps each task prefix to the project it lives in.
+* **`listOperations()` is project-scoped** (CLAUDE.md), and this step submits from two accounts —
+  07a/07d as comahue on `mapbiomas-argentina`, 07e/07c as gmail on `mapbiomas-fire-485203`. The
+  driver polls **both** and maps each task prefix to the project it lives in; a one-project watcher
+  reports the other account's task as missing, which is indistinguishable from never having
+  submitted it.
 * **A resumable launcher reads v1 output as "done".** `run_07_scars.sh` skips a year whose
-  `.done_fy*` marker or `.zip` exists, and those were all still on disk from the v1 build, so the
-  first survey read C1 and C2 as complete with nothing rebuilt. The v1 local build is now archived
-  as `data/objects-scars_v1/` and `data/scars-upload-cache_v1/`, and the pixel-pass markers were
-  cleared. **Anything gated on a file must be gated on a file that v1 cannot have written** — which
-  is the same argument §1.2 makes for versioning the assets rather than overwriting them.
+  `.done_fy*` marker or `.zip` exists, and those were still on disk from v1, so the first survey
+  read the scar stages as complete with nothing rebuilt. **Anything gated on a file must be gated
+  on a file that v1 cannot have written** — the same argument "The `_v2` re-export" makes for
+  versioning assets rather than overwriting them. The v1 local build is archived as
+  `data/objects-scars_v1/` and `data/scars-upload-cache_v1/`.
 
 ---
 
-## 1. The decisions this step rests on
+## The decisions this step rests on
 
 **The fire layer is the object-level classification.** Only objects with **`fire == 1` and
-`area_ha >= 1`**, and which survive the two exclusion rules of §1.1**, contribute a pixel. `fire` is the deployed call — the collected label where there
+`area_ha >= 1`**, and which survive the two exclusion rules of "Object exclusion ruleset"**, contribute a pixel. `fire` is the deployed call — the collected label where there
 is one, else the model (docs/06 "The three call columns"); `fire_tag == -1` means *unlabelled*, never *not fire*. The
 filter is a **positive** selection, not "everything not rejected": 36 objects in the collection are
 entirely `candseed==3` dieback, so they have a null `date_median` and a null `fire`, and
@@ -107,12 +108,12 @@ used by any raster product. Per-pixel is what makes `annual_burned`, `monthly_bu
 straddles 31 December is split into two calendar years**, and therefore into two scars.
 
 **A `candseed==3` dieback pixel takes its parent object's median date**, not its own `abs_date`
-(§4).
+("`candseed == 3`").
 
 **Minimum mapped fire: 1 ha**, applied to the *object* before the calendar split — so a
 calendar-year part of a qualifying object may itself be smaller.
 
-### 1.1 The two exclusion rules — what we deliberately do not map
+### Object exclusion ruleset
 
 The selection is **positive and complete**: an object contributes pixels only if
 
@@ -144,49 +145,41 @@ frac_c15 > T_GRASS   AND   T_DATE_FROM <= date_med <= T_DATE_TO
 `T_GRASS = 0.70`, window **1 Jul → 15 Nov**, `RULE_A_MAX_HA = 150`, AOI =
 `config/rule_a_aoi.geojson`.
 
-##### The two confinements, and why they exist (2026-09-12)
+##### Why rule A is confined, and not a bare composition threshold
 
-**`veg_fire` 15 is not only Pampa pasture.** It is the remap of MapBiomas **11 Herbáceas
-Inundables + 12 Herbáceas + 15 Pasturas** *in the PAMPA region* (`config/veg_fire_remap.csv`), so
-the marshes of the **Delta del Paraná** carry class 15 exactly as a Pampa pasture does — and the
-Delta burns inside 1 Jul → 15 Nov. Measured on FY2020, the unconfined rule deleted **432,966 ha of
-the Delta, 65.7 % of that ecoregion's burned area and 58 % of the rule's whole national drop**,
-including a single **121,058 ha** object with `frac_c15 = 1.000` whose median date is 11 Aug 2020 —
-the Islas del Paraná fires, the most-reported fire event in the country that year. It is not a 2020
-accident: the share of the Delta deleted was 80.1 % in FY2008, 77.6 % in FY2022, 65.9 % in FY2006,
-65.5 % in FY2023. The rule bit hardest exactly in the big Delta fire years, so it distorted the
-interannual series and not merely the level.
+Two confinements were added on 2026-09-12, after an unconfined rule A was found to be deleting real
+fire at scale.
 
-**The size cut.** Rule A's drop was bimodal: median dropped object 9.7 ha, but 39 % of its area sat
-in **11 objects over 5,000 ha**. Harvest, tillage and stubble burning happen on fields; a 121 kha
-scar is not a field. `RULE_A_MAX_HA = 150` costs almost nothing on the intended target.
+**`veg_fire` 15 is not only Pampa pasture.** It is the remap of MapBiomas 11 Herbáceas Inundables +
+12 Herbáceas + 15 Pasturas *in the PAMPA region* (`config/veg_fire_remap.csv`), so the marshes of
+the **Delta del Paraná** carry class 15 exactly as a Pampa pasture does — and the Delta burns inside
+1 Jul → 15 Nov. Unconfined, the rule deleted **two thirds of the Delta's burned area**, including
+the 121 kha Islas del Paraná fire of 2020, and it bit hardest in the big Delta fire years, so it
+distorted the interannual series and not merely the level. **The AOI** — a hand-drawn 25-vertex
+polygon over the agricultural Pampa, `config/rule_a_aoi.geojson` — excludes the Delta and Campos y
+Malezales entirely. **The size cut** (`RULE_A_MAX_HA = 150`) exists because rule A's drop was
+bimodal: harvest, tillage and stubble burning happen on fields, and a 121 kha scar is not a field.
+Measurements: [`notes/07-exclusion_rules_choice.md`](notes/07-exclusion_rules_choice.md).
 
-**The AOI.** A hand-drawn 25-vertex polygon over the agricultural Pampa (Buenos Aires, southern
-Santa Fe and Córdoba, eastern La Pampa), drawn by Iván in the Code Editor as the `aoiA` import of
-`explore_rules_kept_vs_gone` and pulled into `config/rule_a_aoi.geojson` by
-`scripts/rule_a_aoi_extract.py`. It excludes the Delta (1 of FY2020's 4,763 Delta objects falls
-inside it) and Campos y Malezales entirely. **Re-run the extractor whenever the polygon is
-redrawn** — the GeoJSON in the repo is the only copy the production scripts read.
+Three things about the AOI that are load-bearing:
 
-**INTERSECTS, not centroid.** An object that merely touches the AOI is inside it: the rule is a
-statement about a region and a scar straddling the edge is half in the agricultural Pampa. The
-local side uses `terra::is.related(v, aoi, "intersects")` — the predicate, not `terra::intersect()`,
-which would build 78 k clipped geometries a year to throw them away.
+- **Re-run `scripts/rule_a_aoi_extract.py` whenever the polygon is redrawn.** It pulls `aoiA` out of
+  the pushed GEE explorer, and the GeoJSON in the repo is the only copy production reads.
+- **INTERSECTS, not centroid.** An object that merely touches the AOI is inside it — the rule is a
+  statement about a region, and a scar straddling the edge is half in the agricultural Pampa. The
+  local side uses `terra::is.related(v, aoi, "intersects")`, the predicate, not `terra::intersect()`,
+  which would build 78 k clipped geometries a year to throw them away.
+- **The AOI must be PLANAR on the GEE side.** `C.rule_a_aoi_ee()` builds it with `geodesic=False`:
+  the ring has edges spanning several degrees and a geodesic edge bows away from the straight
+  lon/lat line `terra` tests against. Planar, the two implementations agree **to the object**.
 
-**The AOI must be PLANAR on the GEE side.** `C.rule_a_aoi_ee()` builds it with `geodesic=False`.
-The ring has edges spanning several degrees, and a geodesic edge bows away from the straight
-lon/lat line `terra` tests against: measured on FY2020, geodesic moves **6 objects / 65 ha**.
-Planar, the two implementations agree **to the object** — 8,227 dropped / 136,993 ha from GEE and
-from R alike.
-
-`frac_c15` is one single `veg_fire` class — class 15, `grassland_pampa`, checked against
-`config/veg_fire_remap.csv`. It deliberately does **not** use the `frac_gr_tp` predictor, which
-lumps `grassland_ba + grassland_chaco + grassland_pampa`: the rule is about the Pampa alone.
+`frac_c15` is one single `veg_fire` class — 15, `grassland_pampa`. It deliberately does **not** use
+the `frac_gr_tp` predictor, which lumps `grassland_ba + grassland_chaco + grassland_pampa`: the rule
+is about the Pampa alone.
 
 **The date test is what makes this rule.** It is a composition threshold *and* a season: an object
 that is almost entirely Pampa grassland is excluded if it burned inside the window and mapped if it
-burned outside it. Without the season it would delete real Pampa fire; with it, it targets the
-period when what the model sees on Pampa grassland is overwhelmingly agricultural.
+burned outside it. Without the season it would delete real Pampa fire.
 
 #### Rule B — agriculture, anywhere in the country
 
@@ -227,37 +220,21 @@ are recorded in the asset properties, so an unfiltered run can never be mistaken
 | | rule | measured, FY2020, whole country |
 |---|---|---|
 | **A** | Pampa grassland in the window, **confined** | 8,227 obj / 136,993 ha — **3.2 %** of the year's burned area |
-| | *(A unconfined, for comparison)* | *15,092 obj / 746,603 ha — 17.5 %* |
 | **B** | agriculture | 2,389 obj / 162,168 ha — **3.8 %** |
 | | **A or B** | 10,616 obj / 299,162 ha — **7.0 %** |
-| | the accepted set before them (`fire == 1 & area_ha >= 1`) | 62,605 obj / 4,268,189 ha |
 
-Over all 28 fire-years: before the rules **69.12 Mha**; the unconfined ruleset published
-**58.05 Mha (−16.0 %)**; the confined one publishes **63.33 Mha (−8.4 %)**. The **5.27 Mha**
-difference is almost all real fire — the Delta's rule-A loss alone goes from **1.455 Mha to 23 ha**.
-
-Rule A is therefore five times more aggressive than any national `frac_agri` threshold, which is why
-it is a headline decision rather than a QC tweak. Its **window is the single biggest lever in the
-ruleset**: moving the lower bound from 15 Aug to 1 Jul took rule A from 10,156 objects / 443,070 ha
-(10.4 %) to 15,092 / 746,603 ha (17.5 %), while rule B did not move at all.
-
-Over all 28 fire-years, rule B alone (`frac_agri >= 0.4`) drops 54,114 objects / 2.36 Mha — 4.3 % of
-objects, 3.4 % of area, with **no trend across years**, so the national time series and its slope
-are essentially unaffected by the choice of threshold. It is **not** a small-object filter in
-disguise: the objects it drops have median 14.2 ha, p90 87 ha, max 10,704 ha.
+Over all 28 fire-years: before the rules **69.12 Mha**, after them **63.33 Mha (−8.4 %)**. An
+unconfined rule A would have published 58.05 Mha instead, and that **5.27 Mha** difference is almost
+all real fire — the Delta's rule-A loss alone goes from 1.455 Mha to 23 ha. Rule A's **window is the
+single biggest lever in the ruleset**; rule B alone drops 2.36 Mha over 28 years with **no trend
+across years**, so the national series and its slope are essentially unaffected by that threshold,
+and it is not a small-object filter in disguise (median dropped object 14.2 ha, max 10,704 ha).
+Per-year and per-ecoregion figures: [`notes/07-exclusion_rules_choice.md`](notes/07-exclusion_rules_choice.md).
 
 **At these thresholds the two rules cannot both fire**, and that is arithmetic, not luck:
 `frac_c15 > 0.70` leaves under 0.30 for every other class, so `frac_agri` cannot reach 0.40.
-Measured on FY2020, the largest `frac_agri` among `frac_c15 > 0.7` objects is **0.299** and the
-overlap is **empty** — confirmed independently in both implementations (below). They can overlap
-only if the thresholds are moved far apart.
-
-Where rule B bites, measured against the Burkart ecoregions: **Chaco carries 70 %** of the
-burned-on-cropland area (2,056 kha, 7.0 % of its burned area) — and there, post-deforestation
-burning of cleared plots is partly *real*, so dropping it is a scientific choice. **Yungas is the
-worst in proportion** (15.0 % of its burned area on cropland, 14.2 % dropped at 0.4) and never
-showed up in the national numbers because it is small. **Espinal and Monte are clean** (1.3 % and
-0.6 %), so the rule costs almost nothing over most of the burned area of the country.
+Measured on FY2020 the overlap is **empty**. They can overlap only if the thresholds are moved far
+apart.
 
 > **What an object rule cannot fix.** Pixel-weighted, burned area falling on annual cropland is
 > 2.95 Mha (4.3 % of the total). Rule B at 0.4 leaves **1.37 Mha of cropland pixels still in the
@@ -288,13 +265,11 @@ predicate evaluated separately in two languages is exactly the thing that drifts
 **hard-errors** when the tag file is missing or stale rather than silently treating every object as
 outside the AOI, which would disable half of rule A and still look plausible.
 
-**Verified 2026-09-12, all three application points agree to the object** on FY2008, FY2020 and
-FY2022: 47,996 / 51,989 / 44,082 objects kept, the same from `accepted_objects()`, `fire_filter()`
-and `accepted_oids()`.
-
-**Both implementations were cross-checked against the explorer, 2026-09-11 (unconfined rule A) and
-again 2026-09-12 (confined), and agree to the object**: FY2020, rule A 8,227 objects / 136,993 ha,
-rule B 2,389 / 162,168 ha, 51,989 objects kept — the same numbers from GEE and from R.
+**All three application points agree to the object**, verified on FY2008, FY2020 and FY2022
+against each other and against the GEE explorer — the same counts from `accepted_objects()`,
+`fire_filter()` and `accepted_oids()`
+([`notes/07-exclusion_rules_choice.md`](notes/07-exclusion_rules_choice.md)). That agreement is the
+thing to re-check after any change, because the three are separate implementations of one rule.
 
 ⚠️ **07c cannot be brought up to date on its own.** It paints the *ingested* scar FCs and masks them
 to 07a, so re-running it against scars built from an unfiltered object set does not just leave an
@@ -324,22 +299,28 @@ Details that have already cost time:
   built once by `C.exclusion_rules()` so all four products word them identically. An asset that does
   not state its own selection cannot be told apart from one built before the rules existed.
 
-#### Choosing the thresholds
+#### The thresholds are settled, and changing one is a new collection
+
+`T_GRASS`, `GRASS_WINDOW`, `RULE_A_MAX_HA`, `RULE_A_AOI_GEOJSON` and `T_AGRI` live in
+`utils/constants.py` and are the **default**: a run with no flags produces the published selection.
+Confirmed with the team 2026-09-11, rule A's two confinements added 2026-09-12. Changing any of them
+means re-running 07a, 07b, 07c, 07d and 07e and then every statistic, so treat a proposal to change
+them as a new collection, not a tweak.
 
 They were chosen by eye, with Camilo, from the Earth Engine explorers in the `fuego` repo
-(`collection-01/visualization-misc/`): `explore_agri_filter_rules_single_year` draws both rules with
-sliders and colours which rule fired (orange A, red B, violet both, yellow kept), and the click
-readout spells out the comparison that excluded the object including the date and the window.
-`explore_agri_filter_{single,multi}_year` carry the single-threshold view, both regionalisations
-(13 Burkart ecoregions and the 5 MapBiomas regions) and the LULC/`veg_fire` basemaps with legends.
-Clicking filters the source asset **by a point**, which rides the asset's spatial index — 0.6 s for
-one fire-year, 4.0 s for all 28 — so it is zoom-independent.
+(`collection-01/visualization-misc/`). **Pasture is deliberately not in the ruleset** — adding it
+would drop 5.78 Mha instead of 2.36 Mha, and pasture fire is largely genuine management burning —
+and **rule B was left alone**: a compactness condition was explored and rejected, because
+`shape_idx` correlates 0.685 with log₁₀(area) so one global threshold acts mostly as a size filter.
+Both survive as options in the explorer, off by default
+([`notes/07-exclusion_rules_choice.md`](notes/07-exclusion_rules_choice.md)).
 
-Pasture is a separate question and is **not** in the ruleset: `frac_agri + frac_past >= 0.4` would
-drop 5.78 Mha (8.4 %) instead of 2.36 Mha, and pasture fire is largely genuine management burning.
-It is available as an option in the explorer; the prior is agriculture only.
+Every script keeps an override (`--t-grass` / `--t-agri`, or the `T_GRASS` / `T_AGRI` env vars in R)
+for the explorers and `TESTS/` exports, and a `--no-exclusions` / `RULES=0` escape for reproducing
+the pre-rule numbers — and both are recorded in the asset properties, so an unfiltered run can never
+be mistaken for a published one.
 
-### 1.2 The September 2026 re-export is `_v2`
+### The `_v2` re-export
 
 Two things changed under the products after the first launch: the exclusion rules above, and the
 land cover the four `*_coverage` products cross against (`C.PRODUCT_LULC` moves from the
@@ -360,14 +341,14 @@ address an old product deliberately (a v1-vs-v2 comparison).
 
 **Why version rather than overwrite in place.** Agreed with the Brazil team: we write `_v2` on our
 side and **they copy it over the public asset**, so the public id — and therefore the Workspace
-registration, the `band_format` lookup and every download link — does not change (statistics/docs/statistics.md §11).
+registration, the `band_format` lookup and every download link — does not change (statistics/docs/statistics.md "What is still open").
 Versioning on our side then buys three things overwriting would not:
 
 1. the v1 products stay readable while v2 is built, so a number can be traced to the layer it came
    from;
 2. nothing is ever half-replaced — a failed re-export leaves a complete v1, not a mixture;
 3. **the gate on 07d becomes meaningful.** 07d must not start until all 27 month assets exist
-   (§12.7); against an overwritten collection that count is already 27 before anything has run.
+   ("Namespace the task descriptions"); against an overwritten collection that count is already 27 before anything has run.
 
 The scar vectors are versioned for the same reason and one more: they are ingested by hand, and a
 folder holding a mix of v1 and v2 scars would silently produce a scar raster from the wrong
@@ -375,7 +356,7 @@ selection.
 
 ---
 
-## 2. The calendar-year partition, and why it is a union
+## The verified calendar-year partition
 
 ```
 calendar year Y  =  Jan–Apr Y  from fire-year (Y−1)   ⊎   May–Dec Y  from fire-year Y
@@ -407,7 +388,7 @@ fire-year".
 
 ---
 
-## 3. One grid, pinned everywhere
+## One grid, pinned everywhere
 
 All **56** SNIC assets (28 `snic_<fy>` + 28 `snic_metrics_<fy>`) share one identical projection:
 
@@ -436,7 +417,7 @@ Lattice: `NC = 74086`, `NR = 123601` (9.16 B cells, matching docs/05).
 
 ---
 
-## 4. `candseed == 3`: dieback pixels take the parent object's date
+## `candseed == 3`: dieback pixels take the parent object's date
 
 A `candseed==3` pixel is Patagonian slow-dieback padding (docs/04 "Patagonia dieback
 padding"): it was a candidate in the *next* year's image with a mid-date in Jun–Nov of *fy*+1. That date is when the **dieback was
@@ -471,7 +452,7 @@ Two step-05 behaviours are replayed rather than re-derived:
 
 ---
 
-## 5. The LULC mask and the solitary-pixel filter are embedded upstream
+## The LULC mask and the solitary-pixel filter are embedded upstream
 
 The network's stage 3 applies a LULC mask (water 26 at minimum) and deletes 4-connected components
 of ≤ 4 px. **Argentina applies neither at this stage, because both are already in the pipeline —
@@ -490,7 +471,7 @@ properties recording that it was applied upstream rather than skipped.
 
 ---
 
-## 6. Why the object polygons can be trusted as the pixel set
+## Why the object polygons can be trusted as the pixel set
 
 Both sides of this step recover a pixel set from the step-06 polygons, so that had to be exact
 rather than approximately right. docs/notes/08-corrections_and_delivery.md warned that "painting a polygon fills its
@@ -511,7 +492,7 @@ sides, and the residual is logged per year rather than assumed to be zero.
 
 ---
 
-## 7. The GEE month-of-burn build
+## 07a — the GEE month-of-burn build
 
 `07-month_of_burn.py`, per calendar year `Y`, for `fy ∈ {Y−1, Y}`:
 
@@ -542,51 +523,32 @@ Two GEE gotchas are baked into that code, both found the hard way:
   the Chaco audit box, east of the cut, went from 32,546 burned px to **0** — it would have silently
   emptied most of the country while still producing a valid-looking asset.
 
-`--check` audits a **small** ROI: the per-month pixel histogram plus the painted-vs-burned residual.
-It exists precisely for the above: both were caught by re-running it and comparing against recorded
-numbers, not by reading the code. Two audits recorded during the build (and re-verified after the
-single-paint change — identical to the pixel):
+`--check` audits a **small** ROI: the per-month pixel histogram plus the painted-vs-burned
+residual. It exists precisely for the two traps above — both were caught by re-running it against
+recorded numbers, not by reading the code. Two ROIs are used, and they check different things:
+the **San Ramón** patch, calendar 1999 (a single Feb 1999 fire, `docs/04` "The San Ramón
+exception" — and therefore **useless on any other year**, where it correctly reads 0), and a
+**Chaco 0.5° box**, where a calendar year draws from both its fire-years and the two land in
+disjoint month ranges that sum exactly. Recorded results, graph and landed asset alike:
+[`notes/07-verification_log.md`](notes/07-verification_log.md).
 
-| ROI | Result |
-|---|---|
-| San Ramón test ROI, calendar 1999 | 13,082 px, all in months 1–4, entirely from FY1998 (the Feb 1999 fire, docs/04 "The San Ramón exception"); painted = burned = 13,082, residual 0 |
-| Chaco 0.5° box, calendar 2020 | 13,064 px in months 1–4 from FY2019 + 19,482 px in months 5–12 from FY2020 = 32,546; residual 0 in both fire-years |
+The **whole-country** histogram cannot be taken interactively — `reduceRegion(...).getInfo()` over
+the 74085 × 123601 grid times out — so `--stats` submits it as a batch task and `--stats-read`
+prints it beside `scars_<Y>_months.csv`. That pair is the standing local↔GEE check, and **it has
+never completed** ("What is still open"). Two rules came out of getting it to submit at all:
 
-The second is the merge working: the two fire-years land in disjoint month ranges and sum exactly.
-
-**The exported assets were also checked against the computed graph**, which is a different question
-from whether the graph is right — it catches export-time grid or masking surprises. Over the same
-Chaco box: calendar 2003 → 15,491 px from the graph and 15,491 from the asset; calendar 2004 →
-13,708 and 13,708, identical month histograms. Note the San Ramón ROI is **useless for this check on
-any year but 1999** — that patch burned in Feb 1999 and not again, so every other year correctly
-reads 0 there.
-
-The whole-country histogram cannot be taken interactively — `reduceRegion(...).getInfo()` over the
-74085 × 123601 grid returns *Computation timed out*. `--stats` submits it as a batch task instead and
-`--stats-read` prints it beside `scars_<Y>_months.csv`; that pair is the standing local↔GEE check.
-
-⚠️ **That check has failed twice at export time and is now on its third submission.** Both failures
-were in how the *result* is written, never in the reduce, and both were silent until the task died:
-
-| # | Symptom | Cause | Fix |
-|---|---|---|---|
-| 1 | `mobstats_2000`: *"Unable to export features with null geometry"* | `ee.Feature(None, …)` cannot be written to a table **asset** (toDrive/CSV can, but then `--stats-read` cannot read it back) | a placeholder point, 2026-07-29 |
-| 2 | all 27: *"Unable to encode value 'histogram' of feature 0: invalid type `Dictionary<Long>`"* | a table asset's properties are **scalars** — there is no dictionary column, so a `frequencyHistogram` dict cannot be a property | flatten to `m01`…`m12` + `n_px`, 2026-07-30 |
-
-The flattened form also fixes a correctness trap the dictionary had: the counts now come from
-`img.eq(m)` summed with **`sum().unweighted()`**, because `reduceRegion` weights partial pixels at the
-region boundary by default and would leave this check permanently a few pixels off the local build —
-the same artefact §9 records for the scar check. `img.eq(m)` keeps the image's mask, so it counts
-burned pixels only and needs no dense `unmask(0)` pass over 9.16 B cells.
-
-Validated on the Chaco box before resubmitting: `m01…m12` come back as **integer** scalars and
-`n_px = 32,559` for calendar 2020 — exactly the count §9.1 records there. **27 tasks relaunched
-2026-07-30 21:23.** The local half of the comparison (`scars_<Y>_months.csv`) is missing from disk
-and has to be regenerated before `--stats-read` can say `MATCH`.
+- **A table asset's properties are scalars.** There is no dictionary column, so a
+  `frequencyHistogram` dict cannot be a property — flatten it to `m01`…`m12` + `n_px`. And
+  `ee.Feature(None, …)` cannot be written to a table *asset* at all (toDrive can, but then
+  `--stats-read` cannot read it back), so it needs a placeholder geometry.
+- **Count with `sum().unweighted()`, never a bare `reduceRegion`.** The default weights partial
+  pixels at the region boundary, which would leave this check permanently a few pixels off the
+  local build — the same artefact "07c — the scar rasters" records. `img.eq(m)` keeps the image's
+  mask, so it counts burned pixels only and needs no dense `unmask(0)` over 9.16 B cells.
 
 ---
 
-## 8. The local scar build
+## 07b — the local scar build
 
 GEE cannot do the labelling — `connectedPixelCount` caps at 1024 px (≈ 92 ha), far below a real
 scar — which is why the reference chain round-trips through Drive and Colab. We label locally from
@@ -631,39 +593,23 @@ local pass filters them explicitly, and GEE excludes them because they are outsi
 first cell — deterministic and stable across re-runs (docs/08 open #5). `oid` cannot be used:
 `ee.Image().paint` needs a number.
 
-### 8.1 The built result, and the audit that closes
+### The pixel accounting closes exactly
 
-Run 2026-07-29: pass 1 took **41 min** (28 fire-years, 5 workers), pass 2 **96 min** (27 calendar
-years, 2 workers × `OBJ_CORES=6`), no failures in either. Output: **27 packages, 2,734,416 scars,
-69,020,102 ha, ~1.1 GB** of zipped Shapefiles, all 27 passing `validate_scar_zips.py`.
-
-**Every accepted object pixel is accounted for, exactly:**
-
-```
-  accepted object px (28 fire-years)     911,617,919
-  − calendar 1998, not published           1,058,206     (FY1998's Nov–Dec tail, §2)
-  = inside the published series          910,559,713
-  − intra-year reburn, deduped               269,043     (later month kept)
-  = expected calendar px                 910,290,670
-    actual, summed over the 27 years     910,290,670     difference 0
-```
-
-Nothing is silently lost or double-counted anywhere in the fire-year → calendar-year
-transformation. The three sinks are the published years, the one unpublishable edge year, and
-reburn — and they sum to the input. Reproduce it from the per-year `scars_<Y>_summary.csv` files
-plus the `reburn:` lines in `logs/07_scars_<Y>.log`.
-
-Largest calendar year: **2001, 227,146 scars / 5.25 Mha** — FY2000's very large Jan–Apr 2001
-portion (47.2 M px) lands there, which is why it is bigger than either adjacent fire-year total.
+Every accepted object pixel is accounted for across the fire-year → calendar-year transformation,
+with three sinks that sum to the input: the 27 published years, the one unpublishable edge year
+(FY1998's Nov–Dec 1998 tail, 1,058,206 px) and intra-year reburn (269,043 px, later month kept).
+911,617,919 accepted px in, 910,290,670 out, **difference 0**. Nothing is silently lost or
+double-counted. Reproduce it from the per-year `scars_<Y>_summary.csv` files plus the `reburn:`
+lines in `logs/07_scars_<Y>.log`; the v1 run's own numbers are in
+[`notes/07-verification_log.md`](notes/07-verification_log.md).
 
 **No size class is written into the vectors.** It is derived in GEE from `area_ha`
 (`C.SCAR_SIZE_LOWER_HA`), so the ranges are a one-line, one-task change rather than 27 re-uploads.
-That mattered: the reference script's ranges turned out **not** to match the published legend, and the
-classes were switched to the legend's after the vectors were already built (docs/external/mapbiomas-fuego-reference.md "Stage 4, scripts 4–6 — the scar-size chain").
+That mattered: the reference script's ranges turned out **not** to match the published legend, and
+the classes were switched to the legend's after the vectors were already built
+(`docs/external/mapbiomas-fuego-reference.md` "Stage 4, scripts 4–6 — the scar-size chain").
 
----
-
-## 9. The scar rasters, and the mask invariant
+## 07c — the scar rasters, and the mask invariant
 
 `07-scar_rasters.py` paints the ingested `scars_<Y>` FCs into the three subproducts. Two departures
 from the reference `5-export_annual_burned_id_and_size_by_year`:
@@ -672,7 +618,7 @@ from the reference `5-export_annual_burned_id_and_size_by_year`:
   `area_ha = feat.geometry().area()/10000`. For a pixel-edge polygon with interior rings, GEE's
   geodesic polygon area is not the pixel-count area that every other figure we publish derives
   from, and the statistics stage is checked to ~1 % (statistics/docs/statistics.md).
-- **Size classes are applied server-side** from `C.SCAR_SIZE_LOWER_HA`, for the reason in §8. The
+- **Size classes are applied server-side** from `C.SCAR_SIZE_LOWER_HA`, for the reason in "07b — the local scar build". The
   values are the **published legend's**, not the reference script's: `< 10 / 10–250 / 250–500 /
   500–5 000 / 5 000–10 000 / 10 000–50 000 / 50 000–100 000 / ≥ 100 000 ha`, confirmed from the
   Coleção 5 legend-code PDF and the live col-5 platform legend (docs/external/mapbiomas-fuego-reference.md "Stage 4, scripts 4–6 — the scar-size chain"). We write **level 2
@@ -683,31 +629,17 @@ from the reference `5-export_annual_burned_id_and_size_by_year`:
 `.updateMask(month.mask())`, so the requirement holds by construction, and `--check` reports
 `month-only` and `scar-only` pixel counts per year so the residual is a number, not an assumption.
 
-### 9.1 The built result, verified on the LANDED assets
+Verified on the landed assets, not on the graph: `month px == scar px == size px` in every audited
+year, `month-only = scar-only = 0`, and 0 pixels where the stored size class disagrees with
+recomputing it from the painted `area_ha`. Argentina populates all 8 classes — 24 scars ≥ 100 000 ha,
+largest 219 410 ha in calendar 2003 ([`notes/07-verification_log.md`](notes/07-verification_log.md)).
 
-All three exported 2026-07-29. Checked against the exported assets, not the graph — a different
-question, and the one that catches export-time grid or masking surprises:
+**The monolith held** — one task painting 27 FeatureCollections simply worked — so the `--per-year`
++ `--merge` fallback and the `--roi` smoke test were deleted rather than left as a second path to
+maintain. The empty `FINAL_PRODUCTS/scar_year_parts` collection that a dry run once created is left
+for Iván to delete.
 
-| Asset | Bands | dtype | Grid |
-|---|---|---|---|
-| `…_annual_burned_id_v1` | 27, `scar_id_1999 … scar_id_2025` | int | pinned, 74085 × 123601 |
-| `…_annual_burned_area_ha_v1` | 27, `scar_area_ha_1999 …` | float | idem |
-| `…_annual_burned_scar_size_range_v1` | 27, `scar_area_ha_1999 …` | int | idem |
-
-Over the Chaco audit box, calendar 2003 / 2020 / 2025: `month px == scar px == size px`
-(15,492 / 32,559 / 27,508), **`month-only = scar-only = 0`** in every year, and **0** pixels where the
-stored size class disagrees with recomputing it from the painted `area_ha`. The mask invariant holds
-on the published rasters, not just in the expression that built them.
-
-**The monolith held**, so the `--per-year` + `--merge` fallback and the `--roi` smoke test were
-deleted rather than left as a second path to maintain (docs/08 open decisions do not cover this; it
-was a build-time hedge). No GEE limit was ever measured against one task painting 27
-FeatureCollections — it simply worked. The empty `FINAL_PRODUCTS/scar_year_parts` collection that a
-dry run once created is left for Iván to delete.
-
----
-
-## 10. Products, and the shape they take
+## Products, and the shape they take
 
 The subproducts are **single multiband images, one band per calendar year** — not ImageCollections
 of per-year images. Confirmed in the launch guide ("Imagen multibanda con el ID de cada cicatriz")
@@ -738,9 +670,6 @@ not a copy-paste slip: the reference inherits the band names from the area produ
 map lists `annual_burned_scar_size_range: 'scar_area_ha_{year}'`. Renaming them to something more
 sensible would break the platform's band lookup.
 
-The **only** ImageCollection in the whole chain is the stage-3 pivot `collection1_fire_mask_v1`;
-everything downstream of it is a single multiband image per subproduct.
-
 Naming keeps **our** `COLLECTION-1` spelling (docs/08 open #1) while the asset *names* inside follow
 the network exactly; the `mapbiomas-public` copy is renamed at publish time.
 
@@ -749,7 +678,7 @@ deliberate, not a typo: everything else under `FINAL_PRODUCTS` is underscored (`
 itself, `..._annual_burned_v1`, `..._annual_burned_area_ha_v1`), so the hyphenated folder is an
 oddity in the reference tree. Nothing external reads the path — the only consumer is
 `07-scar_rasters.py` via `C.ANNUAL_BURNED_VECTORS`, because we **replaced** reference script
-`5-export_annual_burned_id_and_size_by_year` rather than adapting it (§9: we paint our own
+`5-export_annual_burned_id_and_size_by_year` rather than adapting it ("07c — the scar rasters": we paint our own
 pixel-count `area_ha` instead of letting it recompute `geometry().area()`, and we classify sizes
 server-side). That script would not run against our tree anyway: it expects per-year assets named
 `mbfogo-col1-<year>-v1`, and ours are `scars_<Y>`. If IPAM ever needs to run their version, both the
@@ -757,44 +686,29 @@ folder and the per-year names have to be aligned — not just the folder.
 
 ---
 
-## 11. What is still open
+## What is still open
 
-Nothing in **07a–07d** is outstanding: all 12 images and the 27 scar FCs are landed and verified on
-the exported assets (§9.1, §12.8), and docs/08 "What Argentina delivers" is the delivery checklist. What is left:
+Nothing in **07a–07e** is outstanding: all 12 images, the 27 scar FCs and the polygon layer are
+landed and verified on the exported assets ([`notes/07-verification_log.md`](notes/07-verification_log.md)),
+and `docs/08` "What Argentina delivers" is the delivery checklist. Three things are:
 
-- **The whole-country month-histogram cross-check has never completed** (§7). The GEE half is on its
-  third submission (27 tasks, relaunched 2026-07-30); the **local half is missing from disk** —
-  `data/objects-scars` is a stray 6.3 MB serialized data.table rather than the directory of
-  `scars_<Y>_months.csv`, and `data/scars-upload-cache` is empty — so `07-calendar_scars.R`'s pass 2
-  has to be re-run from `scars-pixels-cache` before `--stats-read` can report `MATCH`. This is the
-  last unrun verification of the month product.
-- ~~**07e is still exporting**~~ — **done**, and re-exported as `_v2` under the final exclusion
-  rules: **1,012,648 rows / 1,012,645 objects** (§13).
-- ~~The 27 scar FCs must be ingested by hand~~ — **done**, 27/27, both gates passing (§8.1). The
-  hand-ingest route stands for any future re-upload: no GCS bucket is reachable, so the zip is the
-  deliverable (docs/06 "Upload to GEE").
-- ~~The stage-4 raster subproducts~~ — **done**, 9/9 landed and re-verified (§12.8). The LULC-to-2025
-  item was never a blocker: duplicating the last year forward is the network's own answer, and col-3
-  v1 made it moot (§12.4).
+- **The whole-country month-histogram cross-check has never completed.** The GEE half is on its
+  third submission; the **local half is missing from disk** — `07-calendar_scars.R`'s pass 2 has to
+  be re-run from `scars-pixels-cache` before `--stats-read` can report `MATCH`. This is the last
+  unrun verification of the month product.
 - **`regiones_fuego_argentina_v1` does not exist** *under that name*. Every reference script uses it
   for the export geometry and the `region` property; step 07 uses `ARG_BUFFER_FC` instead and sets
-  `region = 'argentina'`, which is fine because our products have no region dimension at all (§12.1).
-  ⚠️ **Correction (2026-07-29): a 5-feature region vector DOES exist** —
-  `ANCILLARY_DATA/VECTOR/ARG/regiones_arg_col1_simplificada_num`, carrying `Region` and an integer
-  `Zona` 1-5. Earlier notes here and in docs/08 said only the raster existed; that was wrong. It is
-  **`simplificada`** (simplified geometry) and its `Zona` numbering is **not** verified against
-  `REGION_RASTER.region_id`, so it is a candidate for the statistics stage's territorial layer, not a
-  drop-in for it (statistics/docs/statistics.md checks to ~1 %).
-- ~~Scar-size ranges~~ — **settled**: the published legend's, confirmed from two independent sources
-  (docs/external/mapbiomas-fuego-reference.md "Stage 4, scripts 4–6 — the scar-size chain"). No IPAM ruling needed. Do not copy `6-export_scar_size_range_by_year`.
+  `region = 'argentina'`, which is fine because our products have no region dimension at all. A
+  5-feature region vector **does** exist — `ANCILLARY_DATA/VECTOR/ARG/regiones_arg_col1_simplificada_num`,
+  carrying `Region` and an integer `Zona` 1–5 — but it is `simplificada` and its `Zona` numbering is
+  **not** verified against `REGION_RASTER.region_id`, so it is a candidate for the statistics
+  stage's territorial layer, not a drop-in for it.
 - **Asset-name cosmetics**: the month images are
-  `mapbiomas_argentina_fire_collection1_fire_mask_v1_<year>`, which carries `v1` mid-name. Only the
-  `year` property is read downstream, so this is cosmetic — but if it is to be renamed, do it
-  before the publish copy.
+  `mapbiomas_argentina_fire_collection1_fire_mask_v<N>_<year>`, which carries the version mid-name.
+  Only the `year` property is read downstream, so this is cosmetic — but if it is to be renamed, do
+  it before the publish copy.
 
----
-
-## 12. Sub-step 07d — the nine derived subproducts
+## 07d — the nine derived subproducts
 
 Everything here derives from **07a's month-of-burn collection** plus the **MapBiomas LULC**. No new
 vectors, no local work, no re-labelling. Script: `workflow/07-subproducts.py`, **9 export tasks
@@ -804,7 +718,7 @@ Reference: `Reference/2-Collection_Fire_Subproducts/1_burned_area_products_month
 (products 1–4), `2_burned_area_frequency_accumulated_coverage` (5–8), `3_year_last_fire` (9).
 **Do not innovate here** — copy the encodings exactly; they are what the platform decodes.
 
-### 12.1 The four settled answers
+### The four settled answers
 
 **1. Which LULC layer?** `C.PRODUCT_LULC` — the **published MapBiomas Argentina land-cover
 integration**, bands `classification_<year>`. **NOT `veg_fire`.** `veg_fire` is our internal
@@ -822,23 +736,26 @@ must stay frozen there. The coverage products answer a different question — "w
 cover burned in year Y" — so they track whatever LULC Argentina publishes. **The two pointing at
 different collections is not an inconsistency to fix.**
 
-Currently `PRODUCT_LULC` = **LULC collection 3, v1** (`mapbiomas_argentina_collection3_integration_v1_buffer`),
-set 2026-07-29. Verified against col-2 v8, which 07d was first launched with:
+`PRODUCT_LULC` is **LULC collection 3, published** —
+`…/COLLECTION-3/INTEGRATION/mapbiomas_argentina_collection3_pb`. It has moved twice: col-2 v8 → the
+preliminary col-3 (`…_integration_v1_buffer`, 2026-07-29, which is what the **v1** coverage
+products on the asset store were built against) → the published col-3, which the `_v2` re-export
+crosses.
 
-| | col-2 v8 | col-3 v1 |
-|---|---|---|
-| Bands | 40, 1985–2024 (2025 duplicated forward) | **41, 1985–2025 — 2025 is native** |
-| Grid | origin −76.26696762174738 / −14.999260130472063, 89361 × 155938 | **byte-identical** |
-| Offset from the SNIC lattice | 9953 col / −25102 rows (integer) | **identical** |
-| Footprint ⊇ 2 km buffer | yes | yes |
-| Class codes present | 3,4,6,9,11,12,15,19,21,24,25,27,33,34,36,63,66,73,77 | **identical**, max **77** |
+Each move cost nothing, because **all three share one byte-identical grid**, offset from the SNIC
+lattice by exactly **9953 columns / −25102 rows — integers**. So combining LULC with the month
+raster involves no resampling and no half-pixel shift, which for a *categorical* band is the
+difference between a class code and its neighbour's. Their footprints all contain the 2 km buffer,
+so no burned pixel can fall outside the LULC and silently drop out of a coverage product (`add`
+propagates the mask).
 
-The grids being byte-identical is why the switch cost nothing: the §12.4 alignment proof and the
-§12.5 decode audit both transferred rather than needing to be redone (re-run against col-3: all 27
-years `lulc_missing = 0`, every residual 0). **Max class 77 < 100 matters** — it is what makes
-`M*100 + L` and `freq*100 + L` decodable and `mod 100` exact; measured peak encoded values in the
-audit box are 1277 (uint16) and 812 (int16). If a col-3 v2 supersedes v1, change that one line and
-re-export the four coverage products.
+**Max class code 77 < 100 is what makes the encodings work** — it is why `M*100 + L` and
+`freq*100 + L` are decodable and `mod 100` exact. Re-check it whenever `PRODUCT_LULC` moves, along
+with the lattice offset and the footprint; the measured audits are in
+[`notes/07-verification_log.md`](notes/07-verification_log.md). The available band list is read
+from the **asset**, never hardcoded, so extending or repointing the source self-corrects — which is
+why duplicating a missing last year forward (the network's own answer) was never a blocker, and is
+moot now that col-3 carries `classification_2025` natively.
 
 **2. Same year or previous year?** **The same calendar year.** The reference selects
 `lulc.select('classification_' + year)` for the burning year itself. Note this differs from
@@ -859,9 +776,9 @@ no region dimension at all: 07a wrote one whole-country image per calendar year.
 to reconcile. (Not to be confused with the **statistics** exports, statistics/docs/statistics.md, which *are* cut by
 territory — that is a different stage and a different layer.)
 
-**4. Shape.** One asset per subproduct, one **band** per year — never one asset per year (§10).
+**4. Shape.** One asset per subproduct, one **band** per year — never one asset per year ("Products, and the shape they take").
 
-### 12.2 The nine products
+### The nine products
 
 `M` = the month-of-burn band (1–12, masked elsewhere); `L` = `classification_<year>`.
 
@@ -877,7 +794,7 @@ territory — that is a different stage and a different layer.)
 | `accumulated_burned_coverage` | `fire_accumulated_<y1>_<y2>` | `freq_coverage mod 100` (recovers `L`) | uint8 | mode |
 | `year_last_fire` | `classification_<year+1>` | calendar year of the most recent fire up to that band | uint16 | mode |
 
-Export with `crs=C.SNIC_CRS` + `crsTransform=C.SNIC_TRANSFORM` (never `scale=30`, §3),
+Export with `crs=C.SNIC_CRS` + `crsTransform=C.SNIC_TRANSFORM` (never `scale=30`, "One grid, pinned everywhere"),
 `region = ARG_BUFFER_FC`, `maxPixels=1e13`, `pyramidingPolicy` `mode` throughout.
 
 Band counts as built: **27** for the four annual/monthly products and for `year_last_fire`, **53**
@@ -891,7 +808,7 @@ drops the backward copy with `freqPost.slice(0,-1)`). 27 + 27 − 1 = **53**. Ne
 the window's **moving end** — `y` in both passes, i.e. the window's end going forward and its start
 going backward.
 
-### 12.3 Four traps in the reference code
+### Four traps in the reference code
 
 1. **`year_last_fire` bands are `classification_<year+1>`** — an off-by-one the platform expects.
    Preserve it; it looks like a bug and is not.
@@ -905,338 +822,50 @@ going backward.
 4. **The `*_coverage` products are the easiest to forget** and are exactly what the statistics stage
    reads (statistics/docs/statistics.md §2). Four of the nine are coverage products.
 
-### 12.4 The LULC year — never a blocker, and now moot
+### The LULC is the only place land cover enters our chain
 
-It was listed as blocking all four `*_coverage` products that `C.MAPBIOMAS_LULC` ends at
-`classification_2024` while the series runs to 2025. **It never blocked anything**: duplicating the
-last year forward *is* the network's answer (`.slice(-1).rename(['classification_2025'])`, in every
-reference country), and the script does it and prints the substitution. The available band list is
-read from the **asset**, never from `C.MB_LIMIT_YEAR`, so this self-corrects whenever the source is
-extended or repointed — no code change was needed to move to col-3.
+The stage-3 LULC *mask* does not apply to us (`docs/08` "Foundations"), so the four `*_coverage`
+products are the **only** point at which land cover touches the published rasters. Everything that
+makes that safe — the shared lattice, the integer offset, the footprint, the `< 100` class codes —
+is above, under "The four settled answers".
 
-With `C.PRODUCT_LULC` on LULC col-3 v1 the question is moot anyway: it carries
-`classification_2025` natively, so **nothing is duplicated forward** and the last year of the fire
-series is crossed with its own land cover.
+### What was verified
 
-This is the **only** remaining place LULC enters our pipeline — the stage-3 LULC *mask* does not
-apply to us (docs/08 "Foundations").
+`--check` prints the band bookkeeping for all nine products plus per-year ROI counts, and a
+value-level decode of **every encoding** was run on a Chaco 0.5° box before submitting and again
+against the landed assets. Both passes agree to the pixel: every decode residual 0, single-year
+window = annual, and the five window-scoped products sharing one mask exactly
+([`notes/07-verification_log.md`](notes/07-verification_log.md)).
 
-**The LULC sits on our lattice.** Verified 2026-07-29 for col-2 v8 and col-3 v1 alike: the LULC has
-the same 30 m pixel size as the SNIC grid, and its origin is offset by exactly **9953 columns /
-−25102 rows — integers**.
-So combining it with the month raster on `C.SNIC_TRANSFORM` involves no resampling and no half-pixel
-shift, which for a *categorical* band is the difference between a class code and its neighbour's.
-Its footprint also `contains` the 2 km buffer, so no burned pixel can fall outside the LULC and
-silently drop out of a coverage product (`add` propagates the mask). Measured over the Chaco audit
-box, all 27 years: `lulc_missing = 0`, and `month == annual == coverage` to the pixel.
+> **ROI histograms taken with `frequencyHistogram` come out a few pixels below the
+> `sum().unweighted()` counts.** That is `reduceRegion`'s **edge weighting** of partial pixels at
+> the box boundary, not a disagreement between products — the same artefact the scar check records.
+> Use `sum().unweighted()` whenever a count has to match a local build.
 
-### 12.5 What was verified before launch
+`scripts/audit_product_properties.py` is the standing property-drift check (dry run by default,
+`--apply` to write). Run it after any re-export and after any move of `C.PRODUCT_LULC`: a silent
+drift there is how a published asset ends up advertising the wrong land-cover collection.
 
-`--check` prints the band bookkeeping for all nine products plus per-year ROI counts; that plus a
-value-level decode of every encoding was run on the Chaco 0.5° box before submitting:
-
-| Check | Result |
-|---|---|
-| Band names / counts | 27 / 27 / 27 / 27 / 53 / 53 / 53 / 53 / 27, `year_last_fire` = `classification_2000 … classification_2026` |
-| `monthly_burned_coverage` decode | `max │mc//100 − month│ = 0`, `max │mc mod 100 − L│ = 0` |
-| `annual_burned_coverage` decode | `max │ac − L│ = 0` |
-| `frequency_burned_coverage` decode | `max │fc//100 − freq│ = 0` |
-| `accumulated_burned_coverage` decode | `max │acc_cov − L(2025)│ = 0` (window `1999_2025`, moving end 2025) |
-| Single-year window vs annual | `freq_2025_2025` = `annual_2025` = **27,508 px**, exactly |
-| Cross-product mask agreement | `freq_1999_2025` = `accum` = `accum_cov` = `year_last_fire` = **241,281 px**, exactly |
-| `year_last_fire` values | `classification_2000` is 1999 only; `classification_2026` spans 1999–2025 with the expected per-year counts |
-
-Note the ROI histograms taken with `frequencyHistogram` come out a few pixels below the
-`sum().unweighted()` counts (241,195 vs 241,281) — that is `reduceRegion`'s **edge weighting** of
-partial pixels at the box boundary, the same artefact §9 records for the scar check, not a
-disagreement between products.
-
-### 12.6 Three departures from the reference, all plumbing
+### Three departures from the reference, all plumbing
 
 The encodings are copied verbatim; what differs is how the graph is fed.
 
-1. **The grid is pinned** (`crs` + `crsTransform`), never `scale=30` — §3, the same rule as 07a/07c.
+1. **The grid is pinned** (`crs` + `crsTransform`), never `scale=30` — "One grid, pinned everywhere", the same rule as 07a/07c.
 2. **`region = ARG_BUFFER_FC`** instead of `regions.union().geometry()`, because
-   `regiones_fuego_argentina_v1` does not exist as a FeatureCollection (§11).
+   `regiones_fuego_argentina_v1` does not exist as a FeatureCollection ("What is still open").
 3. **All nine products read the 07a month collection**, whereas the reference exports `annual_burned`
    first and has scripts 2 and 3 read *that asset*. `annual_burned` is *defined* as `month > 0`, so a
    frequency built from the month images is bit-identical to one built from the exported annual
    product — and deriving everything from the single pivot makes the nine consistent **by
    construction** rather than by sequencing. The operational win is that the nine tasks are
    independent: nothing waits for a 27-band export to land, and any one product can be re-run alone
-   (`--only`). Confirmed by the two exact cross-product agreements in §12.5.
+   (`--only`). Confirmed by the two exact cross-product agreements in "What was verified".
 
-The reference's `accumulated_burned` filename typo is not copied (§12.3.2).
+The reference's `accumulated_burned` filename typo is not copied ("Four traps in the reference code").
 
 ---
 
-## 13. Sub-step 07e — the fire-object polygon layer, for early users
-
-```
-FINAL_PRODUCTS/burned_area_polygons_v2
-```
-
-Every mapped fire, all 28 fire-years, in **one** FeatureCollection. Script:
-`workflow/07-burned_area_polygons.py`. Nothing is computed and no geometry is touched — it is the
-step-06 object set under the full positive selection 07a paints (`fire == 1 & area_ha >= 1 &
-not(A) & not(B)`, §1.1), stripped to ten properties, merged and flattened.
-
-**`_v2`: 1,012,648 rows for 1,012,645 objects, 63.33 Mha** (counted on the asset 2026-09-15).
-
-⚠️ **The `_v1` figures quoted throughout §13 — 1,263,079 rows / 1,263,076 objects / 69.12 Mha —
-are the PRE-RULE layer**, exported 31 July, before exclusion rules A and B were finalised
-(2026-09-11/12). The 250,431-object gap between the two is the rules: −196,804 to rule A and
-−53,627 to rule B, measured per fire-year by `statistics/fire_counts.R`, whose local object tables
-reproduce the v2 count **to the object** (statistics/docs/statistics.md §4). Do not quote a v1 number as the size of the
-published layer. (A naive row-sum of `area_ha` overstates the area in either version — §13.7.)
-
-It depends only on step 06, not on 07a–07d, so it can be rebuilt at any time and in any order.
-
-### 13.1 The name, and the folder
-
-**A plain `burned_area_polygons_v1`, NOT `C.product_name()`.** Every raster subproduct is
-`mapbiomas_argentina_fire_collection1_<subproduct>_v1` because the platform's `band_format` lookup
-and the publish copy require that exact form. This layer is not one of those: it is ours, it is for
-people, and it is a name a user has to read out and type (Iván, 2026-07-30 — the first launch used
-the long form and was cancelled and re-run for this).
-
-**`polygons`, not `vectors`.** `FINAL_PRODUCTS/annual_burned_vectors/` is already taken by the
-**calendar-year scars** (07b/07c) — plain 8-connectivity, calendar-clipped, one scar per connected
-burn, a genuinely different layer from these fire-year objects. Reusing the network's word would put
-two unrelated layers one line apart under near-identical names. "polygons" also tells a user what
-they are getting, where a "vector" could be points or lines.
-
-⚠️ **Being in `FINAL_PRODUCTS` overrides docs/08 open #8**, which parked the fire-year vector
-database *outside* that folder until IPAM rules whether Argentina may publish it. Iván's call
-(2026-07-30): early users get a link that survives a yes, and Brazil's own col-5
-`annual_burned_vectors` is the precedent that the door is open. `ToPublish/2-toAsset-Public` copies
-an **explicit** subproduct list rather than the folder, so it cannot be swept into a published
-collection by accident — but if the ruling is no, the asset moves and the shared link dies.
-
-### 13.2 The ten properties
-
-| property | source | meaning |
-|---|---|---|
-| `oid` | `oid` | stable object id `<fy>_<n>` — the key that joins user feedback back to the object database and its 20 metrics |
-| `fire_year` | **the asset name** | the non-calendar mapping year, 1 May *fy* → 30 Apr *fy*+1 |
-| `calendar_year` | `year_cal` | the **mode** of the object's per-pixel calendar years |
-| `area_ha` | `area_ha` | pixel-count area — *not* a geodesic polygon area |
-| `date_med` / `date_min` / `date_max` | idem | burn dates, ISO 8601 `YYYY-MM-DD` (§13.2.1) |
-| `p_mean` | `p_mean` | posterior mean fire probability (probit BART, docs/06) |
-| `p_width` | `p_width` | width of its credible interval, `p_q95 − p_q05` |
-| `seed_mean` | `seed_mean` | mean SNIC seed burn probability over the object |
-
-`fire_year` is **not** a property of the source FCs — it exists only in the asset name, so the
-script sets it per source collection. `year_cal` → `calendar_year` is the one rename; everything
-else keeps the object database's vocabulary. The classification **threshold is deliberately not
-included** (Iván, 2026-07-30) — it is a per-size-band constant from
-`config/object_model_thresholds.csv`, not a property of a fire, and `p_mean` is what a user actually
-wants to filter on.
-
-#### 13.2.1 Dates readable, and the layer `filterDate`-able
-
-The object database stores the three dates as **whole days since 1970-01-01** — an integer `19018`
-that nobody can read in the Inspector or a QGIS attribute table. In this layer they are
-**`YYYY-MM-DD` strings** instead (Iván, 2026-07-30). Nothing is lost: the integers stay in the object
-database, `oid` joins back to them, and ISO-8601 still range-filters correctly because it sorts
-lexicographically — `ee.Filter.gte('date_med', '2021-01-01')` does what it looks like.
-
-Each feature also carries **`system:time_start`, stamped from `date_med`**, so the collection answers
-`filterDate()`. Two decisions inside that:
-
-- **`date_med`, not `date_min`** — one fire, one instant, matching what `calendar_year` already does
-  (the modal year, §13.3).
-- **`system:time_end` deliberately NOT set.** With both timestamps the date filter passes on interval
-  *intersection*, so a fire burning 28 Dec → 4 Jan would come back from a December query *and* a
-  January one, and summing `area_ha` per month would double-count it. One timestamp keeps one fire in
-  one bucket, so `filterDate` results stay summable. The true span is still right there and readable:
-  `date_min`…`date_max`.
-
-Implementation trap: **`Feature.select()` drops `system:time_*`** along with every other unlisted
-property, so the timestamp is set *after* the select. Set it before and it vanishes — and a
-`filterDate` that silently matches nothing is indistinguishable from a window with no fires in it.
-
-### 13.3 Two things users must be told — written into the asset properties
-
-1. **`calendar_year` is the object's majority year, and the rasters do not agree with it.** It is
-   `mode_int(cyear)` over the object's pixels (`05-objects_metrics.R:239`), while every published
-   raster assigns year and month **per pixel** (§1). A fire straddling 31 December is split across
-   two years in the rasters and lands whole in one year here. Neither is wrong — but a user who
-   cross-tabulates the two without knowing this finds "missing" area.
-2. **Fire-year 1998 is here and in no published raster.** 3,845 polygons, `calendar_year` 1998 or
-   1999; the calendar series starts at 1999, so FY1998's Nov–Dec 1998 tail (~76 kha) exists in this
-   layer only (§2).
-
-And a third for us, **corrected 2026-07-31**: the layer's area is **69.12 Mha per object**, not the
-74.23 Mha quoted everywhere before. The old figure summed `area_ha` over **rows**, and one FY2000
-object is stored as 4 rows each carrying the whole object's area (§13.7) — so it counted
-`2000_57529` four times and overstated the total by **5,118,513 ha**. FY2000 alone drops from
-12,835,474 to 7,716,961 ha.
-
-That also reframes the comparison against the scars: **69.12 Mha here vs 69.02 Mha there** (§8.1) — a
-0.14 % difference, where the old numbers looked 5.2 Mha apart. The remaining differences are still
-real and still should not be forced to zero (fire-year vs calendar partition, calendar 1998 included
-here and dropped there, intra-year reburn deduplicated there but not here, different minimum unit) —
-but they are evidently small and partly offsetting, not the 7 % chasm the arithmetic error implied.
-
-### 13.4 Was one merged export feasible? — measured, then tried
-
-The honest answer beforehand was *probably, but this is the one export in step 07 not to bet on*:
-
-- the 28 source shapefiles hold **5.12 GB** of raw `.shp` geometry for 1.689 M objects (~190
-  vertices/polygon), so the fire-only subset is **~4–4.5 GB**. GEE already stores exactly that in the
-  28 source assets, so reading is not the question — one `Export.table.toAsset` shuffling 1.26 M
-  complex multipolygons is (that was v1's size; v2 is 1.01 M), and its failure mode (`User memory
-  limit exceeded`) arrives *after* hours;
-- precedent is against it: Brazil ships `mbfogo_col5_<year>_v1` **per year**, our scars are 27
-  per-year assets, `objects_raw` is 28. Nobody in the network ships one merged all-years vector;
-- building it locally and ingesting is worse — >2 GB breaks the Shapefile limit and no GCS bucket is
-  reachable (docs/06 "Upload to GEE").
-
-So: **`--year 2012` first** (22,224 polygons — landed in **3 m 09 s**, schema and count exact on the
-asset), then the merged task, with `--per-year` as a fallback that wastes nothing because the 2012
-asset is already the first of its 28. If the fallback is ever needed, `--check` prints the one-liner
-that loads the folder as a single FC.
-
-The FY2012 timing is also the only scaling evidence there is: 57× the features, so a several-hour
-task if it scales gracefully at all.
-
-⚠️ **Do NOT read `batchEecuUsageSeconds` as progress on this task.** It sits at ~0.13 EECU-seconds
-for hours and looks exactly like a task doing nothing. It isn't: **EECU bills compute, and a table
-export of already-stored features is I/O-bound**. The evidence, all from this project:
-
-| Task | Result | EECU-s |
-|---|---|---|
-| `arg07e_burned_area_polygons_2012` (22,224 features) | ✅ landed, schema + count exact | **0.0087** |
-| `polygons_data_*`, `manual_edits_2015_ivan` (stored-FC exports) | ✅ | 0.002–0.005 |
-| `BA_final_area_ha_por_clase_*` (exports that *compute*) | ✅ | 11,835–32,339 |
-| the 27 `mobstats_*` histograms (whole-country `reduceRegion`) | ✅/running | 576–7,251 and climbing |
-
-FY2012 settles it: an identical graph that produced a *verified* asset spent its entire successful
-3-minute run accruing 0.0087 EECU-seconds. And the counter is genuinely live — Google's
-[near-real-time reporting announcement](https://medium.com/google-earth/making-progress-reporting-earth-engine-compute-usage-in-near-real-time-2cdfc6fcc1db)
-made `batchEecuUsageSeconds` update continuously for RUNNING tasks, which the histogram column above
-demonstrates in the same minutes — so a static ~0 is a real measurement of near-zero *compute*, not a
-reporting lag.
-
-What that leaves as the only usable signals for a big table export: **`state`, and `updateTime`
-advancing**. There are no `stages`/work-units for `EXPORT_FEATURES` either. The failure mode to watch
-for is a state change to FAILED with `User memory limit exceeded` — it does not present as a stall.
-
-### 13.5 Which ACCOUNT submits it, and why that matters
-
-**The GEE task queue is per user.** Submitted by the primary account it would have waited behind the
-27 histogram tasks (§7) before starting at all, so the merged export runs as the **second account**
-(`ivanbarbera@comahue-conicet.gob.ar`) on the **`mapbiomas-argentina`** compute project, whose queue
-was empty. Only the *compute* project changes — the destination asset is
-`projects/mapbiomas-argentina/assets/…/FINAL_PRODUCTS/burned_area_polygons_v1` either way, so the
-link shared with early users does not depend on who submitted it.
-
-```bash
-$PYTHON collection-01/workflow/07-burned_area_polygons.py --launch \
-    --project mapbiomas-argentina \
-    --credentials ~/.config/earthengine/credentials.comahue
-```
-
-**`--credentials` instead of swapping the resident file.** `ee.oauth.get_credentials_path()`
-hardcodes `~/.config/earthengine/credentials` with no env override, so CLAUDE.md's rule is to `cp`
-the account you want into place. Passing the file explicitly is strictly better: nothing is
-clobbered, both accounts are usable in one session, and a half-finished swap cannot leave the wrong
-token resident. `initialize()` builds a `google.oauth2.credentials.Credentials` from the file and
-hands it to `ee.Initialize`.
-
-Two consequences worth knowing:
-
-- **The per-account backups had to be recreated** on this machine — only the resident `credentials`
-  existed, so `credentials.gmail` was saved first, then
-  `earthengine authenticate --force` (note the **space**; `authenticate--force` is a parse error)
-  produced the comahue token, which was copied to `credentials.comahue` before the gmail file was
-  restored as resident.
-- **Monitoring has to ask twice.** `ee.data.listOperations()` is project-scoped *and* cross-user, so
-  the resident account can see the comahue task — but only when initialized against
-  `mapbiomas-argentina`. A watcher that polls only `C.GEE_PROJECT` reports the 07e task as
-  `MISSING`, which looks exactly like a task that was never submitted. The same asymmetry applies to
-  the **re-export**: `--overwrite` on an asset the comahue account created is submitted by that
-  account too, so the whole cycle stays on `mapbiomas-argentina`.
-- **Write permission could not be pre-flighted.** `getAssetAcl` on `FINAL_PRODUCTS` returns empty
-  `writers`/`owners` because access comes from the cloud project's IAM, not a per-asset ACL. Reads
-  were verified; a missing write permission surfaces as an immediate task failure
-  (*"Insufficient permissions to create asset"*, the same error the step-03 backlog entry records),
-  not hours in — so launching was the cheaper test.
-
-### 13.6 ⚠️ `objects_raw_2021` is duplicated in storage, and no count reveals it
-
-The first merged export **succeeded** and was still wrong: **1,264,328 rows** where 1,263,079 were
-expected, the surplus being **1,249 FY2021 features present twice**, byte-identical in geometry (three
-sampled pairs hash equal) and in all ten properties. FY2021's area came out **71,478 ha** high
-(3,595,965 vs 3,524,487).
-
-The re-export reproduced **the same 1,249 `oid`s**. That killed the first diagnosis — a random
-shard-retry in the writer — because the same accident does not happen twice on a different graph. It
-is deterministic, and it is in the stored source. Where it hides, measured on `objects_raw_2021`:
-
-| stage | `.size()` | MATERIALISED (`aggregate_count`, `aggregate_array`) |
-|---|---|---|
-| raw | 66,393 | 66,393 |
-| `+ .filter(fire_filter())` | 53,263 | 53,263 |
-| `+ .map(one)` | 53,263 | **54,514** |
-
-`size()`, and any aggregation over a *plain filtered stored* collection, is answered from the asset's
-**metadata**. Put a `.map()` in the chain and the aggregation can no longer be pushed down to storage,
-so GEE has to **iterate** the table — and iterating returns ~1,251 features the metadata denies. An
-export iterates, so it writes them.
-
-Two lessons outlast the bug:
-
-1. **A count that agrees with itself is not a clean bill of health.** `size()`,
-   `aggregate_count('oid')` and `len(aggregate_array('oid'))` all reported 53,263 on the filtered
-   source. Three numbers, one pushed-down answer, all three wrong about what a read returns — and
-   that is what made the source look innocent for two whole exports. The honest check materialises:
-   put a `.map()` in front, or count on the **landed asset**.
-2. **A COMPLETED task is not evidence that each feature was written once**, and the ~0 EECU of a table
-   export (§13.4) says nothing either way. The original `--verify` — size, schema, one feature —
-   passed the bad asset without a murmur.
-
-**`--per-year` would not have helped**, which is worth recording because it was explicitly kept as
-insurance against this symptom: FY2021 exported *alone* lands at the same 54,512 rows. The export's
-size was never the variable. It goes, as originally planned.
-
-**The fix** is `distinct('oid')` inside `fires()` — one row per object, the invariant actually wanted,
-hashing one short string. It is applied per fire-year and **skipped for FY2000**, whose 4 rows for
-`2000_57529` are a legitimate vertex split that `distinct('oid')` would collapse to 1, losing ~1.3 Mha
-of that fire (§13.7). `distinct(['oid', '.geo'])` is the alternative that needs no exception —
-measured to work, FY2021 54,512 → 53,263 — but it hashes the serialised geometry of every feature,
-~4 GB of multipolygon, to buy a distinction that matters in one year. Verified before relaunching:
-`fires(2021)` **materialised** is now 53,263, in 34 s.
-
-The root cause belongs upstream — `objects_raw_2021` should be re-ingested by step 06 (BACKLOG). Until
-it is, the guard in `fires()` is what stands between that asset and every product derived from it.
-
-### 13.7 `oid` is unique per OBJECT, not per row — one FY2000 fire is 4 features
-
-`objects_raw_2000` stores `2000_57529`, a **1,706,171 ha** object, as **4 features** with disjoint
-geometry parts, each repeating the whole object's `area_ha`, dates and probabilities. It is a vertex
-split — `Export.table.toAsset(maxVertices=…)` cuts a geometry that exceeds the limit into pieces —
-and it happened **upstream, in the step-06 upload**, not here: audited across all 28 sources, the
-totals are **1,263,079 rows / 1,263,076 distinct `oid`** and FY2000 is the only year affected. This
-layer carries all 4 rows faithfully, which is why the expected row count is 3 above the object count.
-
-Two consequences, both in the asset's `oid_uniqueness` property:
-
-- **a naive `aggregate_sum('area_ha')` over-counts the layer by 5,118,513 ha** — 3 extra copies of
-  1,706,171 ha. This is not a footnote: it is what made the layer look like 74.23 Mha instead of
-  69.12 Mha (§13.3), and it is why `--verify` now prints both totals. Dissolve by `oid`, or subtract
-  the split, before quoting an area.
-- **never repair a duplicate with a blind `distinct('oid')` on this fire-year.** It would keep one
-  part and silently drop ~1.3 Mha of that fire — measured: `distinct(['oid', '.geo'])` leaves the 4
-  rows intact, `distinct('oid')` returns 1. That is exactly why the guard in `fires()` skips FY2000
-  and why `--verify` carries `KNOWN_VERTEX_SPLITS = {2000: 3}` rather than tolerating any surplus.
-
-Why the split cannot simply be undone: the 4 parts exist *because* the whole geometry exceeds the
-exporter's vertex limit, so re-merging them would only be split again on write. Four rows is the
-storable form; the caveat is the price.
-
-### 12.7 Namespace the task descriptions — the compute project is shared
+### Namespace the task descriptions
 
 `mapbiomas-fire-485203` is used by **many people across the network**, and
 `ee.data.listOperations()` is **project-scoped, not per-account**: it returns every user's tasks (226
@@ -1265,44 +894,223 @@ exists to retire, and keeping it any longer would have meant one of our products
 skipped because another country happened to be exporting an `annual_burned`. The in-flight test now
 matches the namespaced description only.
 
-### 12.8 All nine landed — re-verified on the exported assets
+---
 
-The nine tasks all reported SUCCEEDED by 2026-07-30 13:16 (the last was
-`accumulated_burned_coverage`, the final col-3 re-launch). §12.5 checked the *computed graph* before
-submitting; this re-runs the same audit against the **landed assets**, which is the different
-question — it catches export-time grid, dtype and masking surprises:
+## 07e — the fire-object polygon layer, for early users
 
-| Check | Result on the assets |
+```
+FINAL_PRODUCTS/burned_area_polygons_v2
+```
+
+Every mapped fire, all 28 fire-years, in **one** FeatureCollection. Script:
+`workflow/07-burned_area_polygons.py`. Nothing is computed and no geometry is touched — it is the
+step-06 object set under the full positive selection 07a paints (`fire == 1 & area_ha >= 1 &
+not(A) & not(B)`, "Object exclusion ruleset"), stripped to ten properties, merged and flattened.
+
+**`_v2`: 1,012,648 rows for 1,012,645 objects, 63.33 Mha** (counted on the asset 2026-09-15).
+
+⚠️ **The `_v1` figures quoted in this section — 1,263,079 rows / 1,263,076 objects / 69.12 Mha —
+are the PRE-RULE layer**, exported 31 July, before exclusion rules A and B were finalised
+(2026-09-11/12). The 250,431-object gap between the two is the rules: −196,804 to rule A and
+−53,627 to rule B, measured per fire-year by `statistics/fire_counts.R`, whose local object tables
+reproduce the v2 count **to the object** (statistics/docs/statistics.md §4). Do not quote a v1 number as the size of the
+published layer. (A naive row-sum of `area_ha` overstates the area in either version — "`oid` is unique per OBJECT, not per row".)
+
+It depends only on step 06, not on 07a–07d, so it can be rebuilt at any time and in any order.
+
+### The name, and the folder
+
+**A plain `burned_area_polygons_v1`, NOT `C.product_name()`.** Every raster subproduct is
+`mapbiomas_argentina_fire_collection1_<subproduct>_v1` because the platform's `band_format` lookup
+and the publish copy require that exact form. This layer is not one of those: it is ours, it is for
+people, and it is a name a user has to read out and type (Iván, 2026-07-30 — the first launch used
+the long form and was cancelled and re-run for this).
+
+**`polygons`, not `vectors`.** `FINAL_PRODUCTS/annual_burned_vectors/` is already taken by the
+**calendar-year scars** (07b/07c) — plain 8-connectivity, calendar-clipped, one scar per connected
+burn, a genuinely different layer from these fire-year objects. Reusing the network's word would put
+two unrelated layers one line apart under near-identical names. "polygons" also tells a user what
+they are getting, where a "vector" could be points or lines.
+
+⚠️ **Being in `FINAL_PRODUCTS` overrides docs/08 open #8**, which parked the fire-year vector
+database *outside* that folder until IPAM rules whether Argentina may publish it. Iván's call
+(2026-07-30): early users get a link that survives a yes, and Brazil's own col-5
+`annual_burned_vectors` is the precedent that the door is open. `ToPublish/2-toAsset-Public` copies
+an **explicit** subproduct list rather than the folder, so it cannot be swept into a published
+collection by accident — but if the ruling is no, the asset moves and the shared link dies.
+
+### The ten properties
+
+| property | source | meaning |
+|---|---|---|
+| `oid` | `oid` | stable object id `<fy>_<n>` — the key that joins user feedback back to the object database and its 20 metrics |
+| `fire_year` | **the asset name** | the non-calendar mapping year, 1 May *fy* → 30 Apr *fy*+1 |
+| `calendar_year` | `year_cal` | the **mode** of the object's per-pixel calendar years |
+| `area_ha` | `area_ha` | pixel-count area — *not* a geodesic polygon area |
+| `date_med` / `date_min` / `date_max` | idem | burn dates, ISO 8601 `YYYY-MM-DD` ("Dates readable, and the layer `filterDate`-able") |
+| `p_mean` | `p_mean` | posterior mean fire probability (probit BART, docs/06) |
+| `p_width` | `p_width` | width of its credible interval, `p_q95 − p_q05` |
+| `seed_mean` | `seed_mean` | mean SNIC seed burn probability over the object |
+
+`fire_year` is **not** a property of the source FCs — it exists only in the asset name, so the
+script sets it per source collection. `year_cal` → `calendar_year` is the one rename; everything
+else keeps the object database's vocabulary. The classification **threshold is deliberately not
+included** (Iván, 2026-07-30) — it is a per-size-band constant from
+`config/object_model_thresholds.csv`, not a property of a fire, and `p_mean` is what a user actually
+wants to filter on.
+
+#### Dates readable, and the layer `filterDate`-able
+
+The object database stores the three dates as **whole days since 1970-01-01** — an integer `19018`
+that nobody can read in the Inspector or a QGIS attribute table. In this layer they are
+**`YYYY-MM-DD` strings** instead (Iván, 2026-07-30). Nothing is lost: the integers stay in the object
+database, `oid` joins back to them, and ISO-8601 still range-filters correctly because it sorts
+lexicographically — `ee.Filter.gte('date_med', '2021-01-01')` does what it looks like.
+
+Each feature also carries **`system:time_start`, stamped from `date_med`**, so the collection answers
+`filterDate()`. Two decisions inside that:
+
+- **`date_med`, not `date_min`** — one fire, one instant, matching what `calendar_year` already does
+  (the modal year, "Two things users must be told").
+- **`system:time_end` deliberately NOT set.** With both timestamps the date filter passes on interval
+  *intersection*, so a fire burning 28 Dec → 4 Jan would come back from a December query *and* a
+  January one, and summing `area_ha` per month would double-count it. One timestamp keeps one fire in
+  one bucket, so `filterDate` results stay summable. The true span is still right there and readable:
+  `date_min`…`date_max`.
+
+Implementation trap: **`Feature.select()` drops `system:time_*`** along with every other unlisted
+property, so the timestamp is set *after* the select. Set it before and it vanishes — and a
+`filterDate` that silently matches nothing is indistinguishable from a window with no fires in it.
+
+### Two things users must be told
+
+1. **`calendar_year` is the object's majority year, and the rasters do not agree with it.** It is
+   `mode_int(cyear)` over the object's pixels (`05-objects_metrics.R:239`), while every published
+   raster assigns year and month **per pixel** ("The decisions this step rests on"). A fire straddling 31 December is split across
+   two years in the rasters and lands whole in one year here. Neither is wrong — but a user who
+   cross-tabulates the two without knowing this finds "missing" area.
+2. **Fire-year 1998 is here and in no published raster.** 3,845 polygons, `calendar_year` 1998 or
+   1999; the calendar series starts at 1999, so FY1998's Nov–Dec 1998 tail (~76 kha) exists in this
+   layer only ("The verified calendar-year partition").
+
+And a third for us: **the layer's area must be summed per OBJECT, not per row**, because one FY2000
+object is stored as 4 rows each carrying the whole object's area ("`oid` is unique per OBJECT, not
+per row"). Summed per row, v1 read 74.23 Mha instead of 69.12 — an overstatement of **5,118,513 ha**
+from one fire counted four times. Done correctly, the layer and the scars agree to **0.14 %**
+(69.12 vs 69.02 Mha on v1), where the naive arithmetic made them look 5.2 Mha apart. The residual
+differences are real and should **not** be forced to zero: fire-year vs calendar partition, calendar
+1998 included here and dropped there, intra-year reburn deduplicated there but not here, and a
+different minimum unit.
+
+
+### Which ACCOUNT submits it
+
+**The GEE task queue is per user**, so the merged export runs as the **second account**
+(`ivanbarbera@comahue-conicet.gob.ar`) on the **`mapbiomas-argentina`** compute project, whose queue
+was empty, rather than waiting behind the primary account's tasks. Only the *compute* project
+changes — the destination asset is the same either way, so the link shared with early users does not
+depend on who submitted it.
+
+```bash
+$PYTHON collection-01/workflow/07-burned_area_polygons.py --launch \
+    --project mapbiomas-argentina \
+    --credentials ~/.config/earthengine/credentials.comahue
+```
+
+**`--credentials`, never swapping the resident file.** `ee.oauth.get_credentials_path()` hardcodes
+`~/.config/earthengine/credentials` with no env override, so the obvious route is to `cp` the
+account you want into place; passing the file explicitly is strictly better — nothing is clobbered,
+both accounts are usable in one session, and a half-finished swap cannot leave the wrong token
+resident. This function is the pattern CLAUDE.md points other scripts at.
+
+**Monitoring has to ask twice.** `ee.data.listOperations()` is project-scoped *and* cross-user, so
+the resident account can see the comahue task — but only when initialized against
+`mapbiomas-argentina`. A watcher that polls only `C.GEE_PROJECT` reports the 07e task as `MISSING`,
+which looks exactly like a task that was never submitted. The same asymmetry applies to a re-export:
+`--overwrite` on an asset the comahue account created is submitted by that account too.
+
+Write permission **cannot be pre-flighted** — `getAssetAcl` on `FINAL_PRODUCTS` returns empty
+`writers`/`owners` because access comes from the cloud project's IAM, not a per-asset ACL — so a
+missing write permission surfaces as an immediate task failure, not hours in. Launching is the
+cheaper test. Feasibility measurements and the EECU trap:
+[`notes/07-export_post_mortems.md`](notes/07-export_post_mortems.md).
+
+
+### ⚠️ `objects_raw_2021` is duplicated in storage, and no count reveals it
+
+**`objects_raw_2021` holds 1,249 FY2021 features twice**, byte-identical in geometry and in every
+property. It came in through step 06's hand ingest, it is deterministic, and it is in the stored
+source — but **no metadata count shows it**: `size()`, `aggregate_count('oid')` and
+`len(aggregate_array('oid'))` all agree on the wrong number, because an aggregation over a plain
+filtered *stored* collection is answered from the asset's metadata. Put a `.map()` in the chain and
+GEE has to **iterate**, which returns the extra features. An export iterates, so it writes them.
+
+Two rules outlast the bug:
+
+1. **A count that agrees with itself is not a clean bill of health.** Three numbers, one pushed-down
+   answer, all three wrong about what a read returns. The honest check materialises: put a `.map()`
+   in front, or count on the **landed asset**.
+2. **A COMPLETED task is not evidence that each feature was written once.** The original `--verify`
+   — size, schema, one feature — passed the bad asset without a murmur.
+
+**The fix** is `distinct('oid')` inside `fires()` — one row per object, the invariant actually
+wanted — applied per fire-year and **skipped for FY2000**, whose 4 rows are a legitimate vertex
+split (below). `distinct(['oid', '.geo'])` needs no exception but hashes ~4 GB of serialised
+multipolygon to buy a distinction that matters in one year. **The root cause belongs upstream**:
+`objects_raw_2021` should be re-ingested by step 06 (BACKLOG, `docs/06` "Gotchas"). Until it is,
+that guard is what stands between the asset and every product derived from it. Full post-mortem:
+[`notes/07-export_post_mortems.md`](notes/07-export_post_mortems.md).
+
+### `oid` is unique per OBJECT, not per row
+
+`objects_raw_2000` stores `2000_57529`, a **1,706,171 ha** object, as **4 features** with disjoint
+geometry parts, each repeating the whole object's `area_ha`, dates and probabilities. It is a vertex
+split — `Export.table.toAsset(maxVertices=…)` cuts a geometry that exceeds the limit into pieces —
+and it happened **upstream, in the step-06 upload**, not here: audited across all 28 sources, the
+totals are **1,263,079 rows / 1,263,076 distinct `oid`** and FY2000 is the only year affected. This
+layer carries all 4 rows faithfully, which is why the expected row count is 3 above the object count.
+
+Two consequences, both in the asset's `oid_uniqueness` property:
+
+- **a naive `aggregate_sum('area_ha')` over-counts the layer by 5,118,513 ha** — 3 extra copies of
+  1,706,171 ha. This is not a footnote: it is what made the layer look like 74.23 Mha instead of
+  69.12 Mha ("Two things users must be told"), and it is why `--verify` now prints both totals. Dissolve by `oid`, or subtract
+  the split, before quoting an area.
+- **never repair a duplicate with a blind `distinct('oid')` on this fire-year.** It would keep one
+  part and silently drop ~1.3 Mha of that fire — measured: `distinct(['oid', '.geo'])` leaves the 4
+  rows intact, `distinct('oid')` returns 1. That is exactly why the guard in `fires()` skips FY2000
+  and why `--verify` carries `KNOWN_VERTEX_SPLITS = {2000: 3}` rather than tolerating any surplus.
+
+Why the split cannot simply be undone: the 4 parts exist *because* the whole geometry exceeds the
+exporter's vertex limit, so re-merging them would only be split again on write. Four rows is the
+storable form; the caveat is the price.
+
+---
+
+## Files
+
+| File | Role |
 |---|---|
-| Band counts | 27 / 27 / 27 / 27 / **53** / 53 / 53 / 53 / 27, `year_last_fire` = `classification_2000 … classification_2026` |
-| dtypes | uint8 / uint8 / **uint16** / uint8 / **int16** / int16 / uint8 / uint8 / **uint16**, pyramiding `MODE` on every band |
-| Grid | all 12 step-07 images: `74085 × 123601`, EPSG:4326, `C.SNIC_TRANSFORM` exact — no `scale=30` drift |
-| `lulc_asset` on the four coverage products | `…collection3_integration_v1_buffer` — the col-3 re-launch is what landed, not the cancelled col-2 one |
-| Chaco box, 2003 / 2020 / 2025 | `month == monthly == annual == mcov == acov` = 15,492 / 32,559 / 27,508 |
-| Decodes | `max │mc//100 − month│ = 0`, `max │mc mod 100 − L│ = 0`, `max │ac − L│ = 0`, `max │fc//100 − freq│ = 0`, `max │acc_cov − L(2025)│ = 0` |
-| Cross-product masks | `freq_1999_2025` = `accum` = `accum_cov` = `freq_cov` = `year_last_fire` = **241,281**; `freq_2025_2025` = `annual_2025` = **27,508** |
-| Scar chain vs month mask | `month_only = scar_only = 0` in 2003 / 2020 / 2025 |
+| `workflow/07-month_of_burn.py` | 07a — the month-of-burn ImageCollection (GEE) |
+| `workflow/07-calendar_scars.R` + `scripts/run_07_scars.sh` | 07b — the 8-connected calendar-year scars (local, two passes) |
+| `scripts/validate_scar_zips.py` | the gate on 07b's packages and on what landed |
+| `workflow/07-scar_rasters.py` | 07c — the three scar subproducts |
+| `workflow/07-subproducts.py` | 07d — the nine derived subproducts |
+| `workflow/07-burned_area_polygons.py` | 07e — the merged fire-object polygon layer |
+| `scripts/rule_a_aoi_extract.py` / `rule_a_aoi_tag.R` | rule A's AOI: pull it from the explorer, tag the objects once |
+| `scripts/audit_product_properties.py` | the standing property-drift check over the published assets |
+| `scripts/run_07_v2_driver.py` + `scripts/v2_driver_tick.sh` | the unattended cron driver; board at `logs/v2-driver/STATUS.md` |
+| `utils/constants.py` | the pinned grid, `PRODUCT_VERSION`, `PRODUCT_LULC`, the exclusion-rule thresholds, `SCAR_SIZE_LOWER_HA` |
 
-Every number is identical to the pre-launch graph audit. Two **metadata** leftovers were not, and
-both were repaired in place on 2026-07-30 with `ee.data.updateAsset` — metadata only, no re-export:
+## Related
 
-- the five **non-coverage** products carried `lulc_asset = …collection1_integration_v8_buffer` — a
-  land-cover collection they never touch, and a stale one at that, since only the four `*_coverage`
-  products were re-exported against col-3. They now say `lulc: "not used — this product encodes no
-  land cover"`, and `07-subproducts.py` only stamps `lulc_asset`/`lulc_year` on the four products
-  that actually cross one in;
-- `monthly_burned` had inherited the 1999 month image's own block through `ee.Image.cat` —
-  `year: 1999`, `fire_years: 1998,1999`, `name: …fire_mask_v1_1999`, plus `pixel_unit`,
-  `min_fire_ha`, `fire_call`, `lulc_mask`, `solitary_pixel_filter`. Every one of those is false or
-  meaningless on a 27-band product. The other eight escaped it because they are built by
-  arithmetic, which **drops** input properties; `monthly_burned` was the one built by `rename`
-  alone. There is no server-side "clear properties" and `.set()` only adds, so the script now
-  inserts an `.add(0)` — a band-wise op — before renaming, which is what makes a re-export come out
-  clean. The mask statements remain on the 07a month images, where they are true.
-
-All nine blocks are now uniform: `source`, `region`, `band_format`, `years`, `derived_from`, plus
-`lulc_asset` + `lulc_year` on the four coverage products or `lulc` on the other five.
-**`scripts/audit_product_properties.py`** is the standing drift check (dry run by default, `--apply`
-to write) — worth running after any re-export or any move of `C.PRODUCT_LULC`, because a silent drift
-here is how a published asset ends up advertising the wrong land-cover collection. Bands, dtypes and
-pyramiding were re-read afterwards and are untouched.
+- [`06-object_model.md`](06-object_model.md) — the `fire` call and the object set this step reads,
+  and the two storage defects of that upload which every consumer here must guard against.
+- [`08-postprocessing.md`](08-postprocessing.md) — Argentina's route through the network's spec, and
+  [`external/mapbiomas-fuego-reference.md`](external/mapbiomas-fuego-reference.md) — the spec itself.
+- [`../statistics/docs/statistics.md`](../statistics/docs/statistics.md) — what is computed *from*
+  these products.
+- `notes/`: [`07-exclusion_rules_choice.md`](notes/07-exclusion_rules_choice.md) (how the two rules
+  were arrived at), [`07-verification_log.md`](notes/07-verification_log.md) (the four dated audits),
+  [`07-export_post_mortems.md`](notes/07-export_post_mortems.md) (the merged-export feasibility, the
+  EECU trap, the FY2021 duplication).

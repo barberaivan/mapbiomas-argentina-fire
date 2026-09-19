@@ -549,7 +549,7 @@ def stage_B(st):
     # decides whether that asset deserves the stamp.
     if tries("B-verify") >= MAX_TRIES:
         log(f"[B] ⚠ STOPPED — --verify has failed {MAX_TRIES} times on the landed layer; "
-            f"see B-verify.out. v1 took three submissions for exactly this reason (docs/07 §13.6)")
+            f"see B-verify.out. v1 took three submissions for exactly this reason (docs/07 'objects_raw_2021 is duplicated in storage')")
         return
     if run("B-verify", [PYTHON, "collection-01/workflow/07-burned_area_polygons.py",
                         "--verify", *GMAIL], timeout=7200) != 0:
@@ -620,7 +620,7 @@ def stage_A3(st):
 
 def stage_C4(st):
     """Same for the three scar rasters: the scar-vs-month agreement check on the Chaco box
-    (docs/07 §9.1). Whole-country is one reduceRegion per year and far too slow to run blind."""
+    (docs/notes/07-verification_log.md). Whole-country is one reduceRegion per year and far too slow to run blind."""
     if done("C4") or st["scar_rasters"] < 3:
         return
     run("C4-check", [PYTHON, "collection-01/workflow/07-scar_rasters.py", "--check",
@@ -633,7 +633,7 @@ def stage_C4(st):
 def stage_C3(st):
     """07c — the three scar rasters.  TWO gates, not one: the 27 v2 scar FCs must be ingested by
     hand into `annual_burned_vectors_v2`, AND all 27 v2 month-of-burn assets must exist — the
-    month image supplies the mask that forces scar and month coverage to agree (docs/07 §9), so
+    month image supplies the mask that forces scar and month coverage to agree (docs/07 "07c — the scar rasters"), so
     07c painted against a partial 07a is a partial product.  The script re-checks both itself and
     aborts, so an early tick costs nothing but a wasted try."""
     if done("C3"):
