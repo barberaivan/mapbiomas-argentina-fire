@@ -37,6 +37,18 @@ This is probably for collection 2.
 
 ---
 
+## Object model and its upload (step 06)
+
+- [ ] **Re-ingest `objects_raw_2021`.** It hands consumers 1,249 duplicated features that no
+  metadata count reveals, and the surplus is query-dependent (still live 2026-09-18). The
+  `distinct('oid')` guard in `07-burned_area_polygons.py::fires()` is a workaround, not the fix —
+  docs/06 "Gotchas".
+- [ ] **A randomly sampled set of small-object labels.** The labelled sample is not a random sample
+  of objects, which is the binding limitation on every number step 06 produces — docs/06
+  "Foundations".
+
+---
+
 ## Reduce the statistics/docs/ file
 
 These files should follow the ideas in collection-01/docs/TEMPLATE.md.
