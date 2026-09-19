@@ -28,6 +28,15 @@ historial de git.
 ## After
 
 - **El ATBD de Argentina Fuego Col1**, que nadie más puede escribir por nosotros.
+    Hay un **borrador en [`collection-01/ATBD/`](collection-01/ATBD/)** (LaTeX, inglés, 31 pp.),
+    pendiente de revisión de Iván. Leer primero `ATBD/claude_comments.md`: lista los marcadores que
+    hay que completar — el diagrama del algoritmo, la lista del equipo, el link de snapshot del Code
+    Editor y el párrafo de dónde viven los productos para el público.
+    **Cuando el ATBD se dé por cerrado, hay que indexarlo en los README del repo**: no hay
+    ni una línea que apunte a él todavía. Van al menos `collection-01/README.md` (el mapa de
+    directorios) y la tabla de documentación de `CLAUDE.md`, diciendo qué es —el documento
+    conceptual, por encima de `docs/`— y en qué se diferencia de las notas por paso. Un ATBD que no
+    figura en ningún índice no lo encuentra nadie que llegue al repo.
 - **Seguir explorando análisis para el lanzamiento de diciembre**. 
     Ahí hay 4 factsheet-related notebooks; factsheet_sep2026 es el que soporta el factsheet
     del lanzamiento de Col3 ARG en septiembre.

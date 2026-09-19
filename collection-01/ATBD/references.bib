@@ -1,0 +1,425 @@
+% ---------------------------------------------------------------------------
+% MapBiomas Argentina Fuego — Collection 1 ATBD
+% Entries inherited from the Collection 0 pilot ATBD are kept verbatim where
+% the same work is cited; new entries are grouped after them.
+% ---------------------------------------------------------------------------
+
+% ---- inherited from the pilot ATBD ----------------------------------------
+
+@misc{landsatc2,
+  title        = {Landsat Collection 2 Level-2 Science Products},
+  author       = {{U.S. Geological Survey}},
+  year         = {2021},
+  url          = {https://www.usgs.gov/landsat-missions/landsat-collection-2},
+  note         = {Accessed via Google Earth Engine}
+}
+
+@article{roy2016harmonization,
+  title   = {Characterization of Landsat-7 to Landsat-8 reflective wavelength and normalized difference vegetation index continuity},
+  author  = {Roy, David P. and Kovalskyy, Volodymyr and Zhang, Hongyan and Vermote, Eric F. and Yan, Li and Kumar, Suresh S. and Egorov, Alexei},
+  journal = {Remote Sensing of Environment},
+  volume  = {185},
+  pages   = {57--70},
+  year    = {2016},
+  doi     = {10.1016/j.rse.2015.12.024}
+}
+
+@article{gorelick_google_2017,
+	title = {Google {Earth} {Engine}: {Planetary}-scale geospatial analysis for everyone},
+	volume = {202},
+	doi = {10.1016/j.rse.2017.06.031},
+	journal = {Remote Sensing of Environment},
+	author = {Gorelick, Noel and Hancher, Matt and Dixon, Mike and Ilyushchenko, Simon and Thau, David and Moore, Rebecca},
+	year = {2017},
+	note = {Publisher: Elsevier},
+	pages = {18--27},
+}
+
+@misc{mapbiomasarg,
+  title        = {MapBiomas Argentina},
+  author       = {{MapBiomas Argentina}},
+  year         = {2025},
+  url          = {https://argentina.mapbiomas.org/},
+  note         = {Annual land use and land cover classification}
+}
+
+@Manual{R,
+  title = {R: A Language and Environment for Statistical Computing},
+  author = {{R Core Team}},
+  organization = {R Foundation for Statistical Computing},
+  address = {Vienna, Austria},
+  year = {2025},
+  url = {https://www.R-project.org/},
+}
+
+@article{trigg_flasse_2001,
+  author  = {Trigg, S. and Flasse, S.},
+  year    = {2001},
+  title   = {An evaluation of different bi-spectral spaces for discriminating burned shrub-savannah},
+  journal = {International Journal of Remote Sensing},
+  volume  = {22},
+  number  = {13},
+  pages   = {2641--2647},
+  doi     = {10.1080/01431160110053185}
+}
+
+@article{tucker_1979,
+  author  = {Tucker, C. J.},
+  year    = {1979},
+  title   = {Red and photographic infrared linear combinations for monitoring vegetation},
+  journal = {Remote Sensing of Environment},
+  volume  = {8},
+  pages   = {127--150},
+  doi     = {10.1016/0034-4257(79)90013-0}
+}
+
+@incollection{key_benson_2006,
+  author    = {Key, C. H. and Benson, N. C.},
+  year      = {2006},
+  title     = {Landscape Assessment (LA): Sampling and Analysis Methods},
+  booktitle = {FIREMON: Fire Effects Monitoring and Inventory System},
+  series    = {General Technical Report},
+  number    = {RMRS-GTR-164-CD},
+  publisher = {U.S. Department of Agriculture, Forest Service, Rocky Mountain Research Station},
+  address   = {Ogden, UT}
+}
+
+@techreport{usgs_landsat_burned_area_2021,
+  author      = {{U.S. Geological Survey}},
+  year        = {2021},
+  title       = {Landsat Burned Area Product Guide},
+  version     = {1.1},
+  institution = {Department of the Interior},
+  address     = {United States}
+}
+
+@inproceedings{AchantaSNIC,
+  author    = {Radhakrishna Achanta and Sabine Süsstrunk},
+  title     = {Superpixels and Polygons Using Simple Non-Iterative Clustering},
+  booktitle = {Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
+  month     = {July},
+  year      = {2017},
+  pages     = {4895--4904},
+  doi       = {10.1109/CVPR.2017.520}
+}
+
+@article{adams_bischof_1994,
+  author  = {Adams, Rolf and Bischof, Leanne},
+  title   = {Seeded Region Growing},
+  journal = {IEEE Transactions on Pattern Analysis and Machine Intelligence},
+  year    = {1994},
+  volume  = {16},
+  number  = {6},
+  pages   = {641--647},
+  doi     = {10.1109/34.295913}
+}
+
+@article{haralick_shapiro_1985,
+  author  = {Haralick, Robert M. and Shapiro, Linda G.},
+  title   = {Image Segmentation Techniques},
+  journal = {Computer Vision, Graphics, and Image Processing},
+  year    = {1985},
+  volume  = {29},
+  number  = {1},
+  pages   = {100--132},
+  doi     = {10.1016/S0734-189X(85)90153-7}
+}
+
+@article{fraser2000,
+  author  = {Fraser, Robert H. and Li, Zhanqing and Cihlar, Josef},
+  title   = {Hotspot and NDVI Differencing Synergy (HANDS): A New Technique for Burned Area Mapping over Boreal Forest},
+  journal = {Remote Sensing of Environment},
+  year    = {2000},
+  volume  = {74},
+  number  = {3},
+  pages   = {362--376},
+  doi     = {10.1016/S0034-4257(00)00139-7}
+}
+
+@article{giglio2009,
+  author  = {Giglio, Louis and Loboda, Tatiana and Roy, David P. and Quayle, Brad and Justice, Christopher O.},
+  title   = {An Active-Fire Based Burned Area Mapping Algorithm for the MODIS Sensor},
+  journal = {Remote Sensing of Environment},
+  year    = {2009},
+  volume  = {113},
+  number  = {2},
+  pages   = {408--420},
+  doi     = {10.1016/j.rse.2008.10.006}
+}
+
+@article{hawbaker2020,
+  author  = {Hawbaker, Todd J. and Vanderhoof, Mark K. and Schmidt, Gail L. and Beal, Yvonne-Jones and Picotte, Jarett J. and Takacs, Justin D. and Falgout, James T. and Dwyer, John L.},
+  title   = {The Landsat Burned Area Product},
+  journal = {Remote Sensing of Environment},
+  year    = {2020},
+  volume  = {235},
+  pages   = {111486},
+  doi     = {10.1016/j.rse.2019.111486}
+}
+
+@article{long2019,
+  title={30 m resolution global annual burned area mapping based on {L}andsat Images and {G}oogle {E}arth {E}ngine},
+  author={Long, Tengfei and Zhang, Zhaoming and He, Guojin and Jiao, Weili and Tang, Chao and Wu, Bingfang and Zhang, Xiaomei and Wang, Guizhou and Yin, Ranyu},
+  journal={Remote Sensing},
+  volume={11},
+  number={5},
+  pages={489},
+  year={2019},
+  publisher={MDPI},
+  doi={10.3390/rs11050489}
+}
+
+@article{alencar2022mapbiomas_fire,
+  author  = {Alencar, Ane A. C. and Arruda, Vera L. S. and Silva, Wallace V. da and Conciani, Diego E. and Costa, Diego P. and Crusco, N{\'e}rivaldo and Duverger, Soltan G. and Ferreira, N\'eto C. and Fran\c{c}a-Rocha, Waldeck and Hasenack, H. and Martenexen, L. F. M. and Piontekowski, V. J. and Ribeiro, N. V. and Rosa, E. R. and Rosa, M. R. and dos Santos, S. M. B. and Shimbo, J. Z. and V{\'e}lez-Mart{\'i}n, E.},
+  title   = {Long-Term Landsat-Based Monthly Burned Area Dataset for the Brazilian Biomes Using Deep Learning},
+  journal = {Remote Sensing},
+  year    = {2022},
+  volume  = {14},
+  number  = {11},
+  pages   = {2510},
+  doi     = {10.3390/rs14112510}
+}
+
+@article{huang2002tasseled,
+  title={Derivation of a tasseled cap transformation based on Landsat 7 at-satellite reflectance},
+  author={Huang, Chengquan and Wylie, Bruce and Yang, Limin and Homer, Collin and Zylstra, Greg},
+  journal={International Journal of Remote Sensing},
+  volume={23},
+  number={8},
+  pages={1741--1748},
+  year={2002}
+}
+
+@book{hofstadter1979,
+  author    = {Hofstadter, Douglas R.},
+  title     = {Gödel, Escher, Bach: An Eternal Golden Braid},
+  year      = {1979},
+  publisher = {Basic Books},
+  address   = {New York},
+  isbn      = {978-0465026562}
+}
+
+% ---- new for Collection 1 --------------------------------------------------
+
+@article{baig2014tasseled,
+  author  = {Baig, Muhammad Hasan Ali and Zhang, Lifu and Shuai, Tong and Tong, Qingxi},
+  title   = {Derivation of a tasselled cap transformation based on {L}andsat 8 at-satellite reflectance},
+  journal = {Remote Sensing Letters},
+  year    = {2014},
+  volume  = {5},
+  number  = {5},
+  pages   = {423--431},
+  doi     = {10.1080/2150704X.2014.915434}
+}
+
+@article{gao1996ndwi,
+  author  = {Gao, Bo-Cai},
+  title   = {{NDWI} --- A normalized difference water index for remote sensing of vegetation liquid water from space},
+  journal = {Remote Sensing of Environment},
+  year    = {1996},
+  volume  = {58},
+  number  = {3},
+  pages   = {257--266},
+  doi     = {10.1016/S0034-4257(96)00067-3}
+}
+
+@article{mcfeeters1996ndwi,
+  author  = {McFeeters, S. K.},
+  title   = {The use of the Normalized Difference Water Index ({NDWI}) in the delineation of open water features},
+  journal = {International Journal of Remote Sensing},
+  year    = {1996},
+  volume  = {17},
+  number  = {7},
+  pages   = {1425--1432},
+  doi     = {10.1080/01431169608948714}
+}
+
+@article{hall1995ndsi,
+  author  = {Hall, Dorothy K. and Riggs, George A. and Salomonson, Vincent V.},
+  title   = {Development of methods for mapping global snow cover using Moderate Resolution Imaging Spectroradiometer data},
+  journal = {Remote Sensing of Environment},
+  year    = {1995},
+  volume  = {54},
+  number  = {2},
+  pages   = {127--140},
+  doi     = {10.1016/0034-4257(95)00137-P}
+}
+
+@article{huete1988savi,
+  author  = {Huete, A. R.},
+  title   = {A soil-adjusted vegetation index ({SAVI})},
+  journal = {Remote Sensing of Environment},
+  year    = {1988},
+  volume  = {25},
+  number  = {3},
+  pages   = {295--309},
+  doi     = {10.1016/0034-4257(88)90106-X}
+}
+
+@article{karnieli2001afri,
+  author  = {Karnieli, Arnon and Kaufman, Yoram J. and Remer, Lorraine and Wald, Andrei},
+  title   = {{AFRI} --- aerosol free vegetation index},
+  journal = {Remote Sensing of Environment},
+  year    = {2001},
+  volume  = {77},
+  number  = {1},
+  pages   = {10--21},
+  doi     = {10.1016/S0034-4257(01)00190-0}
+}
+
+@article{campsvalls2021kndvi,
+  author  = {Camps-Valls, Gustau and Campos-Taberner, Manuel and Moreno-Mart{\'i}nez, {\'A}lvaro and Walther, Sophia and Duveiller, Gregory and Cescatti, Alessandro and Mahecha, Miguel D. and Mu{\~n}oz-Mar{\'i}, Jordi and Garc{\'i}a-Haro, Francisco Javier and Guanter, Luis and Jung, Martin and Gamon, John A. and Reichstein, Markus and Running, Steven W.},
+  title   = {A unified vegetation index for quantifying the terrestrial biosphere},
+  journal = {Science Advances},
+  year    = {2021},
+  volume  = {7},
+  number  = {9},
+  pages   = {eabc7447},
+  doi     = {10.1126/sciadv.abc7447}
+}
+
+@article{jiang2008evi2,
+  author  = {Jiang, Zhangyan and Huete, Alfredo R. and Didan, Kamel and Miura, Tomoaki},
+  title   = {Development of a two-band enhanced vegetation index without a blue band},
+  journal = {Remote Sensing of Environment},
+  year    = {2008},
+  volume  = {112},
+  number  = {10},
+  pages   = {3833--3845},
+  doi     = {10.1016/j.rse.2008.06.006}
+}
+
+@article{badgley2017nirv,
+  author  = {Badgley, Grayson and Field, Christopher B. and Berry, Joseph A.},
+  title   = {Canopy near-infrared reflectance and terrestrial photosynthesis},
+  journal = {Science Advances},
+  year    = {2017},
+  volume  = {3},
+  number  = {3},
+  pages   = {e1602244},
+  doi     = {10.1126/sciadv.1602244}
+}
+
+@article{souza2005ndfi,
+  author  = {Souza Jr., Carlos M. and Roberts, Dar A. and Cochrane, Mark A.},
+  title   = {Combining spectral and spatial information to map canopy damage from selective logging and forest fires},
+  journal = {Remote Sensing of Environment},
+  year    = {2005},
+  volume  = {98},
+  number  = {2-3},
+  pages   = {329--343},
+  doi     = {10.1016/j.rse.2005.07.013}
+}
+
+@article{zou2005elasticnet,
+  author  = {Zou, Hui and Hastie, Trevor},
+  title   = {Regularization and variable selection via the elastic net},
+  journal = {Journal of the Royal Statistical Society: Series B},
+  year    = {2005},
+  volume  = {67},
+  number  = {2},
+  pages   = {301--320},
+  doi     = {10.1111/j.1467-9868.2005.00503.x}
+}
+
+@article{friedman2010glmnet,
+  author  = {Friedman, Jerome and Hastie, Trevor and Tibshirani, Rob},
+  title   = {Regularization Paths for Generalized Linear Models via Coordinate Descent},
+  journal = {Journal of Statistical Software},
+  year    = {2010},
+  volume  = {33},
+  number  = {1},
+  pages   = {1--22},
+  doi     = {10.18637/jss.v033.i01}
+}
+
+@article{chipman2010bart,
+  author  = {Chipman, Hugh A. and George, Edward I. and McCulloch, Robert E.},
+  title   = {{BART}: Bayesian additive regression trees},
+  journal = {The Annals of Applied Statistics},
+  year    = {2010},
+  volume  = {4},
+  number  = {1},
+  pages   = {266--298},
+  doi     = {10.1214/09-AOAS285}
+}
+
+@article{albert1993probit,
+  author  = {Albert, James H. and Chib, Siddhartha},
+  title   = {Bayesian Analysis of Binary and Polychotomous Response Data},
+  journal = {Journal of the American Statistical Association},
+  year    = {1993},
+  volume  = {88},
+  number  = {422},
+  pages   = {669--679},
+  doi     = {10.1080/01621459.1993.10476321}
+}
+
+@misc{stochtree,
+  author       = {{stochtree developers}},
+  title        = {{stochtree}: Stochastic Tree Ensembles for Supervised Learning and Causal Inference},
+  year         = {2025},
+  note         = {R package version 0.4.5},
+  url          = {https://stochtree.ai/}
+}
+
+@article{apley2020ale,
+  author  = {Apley, Daniel W. and Zhu, Jingyu},
+  title   = {Visualizing the effects of predictor variables in black box supervised learning models},
+  journal = {Journal of the Royal Statistical Society: Series B},
+  year    = {2020},
+  volume  = {82},
+  number  = {4},
+  pages   = {1059--1086},
+  doi     = {10.1111/rssb.12377}
+}
+
+@article{youden1950,
+  author  = {Youden, W. J.},
+  title   = {Index for rating diagnostic tests},
+  journal = {Cancer},
+  year    = {1950},
+  volume  = {3},
+  number  = {1},
+  pages   = {32--35},
+  doi     = {10.1002/1097-0142(1950)3:1<32::AID-CNCR2820030106>3.0.CO;2-3}
+}
+
+@article{zhu2014ccdc,
+  author  = {Zhu, Zhe and Woodcock, Curtis E.},
+  title   = {Continuous change detection and classification of land cover using all available Landsat data},
+  journal = {Remote Sensing of Environment},
+  year    = {2014},
+  volume  = {144},
+  pages   = {152--171},
+  doi     = {10.1016/j.rse.2014.01.011}
+}
+
+@article{bullock2020coded,
+  author  = {Bullock, Eric L. and Woodcock, Curtis E. and Olofsson, Pontus},
+  title   = {Monitoring tropical forest degradation using spectral unmixing and Landsat time series analysis},
+  journal = {Remote Sensing of Environment},
+  year    = {2020},
+  volume  = {238},
+  pages   = {110968},
+  doi     = {10.1016/j.rse.2018.11.011}
+}
+
+@Manual{terra,
+  title  = {terra: Spatial Data Analysis},
+  author = {Hijmans, Robert J.},
+  year   = {2025},
+  note   = {R package},
+  url    = {https://rspatial.github.io/terra/}
+}
+
+@article{tarjan1975uf,
+  author  = {Tarjan, Robert Endre},
+  title   = {Efficiency of a Good But Not Linear Set Union Algorithm},
+  journal = {Journal of the ACM},
+  year    = {1975},
+  volume  = {22},
+  number  = {2},
+  pages   = {215--225},
+  doi     = {10.1145/321879.321884}
+}
