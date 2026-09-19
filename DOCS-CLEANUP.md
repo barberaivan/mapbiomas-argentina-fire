@@ -136,8 +136,10 @@ one-liner. By that rule:
 
 1. **One home per fact.** Each of these has exactly one owner; everything else links to it.
    - *How to invoke one script* → **the script's own docstring / `--help`**. It cannot go stale.
-   - *The order of the steps and their dependencies* → **a `Pipeline` section in the step doc**
-     (prose + commands, no *why*). Order is not expressible inside any one script.
+   - *The order of the steps and their dependencies* → **the step doc's `Run` section**
+     (prose + commands, no *why*). Order is not expressible inside any one script. This plan
+     first called it `Pipeline`; `TEMPLATE.md`, written afterwards in Phase 1, settled on **`Run`**
+     and its rule 8 gives it exactly this job. One name, and it is `Run`.
    - *Parameters, paths, thresholds, asset ids* → **`config/` and `utils/constants.py`**. Docs
      link, never restate.
    - *Why it is like this* → **the step doc's `Key decisions`** (≤ 5 items), and in the end the ATBD.
@@ -310,7 +312,9 @@ own, find the step doc that is carrying it. A doc that documents two stages will
 - **Commit per doc**, so any pass is individually revertable.
 - **An editor pass is worth it on the big ones**: a second fresh session that sees *only* the
   rewritten `.md`, instructed to cut 20–30 % and make every paragraph open with its point.
-
+- **Do not edit any BACKLOG file without explicit permission.** While working, Claude finds
+  lots of open questions that are settled or are unimportant, she just can't know. Ask Iván
+  when you want to write there.
 ---
 
 ## 5. The ordered checklist
@@ -444,11 +448,28 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
 
 ### Phase 3 — how-to consolidation and the signposts (rule 1)
 
-- [ ] Workflow docstrings: strip explanation and measured results, leave *what it does (3 lines)
-      + usage + `docs/NN "<section name>"` (§2 rule 2 — by name, never by number)*. Touches
-      `.py`/`.R` only, independent of Phase 2 — can run in parallel.
-- [ ] Each step doc gets its `Pipeline` section (the sequence, in commands, no why).
-- [ ] `scripts/run_*.sh` launchers: one line each in the relevant step doc's `Pipeline`, nothing more.
+- [x] Workflow docstrings (`b28561a`): **6,686 → 2,368 words** across the eleven scripts. Every
+      deletion was checked against the doc that inherits it first; nothing went to `notes/` because
+      nothing in them was history that the Phase 2 passes had not already extracted. **Three
+      defects surfaced in that checking**: `07-month_of_burn.py` advertised `--agri-max`, a flag
+      that does not exist (the real ones are `--t-agri` / `--t-grass`);
+      `07-burned_area_polygons.py` quoted the `_v1` figures and the `_v1` asset as current, which
+      the doc already flags as pre-rule; and `01-training_data_export.py` pointed at
+      `TASK-DATA-EXPORT.md`, which is in no commit. **17 `§N` citations converted to names** in six
+      files — `04 §5b`, `04 §4.3`, `§13.3`, `§13.7`, `§12.1`, `§3.7`, `§1.1`, and two to
+      `statistics.md §4.4`, a subsection that never existed. The three surviving numbered citations
+      point at `statistics.md`, which has not had its pass, and are correct today.
+- [x] Each step doc gets its `Run` section (the sequence, in commands, no why) — the plan's
+      `Pipeline`, renamed to match `TEMPLATE.md` (§2 rule 1). **Mostly already done by the Phase 2
+      passes**, which is what a rule landing before the work it governs looks like. Two real gaps
+      closed: `07-published_products.md`'s command block had no heading at all (it sat under the
+      H1, uncitable by name), and `02-burn_probability.md` had no `Run` — its answer is *there is
+      nothing to run for this stage alone*, plus the one-time `export_region_raster.py`
+      prerequisite and the two checks. `08-postprocessing.md` correctly has none: it owns no
+      script and says so.
+- [x] `scripts/run_*.sh` launchers: one line each in the relevant step doc's `Run`, nothing more.
+      Verified — all five (`run_05_years`, `run_06_predict`, `run_06_inspect`, `run_07_scars`,
+      `run_07_upload_zips`) plus `mem_monitor.sh` were already there.
 - [ ] **`scripts/README.md`** — NEW, the one real signpost gap: 66 files, no README. Group them by
       purpose (download/format, launchers, GEE watchers, exploration, tests) and point each group
       at its step doc. ~15 lines, no explanation.

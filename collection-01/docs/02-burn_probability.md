@@ -112,6 +112,24 @@ focal year and multiplies in only the focal factor per image — a required opti
 cosmetic one, and one that only makes sense once a whole year's series is in view. See
 [`03-bpts.md`](03-bpts.md) "What is precomputed per year".
 
+## Run
+
+**There is nothing to run for this stage alone.** The model is deployed inside step 03's graph and
+the probability is never materialized, so the invocation is `03-bpts.md` "Run". What is runnable
+here is the one-time prerequisite and the two checks:
+
+```bash
+# one-time: paint C.REGION_RASTER, which `veg_fire` needs to pick a model per pixel
+$PYTHON collection-01/scripts/export_region_raster.py
+# the deployed CSVs parse into the expected term set, one band per term
+$PYTHON collection-01/scripts/test-03-model_load.py
+# sample the probability on a single Landsat image (it cannot be inspected whole — Gotchas)
+$PYTHON collection-01/scripts/test-03-bp_ts.py
+```
+
+Switching which coefficient set is deployed is a `C.COEF_DIR` change, not a flag
+(`models/README.md`).
+
 ## Key decisions
 
 - **Class selection by coefficient remap, not by 23 masked branches.** One arithmetic expression

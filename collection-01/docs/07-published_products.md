@@ -11,6 +11,8 @@ the MapBiomas LULC; 07e reads the step-06 object FeatureCollections directly and
 sub-step, so it can be rebuilt at any time and in any order. The order of operations for the whole
 step, and the commands for 07a–07c, are in the other file.
 
+## Run
+
 ```bash
 # 07d  (re-runnable, skips existing assets) — all nine derive from 07a, NOT from 07c
 $PYTHON collection-01/workflow/07-subproducts.py --check      # band bookkeeping + ROI counts
