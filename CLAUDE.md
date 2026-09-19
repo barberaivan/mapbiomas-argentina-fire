@@ -66,9 +66,8 @@ Other documentation:
 
 - `collection-01/README.md` — **the map**: what is in each directory and which doc explains it,
   the pipeline overview and the **notebooks table**. It carries **no commands and no status
-  table** — what is running is `collection-01/logs/v2-driver/STATUS.md`, what is next is ROADMAP;
-  how to run a step is that step's `Run` section in `docs/`, and how to invoke one script is its
-  own `--help` or header comment.
+  table** — where things stand is ROADMAP, how to run a step is that step's `Run` section in
+  `docs/`, and how to invoke one script is its own `--help` or header comment.
 - `collection-01/scripts/README.md` — the 57 non-pipeline scripts, grouped by the step they serve.
 - `collection-01/models/README.md` — model artifact reference: folder layout, file schema,
   coefficient export and the raw-scale prediction recipe.

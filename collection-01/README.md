@@ -133,16 +133,9 @@ CLAUDE.md "GEE accounts".
 
 ## Where things stand
 
-**There is no status table here, on purpose.** One kept drifting: it still said step 05 was
-"2001–2025" when all 28 fire-years had been on disk for months, and it called step 07 "landed and
-verified" while the `_v2` re-export was running at 3/27. A hand-maintained done-list is wrong in
-the reassuring direction by default, and ROADMAP.md's own rule already says not to keep one.
+[`ROADMAP.md`](../ROADMAP.md) — what is in flight and what is next, in order.
 
-Ask the thing that knows:
-
-| question | answer |
-|---|---|
-| what should I do next? | [`ROADMAP.md`](../ROADMAP.md) |
-| what is running right now? | `logs/v2-driver/STATUS.md` — written every 15 min by the step-07 supervisor. **If its stamp is over ~20 min old the driver is not running.** |
-| did a given step finish? | its assets, or its outputs in `data/` — both are the source of truth. `scripts/status.py` reports the step-01 exports |
-| what state is a doc's step in? | that doc's `Gotchas` and, where it has one, its own status box (`validation/docs/design.md` has the one that matters) |
+**No status table here, on purpose.** The one this file used to carry drifted: it still said step
+05 was "2001–2025" when all 28 fire-years had been on disk for months, and called step 07 "landed
+and verified" in the middle of the `_v2` re-export. ROADMAP's own rule already says not to keep a
+done-list, and a second one here could only disagree with it.
