@@ -14,17 +14,18 @@ before taking on them.
 
 ## Validation (step 10)
 
-The point-drawing recipe in `collection-01/validation/docs/notes/appendix-b-stratifiedsample.md` (`stratifiedSample` per stratum)
+The original point-drawing recipe (`stratifiedSample` per stratum)
 does not scale — OOMs at country scale in every variant (direct, tuned, by-carta partitioned,
 even plain `reduceRegion`). Root cause found 2026-08-31: not `stratum`, not the algorithm — the
 **region geometry** (`ARG-Political_Level_1-Pais`, 2M+ edges) makes any op that receives it as
 `region=` pay to evaluate containment against it. Fixed by swapping it for a plain
 `ee.Geometry.Rectangle` bounding box everywhere it's used as a sampling/reduction region (5/5
-failures → 3/3 successes in a controlled test). Full post-mortem in `collection-01/validation/docs/notes/implementation-log.md`
-and `collection-01/validation/02_sample_pool.py`'s module docstring.
+failures → 3/3 successes in a controlled test). Full post-mortem in
+`collection-01/validation/02_sample_pool.py`'s module docstring; the short list of routes not to
+retry is `collection-01/validation/docs/notes/abandoned-paths.md`.
 
 Working implementation pivoted to an **unstratified pool** (`Image.sample()`, no `classBand`,
-split by stratum locally in pandas) instead of Appendix B's per-stratum `stratifiedSample` — see
+split by stratum locally in pandas) instead of the per-stratum `stratifiedSample` — see
 `02_sample_pool.py`. Two-stage: "pool 1" sized only for the initial 100/stratum/year, cheap
 (~100-150k pts/year); "pool 2" (below) extends to the 5,000/stratum reserve later.
 
@@ -48,13 +49,14 @@ split by stratum locally in pandas) instead of Appendix B's per-stratum `stratif
   `draw_pool()` with a bigger N (sized the same way as pool 1, via `size_full_draw()` against
   each year's own pilot counts), de-duplicate against pool 1's frozen `(col, row)` (collision
   rate negligible at these scales, ~0.03% — no need for an exclusion mask), append ranked after
-  pool 1's existing rows. Pool 1's frozen rows/ranks must never be touched (design §5 rule 6).
-- [ ] **Exact-`Nh` pixel census (docs §4.4).** `01_strata_export.py --weights-launch` (country-wide
+  pool 1's existing rows. Pool 1's frozen rows/ranks must never be touched (design, "Drawing the frozen ordered sample
+  lists" rule 6).
+- [ ] **Exact-`Nh` pixel census (design, "Dilation, partition, export").** `01_strata_export.py --weights-launch` (country-wide
   `reduceRegion`) was never re-tested with the geometry fix — don't assume it's still broken,
   verify first; it very plausibly works now given the same fix applied cleanly to `sample()` and
   `reduceRegions`-by-carta both use the same region-geometry mechanism. If it still fails, the
-  pool's own realized per-stratum proportions are already a usable `Wh` estimate (tight — see
-  `collection-01/validation/docs/notes/implementation-log.md`) as a fallback, pending the team's sign-off on using an estimate
+  pool's own realized per-stratum proportions are already a usable `Wh` estimate (tight) as a
+  fallback, pending the team's sign-off on using an estimate
   vs. an exact census as the frozen fingerprint.
 
 ---

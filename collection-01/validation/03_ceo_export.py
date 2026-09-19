@@ -5,7 +5,8 @@ collection-01/validation/03_ceo_export.py
 Paso 3 de la validación — LA MUESTRA INICIAL, en el formato de "custom plot" que exige
 Collect Earth Online (CEO): columnas `LON`, `LAT`, `PLOTID`, `PLOTID` único, y cualquier
 columna extra DESPUÉS de esas tres. No está en `validation/docs/design.md` (el spec llega hasta la
-lista congelada, §5) — este paso lo agrega para que esa lista se pueda subir a CEO sin fricción.
+lista congelada, "Drawing the frozen ordered sample lists") — este paso lo agrega para que esa
+lista se pueda subir a CEO sin fricción.
 
 100% LOCAL — no toca GEE. Corre después de que `02_sample_pool.py --freeze` ya dejó las listas
 congeladas en `outputs/frozen/`.

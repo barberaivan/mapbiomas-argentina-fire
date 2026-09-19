@@ -628,19 +628,21 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
 > `th_band`'s 4, and every named cross-doc citation in the three files now resolves.
 
 
-- [x] `validation/docs/design.md` (5,285 → 4,849, and **the premise of this item was wrong** — see
-      the box). Three `notes/` entries extracted verbatim into a new
-      `validation/docs/notes/`: the dated implementation status, and **both GEE-JS appendices**,
-      which are superseded by the Python (`01_strata_export.py` is a direct port of A;
-      `02_sample_pool.py` replaced B, which does not scale). That removes the 21 % code-block
-      problem entirely. Title de-numbered, all 16 headings de-numbered and ~35 internal + ~20
-      inbound `§N` citations converted to names across 8 files. An attribution box and a **status
-      box** were added; the design prose itself was **not cut**. A correctness finding is recorded
-      in the doc and below.
+- [x] `validation/docs/design.md` (5,285 → 4,849 → **5,021 after Iván's review**, and **the premise
+      of this item was wrong** — see the box). Title de-numbered, all 16 headings de-numbered and
+      ~35 internal + ~20 inbound `§N` citations converted to names across 8 files. A **status box**
+      was added; the design prose itself was **not cut**. A correctness finding is recorded in the
+      doc and below. **Iván's review then changed what `notes/` holds and why the doc grew back**:
+      the three verbatim entries are gone, replaced by one brief
+      [`notes/abandoned-paths.md`](collection-01/validation/docs/notes/abandoned-paths.md)
+      (1,523 → 424 words), and everything the code actually does was folded **into** the design —
+      see the second box.
 
 > **What the validation pass found (2026-09-18).**
 
-[Claude, I left instructions for you at validation/docs/design.md]
+> **Iván's review of this item is done (2026-09-18)** — what he asked for, and what came of it, is
+> the second box below. The findings (a)–(f) are kept as written, with the parts his review
+> overtook marked there.
 
 > **(a) The item's premise — "NOT WRITTEN BY IVÁN" — is wrong, and the correct split matters.**
 > `git log --follow` says the design doc was written by **Iván** on 2026-08-21 (`8b2e859`), two days
@@ -664,8 +666,9 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
 > inline warning at the rule it breaks — and flagged as *to settle before interpretation*, not
 > fixed, because whether to rebuild the strata on v2 (new lists, discarding the frozen ones) is a
 > team decision.
-
-[I knew it, not a problem, but it must be documented, as you did.]
+>
+> **Iván (2026-09-18): "I knew it, not a problem, but it must be documented, as you did."** It
+> stays exactly where it was — the status box plus the inline warning at the rule it breaks.
 
 >
 > **(c) Both appendices were a second home for code that already exists in Python**, which is a
@@ -674,17 +677,24 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
 > Appendix A"*. And Appendix A had gone stale in the way a duplicate does — it hardcodes
 > `collection1_fire_mask_v1` while the Python reads `C.MONTH_OF_BURN_COL`, so the code followed the
 > `_v2` rename and the doc did not. **That is how (b) was found.**
-[Claude, remove that appendix a, that's not needed.]
+>
+> **Iván (2026-09-18): remove Appendix A, it is not needed.** Done — **deleted, not re-homed**,
+> together with Appendix B, and `01_strata_export.py` now says in its own header that it is the
+> implementation of record and that no JS reference version exists. What survives of both is three
+> lines in `notes/abandoned-paths.md`, including *why* they were a liability (a duplicate that went
+> stale silently).
 
 > **(d) One artefact is superseded and still in the repo**: `colab_sample_pool_export.ipynb`
 > (Ramón, 2026-08-28) implements the Appendix-B recipe that the 2026-08-31 post-mortem rejected.
 > It is now named as such in the doc's `Files` table rather than silently sitting there. Deleting
 > or rewriting it is Ramón's call.
 
-[Claude, just leave in a note all the paths that the validation took and hit problems, like that
-in appendix B. Just mention like a list of abandoned paths, brief, not to take again. 
-No need for such long notes. There may be notes, but smaller]
-
+> **Iván (2026-09-18): keep one brief list of the paths that were tried and hit problems — not to
+> be taken again — and stop writing long notes.** Done: `notes/` is now one 424-word
+> `abandoned-paths.md` with six entries (the 2 M-edge country polygon as `region=`; `stratifiedSample`
+> per stratum; the colab notebook that still implements it; the 30 k reserve; `--weights-launch`
+> as written, flagged *very plausibly fixed, verify*; and the two GEE-JS appendices), plus a
+> three-line `README.md`. The implementation log and both appendices are deleted.
 
 > **(e) `validation/docs/notes/` is new.** `notes/` conventions are defined for
 > `collection-01/docs/notes/`; validation's docs are colocated with its code, so its lab notebook
@@ -692,13 +702,52 @@ No need for such long notes. There may be notes, but smaller]
 > will arise for `statistics/` — flagging it now so the frozen statistics pass does not have to
 > decide it under time pressure.
 
-[Claude, ok with that above]
+> **Iván (2026-09-18): agreed.** The `statistics/` question it flags is still open.
 
 >
 > **(f) Two Phase-0 leftovers fixed in passing**: `statistics/docs/statistics.md` still linked
 > `10-factsheet_design.md` (renamed in Phase 0), and CLAUDE.md's factsheet and validation rows had
 > been **merged into one table cell** by a missing newline (`… comes from || \`…/design.md\` | step
 > 11 — …`), so the validation row had not been rendering as a row at all since the move.
+
+> **What Iván's review of the validation pass changed (2026-09-18).** His instruction was left
+> inside `design.md` itself and it is a rule, not a one-off edit:
+>
+> > *"This note of provenance is not needed. The doc must agree with the code, and your work is to
+> > update the doc so it follows the code; this mention should not be necessary. This applies for
+> > the next subsection too."*
+>
+> **A "where they disagree, X wins" box is an admission, not a convention.** The pass had written
+> one — provenance plus *"the Python wins"* plus a `Status` section whose spine was **two places
+> where the code deliberately departs from this document**. That framing lets a doc stay wrong on
+> purpose and calls it governance. Both are gone, and the departures were resolved the only way
+> that holds: **by rewriting the design to state what the code does.**
+>
+> - **The draw.** "Drawing the frozen ordered sample lists" rule 2 no longer specifies a
+>   `stratifiedSample` per stratum. It specifies what `02_sample_pool.py` runs — one **unstratified**
+>   `Image.sample()` pool per year, split by stratum in pandas, with the equivalence argument stated
+>   (conditioning on stratum commutes with a random draw) and one frozen list per stratum still the
+>   output. Rule 3 gained the rectangle-as-`region` rule, which is not an implementation detail but
+>   the difference between the draw running and not running.
+> - **The two-stage pool** (pool 1 for the initial 100, pool 2 for the 5,000 reserve, de-duplicated
+>   on `(col, row)`) was only ever in the implementation log. It is design — it decides what
+>   "extend the sample" means operationally — so it is now in the design, and the reserve is stated
+>   as the cost decision it is instead of as a deviation from 30,000.
+> - **Rule 5 gained `mb_class_raw` and `region_id`**, the two context columns Iván asked for and the
+>   code has written since August. The doc listed eight columns; the frozen CSVs have ten.
+> - **`Status` survives, reframed**: what landed, what is still open, and the v1/v2 warning — the
+>   status of the *campaign*, not of the doc against its code. It also now says the frozen lists are
+>   **not in this repo** (`validation/outputs/` has never existed here), where the old text cited
+>   `outputs/frozen/` as if it were readable.
+> - **Finding (a) above is overtaken.** The authorship box it argued for is deleted. Provenance is a
+>   `git log` question, and the doc is judged against the code, not against who wrote which half.
+>
+> **Cost**: the design grew 4,849 → 5,021 words while `notes/` fell 1,523 → 495, so validation's
+> documentation is ~850 words lighter overall and there is one fewer place to look. **The
+> §-citations the pass missed are also fixed**: 40 `§N` references to the de-numbered headings were
+> still live in `01_strata_export.py`, `02_sample_pool.py`, `03_ceo_export.py` and
+> `validation_year_selection.qmd` — all converted to names, all verified to resolve against a
+> heading.
 
 - [x] `08-postprocessing.md` (5,284 → **1,219**) — **split, and the step doc did not survive as
       one.** The plan asked the question and the answer is no: §6 was almost entirely a second
@@ -710,6 +759,9 @@ No need for such long notes. There may be notes, but smaller]
       per pixel buys and costs, and the four live open decisions. ~25 citations repointed across
       7 files; `00-overview.md`'s closing paragraph rewritten as the plan asked; CLAUDE.md's one
       row replaced by two.
+[Claude, mention in the 00-overview what the doc 08 is]
+
+
 - [x] `03-colab_multi_export.md` (568 → 662) — marked as a **how-to, not a step doc**, in a header
       box, and **it grew, because two facts in it were false.** See the box.
 
@@ -935,11 +987,16 @@ Append one line per completed item: date — what — commit.
   `06-c00_baseline`, `06-upload_decisions`, `06-label_prep_engineering`); ~45 citations repointed
   across 20 files; two live upload defects recorded in the step doc for the first time (they were
   only in `docs/07`); CLAUDE.md's step-06 row replaced by three.
-- 2026-09-18 — **Phase 2, `validation/docs/design.md`**: 5,285 → 4,849 words; new
-  `validation/docs/notes/` with the implementation log and **both GEE-JS appendices** (superseded by
-  the Python); headings and ~55 citations de-numbered across 8 files; attribution box added (design
-  Iván, implementation Ramón — the item's premise was wrong); **the strata were built on the `_v1`
-  map and the product is `_v2`** — recorded, not fixed, because rebuilding is a team call.
+- 2026-09-18 — **Phase 2, `validation/docs/design.md`**: 5,285 → 4,849 words; headings and ~55
+  citations de-numbered across 8 files; **the strata were built on the `_v1` map and the product is
+  `_v2`** — recorded, not fixed, because rebuilding is a team call.
+- 2026-09-18 — **`validation/docs/design.md`, after Iván's review**: the provenance and
+  "the Python wins where they disagree" boxes deleted and the two documented *departures* folded
+  into the design instead (the unstratified pool draw, the rectangle `region`, the two-stage pool,
+  the two extra frozen columns) — 4,849 → 5,021 words; `notes/` cut from three verbatim entries to
+  one 424-word `abandoned-paths.md` (1,523 → 495 with its README), both GEE-JS appendices and the
+  implementation log **deleted**; 40 `§N` citations still live in the validation Python and the
+  year-selection notebook converted to names.
 - 2026-09-18 — **Phase 2, `08-postprocessing.md`**: 5,284 → 1,219 words, split three ways —
   `docs/external/mapbiomas-fuego-reference.md` (the network's spec, pinned at `904fbdf` with
   `origin/master` 68 commits ahead) and `notes/08-corrections_and_delivery.md` (the three

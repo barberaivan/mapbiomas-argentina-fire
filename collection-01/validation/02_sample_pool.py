@@ -11,7 +11,8 @@ depende de sortear sobre el raster de estratos ya fijo.
 
 LA SAGA DEL OOM Y LA CAUSA REAL (2026-08-30/31) — leer antes de tocar este archivo
 --------------------------------------------------------------------------------------
-El plan original (`validation/docs/notes/appendix-b-stratifiedsample.md`, un `stratifiedSample` por estrato)
+El plan original (un `stratifiedSample` por estrato, hoy en
+`validation/docs/notes/abandoned-paths.md`)
 murió por OOM (GEE error code 8) en TODAS las variantes probadas esa noche: país-completo, con
 `tileScale`/`classValues` altos, partido en las ~248 cartas de MapBiomas, con `reduceRegion` en
 vez de `stratifiedSample` — seis intentos distintos, misma falla. La causa NO era `stratum`, ni
@@ -22,7 +23,7 @@ geometría como `region=` — sortear, reducir, lo que sea — paga el costo de 
 candidato cae adentro?" contra una forma gigantesca, sin importar el algoritmo de arriba.
 
 Prueba de control 2026-08-31: mismo `sample()`, mismas bandas mínimas, mismo asset de estratos
-(que además está `.clip()`eado a este mismo límite complejo desde que se exportó, Apéndice A) —
+(que además está `.clip()`eado a este mismo límite complejo desde que se exportó) —
 con `FRAME_FC.geometry()` como región: OOM, 5/5 intentos. Con un rectángulo simple
 (`ee.Geometry.Rectangle`, ver `arg_bbox()`) como región: éxito, 3/3 veces, ~15-20s de reloj para
 20k-100k puntos. El límite complejo "horneado" en el asset no importa — lo que importa es la
@@ -46,10 +47,11 @@ DOS MODOS VIEJOS (país-completo / por carta) — SUPERADOS, quedan como referen
                          consistencia `burned == (stratum==1)`, trunca a los primeros 5.000 por
                          orden, deriva `col`/`row` desde `lon`/`lat` con la retícula pinneada, y
                          archiva. Nunca se vuelve a correr sobre la misma lista — regenerarla,
-                         resortearla o descartar una fila ya sorteada invalida el diseño (§5
-                         regla 6). Sigue siendo el motor de `--freeze --from-pool` (§ ver abajo).
+                         resortearla o descartar una fila ya sorteada invalida el diseño
+                         (regla 6 de "Drawing the frozen ordered sample lists"). Sigue siendo el
+                         motor de `--freeze --from-pool` (ver abajo).
 
-LA COLUMNA NUEVA — `mb_class_raw` Y `region_id` (pedido de Iván, no está en el Appendix B)
+LA COLUMNA NUEVA — `mb_class_raw` Y `region_id` (pedido de Iván)
 --------------------------------------------------------------------------------------------
 Cada punto sorteado lleva también la clase CRUDA de MapBiomas Argentina del año calendario
 PREVIO al año-fuego (no la reclasificación `veg_fire`) y la región numérica. Se arma con las
@@ -59,20 +61,20 @@ archivo): `get_mb_class_band(C.MAPBIOMAS_LULC, mb_year=min(fy-1, C.MB_LIMIT_YEAR
 
 POR QUÉ LEE EL ASSET POR `year`+`collection`, NO POR EL PATH ARMADO
 -----------------------------------------------------------------------
-El Appendix B filtra la ImageCollection por las dos propiedades mandatorias
+Se filtra la ImageCollection por las dos propiedades mandatorias
 (`ee.Filter.eq('collection', 1)` + `ee.Filter.eq('year', FY)`) en vez de construir
 `sampling_strata_fy<FY>` a mano — es a propósito (validation/docs/design.md "Dilation, partition, export"): esas dos propiedades son
 "cómo los pasos de abajo eligen una imagen". Acá se hace lo mismo, aunque también validamos con
 `asset_exists()` antes de lanzar para no mandar una tarea sobre una imagen que todavía no existe.
 
-DESVÍO DEL TEXTO LITERAL DEL APPENDIX B — sin `dropNulls`, sin geometrías de punto
+SIN `dropNulls`, SIN GEOMETRÍAS DE PUNTO
 --------------------------------------------------------------------------------------
 Dos ajustes de la API Python, no del diseño:
 1. `gee-gotchas.md` ya documenta que la API Python de `stratifiedSample` usa `projection=`
    (no `crs=`) y **no acepta `dropNulls`** — se omite acá.
 2. En vez de `geometries: true` (que en el CSV vuelve como una columna `.geo` GeoJSON), se
    agregan bandas `longitude`/`latitude` explícitas antes de muestrear, así el CSV sale con
-   columnas planas listas para la fórmula de `col`/`row` de §5 regla 4 sin parsear GeoJSON.
+   columnas planas listas para la fórmula de `col`/`row` de la regla 4 del diseño sin parsear GeoJSON.
 
 USO — camino recomendado (pool)
 --------------------------------
@@ -121,11 +123,11 @@ FIRE_YEARS = _s1.FIRE_YEARS
 VAL_PROJECT = _s1.VAL_PROJECT
 
 # ---------------------------------------------------------------------------
-N_DRAW = 6_000        # sobre-muestreo por estrato por año (§5 regla 2) — 20% de colchón sobre
+N_DRAW = 6_000        # sobre-muestreo por estrato por año (diseño, regla 2) — 20% de colchón sobre
                        # N_KEEP, misma lógica proporcional que el diseño original (40k/30k = 33%)
 N_KEEP = 5_000         # tamaño final de la lista congelada — bajado de 30.000 (validation/docs/design.md "Drawing the frozen ordered sample lists"),
                        # ver justificación en el doc mismo
-SEED = 42              # fija y se registra para siempre (§5 regla 5) — la misma para todo el diseño
+SEED = 42              # fija y se registra para siempre (diseño, regla 5) — la misma para todo el diseño
 TILE_SCALE = 16        # subido de 8 -> 16 (2026-08-30): fy2003 S1/S2/S3 murieron por OOM (code 8)
                        # incluso después de separar stratifiedSample de sampleRegions — el EECU
                        # quemado antes de morir es idéntico al de la corrida vieja de S1 (310 EECU-s
@@ -134,7 +136,7 @@ TILE_SCALE = 16        # subido de 8 -> 16 (2026-08-30): fy2003 S1/S2/S3 muriero
                        # por worker; probar primero, es el cambio más barato.
 STRATA = (1, 2, 3)
 
-DRIVE_FOLDER = "mapbiomas_fire_validation_10"   # no especificado en el Appendix B — elección propia
+DRIVE_FOLDER = "mapbiomas_fire_validation_10"   # no lo fija el diseño — elección propia
 
 SELECTORS = ["stratum", "burned", "mb_class_raw", "region_id",
              "order_key", "longitude", "latitude"]
@@ -401,7 +403,7 @@ def launch_by_carta(fy, quotas):
 # (validation/docs/design.md "Decisions already taken") — no las 5.000 congeladas del diseño completo. Si más adelante hace falta
 # extender, un pool 2 independiente (más grande) se puede sumar sin re-sortear nada — dedup por
 # (col,row) contra lo que el pool 1 ya usó, nunca tocar/resortear una lista ya congelada
-# (§5 regla 6). El pool 2 no se implementa acá.
+# (diseño, regla 6). El pool 2 no se implementa acá.
 N_PILOT = 20_000       # prueba chica y barata: confirmar que sample() no revienta ANTES de
                        # comprometerse a nada más grande, y medir la prevalencia real por año
 W_FLOOR = 10_000_000 / 3_103_000_000   # ≈ 0.0032 — piso documentado para S1 (validation/docs/design.md "Drawing the frozen ordered sample lists": "S1
@@ -414,7 +416,7 @@ W_FLOOR = 10_000_000 / 3_103_000_000   # ≈ 0.0032 — piso documentado para S1
 # proyecto — ver los gotchas globales de GEE). Cualquier operación que la reciba como `region=`
 # paga ese costo, sin importar qué se esté sorteando. Prueba de control 2026-08-31: MISMO `sample()`,
 # MISMAS bandas mínimas (`stratum`+`burned`+lon/lat), MISMO asset de estratos (que además está
-# `.clip()`eado a este mismo límite complejo desde que se exportó, Apéndice A) — con `FRAME_FC`
+# `.clip()`eado a este mismo límite complejo desde que se exportó) — con `FRAME_FC`
 # como región murió por OOM (5/5 intentos); con este rectángulo simple como región, ÉXITO al
 # primer intento. Así que el límite complejo "horneado" en el asset no importa — lo que importa
 # es la geometría que se pasa en el momento de la consulta. Rectángulo generoso, no preciso —
@@ -441,7 +443,8 @@ def _pool_sample(fy, n, seed=SEED):
     arriba). `dropNulls=False` a propósito: `mb_class_raw` puede tener nulos incidentales cerca
     de bordes/agua (no hay máscara explícita en `F.get_mb_class_band`, no se verificó); con
     `dropNulls=True` cualquier banda nula tira la FILA ENTERA, lo que encogería en silencio el
-    marco muestral de "país entero" (docs §1) por una razón ajena al diseño. `stratum`/`burned`
+    marco muestral de "país entero" ("Decisions already taken") por una razón ajena al diseño.
+    `stratum`/`burned`
     nunca son nulos (vienen del asset sin máscara), así que el chequeo obligatorio
     `burned == stratum==1` en `freeze_df()` no se ve afectado. `region=arg_bbox()`, NUNCA
     `ee.FeatureCollection(FRAME_FC).geometry()` — ver la nota arriba de `ARG_BBOX_COORDS`, es la
@@ -562,7 +565,7 @@ def launch(fy, overwrite=False):
 
 
 # ---------------------------------------------------------------------------
-# congelado local (§5)
+# congelado local ("Drawing the frozen ordered sample lists")
 # ---------------------------------------------------------------------------
 def freeze_df(df, fy, h, out_dir=FROZEN_DIR, source_note="", min_rows=N_KEEP, out_prefix=None):
     """Cuerpo real de `freeze()` — separado para que `freeze_from_pool()` lo reuse sin duplicar
@@ -576,19 +579,19 @@ def freeze_df(df, fy, h, out_dir=FROZEN_DIR, source_note="", min_rows=N_KEEP, ou
         sys.exit(f"[error] sólo {n:,} filas — menos que las {min_rows:,} necesarias. "
                   f"No truncar con esto, volver a lanzar el draw con un N mayor")
 
-    # consistencia gratis (§4): burned tiene que ser exactamente (stratum == 1)
+    # consistencia gratis ("Building the strata rasters"): burned tiene que ser exactamente (stratum == 1)
     bad = df.index[df["burned"] != (df["stratum"] == 1).astype(int)]
     if len(bad):
         sys.exit(f"[error] {len(bad)} filas violan burned == (stratum==1) — algo está mal "
                   f"con el asset de estratos o con este export, no seguir")
 
-    # truncar a los primeros min(N_KEEP, n) por orden (§5 regla 2) — el CSV ya viene sorteado
+    # truncar a los primeros min(N_KEEP, n) por orden (diseño, regla 2) — el CSV ya viene sorteado
     # por order_key porque el draw hace .sort('order_key') del lado del servidor
     keep = min(N_KEEP, n)
     df = df.iloc[:keep].reset_index(drop=True).copy()
     df["rank"] = df.index
 
-    # col/row desde el píxel-centro lon/lat (§5 regla 4). ⚠️ dy tiene que ser la MAGNITUD del
+    # col/row desde el píxel-centro lon/lat (diseño, regla 4). ⚠️ dy tiene que ser la MAGNITUD del
     # paso de fila: C.SNIC_TRANSFORM[4] es NEGATIVO (norte arriba), así que se usa abs(sy) —
     # con sy crudo el signo de `row` sale invertido.
     sx, _, x0, _, sy, y0 = C.SNIC_TRANSFORM
@@ -598,7 +601,7 @@ def freeze_df(df, fy, h, out_dir=FROZEN_DIR, source_note="", min_rows=N_KEEP, ou
 
     df["fire_year"] = fy
     df = df.rename(columns={"longitude": "lon", "latitude": "lat"})
-    df = df.drop(columns=["order_key"])   # ya cumplió su función — §5 regla 5: no se guarda
+    df = df.drop(columns=["order_key"])   # ya cumplió su función — diseño, regla 5: no se guarda
     df = df[["fire_year", "stratum", "burned", "mb_class_raw", "region_id",
              "rank", "lon", "lat", "col", "row"]]
 
@@ -624,7 +627,7 @@ def freeze_df(df, fy, h, out_dir=FROZEN_DIR, source_note="", min_rows=N_KEEP, ou
 
 def freeze(fy, h, csv_dir=RAW_DIR, out_dir=FROZEN_DIR):
     """Ruta original: un CSV YA por estrato (país-completo o por carta), sorteado con N_DRAW=6.000
-    para garantizar >= N_KEEP=5.000 (§5 regla 2) — `min_rows` queda en el default N_KEEP."""
+    para garantizar >= N_KEEP=5.000 (diseño, regla 2) — `min_rows` queda en el default N_KEEP."""
     src = Path(csv_dir) / f"{task_name(fy, h)}.csv"
     if not src.exists():
         sys.exit(f"[error] no encontrado: {src}  "
@@ -636,8 +639,8 @@ def freeze(fy, h, csv_dir=RAW_DIR, out_dir=FROZEN_DIR):
 def freeze_from_pool(fy, h, min_rows=100, csv_dir=RAW_DIR, out_dir=FROZEN_DIR):
     """Ruta del pool 1 (no estratificado): un único CSV por año con las 3 clases mezcladas —
     filtra a `stratum==h` ACÁ, local, antes de pasarle el resto a `freeze_df()` sin cambios.
-    `min_rows=100` porque el pool 1 está dimensionado para la muestra inicial (docs §1), no para
-    las 5.000 congeladas — ver `size_full_draw()`."""
+    `min_rows=100` porque el pool 1 está dimensionado para la muestra inicial ("Decisions already
+    taken"), no para las 5.000 congeladas — ver `size_full_draw()`."""
     src = Path(csv_dir) / f"{pool_task_name(fy)}.csv"
     if not src.exists():
         sys.exit(f"[error] no encontrado: {src}  "

@@ -12,7 +12,7 @@ format:
     fig-height: 5.5
 ---
 
-Three fire-years have to be chosen for the validation campaign (`validation/docs/design.md` §8).
+Three fire-years have to be chosen for the validation campaign (`validation/docs/design.md` "Choosing the three years").
 This notebook supplies the fire-regime half of that decision: **whole-country burned area per
 fire-year**, from every independent burned-area product available, so a year can be placed as
 low / moderate / extreme before it is committed to.
@@ -135,7 +135,7 @@ ggplot(z, aes(fire_year, z, colour = product)) +
 
 ## The decision table
 
-Fire regime is only one of the three constraints in `validation/docs/design.md` §8. The other two are the **Landsat
+Fire regime is only one of the three constraints in `validation/docs/design.md` "Choosing the three years". The other two are the **Landsat
 sensor era** the year sits in, and **how many independent burned-area products** exist to build the
 S2 omission-catcher stratum — a year with fewer gets a weaker S2 and a wider interval for the same
 interpretation effort (no bias, just less precision).

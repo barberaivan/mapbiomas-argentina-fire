@@ -9,41 +9,23 @@ consumes the finished map — which is why it lives beside its code rather than 
 Everything here is fixed by design and must be frozen before any interpretation begins. The two
 artefacts that cannot be retrofitted are **the strata rasters** and **the ordered sample lists**.
 
-> **Provenance.** The design was written by **Iván Barberá** (2026-08-21). The implementation —
-> `01_strata_export.py`, `02_sample_pool.py`, `03_ceo_export.py`, `demo_small_region.py` and the
-> Colab notebook — and the implementation-status section that used to open this file are
-> **Ramón Peña Agrest's** (2026-08-23 → 2026-08-31). **Where this document and the Python
-> disagree, the Python wins**: it is what produced the landed assets, and in two places it
-> deliberately departs from what is written here (see "Status" below).
-
-[Claude, this note of provenance is not needed. The doc must agree with the code, and your
-work is to update the doc so it follows the code; this mention should not be necessary.
-This applies for next subsection too (Status, and one thing to settle before interpreting)]
-
 ---
 
 ## ⚠️ Status, and one thing to settle before interpreting
 
 **Nothing has moved since 2026-08-31.** Landed: the three strata rasters (fire-years 2003, 2013,
-2022) and nine frozen ordered lists, 3 years × 3 strata, plus the three `ceo_points_fy<FY>` GEE
-table assets. The dated build log, including the two-week OOM saga, is
-[`notes/implementation-log.md`](notes/implementation-log.md).
+2022), the nine frozen ordered lists (3 years × 3 strata) and the three `ceo_points_fy<FY>` GEE
+table assets. Interpretation has not begun. The lists are written to `validation/outputs/frozen/`,
+which is **not tracked in this repo** — they live on the machine that ran the draw.
 
-**Two places where the code deliberately departs from this document**, both live rules:
+**Still open**: the second pool, which extends the frozen lists to the full 5,000-unit reserve
+("Drawing the frozen ordered sample lists"); the exact-`Nh` pixel census, whose `weights_launch()`
+in `01_strata_export.py` was never re-tested after the frame-geometry fix and very plausibly now
+works; and the validator-facing `ceo_val_00_template` script in the `fuego` repo, which still
+points at the demo asset.
 
-- **The sample is drawn unstratified and split by stratum locally**, not with `stratifiedSample`
-  per stratum. The per-stratum recipe OOMs at country scale — the cause is the 2 M-edge national
-  frame geometry, not the sampling — and the two are statistically identical, since conditioning
-  on stratum commutes with a random draw. `02_sample_pool.py` is the implementation;
-  [`notes/appendix-b-stratifiedsample.md`](notes/appendix-b-stratifiedsample.md) is the recipe it
-  replaced. **`colab_sample_pool_export.ipynb` still implements the superseded one.**
-- **The reserve is 5,000 per stratum per year, not 30,000** — a cost decision, not a statistical
-  one, and still comfortably above every scenario in "Sample size, and how to extend".
-
-**Still open**: the second pool (to reach the 5,000 reserve); the exact-`Nh` pixel census, whose
-`weights_launch()` was never re-tested after the geometry fix and very plausibly now works; and
-the validator-facing `ceo_val_00_template` script in the `fuego` repo, which still points at the
-demo asset.
+The paths that were tried and abandoned on the way here — and must not be taken again — are listed
+in [`notes/abandoned-paths.md`](notes/abandoned-paths.md).
 
 > ### ⚠️ The strata were built against the **v1** map, and the product is now **v2**
 >
@@ -263,8 +245,7 @@ Note that `.reproject(COARSE)` on a 463 m product using nearest neighbour would 
   the reproducibility fingerprint. Log it with the asset id, the export timestamp, the fire year,
   the dilation radius and the decimation factor.
 
-The implementation is `01_strata_export.py`; the GEE-JS prototype it was ported from is
-[`notes/appendix-a-strata-gee.md`](notes/appendix-a-strata-gee.md).
+The implementation — and the record of what was actually run — is `01_strata_export.py`.
 
 ### Which external products exist for which fire year
 
@@ -315,19 +296,32 @@ Rules:
 1. **Simple random selection within each stratum, never systematic.** Systematic selection would
    force variance approximations and make extension awkward (Olofsson et al. 2014 §2.1.3; Stehman et al. 2012).
    It costs nothing to avoid.
-2. **One export per stratum per year** (9 exports for three years), so a shortfall is visible
-   instead of being silently redistributed. `stratifiedSample` can return fewer points than
-   requested over a region this large — so **draw 6,000 and keep the first 5,000 by rank**.
-   Truncating a randomly ordered simple random sample is itself a simple random sample, so this is
-   valid and robust. Verify the row count of every export before freezing.
-3. **Pass `projection`, not `scale`**, to `stratifiedSample`, built from the pinned crs +
-   crsTransform, so the drawn points are exact product pixel centres.
+2. **The draw is one unstratified pool per year, split by stratum locally** — `Image.sample()`
+   with no `classBand` on the strata image, the `stratum` and `burned` bands sampled alongside
+   the point, and the split into S1 / S2 / S3 done afterwards in pandas (`02_sample_pool.py`).
+   Drawing within each stratum separately and drawing once and then conditioning on the stratum
+   are the same thing statistically — conditioning on stratum commutes with a random draw — and
+   the pool costs one GEE request per year instead of three. A per-stratum `stratifiedSample` at
+   country scale does not run at all ([`notes/abandoned-paths.md`](notes/abandoned-paths.md)).
+   **One frozen list per stratum per year** is still the output (9 lists for three years), so a
+   shortfall in any stratum is visible instead of being silently redistributed: **over-draw to
+   6,000 per stratum and keep the first 5,000 by rank**, and verify the row count of every list
+   before freezing. Truncating a randomly ordered simple random sample is itself a simple random
+   sample, so the truncation is valid.
+3. **Pass `projection`, not `scale`**, to the sampler, built from the pinned crs + crsTransform,
+   so the drawn points are exact product pixel centres. **Pass a plain rectangle as `region`**,
+   never the country polygon — the reason is in
+   [`notes/abandoned-paths.md`](notes/abandoned-paths.md); the points are cut to the frame by the
+   strata image itself, which is already clipped to it.
 4. **Store the pixel address, not only the coordinates.** From the pixel-centre lon/lat,
    `col = round((lon − x0)/dx − 0.5)`, `row = round((y0 − lat)/dy − 0.5)`. The address makes the
    unit recoverable years later independently of coordinate formatting.
-5. **Store per row**: `fire_year`, `stratum`, **`burned`** (the sampled map call, "Building the strata rasters"), `rank`,
-   `lon`, `lat`, `col`, `row`. **Store per list**: the seed, `Nh`, the strata asset id, the draw
-   date.
+5. **Store per row**: `fire_year`, `stratum`, **`burned`** (the sampled map call, "Building the
+   strata rasters"), `rank`, `lon`, `lat`, `col`, `row`, plus two context columns sampled at the
+   same time — `mb_class_raw` (the *raw* MapBiomas Argentina class of the calendar year before the
+   fire year, not the `veg_fire` reclass) and `region_id`. Neither enters the estimator; they let
+   the sample be read by land cover and by region afterwards. **Store per list**: the seed, `Nh`,
+   the strata asset id and the source CSV.
 6. **Never regenerate a list, never re-sort one, never discard or substitute a drawn unit.** If a
    unit is genuinely uninterpretable, record it as such and report it — deviations from probability
    sampling have to be documented, not repaired.
@@ -336,12 +330,17 @@ Rules:
    looks bad, let us check further" makes the sample size a function of the observed data, which is
    the one thing that biases the estimator.
 
-5,000 per stratum per year still covers every scenario in "Sample size, and how to extend" with room to spare — the most
-demanding one shown (±9% on area) asks for 3,100 in S3, the stratum that needs the most — and
-absorbs units discarded as uninterpretable. This is a smaller cushion than the original 30,000
-(which had a full order of magnitude to spare over any scenario there); 5,000 was chosen instead to
-keep the GEE draw itself cheap at country scale (`stratifiedSample` over the whole country was
-hitting GEE memory limits at 40,000), not for a statistical reason. All three strata hold far more
+**The pool is built in two stages.** Pool 1 is sized only to clear the initial 100 per stratum per
+year comfortably (~100–150 k points per year, seconds to minutes), so a wrong bet on the pool size
+costs almost nothing; pool 2, which fills the lists to the 5,000-unit reserve, reuses the same draw
+with a larger N and is appended after pool 1's ranks, de-duplicated on exact `(col, row)` — the
+collision rate at these scales is ≈ 0.03 %. **Pool 1's rows and ranks are never touched** (rule 6).
+Pool 2 is not built yet ("Status").
+
+5,000 per stratum per year covers every scenario in "Sample size, and how to extend" with room to
+spare — the most demanding one shown (±9 % on area) asks for 3,100 in S3, the stratum that needs
+the most — and absorbs units discarded as uninterpretable. The reserve is a cost decision, not a
+statistical one: it is what keeps the draw cheap at country scale. All three strata hold far more
 than 5,000 pixels — even S1 holds on the order of ten million in a typical year — so drawing
 without replacement is unconstrained.
 
@@ -518,16 +517,13 @@ MapBiomas Fuego network and `ee.data.listOperations()` returns every user's task
 | `validation/02_sample_pool.py` | draw the pool, split by stratum, freeze the ordered lists |
 | `validation/03_ceo_export.py` | the CEO upload CSVs — `LON`/`LAT`/`PLOTID` only, shuffled |
 | `validation/demo_small_region.py` | a tutorial over a small region; not part of the frozen design |
-| `validation/colab_sample_pool_export.ipynb` | ⚠️ still implements the superseded per-stratum draw |
+| `validation/colab_sample_pool_export.ipynb` | ⚠️ superseded — it implements the per-stratum draw that does not run at country scale ([`notes/abandoned-paths.md`](notes/abandoned-paths.md)) |
 | `ceo_val_00_template` (GEE, `fuego` repo) | the validator-facing script; still points at the demo asset |
 
 ## Related
 
 - [`../../docs/07-vector_to_raster.md`](../../docs/07-vector_to_raster.md) — the product being
   validated, the pinned grid, and the `_v2` re-export.
-- [`notes/implementation-log.md`](notes/implementation-log.md) — the dated build log and the OOM
-  post-mortem.
-- [`notes/appendix-a-strata-gee.md`](notes/appendix-a-strata-gee.md),
-  [`notes/appendix-b-stratifiedsample.md`](notes/appendix-b-stratifiedsample.md) — the two GEE-JS
-  appendices this document used to carry inline.
+- [`notes/abandoned-paths.md`](notes/abandoned-paths.md) — the routes this design tried and
+  dropped, and why none of them should be tried again.
 - `notebooks/validation_year_selection.qmd` — the evidence behind "Choosing the three years".

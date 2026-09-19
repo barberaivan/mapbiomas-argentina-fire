@@ -1517,7 +1517,7 @@ themselves. Do them first.
 - **Fire-year totals**, directly — but the toolkit's table carries month *and* year, so a
   fire-year total is recoverable as May..Dec of *y* plus Jan..Apr of *y+1*. A legitimate
   aggregation of calendar-year products, and it should be labelled as such.
-- **Error-adjusted area.** That is [`11-validation.md`](../../validation/docs/design.md)'s design-based
+- **Error-adjusted area.** That is [`validation/docs/design.md`](../../validation/docs/design.md)'s design-based
   estimate, and it is not ready for September.
 - **Anything at departamento or provincia level with a `%`.** The toolkit already exports the
   provincia cut (`*_Provincia.csv`, absolute areas), but there is **no burnable denominator at

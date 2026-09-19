@@ -3,9 +3,10 @@
 collection-01/validation/01_strata_export.py
 
 Paso 1 de la validación — LA IMAGEN DE ESTRATOS, en la grilla del producto (30 m), por año-fuego.
-Traducción directa a Python del Appendix A (hoy `validation/docs/notes/appendix-a-strata-gee.md`);
-`validation/docs/design.md` "Building the strata rasters" es el
-diseño CERRADO, no un borrador; acá no se innova, se implementa.
+Este archivo es la implementación de registro: no hay una versión GEE-JS de referencia (el
+prototipo JS del que se portó ya no existe, ver `validation/docs/notes/abandoned-paths.md`).
+`validation/docs/design.md` "Building the strata rasters" es el diseño CERRADO, no un borrador;
+acá no se innova, se implementa.
 
     projects/mapbiomas-argentina/assets/FIRE/VALIDATION/sampling_strata/sampling_strata_fy<FY>
 
@@ -14,43 +15,43 @@ Dos bandas:
     stratum  (uint8)  1 = quemado (S1) · 2 = borde/evidencia (S2) · 3 = resto (S3)
     burned   (uint8)  0/1 — la propia llamada del mapa (`our_burn`), o sea burned == (stratum==1)
 
-LOS TRES ESTRATOS (§4)
+LOS TRES ESTRATOS ("Building the strata rasters")
 -----------------------
     S2 = dilate( our_burn OR MCD64A1 OR VNP64A1 OR FireCCI51 OR FIRMS )  AND NOT our_burn
     S1 = our_burn
     S3 = NOT S1 AND NOT S2
 
 UNIÓN, no intersección — y dilatada — porque tiene que capturar dos tipos de omisión a la vez
-(§4.1): fuegos que Col-1 no vio en absoluto (evidencia externa) y cicatrices que sí vio pero
-dibujó de menos (nuestra propia capa, dilatada). Favorecer recall sobre precisión en S2 es
-la regla de diseño: sub-incluir empuja omisión a S3, que carga ~94% del peso de área y por lo
-tanto la mayor parte de la varianza.
+("Why a union, dilated, and why recall beats precision"): fuegos que Col-1 no vio en absoluto
+(evidencia externa) y cicatrices que sí vio pero dibujó de menos (nuestra propia capa, dilatada).
+Favorecer recall sobre precisión en S2 es la regla de diseño: sub-incluir empuja omisión a S3,
+que carga ~94% del peso de área y por lo tanto la mayor parte de la varianza.
 
-LA GRILLA GRUESA TIENE QUE ANIDAR EN LA GRILLA DEL PRODUCTO (§4.2)
+LA GRILLA GRUESA TIENE QUE ANIDAR EN LA GRILLA DEL PRODUCTO ("The coarse grid must be nested")
 --------------------------------------------------------------------
 No es una grilla de 500 m independiente ni la sinusoidal de MODIS: es la grilla del producto
 (`C.SNIC_TRANSFORM`) decimada ×16 (~480 m), mismo origen. Cada celda gruesa es un bloque exacto
 de 16×16 píxeles del producto — la agregación es exacta y la reproyección gruesa→30 m es
 replicación de bloque, sin ambigüedad de resampleo.
 
-`max`, NUNCA `mode`, como reductor de agregación (§4.3) — con `mode` una celda de 16×16 sólo
-cuenta "quemado" si más de 128 píxeles lo están (~>10 ha adentro de esa única celda), y el
-fuego mínimo mapeado es 1 ha (`C.MIN_FIRE_HA`): borraría casi todos los fuegos chicos de la
-unión. `mode` es correcto para bajar la resolución de un mapa categórico para visualizar; acá
-invierte el objetivo del diseño.
+`max`, NUNCA `mode`, como reductor de agregación ("The aggregation rule") — con `mode` una celda
+de 16×16 sólo cuenta "quemado" si más de 128 píxeles lo están (~>10 ha adentro de esa única
+celda), y el fuego mínimo mapeado es 1 ha (`C.MIN_FIRE_HA`): borraría casi todos los fuegos
+chicos de la unión. `mode` es correcto para bajar la resolución de un mapa categórico para
+visualizar; acá invierte el objetivo del diseño.
 
-DESVÍO DEL TEXTO LITERAL DEL APPENDIX A — projección default antes de `reduceResolution`
--------------------------------------------------------------------------------------------
-El Appendix A hace `.max()` sobre las ImageCollections de MCD64A1/VNP64A1/FireCCI51 y pasa el
+PROYECCIÓN DEFAULT ANTES DE `reduceResolution`
+-------------------------------------------------------------------
+No se puede hacer `.max()` sobre las ImageCollections de MCD64A1/VNP64A1/FireCCI51 y pasar el
 resultado directo a `reduceResolution`. Por el gotcha ya documentado en
 `~/Desktop/geospatial-skills/SKILLS/gee-gotchas.md` ("setDefaultProjection antes de
 reduceResolution": `.max()` sobre una ImageCollection pierde la proyección nativa, y sin
 proyección `reduceResolution` falla con "no valid default projection"), acá se le pide la
-proyección a `collection.first()` y se fija con `setDefaultProjection` antes de agregar. Es una
-corrección mecánica para que el código corra — no toca la definición de S2, el orden de
-operaciones ni el resultado que el diseño espera.
+proyección a `collection.first()` y se fija con `setDefaultProjection` antes de agregar. Es
+mecánico — no toca la definición de S2, el orden de operaciones ni el resultado que el diseño
+espera.
 
-EL AÑO-FUEGO ES 1 MAYO fy → 30 ABRIL fy+1 (§3)
+EL AÑO-FUEGO ES 1 MAYO fy → 30 ABRIL fy+1 ("Every layer must be a fire-year layer")
 ------------------------------------------------
 `our_burn` sale de `C.MONTH_OF_BURN_COL` (banda `burned_monthly`, 1–12, ya filtrada a
 `fire==1 & area_ha>=1`), armado como el OR de dos cortes de calendario:
@@ -77,13 +78,13 @@ Autenticarse con la cuenta que tiene acceso a `mapbiomas-argentina` (ramonpagis@
     $PYTHON collection-01/validation/01_strata_export.py --weights        --year 2022
 
 `--weights-launch`/`--weights` corren sobre el ASSET YA ATERRIZADO, no sobre la cadena de pintado
-(§4.4: `Nh` es a la vez el peso `Wh = Nh/ΣNh` y el fingerprint de reproducibilidad, ya que un
-asset de GEE no se puede checksumear). Van en dos pasos, no uno — un `reduceRegion` país-completo
-como llamada interactiva (`getInfo()` directo) pega contra el límite de TIEMPO de los cómputos
-interactivos de GEE (unos minutos, sin importar `maxPixels`/`tileScale`); `--weights-launch` lo
-manda como export batch (sin ese techo) y `--weights` lo lee una vez que termina. `--weights`
-avisa si `W2 = N2/ΣNh` sale <2% o >15% (§4.6) — hay que revisar el radio de dilatación ANTES de
-congelar si eso pasa; después de sortear las listas ya no se puede.
+("Dilation, partition, export": `Nh` es a la vez el peso `Wh = Nh/ΣNh` y el fingerprint de
+reproducibilidad, ya que un asset de GEE no se puede checksumear). Van en dos pasos, no uno — un
+`reduceRegion` país-completo como llamada interactiva (`getInfo()` directo) pega contra el límite
+de TIEMPO de los cómputos interactivos de GEE (unos minutos, sin importar
+`maxPixels`/`tileScale`); `--weights-launch` lo manda como export batch (sin ese techo) y `--weights` lo lee una vez que termina. `--weights`
+avisa si `W2 = N2/ΣNh` sale <2% o >15% ("Check `W2` before freezing") — hay que revisar el radio
+de dilatación ANTES de congelar si eso pasa; después de sortear las listas ya no se puede.
 """
 from __future__ import annotations
 
@@ -105,7 +106,7 @@ STRATA_COL = "projects/mapbiomas-argentina/assets/FIRE/VALIDATION/sampling_strat
 WEIGHTS_COL = "projects/mapbiomas-argentina/assets/FIRE/VALIDATION/sampling_strata_weights"
 
 # El frame de POBLACIÓN es el país SIN buffer — no es C.ARG_BUFFER_FC, que es un superset usado
-# para exportar los productos ("Dilation, partition, export"). Hardcodeado tal cual el Appendix A, no vive en C.*.
+# para exportar los productos ("Dilation, partition, export"). Hardcodeado acá, no vive en C.*.
 FRAME_FC = ("projects/mapbiomas-argentina/assets/"
             "ANCILLARY_DATA/VECTOR/ARG/ARG-Political_Level_1-Pais")
 
@@ -114,13 +115,15 @@ VNP64A1 = "NASA/VIIRS/002/VNP64A1"
 FIRECCI = "ESA/CCI/FireCCI/5_1"
 FIRMS = "FIRMS"
 
-VNP64A1_RANGE = (2012, 2024)   # §4.5 — VIIRS burned area, GEE público desde 2012-03
-FIRECCI_RANGE = (2001, 2019)   # §4.5 — cobertura FireCCI51
+# "Which external products exist for which fire year"
+VNP64A1_RANGE = (2012, 2024)   # VIIRS burned area, GEE público desde 2012-03
+FIRECCI_RANGE = (2001, 2019)   # cobertura FireCCI51
 
 FACTOR = 16       # grilla gruesa = grilla del producto / FACTOR  (~480 m)
 RAD_PX = 1        # focalMax radius, píxeles gruesos, kernel cuadrado
 
-FY_MIN, FY_MAX = 1999, 2024   # rango validable (§3) — requiere que exista el año calendario fy+1
+# rango validable ("Every layer must be a fire-year layer") — requiere el año calendario fy+1
+FY_MIN, FY_MAX = 1999, 2024
 FIRE_YEARS = [2003, 2013, 2022]   # los tres años elegidos para esta validación
 
 STRATUM_LABELS = {1: "quemado (S1)", 2: "borde/evidencia (S2)", 3: "resto (S3)"}
@@ -185,7 +188,8 @@ def task_in_flight(description):
 # grilla
 # ---------------------------------------------------------------------------
 def coarse_projection():
-    """La grilla gruesa: `C.SNIC_TRANSFORM` decimado ×FACTOR, mismo origen (§4.2)."""
+    """La grilla gruesa: `C.SNIC_TRANSFORM` decimado ×FACTOR, mismo origen
+    ("The coarse grid must be nested")."""
     t = C.SNIC_TRANSFORM
     coarse_t = [t[0] * FACTOR, 0, t[2], 0, t[4] * FACTOR, t[5]]
     return ee.Projection(C.SNIC_CRS, coarse_t)
@@ -211,13 +215,14 @@ def mob(y):
 
 
 def our_burn(fy):
-    """`our_burn(fy)` — OR de los dos cortes de calendario que arman el año-fuego (§3)."""
+    """`our_burn(fy)` — OR de los dos cortes de calendario que arman el año-fuego
+    ("Every layer must be a fire-year layer")."""
     m_next = mob(fy + 1)
     return mob(fy).gte(5).Or(m_next.gte(1).And(m_next.lte(4)))
 
 
 # ---------------------------------------------------------------------------
-# evidencia externa (§4, §4.5)
+# evidencia externa ("Building the strata rasters")
 # ---------------------------------------------------------------------------
 def _burned_evidence(collection_id, band, t0, t1):
     """`.max()` sobre la colección filtrada — SIN proyección default (ver docstring del módulo:
@@ -230,13 +235,14 @@ def _burned_evidence(collection_id, band, t0, t1):
 def firms_evidence(t0, t1):
     coll = ee.ImageCollection(FIRMS).filterDate(t0, t1).select("T21")
     proj = ee.Image(coll.first()).projection()
-    return coll.max().gt(0).unmask(0).setDefaultProjection(proj)   # sin filtro de confidence — §4.1
+    # sin filtro de confidence — el diseño favorece recall en S2
+    return coll.max().gt(0).unmask(0).setDefaultProjection(proj)
 
 
 def to_coarse_fine(img, coarse):
     """Finer-or-igual a COARSE (nuestra 30 m, FireCCI 250 m, VNP64A1/MCD64A1 463 m).
     `maxPixels=1024` porque el default de 64 es menor a los 256 píxeles de entrada de un
-    bloque 16×16 (§4.3)."""
+    bloque 16×16 ("The aggregation rule")."""
     return img.reduceResolution(reducer=ee.Reducer.max(), maxPixels=1024).reproject(coarse)
 
 
@@ -246,7 +252,8 @@ def to_coarse_coarse(img, coarse):
 
 
 def products_for(fy):
-    """Qué productos externos entran en la unión para este año-fuego (§4.5)."""
+    """Qué productos externos entran en la unión para este año-fuego
+    ("Which external products exist for which fire year")."""
     names = ["ours", "MCD64A1", "FIRMS"]
     if VNP64A1_RANGE[0] <= fy <= VNP64A1_RANGE[1]:
         names.append("VNP64A1")
@@ -404,7 +411,8 @@ def weights_launch(fy, overwrite=False):
 
 
 def weights(fy):
-    """`Wh = Nh/ΣNh` desde el histograma YA EXPORTADO por `weights_launch()` (§4.4). También el
+    """`Wh = Nh/ΣNh` desde el histograma YA EXPORTADO por `weights_launch()`
+    ("Dilation, partition, export"). También el
     fingerprint de reproducibilidad, ya que un asset de GEE no se puede checksumear."""
     out_asset = weights_asset(fy)
     if not asset_exists(out_asset):
@@ -431,8 +439,9 @@ def weights(fy):
         print(f"          {h} {STRATUM_LABELS[h]:<20} {counts[h]:>15,} px   "
               f"Wh = {counts[h] / total:.6f}")
     if w2 < 0.02 or w2 > 0.15:
-        print(f"[warn] W2 = {w2:.4f} fuera del rango esperado (2%–15%, §4.6) — "
-              f"revisar el radio de dilatación ANTES de congelar las listas")
+        print(f"[warn] W2 = {w2:.4f} fuera del rango esperado, 2%–15% "
+              f"(design.md 'Check W2 before freezing') — revisar el radio de dilatación "
+              f"ANTES de congelar las listas")
     print(f"[weights] escrito: {out}")
 
 
@@ -457,7 +466,7 @@ def main():
     args = ap.parse_args()
 
     if not (FY_MIN <= args.year <= FY_MAX):
-        sys.exit(f"[error] {args.year} fuera del rango validable FY {FY_MIN}–{FY_MAX} (§3)")
+        sys.exit(f"[error] {args.year} fuera del rango validable FY {FY_MIN}–{FY_MAX}")
     if args.year not in FIRE_YEARS:
         print(f"[warn] {args.year} no es uno de los tres años elegidos {FIRE_YEARS} — "
               f"seguimos igual, pero confirmar que es intencional")
