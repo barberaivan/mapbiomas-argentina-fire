@@ -16,6 +16,10 @@ artefacts that cannot be retrofitted are **the strata rasters** and **the ordere
 > disagree, the Python wins**: it is what produced the landed assets, and in two places it
 > deliberately departs from what is written here (see "Status" below).
 
+[Claude, this note of provenance is not needed. The doc must agree with the code, and your
+work is to update the doc so it follows the code; this mention should not be necessary.
+This applies for next subsection too (Status, and one thing to settle before interpreting)]
+
 ---
 
 ## ⚠️ Status, and one thing to settle before interpreting
