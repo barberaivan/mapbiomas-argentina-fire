@@ -73,7 +73,7 @@ MAPBIOMAS_LULC = (
 )
 
 # The PUBLISHED Argentina land-cover integration, crossed with burned area to make the four
-# `*_coverage` subproducts (step 07d, docs/07 "07d — the nine derived subproducts").  DELIBERATELY SEPARATE from MAPBIOMAS_LULC:
+# `*_coverage` subproducts (step 07d, docs/07-published_products "07d — the nine derived subproducts").  DELIBERATELY SEPARATE from MAPBIOMAS_LULC:
 # the coverage products answer "which published land cover burned in year Y" and so must track
 # whatever LULC collection Argentina publishes, while `veg_fire` stays frozen on the collection
 # the model was fitted against.  The two being different assets is not an inconsistency to fix.
@@ -91,7 +91,7 @@ MAPBIOMAS_LULC = (
 #   * origin -73.5666318776841 / -21.780821873347158 against the SNIC lattice's
 #     -73.58468801489491 / -21.764113209062533 — an offset of EXACTLY +67 columns and -62 rows.
 # An integer offset at the same step means the two grids share a phase: pinned to SNIC_TRANSFORM
-# nothing is resampled, so the docs/07 "The four settled answers" lattice proof carries over unchanged.  (The _pb
+# nothing is resampled, so the docs/07-published_products "The four settled answers" lattice proof carries over unchanged.  (The _pb
 # footprint is 144332 x 123501, different from v1_buffer's 89361 x 155938 — the footprint changed,
 # the lattice did not.)
 # If a col-3 v2 supersedes this, change this ONE line and re-export the four coverage products.

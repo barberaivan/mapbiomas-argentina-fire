@@ -16,9 +16,10 @@ Header box:
 
 ```markdown
 > Describes code we do not own: `mapbiomas-fire` @ `<commit>`, read on `<date>`.
-> Derivative and liable to go stale. Where this disagrees with `docs/07`, `docs/07` wins.
+> Derivative and liable to go stale. Where this disagrees with our own `docs/NN-*.md`, those
+> describe the live code.
 ```
 
-Current and expected contents: the MapBiomas Fuego network's shared post-processing (today
-inside `docs/08-postprocessing.md`, split pending) and its statistics toolkit
-`2-Statistics/toolkit/v03/` (today inside `statistics/docs/statistics.md`).
+Current contents: [`mapbiomas-fuego-reference.md`](mapbiomas-fuego-reference.md), the network's
+shared post-processing. Expected next: its statistics toolkit `2-Statistics/toolkit/v03/`, which
+today lives inside `statistics/docs/statistics.md`.

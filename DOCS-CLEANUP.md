@@ -758,8 +758,10 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
       — the *stage-by-stage comparison* of what Argentina already satisfies upstream, what dating
       per pixel buys and costs, and the four live open decisions. ~25 citations repointed across
       7 files; `00-overview.md`'s closing paragraph rewritten as the plan asked; CLAUDE.md's one
-      row replaced by two.
-[Claude, mention in the 00-overview what the doc 08 is]
+      row replaced by two. **Iván, 2026-09-18: the file stays in `docs/`** — moving it would be the
+      real confusion — **and `00-overview.md` now says what it is**, in its own paragraph: that no
+      script bears the number 08, that the spec is satisfied inside step 07, and that reading it as
+      "the step after 07" is exactly what the paragraph exists to prevent.
 
 
 - [x] `03-colab_multi_export.md` (568 → 662) — marked as a **how-to, not a step doc**, in a header
@@ -803,7 +805,9 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
       entries; every heading de-numbered; §12.7 moved back where it belongs and §12.8 dropped into
       the verification note, which is the re-order the plan asked for; **94 inbound `§N` citations**
       repointed across 20 files — the most of any pass. **Two currency defects and one self-inflicted
-      bug — see the box. It is still by far the largest doc, and I did not split it.**
+      bug — see the box.** A **third pass then split it in two** on Iván's word:
+      `07-vector_to_raster.md` (6.6 k, the pixels and 07a–07c) and
+      **`07-published_products.md`** (4.9 k, 07d and 07e) — the line the box below proposed.
 
 > **What the step-07 pass found (2026-09-18).**
 >
@@ -824,6 +828,13 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
 > derive from is. The doc now points at the board as the source of truth instead of restating a
 > state that goes stale in a day. **A status table inside a doc competes with a status file that is
 > written every 15 minutes, and loses.**
+>
+> **Iván, 2026-09-18: 07d is not paused — Vera (Brazil) ran it** on her side, to get past our slow
+> GEE queue, so the board never saw the tasks it was waiting for and the doc inherited a false
+> "paused". Every claim of unfinished work has been removed: the status box now states only that
+> asset ids carry `v<N>` and that the board, not a doc, says which have landed. **A state a doc can
+> assert but not observe should not be in the doc at all** — the board is wrong here too, and the
+> doc repeating it made one stale fact into two.
 >
 > **(c) `C.PRODUCT_LULC` had moved and the doc still named the old asset.** It says
 > "currently `…collection3_integration_v1_buffer`, set 2026-07-29"; the constant is now the
@@ -855,6 +866,8 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
 > says of 07e that it "depends only on step 06, not on 07a–07d, so it can be rebuilt at any time
 > and in any order". Say the word and it is a 20-minute job; I did not do it unasked on the doc
 > that specifies the published product.
+>
+> **Iván said yes, and it is done** (below).
 
 - [ ] `statistics/docs/statistics.md` (16.8 k, was `docs/09`) — **two sessions. FROZEN, with its
       move, until the launch lands (24 Sep 2026).**
@@ -1014,6 +1027,19 @@ Append one line per completed item: date — what — commit.
   `C.PRODUCT_LULC` corrected to the published col-3. **A Python syntax error I introduced in the
   step-06 commit was found and fixed**; every touched `.py`/`.R`/`.sh`/`.ipynb` now parses.
   The doc remains 11 k words — the split proposal is in its box, for Iván.
+- 2026-09-18 — **`07-vector_to_raster.md` SPLIT IN TWO**, on Iván's word, along the line the box
+  above proposed: `07-vector_to_raster.md` (6.6 k) keeps how the burned **pixels** are made — the
+  exclusion ruleset, the `_v2` re-export, the calendar partition, the pinned grid, dieback, and
+  07a–07c — and **`07-published_products.md` (4.9 k)** takes what is **packaged** from them: "Products,
+  and the shape they take", 07d's nine subproducts and 07e's polygon layer. ~20 citations repointed
+  across 12 files; `docs/07` still means the first file and the new one is cited by name, stated in
+  both headers. Also on the same pass, from Iván's comments: docs/08's four "open decisions" are
+  **three settled ones** (the `COLLECTION-1` spelling stays ours, Argentina does publish the
+  fire-object polygons as its own shared asset, the territorial layer is the ecorregiones; the
+  `frequency_burned` band name was struck), the 07d-paused claims are gone, `00-overview.md` says
+  what `08-postprocessing.md` is, and the three "X wins on conflict" boxes in CLAUDE.md,
+  `00-overview.md` and the external reading were replaced by a plain statement of which file
+  describes live code.
 - 2026-09-18 — **Phase 0 done**: 3 `git mv`s, `docs/notes/` + `docs/external/` created with
   their conventions, ~120 citations rewritten across 30 files, ROADMAP pointed here.
   Uncommitted at time of writing.

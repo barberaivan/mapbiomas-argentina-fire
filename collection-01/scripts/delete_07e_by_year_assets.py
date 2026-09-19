@@ -5,7 +5,7 @@
     FINAL_PRODUCTS/burned_area_polygons_by_fire_year/burned_area_polygons_2021
     FINAL_PRODUCTS/burned_area_polygons_by_fire_year/            (the folder itself)
 
-Both are leftovers of the 07e investigation, and both did their job (docs/07 "objects_raw_2021 is duplicated in storage"):
+Both are leftovers of the 07e investigation, and both did their job (docs/07-published_products "objects_raw_2021 is duplicated in storage"):
 
 * **2012** proved the schema on a LANDED asset — that ISO date strings and `system:time_start`
   survive `Export.table.toAsset`, which would otherwise have been discovered 3 h into a merged run;

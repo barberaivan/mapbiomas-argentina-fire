@@ -4,7 +4,7 @@ collection-01/workflow/07-subproducts.py
 
 Step 07d — the nine DERIVED subproducts, all of them from step 07a's month-of-burn
 collection plus the MapBiomas LULC.  No new vectors, no local work, no re-labelling
-(docs/07 "07d — the nine derived subproducts").
+(docs/07-published_products "07d — the nine derived subproducts").
 
     monthly_burned              annual_burned
     monthly_burned_coverage     annual_burned_coverage
@@ -35,7 +35,7 @@ about plumbing rather than pixel values:
 
 And the reference's `accumulated_burned` filename typo is NOT copied: script 2 builds
 `..._accumulate1_burned_v1` where the publish list expects `..._accumulated_burned_v1`
-(docs/07 "Four traps in the reference code").
+(docs/07-published_products "Four traps in the reference code").
 
 Usage (from the repo ROOT)
 --------------------------
@@ -53,16 +53,18 @@ Resumable: a product whose asset exists, or whose task is PENDING/RUNNING, is sk
 The LULC year, and the 2025 duplication
 ---------------------------------------
 `C.PRODUCT_LULC` — the PUBLISHED Argentina land-cover integration, NOT our internal `veg_fire`
-remap (docs/07 "The four settled answers"), and deliberately NOT `C.MAPBIOMAS_LULC` either: that one is the model-side
+remap (docs/07-published_products "The four settled answers"), and deliberately NOT `C.MAPBIOMAS_LULC` either: that one is the model-side
 input `veg_fire` was derived from and stays frozen on the collection the model was fitted
-against, while these products must track whatever LULC Argentina publishes.  Currently LULC
-collection 3 (v1), whose bands run 1985-2025, so nothing is duplicated forward; when the source
+against, while these products must track whatever LULC Argentina publishes.  Currently the
+PUBLISHED col-3 (`mapbiomas_argentina_collection3_pb`), whose bands run 1985-2025, so nothing is
+duplicated forward; when the source
 ends before the series does, the last available year is duplicated forward as every reference
 country does (`.slice(-1).rename(['classification_2025'])`) and the substitution is printed.  The
 coverage products use the **same** calendar year as the burn (not the previous year, unlike
 `veg_fire`): they answer "which land cover burned in year Y, as classified in year Y".
 
-VERIFIED 2026-07-29 for col-2 v8 and col-3 v1 alike — their grids are byte-identical, so the
+VERIFIED for col-2 v8, the preliminary col-3 and the published col-3 alike — their grids are
+byte-identical, so the
 proof transferred with the switch rather than needing to be redone: the LULC asset sits on the
 SAME 30 m lattice as the SNIC grid (same pixel size, origin offset by exactly 9953 columns /
 -25102 rows, integers).  So combining it with the month raster on `C.SNIC_TRANSFORM` involves no
@@ -112,7 +114,7 @@ TASK_PREFIX = "arg07d_"
 # (A `LEGACY_DESCRIPTIONS` fallback used to accept the BARE subproduct names the first launch went
 # out under, so that a re-run mid-batch could not double-submit. All nine of those tasks finished
 # 2026-07-29/30, so it was deleted — it reintroduced the very cross-country collision the prefix
-# exists to retire. docs/07 "Namespace the task descriptions".)
+# exists to retire. docs/07-published_products "Namespace the task descriptions".)
 
 
 # ---------------------------------------------------------------------------
@@ -270,7 +272,7 @@ def build(years, verbose=True):
     #
     # ⚠️ THE BANDS ARE `classification_<year+1>`, NOT `classification_<year>`.  That off-by-one
     # is in the reference and in the publish map; it looks like a bug and the platform expects
-    # it (docs/07 "Four traps in the reference code").  So the 1999-2025 series is carried by bands 2000-2026.
+    # it (docs/07-published_products "Four traps in the reference code").  So the 1999-2025 series is carried by bands 2000-2026.
     ylf, prev = [], ee.Image(0)
     for y in years:
         prev = prev.where(hits[y], y).rename(f"classification_{y + 1}")

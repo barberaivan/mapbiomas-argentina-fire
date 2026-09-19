@@ -196,7 +196,7 @@ swaps it at completion, so the old one stays readable for the hours in between.
 
 Resumable: an asset that exists, or whose task is PENDING/RUNNING, is skipped.  Task descriptions
 are namespaced `arg07e_` because `ee.data.listOperations()` is PROJECT-scoped and this compute
-project is shared with every other country's team (docs/07 'Namespace the task descriptions').
+project is shared with every other country's team (docs/07-published_products 'Namespace the task descriptions').
 """
 
 from __future__ import annotations

@@ -142,7 +142,7 @@ landed and verified on the exported assets** — docs/08 "What Argentina deliver
 1. **Share `burned_area_polygons_v1` with early users** — it is done and verified (2026-07-31).
    1,263,079 rows / 1,263,076 objects / **69.12 Mha per object**, `--verify` clean on all 28
    fire-years, 19 asset properties set, dates ISO `YYYY-MM-DD`, `filterDate()` working. Point users at
-   docs/07 "Two things users must be told" (`calendar_year` is the object's *modal* year and will not cross-tabulate exactly
+   docs/07-published_products "Two things users must be told" (`calendar_year` is the object's *modal* year and will not cross-tabulate exactly
    against the rasters) and §13.7 (`oid` identifies an object, not a row — one FY2000 fire is 4 rows,
    so a row-sum of `area_ha` overstates the layer by 5.1 Mha).
    - [ ] **Run the prepared deletion** of the two per-fire-year test assets and their folder:
@@ -166,9 +166,11 @@ landed and verified on the exported assets** — docs/08 "What Argentina deliver
    then `07-month_of_burn.py --all --stats-read` — the last unrun verification of the month product.
 3. **The network's visual validation gate** (docs/08 "Gotchas"): `1-Toolkit_Collection1/Visualize-Collections-Fire`
    over a few years by eye, before IPAM copies anything to `mapbiomas-public`.
-4. **Ask IPAM the three open questions** (docs/08 "Open decisions"): #9 `frequency_burned`'s band name — the only one
-   that changes an asset — plus #1 the `COLLECTION-1` spelling and #8 whether we may publish the
-   fire-year vectors.
+4. ~~Ask IPAM the three open questions.~~ **Settled** (Iván, 2026-09-18, docs/08 "The three
+   questions this step raised, and how they settled"): the `COLLECTION-1` spelling stays ours —
+   the Brazil team adapted their side to read it; Argentina does publish the fire-object polygons,
+   as **our** asset that we share ourselves; and `frequency_burned`'s band name is not a question —
+   we write the reference script's `fire_frequency_<y1>_<y2>`.
 5. **Then the statistics stage** (collection-01/statistics/docs/statistics.md), which cannot start before the territorial-layer decision —
    deferred to ~20 Aug 2026, see below.
 
@@ -187,7 +189,7 @@ What remains, in detail:
   worked, and that one line is all the record it needs. `--roi` survives as the `--check` extent only.
   Two fixes went in with it: the export now **skips an asset that already exists** (a re-`--launch`
   would otherwise grind through the whole country and die on "cannot overwrite"), and task
-  descriptions are namespaced `arg07c_<subproduct>` for the shared-project reason in docs/07 "Namespace the task descriptions".
+  descriptions are namespaced `arg07c_<subproduct>` for the shared-project reason in docs/07-published_products "Namespace the task descriptions".
   - [x] **`FINAL_PRODUCTS/scar_year_parts` deleted** (2026-07-29) — an empty IMAGE_COLLECTION left by
     an early `--per-year` dry run (that dry-run-creates-assets bug is itself already fixed). Iván
     authorised this one deletion explicitly as an exception to the "user runs deletions" rule; the
@@ -216,10 +218,10 @@ What remains, in detail:
   `fire == 1 & area_ha >= 1`, stripped to ten properties (`oid`, `fire_year`, `calendar_year`,
   `area_ha`, `date_med/min/max`, `p_mean`, `p_width`, `seed_mean`), merged and flattened —
   **1,263,079 rows for 1,263,076 objects, 69.12 Mha** (a row-sum says 74.23 Mha — one FY2000 object is
-  4 rows, docs/07 "oid is unique per OBJECT, not per row"). Dates are ISO `YYYY-MM-DD` and `system:time_start` is stamped from
+  4 rows, docs/07-published_products "oid is unique per OBJECT, not per row"). Dates are ISO `YYYY-MM-DD` and `system:time_start` is stamped from
   `date_med`, so the layer answers `filterDate()` (§13.2.1). Verified: `--verify` clean on all 28
   fire-years, 19 asset properties set, `filterDate` and the ISO string filter returning the same
-  71,754 features for 2020. `workflow/07-burned_area_polygons.py`, docs/07 "07e — the fire-object polygon layer".
+  71,754 features for 2020. `workflow/07-burned_area_polygons.py`, docs/07-published_products "07e — the fire-object polygon layer".
   - **It took three exports**, and the two failures are the lesson (§13.6): both landed COMPLETE with
     1,249 duplicate FY2021 rows because **`objects_raw_2021` is duplicated in storage and no
     metadata-level count reveals it** — `size()`, `aggregate_count('oid')` and `aggregate_array('oid')`
@@ -236,11 +238,11 @@ What remains, in detail:
     until IPAM rules on publishing them. If the ruling is no, the asset moves and the shared link dies.
 - [x] **Sub-step 07d built and launched** (2026-07-29) — `workflow/07-subproducts.py`, 9 export tasks.
   All nine derive from 07a's month collection plus the LULC; encodings copied verbatim from the
-  reference (docs/07 "07d — the nine derived subproducts"), the `accumulate1` filename typo not copied. Verified before launch: band
+  reference (docs/07-published_products "07d — the nine derived subproducts"), the `accumulate1` filename typo not copied. Verified before launch: band
   counts 27/27/27/27/53/53/53/53/27, every coverage code decoding exactly (`mc//100 == month`,
   `mc mod 100 == L`, `fc//100 == freq`, `acc_cov == L`), `freq_2025_2025 == annual_2025` to the pixel,
   and `frequency`/`accumulated`/`accumulated_coverage`/`year_last_fire` agreeing on 241,281 px in the
-  audit box. See docs/07 "What was verified".
+  audit box. See docs/07-published_products "What was verified".
 - [x] **LULC to 2025 — closed, and moot** (2026-07-29). The four `*_coverage` products now cross
   against **LULC collection 3 v1** (`C.PRODUCT_LULC`, Iván's call), which carries
   `classification_2025` natively — nothing is duplicated forward. `C.PRODUCT_LULC` is a **separate
@@ -249,7 +251,7 @@ What remains, in detail:
   the published products track whatever LULC Argentina publishes. Verified col-3 v1 has a
   byte-identical grid to col-2 v8 (so the lattice proof and decode audit transferred untouched), a
   footprint containing the 2 km buffer, and the same class codes with **max 77 < 100** — which is
-  what makes `M*100 + L` decodable and `mod 100` exact. docs/07 "The four settled answers".
+  what makes `M*100 + L` decodable and `mod 100` exact. docs/07-published_products "The four settled answers".
   - If a **col-3 v2** lands, this is a one-line change to `C.PRODUCT_LULC` plus a re-export of the
     four coverage products (they will need deleting first, or `--overwrite` adding to the script).
 - [x] **`LEGACY_DESCRIPTIONS` dropped from `07-subproducts.py`** (2026-07-30), all nine tasks having
@@ -257,7 +259,7 @@ What remains, in detail:
   `arg07d_<subproduct>` (`TASK_PREFIX`) replaced it because `listOperations()` is **project-scoped and
   cross-user** — the shared `mapbiomas-fire` project had 226 tasks from other countries' teams, and a
   bare `annual_burned` colliding with one of theirs would make the in-flight check silently skip one
-  of our products. docs/07 "Namespace the task descriptions". `07-scar_rasters.py` was checked at the same time and already
+  of our products. docs/07-published_products "Namespace the task descriptions". `07-scar_rasters.py` was checked at the same time and already
   namespaces its descriptions `arg07c_` — nothing to do there.
 - [x] **The nine subproducts' property blocks repaired in place** (2026-07-30, docs/notes/07-verification_log.md) —
   `ee.data.updateAsset`, metadata only, no re-export; bands/dtypes/pyramiding re-read afterwards and
@@ -269,10 +271,11 @@ What remains, in detail:
   drops input properties — before renaming `monthly_burned`, so a re-export comes out clean.
   **`scripts/audit_product_properties.py`** is the standing drift check (dry run by default,
   `--apply` to write); run it after any re-export or any move of `C.PRODUCT_LULC`.
-- [ ] **The territorial layer — NOT before ~20 August 2026** (Iván, 2026-07-29). Not needed for the
-  31 July assets, and **which territories to cut by is undecided** — possibly a **vegetation-units
-  map** rather than the 5 fire regions. That decision comes first; the layer is mechanical after it.
-  docs/08 "Open decisions". What follows applies only if the 5 fire regions win:
+- [x] **The territorial layer is the ecorregiones**, not the 5 fire regions —
+  `ANCILLARY_DATA/VECTOR/ARG/ARG-Political_Level_2-13Ecorregiones_3857`, 13 features keyed by
+  `GEOCODE`, which the statistics stage already runs on (collection-01/statistics/docs/statistics.md §7, docs/08 "The three
+  questions this step raised, and how they settled"). **Everything below applied only if the 5 fire
+  regions had won, and they did not** — kept for the measurements it carries:
 - [ ] **Build `regiones_fuego_argentina_v1` as a FeatureCollection.** ⚠️ **The premise was wrong**: a
   5-feature region VECTOR does exist — `ANCILLARY_DATA/VECTOR/ARG/regiones_arg_col1_simplificada_num`,
   with `Region` (`Pampas`, `Bosque Atlantico`, `Puna,Monte y Altos Andes`, `Patagonia`, `Chaco`) and an
@@ -412,6 +415,19 @@ What remains, in detail:
 - [ ] For collection 2, correct the application of late dieback in Patagonian forests.
   Read docs/05, section **The Patagonia steppe dieback cut**. That should be applied before
   SNIC is run (step 4), not afterwards (in Col1 we discovered the problem too late).
+
+---
+
+## Reduce the statistics/docs/ file
+
+These files should follow the ideas in collection-01/docs/TEMPLATE.md.
+They were simply moved to statistics/docs from docs/, but not cleaned.
+
+- [ ] `statistics/docs/statistics.md` (16.8 k, was `docs/09`) — **two sessions. FROZEN, with its
+      move, until the launch lands (24 Sep 2026).**
+- [ ] `statistics/docs/factsheet-sep2026-spec.md` (8.8 k, was `docs/10`) — **FROZEN until the
+      launch lands.** Stays Spanish. Lightest pass of all: it is a spec, and it is already done
+      its job; strip status chatter, leave the figure-by-figure content.
 
 ---
 

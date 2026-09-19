@@ -394,7 +394,7 @@ sentinel exists in all three columns.
   proves nothing about the next query. Raster consumers are immune, because painting a polygon twice
   is idempotent: `07-month_of_burn.py` and every product derived from it are unaffected. Anything
   that **counts, sums or exports features** must guard, and `fires()` does, with `distinct('oid')`
-  per fire-year, skipped for FY2000 (`docs/07` "`objects_raw_2021` is duplicated in storage"). **The
+  per fire-year, skipped for FY2000 (`docs/07-published_products` "`objects_raw_2021` is duplicated in storage"). **The
   only real fix is to re-ingest the year from the clean zip** (BACKLOG); no acceptance count can
   substitute for it, because the counts are per-query.
 - **`oid` is unique per OBJECT, not per row, in the uploaded FeatureCollections.** The max-vertices
@@ -402,7 +402,7 @@ sentinel exists in all three columns.
   each repeating the whole object's attributes. FY2000's `2000_57529` is 4 rows, the only case in 28
   years — and a naive `aggregate_sum('area_ha')` therefore over-counts by 5.1 Mha. Dissolve by `oid`
   or subtract the split before quoting an area, and **never** repair a duplicate with a blind
-  `distinct('oid')` on FY2000 (`docs/07` "`oid` is unique per OBJECT, not per row").
+  `distinct('oid')` on FY2000 (`docs/07-published_products` "`oid` is unique per OBJECT, not per row").
 - **`area_ha` is not `n_pixels × 0.09`.** Objects carry lat/lon pixel coordinates (~30 m *at the
   equator*) and area is measured on the ellipsoid, so one pixel is `900·cos(lat)` m² — **831 m² at
   22° S down to 517 m² at 55° S**. A size class is therefore a pixel-count *range* (1 ha = 12 px in

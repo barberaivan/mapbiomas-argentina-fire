@@ -686,7 +686,7 @@ the same family of products.
 
 **The source** is `year_last_fire_v2`, band **`year_last_fire_2026`**. The `+1` is not a typo:
 the band naming is `<subproduct>_<year+1>` in the reference and the platform expects it
-(docs/07 "Four traps in the reference code"), so `…_2026` is the complete 1999–2025 series and `…_2025` would stop at
+(docs/07-published_products "Four traps in the reference code"), so `…_2026` is the complete 1999–2025 series and `…_2025` would stop at
 2024. (The publish map's `band_format` says `classification_{year}`; the exported **asset**
 carries the subproduct name. Verified 17 Sep 2026 on the v2.)
 

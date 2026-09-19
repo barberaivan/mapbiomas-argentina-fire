@@ -51,8 +51,8 @@ collection-01/
 │   ├── 07-month_of_burn.py          # Month of burn per CALENDAR year, in GEE (docs/07 "07a — the GEE month-of-burn build")
 │   ├── 07-calendar_scars.R          # 8-connected calendar-year scars, locally, two passes (docs/07 "07b — the local scar build")
 │   ├── 07-scar_rasters.py           # Scar id / area / size-range rasters from the ingested scar FCs
-│   ├── 07-subproducts.py            # The 9 derived subproducts, from the month collection (docs/07 "07d — the nine derived subproducts")
-│   └── 07-burned_area_polygons.py   # All fires, 28 fire-years, one FC for early users (docs/07 "07e — the fire-object polygon layer")
+│   ├── 07-subproducts.py            # The 9 derived subproducts, from the month collection (docs/07-published_products "07d")
+│   └── 07-burned_area_polygons.py   # All fires, 28 fire-years, one FC for early users (docs/07-published_products "07e")
 │                           # step 08 has no script — the spec is met by step 07; docs/08-postprocessing.md
 ├── statistics/             # Step 09 — every factsheet number and figure (statistics/docs/statistics.md)
 │   ├── legends.py                   # burnable class list, status codes, the 13 ecoregion names (literals)
@@ -197,7 +197,8 @@ Rscript collection-01/scripts/veg-fire_remap_clean-google-sheet.R
 ### Steps 03–09
 
 In development. See the per-step notes in `collection-01/docs/` (03 bp-ts metrics, 04 SNIC,
-05 object metrics, 06 object model, 07 vector→raster, 08 post-processing, 09 statistics/launch) and the
+05 object metrics, 06 object model, 07 vector→raster + 07 published products, 08 post-processing,
+09 statistics/launch) and the
 scripts in `collection-01/workflow/`.
 
 **Steps 01–07 are our own mapping method; step 08 is not.** Once step 07 delivers the month-of-burn
@@ -209,7 +210,8 @@ encoding and legend despite mapping with a different method (Alencar et al. 2022
 the network's reference code, don't redesign it:
 
 - `docs/08-postprocessing.md` — **Argentina's route** through the spec: which stages are already
-  embedded upstream, how dating per pixel changes the products, what we deliver, open decisions.
+  embedded upstream, how dating per pixel changes the products, what we deliver, and how the three
+  questions it raised settled.
 - `docs/external/mapbiomas-fuego-reference.md` — **the spec itself**, i.e. our reading of the
   network's repo, pinned to a commit. Derivative and liable to go stale.
 - `statistics/docs/statistics.md` — stages 5–6 + launch: statistics, territorial layer, Workspace, materials.
@@ -348,8 +350,10 @@ never NULL: OGR writes an unset DBF integer as null and GEE reads it as `0`, ind
 ### Step 07 — the calendar-year products
 
 Two deliverables, and they must agree pixel-for-pixel: the **month-of-burn raster** per calendar
-year, and the **calendar-year scars** the size products are painted from. Design and the
-verification numbers are in `docs/07-vector_to_raster.md`.
+year, and the **calendar-year scars** the size products are painted from. The step is documented in
+two files: `docs/07-vector_to_raster.md` (how the burned pixels are made — the object selection, the
+calendar partition, the grid, 07a–07c) and `docs/07-published_products.md` (what is packaged from
+them — 07d's nine subproducts and 07e's polygon layer).
 
 ```
 calendar year Y  =  Jan-Apr Y  from fire-year (Y-1)   |+|   May-Dec Y  from fire-year Y
@@ -399,7 +403,7 @@ $PYTHON collection-01/workflow/07-scar_rasters.py --launch     # skips assets th
 `*_coverage`, `frequency_burned` (+`_coverage`), `accumulated_burned` (+`_coverage`),
 `year_last_fire`. All nine derive from 7a's month collection plus the MapBiomas LULC, so they do
 **not** wait for 7c, and the encodings are copied verbatim from the network's reference scripts —
-do not innovate there (`docs/07-vector_to_raster.md` §12).
+do not innovate there (`docs/07-published_products.md`).
 
 ```bash
 $PYTHON collection-01/workflow/07-subproducts.py --check      # band bookkeeping + ROI counts
@@ -408,18 +412,18 @@ $PYTHON collection-01/workflow/07-subproducts.py --launch --only frequency_burne
 ```
 
 **7e — the fire-object polygon layer, for early users.** Every mapped fire, all 28 fire-years, in one
-FeatureCollection with ten properties (`FINAL_PRODUCTS/burned_area_polygons_v1`, 1.26 M polygons /
-69.12 Mha per object). This is **ours**, not one of the network's six subproducts, and it is the layer to hand to
-early users — read `docs/07-vector_to_raster.md` §13 before sharing it, because `calendar_year` here
-is the object's *modal* year and does not agree pixel-for-pixel with the rasters. Dates are ISO
-`YYYY-MM-DD` strings and `system:time_start` is stamped from `date_med`, so the layer answers
-`filterDate()` (§13.2.1).
+FeatureCollection with ten properties (`FINAL_PRODUCTS/burned_area_polygons_v2`, 1,012,645 objects /
+63.33 Mha). This is **ours**, not one of the network's six subproducts, and it is the layer to hand
+to early users — read `docs/07-published_products.md` "07e — the fire-object polygon layer" before
+sharing it, because `calendar_year` here is the object's *modal* year and does not agree
+pixel-for-pixel with the rasters. Dates are ISO `YYYY-MM-DD` strings and `system:time_start` is
+stamped from `date_med`, so the layer answers `filterDate()`.
 
 ```bash
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --check                # counts + schema
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --launch               # the merged FC
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --launch --overwrite   # re-export in place
-$PYTHON collection-01/workflow/07-burned_area_polygons.py --verify              # THE gate — §13.6
+$PYTHON collection-01/workflow/07-burned_area_polygons.py --verify              # THE gate
 $PYTHON collection-01/workflow/07-burned_area_polygons.py --set-props            # after it lands
 # One table task at 1.26 M features works — three have completed, 2.6-3.7 h each. Because the GEE
 # task queue is PER USER, submit it as the second account when the first one has a full queue:
@@ -430,7 +434,7 @@ $PYTHON collection-01/workflow/07-burned_area_polygons.py --launch \
 ⚠️ **Always `--verify` before sharing the path.** Two merged exports reached COMPLETED carrying 1,249
 FY2021 features **twice** — schema right, every object present, area inflated by 71 kha. The cause was
 `objects_raw_2021` being duplicated *in storage*, which **no metadata-level count reveals**: `size()`
-says 53,263, iterating the table says 54,514 (docs/07 "objects_raw_2021 is duplicated in storage"). `--verify` audits rows *and* distinct
+says 53,263, iterating the table says 54,514 (docs/07-published_products "objects_raw_2021 is duplicated in storage"). `--verify` audits rows *and* distinct
 `oid` per fire-year, which is the only check that catches it.
 
 ### Step 09 — the statistics and the factsheet
@@ -579,6 +583,6 @@ Export status across regions: `python collection-01/scripts/status.py`.
 | 04 — SNIC segmentation | Whole-country fire-year SNIC settled; per-carta direct-download handoff to R (`docs/04-snic.md`). |
 | 05 — object metrics (R/terra) | 2001–2025 measured and run; 1.69 M objects (`docs/05-object_metrics.md`). |
 | 06 — object model (R, BART) | **Done.** 20 predictors, fitted on 5255 labels, grid-blocked OOF AUC 0.891 (within-year 0.845); per-size-band cuts deployed; all 28 fire-years scored (1 689 419 objects, 36 unscored); 28 QGIS layers built and inspected (`docs/06-object_model.md`, `docs/06-object_labels.md`, `docs/06-object_inspection.md`). |
-| 07 — calendar-year products | **All 12 images + 27 scar FCs landed and verified on the exported assets** (2026-07-30): **07a** month-of-burn collection 27/27, **07b** calendar-year scars 27/27 built, gated and ingested, **07c** scar rasters 3/3, **07d** the nine derived subproducts 9/9. **07e** the fire-object polygon layer for early users is exporting. Delivery checklist: `docs/08-postprocessing.md` §7; detail and verification numbers: `docs/07-vector_to_raster.md`. Still owed: the whole-country month-histogram cross-check (its local half needs regenerating) and the network's visual validation pass. |
-| 08 — network post-processing & published subproducts | **Delivered 2026-07-30** — the spec is satisfied by step 07; `docs/08-postprocessing.md` says how Argentina's route differs and what is still undecided, `docs/external/mapbiomas-fuego-reference.md` is the network's spec |
+| 07 — calendar-year products | **All 12 images, the 27 scar FCs and the polygon layer landed and verified on the exported assets**: **07a** month-of-burn collection 27/27, **07b** calendar-year scars 27/27 built, gated and ingested, **07c** scar rasters 3/3, **07d** the nine derived subproducts 9/9, **07e** the fire-object polygon layer. Live state of the `_v2` re-export: `logs/v2-driver/STATUS.md`. Pixels and 07a–07c: `docs/07-vector_to_raster.md`; 07d and 07e: `docs/07-published_products.md`. Still owed: the whole-country month-histogram cross-check (its local half needs regenerating) and the network's visual validation pass. |
+| 08 — network post-processing & published subproducts | **Delivered 2026-07-30** — the spec is satisfied by step 07; `docs/08-postprocessing.md` says how Argentina's route differs and how the questions it raised settled, `docs/external/mapbiomas-fuego-reference.md` is the network's spec |
 | 09 — statistics & factsheet | **Numbers and figures done.** Burned area from the network's toolkit run on our ecorregiones; burnable denominator exported (251.09 Mha over the 12 mapped ecorregiones); 1,012,645 mapped fires counted locally; the `factsheet_*` tables and 170 figures built (`statistics/docs/statistics.md`), including **análisis 6** — how land cover changes around fire, with a control: q = 3.74 nationally, 10.9 for bosque → agropecuario. Gate 6 — toolkit vs object database — closes at **63.23 vs 63.25 Mha, 0.03 %**. Still owed: the staging cross-check, the ATBD, Workspace registration. Launch **24 Sep 2026** |

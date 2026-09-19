@@ -12,7 +12,7 @@ QUÉ COMPUTA
     cada píxel sobre 1999–2025.
 
     ⚠️ LA BANDA ES `year_last_fire_<año+1>`: el off-by-one está en el código de referencia
-    de la red y la plataforma lo espera (docs/07 "Four traps in the reference code").  `year_last_fire_2026` ES la
+    de la red y la plataforma lo espera (docs/07-published_products "Four traps in the reference code").  `year_last_fire_2026` ES la
     serie 1999–2025 completa; `year_last_fire_2025` se detendría en 2024.  (El `band_format`
     que publica la red para este subproducto dice `classification_{year}`, pero el ASSET
     exportado lleva el nombre del subproducto — verificado 17 sep 2026 sobre el v2.)

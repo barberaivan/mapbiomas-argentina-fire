@@ -549,7 +549,7 @@ def stage_B(st):
     # decides whether that asset deserves the stamp.
     if tries("B-verify") >= MAX_TRIES:
         log(f"[B] ⚠ STOPPED — --verify has failed {MAX_TRIES} times on the landed layer; "
-            f"see B-verify.out. v1 took three submissions for exactly this reason (docs/07 'objects_raw_2021 is duplicated in storage')")
+            f"see B-verify.out. v1 took three submissions for exactly this reason (docs/07-published_products 'objects_raw_2021 is duplicated in storage')")
         return
     if run("B-verify", [PYTHON, "collection-01/workflow/07-burned_area_polygons.py",
                         "--verify", *GMAIL], timeout=7200) != 0:

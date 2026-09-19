@@ -79,7 +79,7 @@ next stage needs.
 | **Temporal** | [03 burn-probability time-series metrics](03-bpts.md) | annual per-pixel metrics + burn date |
 | **Spatial (1)** | [04 SNIC segmentation](04-snic.md) | scar objects, grown from seeds through candidates |
 | **Spatial (2)** | [05 object metrics](05-object_metrics.md); 06 [object labels](06-object_labels.md), [object model](06-object_model.md), [QGIS inspection](06-object_inspection.md) | a fire probability and a fire call per object |
-| *Publication* | [07 calendar-year products](07-vector_to_raster.md) | the layers MapBiomas ships |
+| *Publication* | 07 [calendar-year pixels](07-vector_to_raster.md), [published products](07-published_products.md); [08 post-processing](08-postprocessing.md) | the layers MapBiomas ships |
 
 **Steps 01–06 are the algorithm; step 07 is the delivery.** If the goal were burned-area data as
 such, the chain could stop at 06 — the scored fire objects, each with its dates and its fire
@@ -88,14 +88,22 @@ set of layers in a specific shape: the fire-year objects are re-partitioned into
 years**, with year and month assigned **per pixel** from its burn date, and derived into the nine
 subproducts the network defines. It is a change of packaging, not of evidence.
 
-The network's shared post-processing is the spec those products conform to, and it is documented
-in two files because it is two different things. The spec itself — the other countries' reference
-implementation — is [`external/mapbiomas-fuego-reference.md`](external/mapbiomas-fuego-reference.md),
-read against a pinned commit of a repo we do not own. **Argentina's route through it** is
-[`08-postprocessing.md`](08-postprocessing.md): which of its stages are already embedded upstream
-here, how dating per pixel changes the products, and what is still undecided. What we actually
-built is [`07-vector_to_raster.md`](07-vector_to_raster.md), which wins wherever the three
-disagree.
+Step 07 is documented in **two** files, because it is two jobs.
+[`07-vector_to_raster.md`](07-vector_to_raster.md) says how the burned **pixels** are made — which
+objects contribute, the calendar partition, the pinned grid — and covers 07a–07c;
+[`07-published_products.md`](07-published_products.md) says what is **packaged** from them: the
+shape every published asset takes, 07d's nine subproducts, 07e's fire-object polygon layer. Cited
+bare, `docs/07` means the first.
+
+**There is also a `08-postprocessing.md`, and it is not a step we run.** No script bears the number
+08: the network's post-processing is a *spec*, and Argentina satisfies it inside step 07 — several
+of its stages (the LULC mask, the solitary-pixel filter) are already embedded further upstream and
+more strictly than the spec asks. `08-postprocessing.md` is the file that says so: which reference
+stage is met where, what dating per pixel buys and costs, what Argentina delivers, and how the
+questions the spec raised were settled. It sits in `docs/` next to the step docs because that is
+where a reader looks for it — reading it as "the step after 07" is the confusion it exists to
+prevent. The spec itself is a separate file again, our reading of a repo we do not own, pinned to a
+commit: [`external/mapbiomas-fuego-reference.md`](external/mapbiomas-fuego-reference.md).
 
 **Statistics and validation are not stages of this chain.** They consume the finished map — see
 [`../statistics/docs/statistics.md`](../statistics/docs/statistics.md) and

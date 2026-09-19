@@ -45,7 +45,7 @@ Usage (from the repo ROOT)
   $PYTHON collection-01/workflow/07-scar_rasters.py                  # dry run
   $PYTHON collection-01/workflow/07-scar_rasters.py --launch         # 3 export tasks
 
-Shape: three images of 27 BANDS, not 27 images of 3 bands (docs/07 "Products, and the shape they take") — also what the reference
+Shape: three images of 27 BANDS, not 27 images of 3 bands (docs/07-published_products "Products, and the shape they take") — also what the reference
 does (script 5 exports `regions.union().geometry()` over `ee.List.sequence(1999, 2025)` in ONE task
 per subproduct, for a whole country, with no region split).
 
@@ -188,7 +188,7 @@ def _export_products(specs, years, launch):
         ee.batch.Export.image.toAsset(
             # NAMESPACED description: `ee.data.listOperations()` is project-scoped and the compute
             # project is shared with the whole network, so a bare `annual_burned_id` can collide with
-            # another country's export (CLAUDE.md, docs/07 "Namespace the task descriptions").
+            # another country's export (CLAUDE.md, docs/07-published_products "Namespace the task descriptions").
             image=img, description=f"{TASK_PREFIX}{sub}", assetId=asset_id, region=region,
             crs=C.SNIC_CRS, crsTransform=C.SNIC_TRANSFORM,
             maxPixels=int(1e13), pyramidingPolicy={".default": pyr},

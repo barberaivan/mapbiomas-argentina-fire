@@ -8,9 +8,10 @@
 > ⚠️ On the day it was pinned, `origin/master` was **68 commits ahead** of that checkout and those
 > commits have **not** been read against this text. Pull and re-read before trusting a detail.
 >
-> Derivative and liable to go stale. **Where this disagrees with
-> [`../07-vector_to_raster.md`](../07-vector_to_raster.md), docs/07 wins** — it describes what
-> Argentina actually runs. Nothing about our own pipeline belongs in this file.
+> Derivative and liable to go stale. What Argentina actually runs is
+> [`../07-vector_to_raster.md`](../07-vector_to_raster.md) and
+> [`../07-published_products.md`](../07-published_products.md); where this reading disagrees with
+> them, they are the ones describing live code. Nothing about our own pipeline belongs in this file.
 
 **This is not a to-do list for Argentina.** It is a reference for the *shape* of the published
 products — asset topology, band names, encodings, dtypes, pyramiding, legends. Several stages the
@@ -176,7 +177,8 @@ South America), exported to `FINAL_PRODUCTS/` with `pyramidingPolicy: mode`, `sc
   where the publish list expects `…_accumulated_burned_v1`.
 - ⚠️ **The `*_coverage` products are easy to forget** and are exactly what the statistics read
   (`../../statistics/docs/statistics.md`). ~~They need our LULC asset extended to 2025~~ — **not a blocker and now moot**: they
-  cross against LULC **col-3 v1**, which carries `classification_2025` natively (`../07-vector_to_raster.md` "The nine derived subproducts").
+  cross against the **published col-3**, which carries `classification_2025` natively
+  (`../07-published_products.md` "The nine products").
 - ⚠️ **Not every built subproduct appears in a publish list, and the three lists disagree**
   (read 11 Sep 2026). `ToPublish/` now holds **three** scripts, renumbered since this doc was
   written: `1-products-Public` (ACLs only — new), `2-toBucket-subproducts` (COGs),
