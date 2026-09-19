@@ -626,6 +626,23 @@ Append one line per completed item: date — what — commit.
   `07-published_products.md` (4.9 k); ~20 citations repointed across 12 files. Same commit took
   Iván's three comments: 07d is **not** paused (Vera ran it in Brazil), docs/08's four open
   decisions became three settled ones, and `00-overview.md` now says what `08-postprocessing.md` is.
+- 2026-09-18 — **Phase 3 done, all eight items** (`b28561a`, `4f1d312`, `504b99c`, `c3f4bcd`,
+  `c979ffb`). Workflow docstrings 6,686 → 2,368 words; `collection-01/README.md` 6,166 → 1,423 with
+  all 20 bash blocks gone; three new signpost READMEs (`scripts/`, `statistics/`, `validation/`);
+  `models/README.md` kept its length as the artifact reference but lost its duplicated tail. The
+  plan's `Pipeline` section is reconciled to `TEMPLATE.md`'s **`Run`** — one name.
+- 2026-09-18 — **what the Phase 3 verification found, which is the part worth keeping**. Checking
+  each deletion against the doc that inherits it turned up five live defects, none of them
+  discoverable by reading either file alone: a documented flag that does not exist
+  (`--agri-max`); a docstring quoting `_v1` figures and the `_v1` asset as current when the doc
+  already flags them as pre-rule; a dead pointer to `TASK-DATA-EXPORT.md`; **`models/README.md`
+  giving the elastic-net grid as `{0, .25, .5, .75, 1}` when the code fits `{0.25, 0.5, 0.75}` and
+  drops ridge and lasso on purpose**; and two notebooks absent from the notebooks table. Plus 17
+  `§N` citations in workflow code converted to names, several pointing at numbering deleted months
+  ago and two at a `statistics.md §4.4` that never existed. **The rule that catches these is rule
+  1**: a fact with two homes has one that is wrong, and you only find out when you try to delete
+  one of them.
+
 - 2026-09-18 — **Phase 0 done**: 3 `git mv`s, `docs/notes/` + `docs/external/` created with
   their conventions, ~120 citations rewritten across 30 files, ROADMAP pointed here.
   Uncommitted at time of writing.
