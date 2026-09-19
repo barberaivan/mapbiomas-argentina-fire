@@ -539,8 +539,12 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
 **Decided 2026-09-18: `collection-00/` is FROZEN.** It is the completed Patagonia pilot and it
 has a real ATBD. No pass, no template, no extraction.
 
-- [ ] One-line header on `collection-00/README_00.md`: completed pilot, see the ATBD, not
-      maintained. Nothing else in `collection-00/` is touched.
+- [x] Header added to `collection-00/README_00.md`: completed pilot (Patagonia only, shipped),
+      frozen and not maintained, method in the ATBD not in the repo's step docs, active development
+      is `collection-01/`. Sits directly under the title, above the existing "read first" pointer,
+      so it is the first thing read. **Nothing else in `collection-00/` was touched** — including
+      its "Repository scope" section, which still describes the whole repo as the pilot workflow;
+      that is what frozen means.
 
 ### Phase 6 — sub-tasks
 
@@ -670,3 +674,6 @@ Append one line per completed item: date — what — commit.
   rather than shortened, because `collection-01/README.md` already owns both — which is Phase 3
   paying off. Every doc indexed and every link checked mechanically; one stale docstring claim
   about CLAUDE.md's own credentials rule fixed in `07-burned_area_polygons.py`.
+- 2026-09-19 — **Phase 5 done**: the frozen-pilot header on `collection-00/README_00.md`, and
+  nothing else in that directory. Phases 4 and 5 are the last of the main checklist; what remains
+  is Phase 6, whose first item (the `notes/` reconcile) still waits on nothing but a session.

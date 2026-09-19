@@ -3,6 +3,12 @@
 **MapBiomas Argentina – Fire Mapping Algorithm**  
 *Pilot: Collection 0*
 
+> **Completed pilot — frozen, not maintained.** Collection 0 mapped Patagonia only and shipped; it
+> is kept as reference and reproduction material, and nothing in `collection-00/` is being updated.
+> Its method is documented in the [ATBD](docs/documentation_pilot_latex/build/mapbiomas_fire_argentina_atbd_pilot_2025.pdf),
+> not in the repo's step docs. Active development is
+> [`../collection-01/`](../collection-01/README.md).
+
 ---
 
 ## Documentation (read first)
