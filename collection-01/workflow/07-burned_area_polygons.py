@@ -91,9 +91,10 @@ def initialize(project, credentials_path=None):
     the shared link is the same either way.
 
     `ee.oauth.get_credentials_path()` hardcodes `~/.config/earthengine/credentials` with no env
-    override, and CLAUDE.md's answer is to `cp` the account you want into place.  Passing the file
-    explicitly is better: nothing is clobbered, two accounts can be used in the same session, and a
-    half-finished swap cannot leave the wrong token resident.  Keep per-account backups
+    override, so the obvious route is to `cp` the account you want into place.  Passing the file
+    explicitly is better and is the rule CLAUDE.md now states: nothing is clobbered, two accounts
+    can be used in the same session, and a half-finished swap cannot leave the wrong token
+    resident.  Keep per-account backups
     (`credentials.gmail`, `credentials.comahue`) and point `--credentials` at one.
     """
     if not credentials_path:

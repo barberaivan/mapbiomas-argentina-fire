@@ -517,9 +517,22 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
 > **Depends on Phase 3.** `CLAUDE.md` is an index of the READMEs and docs; shortening it before
 > they are stable means writing it twice. It is last for that reason, not by accident.
 
-- [ ] `CLAUDE.md` → one line per doc. Today the `docs/09` row alone is ~900 words **inside one
-      table cell**, and the file violates its own rule ("keep CLAUDE.md as the index, not the
-      encyclopedia") while costing context on every session. Target ≤ 1.5 k words.
+- [x] `CLAUDE.md` → one line per doc: **6,213 → 1,584 words**, and the `docs/09` row that was
+      ~900 words inside one table cell is now one line. Two tables (the map-making chain, then the
+      episodic activities), a signposts paragraph for the READMEs, and a five-line "where a fact
+      lives" restatement of §2 rule 1 — the rest is operating rules only. **What left, and where it
+      already lived**: the whole "pipeline at a glance" list (`collection-01/README.md`'s pipeline
+      table), the collection-0-vs-1 technology table (same file, "What changed from collection 0"),
+      and every per-doc précis (the doc itself). Kept, because nothing else owns them: the two
+      accounts and the explicit-credentials pattern, the shared-project rule, and the step-specific
+      traps that have each been made twice — the year-leak predictor, `crsTransform` vs `scale=30`,
+      and the two LULC constants. **1,584 is 5.6 % over target** and stays: the remainder is the
+      index itself. Verified mechanically — every `.md` under `docs/`, `docs/external/`,
+      `statistics/docs/` and `validation/docs/` appears in it, every link resolves, every backticked
+      path exists. One defect found on the way: `07-burned_area_polygons.py`'s docstring still said
+      "CLAUDE.md's answer is to `cp` the account into place", which CLAUDE.md has contradicted since
+      the explicit-credentials rule landed. The file count in `scripts/README.md` ("57") is **not**
+      repeated here — one home.
 
 ### Phase 5 — collection 0
 
@@ -652,3 +665,8 @@ Append one line per completed item: date — what — commit.
 - 2026-09-18 — **Phase 0 done**: 3 `git mv`s, `docs/notes/` + `docs/external/` created with
   their conventions, ~120 citations rewritten across 30 files, ROADMAP pointed here.
   Uncommitted at time of writing.
+- 2026-09-19 — **Phase 4 done**: `CLAUDE.md` 6,213 → 1,584 words, one line per doc. The index is
+  two tables plus a signposts paragraph; the pipeline list and the technology table were deleted
+  rather than shortened, because `collection-01/README.md` already owns both — which is Phase 3
+  paying off. Every doc indexed and every link checked mechanically; one stale docstring claim
+  about CLAUDE.md's own credentials rule fixed in `07-burned_area_polygons.py`.
