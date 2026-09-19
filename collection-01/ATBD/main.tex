@@ -1160,6 +1160,42 @@ and filtered areas stay summable.
         5.1 Mha.
 \end{itemize}
 
+\subsection{What Argentina delivers, and what is only ours}
+
+Not every country in the network delivers the same set, and the network's own scripts mention more
+layers than any single country produces. It is worth being explicit about which of the layers
+described above are Argentina's obligation to the network, and which exist only here.
+
+\textbf{Argentina delivers all six subproducts} --- annual, monthly, accumulated, frequency, year of
+last fire, and scar size --- together with the four \emph{coverage} variants and the two companion
+scar rasters they are built from, which is the twelve assets of Table~\ref{tab-products}. The launch
+guide's country table marks Argentina for all six; several countries deliver only the first four.
+
+\textbf{Three layers that appear in the network's publishing scripts are not Argentina's}: fire
+severity, the interval since the previous fire, and time since fire
+(\texttt{severity\_class},
+\texttt{interval\_since\_fire}, \texttt{time\_after\_fire}). They are listed there but are not in
+the country table for Argentina --- they are additions from other countries' chains. Collection 1
+does not produce them, and their absence is a scope decision rather than an omission.
+
+\textbf{The fire-object vector database is ours alone.} It is delivered alongside the six, but it is
+not one of them: it is not part of the network's common specification, no other country publishes
+its equivalent as part of the launch, and it is not copied into the network's public collection ---
+that copy takes an explicit list of subproducts, which this layer is not on. It exists because the
+algorithm of Sections~\ref{sec-snic} and~\ref{sec-objects} produces fire \emph{objects} as its
+natural output, and discarding them to publish only the rasters derived from them would throw away
+the level at which this collection actually reasons about fire. A user who wants burned area in the
+network's shape takes the six; a user who wants individual fires, with their dates, their size and
+the classifier's confidence in each one, takes this layer, and takes it from us
+(Section~\ref{sec-polygons}).
+
+The same asymmetry runs the other way and is worth stating once: \textbf{several things this
+algorithm computes are not published at all}. The per-observation burn probability is never
+materialised (Section~\ref{sec-deploy}); the annual time-series metrics and the segmentation output
+exist as intermediate assets in the production tree, not as products; and the twenty object metrics
+that feed the classifier are in the object database but only a handful of them reach the vector
+layer. None of that is a deliverable, and none of it is supported for external use.
+
 \subsection{Where the products live}
 
 The assets above are produced in the project's own Earth Engine folder:
