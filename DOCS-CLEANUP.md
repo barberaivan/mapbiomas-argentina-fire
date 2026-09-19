@@ -329,24 +329,7 @@ own, find the step doc that is carrying it. A doc that documents two stages will
 - [x] `ROADMAP.md`'s `## Next` now points here; the Spanish braindump is kept below it, marked
       as source material rather than a task list.
 
-> **What the citation sweep turned up — `docs/NN` was never a stable address.**
-> `docs/10` meant **two different documents** depending on the citing file: validation in
-> `validation/*`, `scripts/10_burned_area_by_fire_year.py` and
-> `notebooks/validation_year_selection.qmd`; the factsheet spec everywhere else. And every
-> `docs/11` in code (6 in `workflow/07-month_of_burn.py`, 3 in `scripts/objects_region_tag.R`)
-> pointed at **the old statistics numbering** — confirmed from git: the `feat(11)` commits are
-> statistics work, and `git log --diff-filter=R` shows `docs/10-validation.md` →
-> `docs/11-validation.md` in `df0d545`. A renumber had silently broken every citation to both.
->
-> **This is the strongest argument for the whole reorganisation**: a numbered sequence is a
-> moving address, and moving addresses rot in silence. Names do not. Do not reintroduce numbers
-> for anything outside the 01–08 chain.
->
-> ⚠️ **Those 9 `docs/11` citations now point at the right document but keep their OLD section
-> numbers** — e.g. `07-month_of_burn.py:58` cites "§2, §6" for the agriculture filter, which is
-> not §2 of today's statistics doc. They were rewritten to the correct *file* (strictly better
-> than pointing at nothing) and the **§ numbers must be re-checked during the statistics pass**
-> in Phase 2. The files: `workflow/07-month_of_burn.py`, `scripts/objects_region_tag.R`.
+
 
 ### Phase 1 — the template and the bridge (with Iván, hands-on)
 
@@ -361,34 +344,13 @@ own, find the step doc that is carrying it. A doc that documents two stages will
 - [x] The four docs restructured to it, and `02-diagnostic_plots.md` split out of
       `02-model_fitting.md` (a diagnostic tool, not a step). History →
       `notes/02-lr_term_reduction.md`.
-> **Three amendments from the Phase 1 review (2026-09-18).**
->
-> **(a) A class of explanation never reaches the ATBD, so the docs keep it permanently.** §2's
-> "reduction 2" assumed the explanation all moves out. It does not: collection 0's ATBD gives the
-> logistic regression's equation and term list — the formal object — and says nothing about why a
-> coefficient set is the only model deployable as an asset over the whole Landsat archive, or why
-> a probability-mode random forest is not exportable from GEE. That argument is **Foundations**,
-> and it stays in the doc. Reduction 2 removes the docs' restatement of the *formalism*, not the
-> implementation rationale. The Foundations ↔ ATBD line is **blurry on purpose** — some
-> redundancy is accepted, and Phase 6 draws it per paragraph with the ATBD in front of it, not
-> per section now.
->
-> **(b) A notebook is not a home for settled rationale.** Notebooks hold exploration while a
-> question is open; once the answer changes what production does, the answer moves into the doc
-> **in that same commit** and the notebook becomes the evidence. Three docs said "the design
-> rationale lives in the notebook" — that pointer is reversed. Add this to §2 rule 1.
->
-> **(c) Reduction 1 keeps the outcome, not just a pointer.** When history goes to `notes/`, the
-> doc keeps the **result** plus at most one clause of route — a reader must not open a second
-> file to learn what production does. `TEMPLATE.md` §2 has the worked example.
 
 - [x] `docs/00-overview.md` written (819 words) from Iván's framing: the spectral → temporal →
       spatial order, the two parts of the spatial stage (region growing, then object
       classification), **the unifying principle** — quantities are preserved as long as possible
       so every later stage weighs the evidence instead of inheriting a verdict — and the
       step→stage table. Steps 07–08 are marked as publication, not a fourth analysis.
-- [ ] Consider promoting the template to `.claude/skills/step-doc/SKILL.md` so every future doc
-      starts from the same rules instead of from that day's prompt.
+
 
 ### Phase 2 — per-doc pass (one doc per session)
 
@@ -410,31 +372,7 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
       profile, the merge bug, the trims) + §4.1's measured run → `notes/05-memory_profile.md`.
       2.4 k words moved verbatim. **Two things for Iván to sign off — see the box below.**
 
-> **What the calibration pass settled, and the two open questions (2026-09-18).**
->
-> **(a) The heading-number rot is INSIDE the docs too, not just across them.** Phase 0 found that
-> `docs/NN` was never a stable address; the same is true of `§N` *within* a doc. `docs/05 §3` meant
-> **two different sections** depending on the citer — the metrics section under an old numbering
-> (9 citations: `objects_data_functions.R`, `06-object_model.R`, `04-snic.py`, `constants.py`,
-> `objects-analysis.qmd`, `04-snic.md`, `objects_upload.py:184`) and the *object ids* section under
-> today's (`objects_upload.py:173`). `§7b` and `§7c` were cited 7 times and have never existed.
-> Since `TEMPLATE.md` rule 4 drops heading numbers anyway, **all 30-odd inbound citations were
-> rewritten to named sections** — `docs/05 "Metrics"`, `docs/05 "Label"`, `docs/05 "Run"` — and the
-> history citations now point at the `notes/` file directly. **Iván adopted this as a rule**
-> (2026-09-18): it is now §2 rule 2 above and `TEMPLATE.md` rule 5, and it binds every remaining
-> Phase 2 pass.
->
-> **(b) What counted as history here** — the rule applied, for sign-off: a passage left the doc if
-> it was *dated*, a *benchmark*, a *rejected alternative*, or a *bug post-mortem*. It stayed if it
-> describes what the code does today, even when the reason is historical (the dilation-as-window
-> equivalence stays, because it **is** the live algorithm; the halo that OOM'd is one clause).
->
-> **(c) The word count is a target, not a limit — settled 2026-09-18.** The doc landed ~15 % over
-> the 1500 figure and stays there: what remains is live algorithm (the enlarged-context distance
-> table, the metric definitions, the `pid`/`oid` scheme), all of it cited from code. Iván's ruling:
-> the cap is soft. `TEMPLATE.md` §1 now says so, with the test that matters — *is the excess
-> history, or the live algorithm?* — and this doc as the worked precedent. **Do not cut a live rule
-> out of a step doc to hit a number.**
+
 
 - [x] `03-bpts.md` (5,766 → 2,746 words) — §6 (validation), §7's two answered bullets →
       `notes/03-validation_2015.md`; §7's cost bullets + §8 + §8.1 + §9 (the pruning handoff and
@@ -450,27 +388,7 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
       fifth genre problem". `00-overview.md`'s Spectral row and CLAUDE.md's index updated; 7 of
       the citations repointed hours earlier moved again, to the new doc.
 
-> **What the step-03 pass found (2026-09-18).**
->
-> **(a) A doc can be missing a live rule that every consumer already depends on.** The step-03
-> output does **not** live in one collection: the `mapbiomas-argentina` asset home ran out of
-> space, so **1999–2009 export to `mapbiomas-chaco`** (`C.bpts_target_col`, a legacy-rooted
-> project whose paths carry no `/assets/` segment). That landed in `bd7b033` in the code and the
-> constants' comments, and the doc — which states the output collection in its second paragraph —
-> was never updated. The step-04 lesson was *an open question the code has since answered*; this
-> is its sibling: **a change the code made that the doc never heard about**. Both are found the
-> same way, by reading `git log` for the step's script before trusting the doc's facts.
->
-> **(b) The `n` band's twin rule survived reduction because it is the product contract.** The
-> band table, the decode column and the −1/−2 sentinels stay in the doc at full length: they are
-> what a downstream reader needs to interpret the asset, and no code file states them in one
-> place. What left was every *measurement* of those bands.
->
-> **(c) 2,746 words, the largest step doc so far, and it stays** (`TEMPLATE.md` §1). Step 03 is
-> two algorithms in one export — a per-observation model and a per-pixel time-series reduction —
-> and after the four extractions what remains is mechanism: the coefficient-to-band construction,
-> the window definitions, the padding, the two arrays, the argmax bundle, the encoding, and five
-> GEE array rules that are still load-bearing in the code. There is no history left to move.
+
 
 - [x] `04-snic.md` (2,694 → 2,115 words) — §1 (the shelved SNIC-3D) →
       `notes/04-snic3d_firebreaks.md`; §5c (the FY2000 vectorize benchmark) →
@@ -478,45 +396,6 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
       of its five items had been **answered by the code** since (see the box below). ~35 inbound
       citations repointed from `§N` to named sections across 13 files.
 
-> **What the step-04 pass found, beyond the extraction (2026-09-18).**
->
-> **(a) A doc's "Open questions" section rots faster than anything else in it.** Three of §7's five
-> items were settled in code and nowhere else: whole-country SNIC @512 *does* complete (28
-> fire-years are mapped), the object filter *is* the step-06 BART, and the steppe-padding question
-> was answered **negatively downstream** — step 05 drops `candseed == 3` east of −70.6°, which is a
-> live rule that existed only as a `[OPEN]` question in step 04's doc and a code comment in step
-> 05's script. The two genuinely live items (the trimmed edge fire-years; `veg_fire = MB(Y1−1)`)
-> became `Gotchas`. **An open question that the code has since answered is not history — it is a
-> live rule with no home**, so look for its answer in the code before extracting it to `notes/`.
->
-> **(b) Named citations need short headings, so the pass renames them.** `docs/04 §4.3` became
-> `docs/04 "Patagonia dieback padding"`; a heading like "Patagonia slow-dieback forward padding
-> (`candseed = 3`)" is unquotable in a code comment. Six `###` headings were shortened for that
-> reason alone, which is worth doing while rewriting rather than after.
->
-> **(c) Naming is not immunity — three citations named sections that had been DELETED.**
-> `§"Ground seeds & candidates in the data"` (2 call sites), `§"Tune seeds…"` and `§"Do it now?"`
-> all pointed at headings that existed in earlier versions of the doc and were removed long before
-> this pass; one of them was already a misquote of its own heading ("…in the burned/unburned
-> data"). A name survives *insertion above it*, which is the failure mode `§N` has; it does not
-> survive deletion. The difference is that it then fails **loudly** — unfindable rather than
-> silently pointing at the wrong section — which is why they were caught here at all. Same fix as
-> for a dead `§N`: repoint it at what the reader actually needs.
->
-> **(d) Over target at 2,115 words, and it stays** (`TEMPLATE.md` §1, the step-05 precedent). What
-> is left is live mechanism — the fire-year construction, the per-pixel K selection, the dieback
-> rule, the two-stage asset handoff — every piece of it cited from `constants.py` or a script.
-
-> ## 🔻 IVÁN, REVIEW FROM THIS ITEM BELOW 🔻
-> **Iván's comments up to and including the step-06 item were addressed on 2026-09-18** (his
-> review of the items below it was still in progress, so nothing from the `validation/docs/design.md`
-> item down was touched). What each comment asked and what came of it is recorded under its own item.
-
->
-> Everything from here down was done in **one unattended session on 2026-09-18** (you were at the
-> GIM), so the per-item review the protocol calls for has not happened. Each item was committed
-> separately, so any one of them can be reverted on its own. The per-pass boxes below say what was
-> decided and what needs your sign-off.
 
 - [x] `06-object_model.md` (7,958 → **4,592**) — **split into three docs on your suggestion**
       (mid-session: *"perhaps doc 06 can be separated in data collection and modelling"*):
@@ -526,106 +405,6 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
       inbound citations repointed from `§N` to named sections across 20 files; two dead *named*
       citations found; CLAUDE.md's one step-06 row replaced by three. **Two live defects the doc
       had never recorded — see the box.**
-
-> **What the step-06 pass found (2026-09-18).**
->
-> **(a) The doc was wrong about what the upload does, and the error had already cost a product
-> 5.1 Mha.** It said the max-vertices dialog setting makes GEE "subdivide the geometry *inside* the
-> feature, so `oid` and the properties survive". It does not: it writes **several features sharing
-> one `oid`**, each repeating the whole object's attributes. That is documented in `docs/07`
-> ("`oid` is unique per OBJECT, not per row") because that is where it hurt — a naive
-> `aggregate_sum('area_ha')` over-counted the polygon layer by 5,118,513 ha — but step 06 *owns the
-> upload*, and its own doc asserted the opposite. Likewise **`objects_raw_2021` carries 1,249
-> duplicated features** that no metadata count reveals; that too was recorded only in `docs/07`,
-> under the consumer that had to guard against it. Both are now `Gotchas` in `06-object_model.md`.
-> **The general lesson is new and worth keeping**: the step-03 pass found *a change the code made
-> that the doc never heard about*, and the step-04 pass found *an open question the code had since
-> answered*. This is the third of the family — **a defect that a DOWNSTREAM doc discovered and
-> recorded, in the wrong doc.** It is the hardest of the three to find, because nothing in the step
-> doc looks stale and nothing in `git log` for the step's own scripts shows it. The way it was
-> found: `grep` for the step's output asset (`objects_raw`) across the whole repo, not just its own
-> directory. **Add that to the per-doc protocol** — grep the step's *outputs*, not only its inputs
-> and its scripts.
-
-> **Iván asked (2026-09-18): did this duplication ever bite, is the GEE asset still duplicated, and
-> wasn't it solved afterwards? Measured, and the answer is no — it is still there.**
->
-> It bit exactly once and was contained: two `07e` exports landed with the 1,249 extra FY2021 rows and
-> were thrown away; the third carried the `distinct('oid')` guard, and every product since is built
-> through it. Nothing published is wrong. But the *asset* was never fixed — `updateTime` is still
-> `2026-07-28T20:12:31Z`, the hand ingest — and `fires(2021)` with the guard disabled still
-> materialises **54,514 rows for 53,263 distinct `oid`**, the July figure to the row. What was
-> "noticed afterwards" was the guard, not a repair.
->
-> Three things are new, and all three are now in `docs/06` "Gotchas" (the table),
-> `docs/07` "`objects_raw_2021` is duplicated in storage", the `07-burned_area_polygons.py` docstring,
-> `notes/07-export_post_mortems.md` (a dated entry, July text untouched) and the BACKLOG item:
->
-> - **What we uploaded is clean.** `objects_raw_2021.shp/.dbf` is 66,393 records for 66,393 distinct
->   `oid`, matching `objects_2021_pred.csv` row for row. The duplication is on GEE's side of the
->   ingest, so the re-ingest is just the ingest again — there is nothing to rebuild first.
-> - **The surplus is query-dependent**, which one export could not reveal: 1,251 rows under
->   `fire == 1 & area_ha >= 1`, **241** under `area_ha >= 1` alone, **none** under `fire == 1` alone or
->   an unfiltered read. "How many duplicates does this asset hold" has no answer, so **no count is an
->   acceptance gate** for the re-ingest.
-> - **A bare `.map()` does not materialise**, so the July lesson needed tightening — and the old
->   BACKLOG note ("insert a `.map()` before trusting a feature count") would have produced a false
->   clean bill. `map(f => f.set(…))` and a map that rebuilds the feature from its geometry both come
->   back at the clean 53,263 under the filter that yields 1,251; it takes a `Feature.select()` in the
->   map — what `fires()`'s `one()` does.
-
-
-> **(b) The three-way split, and why it is three and not two.** Your message said two, "depending on
-> length". The labels/model line is yours and is the `01-training_data.md` ↔ `02-model_fitting.md`
-> shape one step later. The third file is the **`02-diagnostic_plots.md` precedent you set in Phase
-> 1** — the QGIS layer produces nothing the pipeline consumes, `objects-inspect-cache/` is
-> explicitly regenerable, and it exists so a human can look: a diagnostic tool, not a step. If you
-> want two, folding `06-object_inspection.md` back in is a `cat` and three link fixes. **This is the
-> one thing in this pass that is genuinely your call rather than mine.**
->
-> **(c) 4,592 words is still the largest step doc, and I do not think more should come out.** The
-> first rewrite landed at 6.0 k; three tightening passes bought only ~300 words, which is the signal
-> `TEMPLATE.md` §1 describes — the excess was not padding. What is left after the three-way split is
-> the model, the 20 predictors, the leak rule, the call columns, the thresholds, the CV design, the
-> importance analysis and the upload: eight live topics, every one cited from code. The real
-> reduction came from moving 4.6 k words of measurement into `notes/` and 2.0 k into the two sibling
-> docs.
->
-> **(d) Two more dead *named* citations**, continuing the step-04 finding that naming is not
-> immunity: `README.md` cited `docs/06 "Looking at it on a map without uploading to GEE"`, a heading
-> that never existed under that name (it was "11. Inspecting it in QGIS, without uploading to GEE"),
-> and `docs/05`'s Related list cited "§4 on why no predictor may proxy for the year". Both now point
-> at real names. The count of *numbered* citations repointed in this pass was ~45, the most of any
-> pass so far, because step 06 is cited from step 07's four scripts as well as its own.
->
-> **(e) `notes/` conventions held with no friction.** Seven entries, all verbatim, all with pinned
-> provenance headers naming sections this same pass deleted — which `notes/README.md` says is
-> correct and not to be repaired. Nothing needed inventing.
-
-> **Signed off by Iván (2026-09-18)** — the three-way split, the notes and the pass itself. The two
-> comments he left inside the docs are done: the duplication question is answered in the box above,
-> and **"Why no predictor may identify the year" was cut 475 → 247 words**, keeping the rule, the two
-> predictors it cost, what the rule leaves in the set (`doy_sin`/`doy_cos`, `date_span`, no absolute
-> time coordinate) and the do-not-publish warning on the residual trend, with every measurement now
-> only in [`notes/06-predictor_selection.md`](collection-01/docs/notes/06-predictor_selection.md).
->
-> The read-through of the three files turned up **one wrong number and two more dead *named*
-> citations** (the step-04 finding again — naming is not immunity):
->
-> - **the QGIS layer has 34 curated fields, not 32.** `FIELDS` in `objects_inspect_export.R` is
->   29 names + `VEG_GROUP_COLS`, and the landed `2020_objects_pred.gpkg` has 36 columns = 34 + `fid`
->   + `geom`. The doc's own group table already listed 34; only the summary row, `README.md` (two
->   places) and CLAUDE.md said 32. Fixed in all four.
-> - **`06-object_model.md` cited `04` "Seeds and candidates"** — the heading is "Seed and candidate",
->   singular. Repointed.
-> - **`06-object_model.md` and `objects_upload.py` cited `05` "Object ids"** — a heading that does not
->   exist; `oid` is defined in docs/05's `Foundations`. Repointed both.
->
-> Everything else verified against code rather than read: `PREDICTORS` is 20 (15 + 5),
-> `clean_tagged()` reproduces **5255 / 2788 fire / 2467 non-fire** and every cut in the cascade
-> (−234 / −10 / −1315 / −1) exactly, the four deployed cuts match
-> `config/object_model_thresholds.csv` to the digit, `size_class` is 6 display classes against
-> `th_band`'s 4, and every named cross-doc citation in the three files now resolves.
 
 
 - [x] `validation/docs/design.md` (5,285 → 4,849 → **5,021 after Iván's review**, and **the premise
@@ -638,117 +417,6 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
       (1,523 → 424 words), and everything the code actually does was folded **into** the design —
       see the second box.
 
-> **What the validation pass found (2026-09-18).**
-
-> **Iván's review of this item is done (2026-09-18)** — what he asked for, and what came of it, is
-> the second box below. The findings (a)–(f) are kept as written, with the parts his review
-> overtook marked there.
-
-> **(a) The item's premise — "NOT WRITTEN BY IVÁN" — is wrong, and the correct split matters.**
-> `git log --follow` says the design doc was written by **Iván** on 2026-08-21 (`8b2e859`), two days
-> *before* the first implementation commit. What is **Ramón Peña Agrest's** is all four
-> `validation/*.py`, the Colab notebook, and the §0 implementation-status section he added to the
-> doc while fixing the OOMs (`bccc973`, `60df891`). So the sign-off rule applies to §0 and to the
-> code, not to the design — which is why the design prose was left alone here and only §0 and the
-> appendices were moved. Both authorships are now stated in the doc's header box, which the item
-> asked for. **The plan's own text should be corrected**; it is the one place in this file that
-> asserts a provenance nobody had checked, which is the exact failure mode it warns about elsewhere.
->
-> **(b) ⚠️ The strata rasters were built against the `_v1` map, and the product is now `_v2`.**
-> This is the substantive finding and it was not recorded anywhere. The strata and the nine frozen
-> lists were exported 2026-08-31, when `C.MONTH_OF_BURN_COL` resolved to `collection1_fire_mask_v1`;
-> `C.PRODUCT_VERSION = 2` landed 2026-09-11 in `8cf4b7f`, applying exclusion rules A and B
-> (`docs/07` "The `_v2` re-export"). **The sample is still valid** — the estimators need only that
-> the strata partition the population with known weights, and a stratum may be defined by anything,
-> including a superseded map. **One rule breaks**: "Estimators and outputs" says the map class is
-> the frozen `burned` band and is never looked up later, and against v2 it must be. The stored
-> `col`/`row` addresses make that possible. Recorded in the doc twice — the status box and an
-> inline warning at the rule it breaks — and flagged as *to settle before interpretation*, not
-> fixed, because whether to rebuild the strata on v2 (new lists, discarding the frozen ones) is a
-> team decision.
->
-> **Iván (2026-09-18): "I knew it, not a problem, but it must be documented, as you did."** It
-> stays exactly where it was — the status box plus the inline warning at the rule it breaks.
-
->
-> **(c) Both appendices were a second home for code that already exists in Python**, which is a
-> stronger reason to move them than "inline JS cannot be linted". Appendix A's own header even says
-> so from the other side: `01_strata_export.py` opens with *"Traducción directa a Python del
-> Appendix A"*. And Appendix A had gone stale in the way a duplicate does — it hardcodes
-> `collection1_fire_mask_v1` while the Python reads `C.MONTH_OF_BURN_COL`, so the code followed the
-> `_v2` rename and the doc did not. **That is how (b) was found.**
->
-> **Iván (2026-09-18): remove Appendix A, it is not needed.** Done — **deleted, not re-homed**,
-> together with Appendix B, and `01_strata_export.py` now says in its own header that it is the
-> implementation of record and that no JS reference version exists. What survives of both is three
-> lines in `notes/abandoned-paths.md`, including *why* they were a liability (a duplicate that went
-> stale silently).
-
-> **(d) One artefact is superseded and still in the repo**: `colab_sample_pool_export.ipynb`
-> (Ramón, 2026-08-28) implements the Appendix-B recipe that the 2026-08-31 post-mortem rejected.
-> It is now named as such in the doc's `Files` table rather than silently sitting there. Deleting
-> or rewriting it is Ramón's call.
-
-> **Iván (2026-09-18): keep one brief list of the paths that were tried and hit problems — not to
-> be taken again — and stop writing long notes.** Done: `notes/` is now one 424-word
-> `abandoned-paths.md` with six entries (the 2 M-edge country polygon as `region=`; `stratifiedSample`
-> per stratum; the colab notebook that still implements it; the 30 k reserve; `--weights-launch`
-> as written, flagged *very plausibly fixed, verify*; and the two GEE-JS appendices), plus a
-> three-line `README.md`. The implementation log and both appendices are deleted.
-
-> **(e) `validation/docs/notes/` is new.** `notes/` conventions are defined for
-> `collection-01/docs/notes/`; validation's docs are colocated with its code, so its lab notebook
-> is too. Its `README.md` points at the main one rather than restating the rules. Same question
-> will arise for `statistics/` — flagging it now so the frozen statistics pass does not have to
-> decide it under time pressure.
-
-> **Iván (2026-09-18): agreed.** The `statistics/` question it flags is still open.
-
->
-> **(f) Two Phase-0 leftovers fixed in passing**: `statistics/docs/statistics.md` still linked
-> `10-factsheet_design.md` (renamed in Phase 0), and CLAUDE.md's factsheet and validation rows had
-> been **merged into one table cell** by a missing newline (`… comes from || \`…/design.md\` | step
-> 11 — …`), so the validation row had not been rendering as a row at all since the move.
-
-> **What Iván's review of the validation pass changed (2026-09-18).** His instruction was left
-> inside `design.md` itself and it is a rule, not a one-off edit:
->
-> > *"This note of provenance is not needed. The doc must agree with the code, and your work is to
-> > update the doc so it follows the code; this mention should not be necessary. This applies for
-> > the next subsection too."*
->
-> **A "where they disagree, X wins" box is an admission, not a convention.** The pass had written
-> one — provenance plus *"the Python wins"* plus a `Status` section whose spine was **two places
-> where the code deliberately departs from this document**. That framing lets a doc stay wrong on
-> purpose and calls it governance. Both are gone, and the departures were resolved the only way
-> that holds: **by rewriting the design to state what the code does.**
->
-> - **The draw.** "Drawing the frozen ordered sample lists" rule 2 no longer specifies a
->   `stratifiedSample` per stratum. It specifies what `02_sample_pool.py` runs — one **unstratified**
->   `Image.sample()` pool per year, split by stratum in pandas, with the equivalence argument stated
->   (conditioning on stratum commutes with a random draw) and one frozen list per stratum still the
->   output. Rule 3 gained the rectangle-as-`region` rule, which is not an implementation detail but
->   the difference between the draw running and not running.
-> - **The two-stage pool** (pool 1 for the initial 100, pool 2 for the 5,000 reserve, de-duplicated
->   on `(col, row)`) was only ever in the implementation log. It is design — it decides what
->   "extend the sample" means operationally — so it is now in the design, and the reserve is stated
->   as the cost decision it is instead of as a deviation from 30,000.
-> - **Rule 5 gained `mb_class_raw` and `region_id`**, the two context columns Iván asked for and the
->   code has written since August. The doc listed eight columns; the frozen CSVs have ten.
-> - **`Status` survives, reframed**: what landed, what is still open, and the v1/v2 warning — the
->   status of the *campaign*, not of the doc against its code. It also now says the frozen lists are
->   **not in this repo** (`validation/outputs/` has never existed here), where the old text cited
->   `outputs/frozen/` as if it were readable.
-> - **Finding (a) above is overtaken.** The authorship box it argued for is deleted. Provenance is a
->   `git log` question, and the doc is judged against the code, not against who wrote which half.
->
-> **Cost**: the design grew 4,849 → 5,021 words while `notes/` fell 1,523 → 495, so validation's
-> documentation is ~850 words lighter overall and there is one fewer place to look. **The
-> §-citations the pass missed are also fixed**: 40 `§N` references to the de-numbered headings were
-> still live in `01_strata_export.py`, `02_sample_pool.py`, `03_ceo_export.py` and
-> `validation_year_selection.qmd` — all converted to names, all verified to resolve against a
-> heading.
-
 - [x] `08-postprocessing.md` (5,284 → **1,219**) — **split, and the step doc did not survive as
       one.** The plan asked the question and the answer is no: §6 was almost entirely a second
       telling of `docs/07`. Three ways: §§1–5 → `docs/external/mapbiomas-fuego-reference.md`
@@ -758,147 +426,21 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
       — the *stage-by-stage comparison* of what Argentina already satisfies upstream, what dating
       per pixel buys and costs, and the four live open decisions. ~25 citations repointed across
       7 files; `00-overview.md`'s closing paragraph rewritten as the plan asked; CLAUDE.md's one
-      row replaced by two. **Iván, 2026-09-18: the file stays in `docs/`** — moving it would be the
-      real confusion — **and `00-overview.md` now says what it is**, in its own paragraph: that no
-      script bears the number 08, that the spec is satisfied inside step 07, and that reading it as
-      "the step after 07" is exactly what the paragraph exists to prevent.
+      row replaced by two.
 
 
 - [x] `03-colab_multi_export.md` (568 → 662) — marked as a **how-to, not a step doc**, in a header
       box, and **it grew, because two facts in it were false.** See the box.
 
-> **What the step-08 and colab passes found (2026-09-18).**
->
-> **(a) A step doc can be a duplicate of its neighbour and read as perfectly current.** Every
-> substantive claim in §6 of `08-postprocessing.md` — the LULC mask being upstream, paint
-> reproducing the pixel set, the scars being a fresh labelling pass, the verified calendar
-> partition, the `candseed == 3` parent date — is also in `docs/07`, measured, and CLAUDE.md's
-> docs/07 row already listed all five. Nothing in it was stale and nothing was history, so neither
-> the reduction-1 test nor a currency check would have flagged it. **What flagged it was asking
-> the plan's own question** — *does a step-08 doc survive at all?* — which is worth generalising:
-> when two docs cover adjacent stages, check for duplication explicitly, because a per-doc pass
-> structurally cannot see it.
->
-> **(b) The external reading was pinned, and the pin is already the story.** `mapbiomas-fire` was
-> cloned locally at `904fbdf` (2026-09-15); on the day it was pinned `origin/master` was **68
-> commits ahead** and none of those had been read against the text. That is stated in the header
-> box rather than fixed by pulling: pulling would have made the doc's claims unverified against a
-> repo nobody had reviewed, which is worse than an honest pin. `docs/external/README.md`'s rule
-> should probably say so explicitly — *pin what you read, do not pull to look current*.
->
-> **(c) The colab how-to had two false statements, and the harmful one was an omission.** It still
-> flagged "export the region raster ← **current blocker**" for something done on 2026-06-24, which
-> is merely embarrassing. The real defect: step 4 tells a contributor to get writer access to *the*
-> output collection, singular — but `C.bpts_target_col()` routes **1999–2009 to
-> `mapbiomas-chaco`**, so anyone claiming an early year would have failed on permissions with no
-> idea why. That routing is the same fact the step-03 pass found missing from `03-bpts.md`; it had
-> been missing from **two** docs, and fixing one did not fix the other. **When a pass adds a
-> previously-undocumented rule, grep for every other doc that should have had it.**
->
-> **(d) Four Phase-0 broken links fixed in passing**, all in the moved statistics docs:
-> `statistics.md` still linked `07-vector_to_raster.md`, `08-postprocessing.md`, `../../ROADMAP.md`
-> and `11-validation.md` as if it were still in `docs/`. A `.md`-link resolver over
-> `collection-01/` now reports clean except one archived link inside a `notes/` file, which stays.
-
 - [x] `07-vector_to_raster.md` (13,298 → **11,014**) — **two passes, as the plan asked**
       (extraction `5653986`, rewrite in the commit below). 4.0 k words verbatim to three `notes/`
       entries; every heading de-numbered; §12.7 moved back where it belongs and §12.8 dropped into
       the verification note, which is the re-order the plan asked for; **94 inbound `§N` citations**
-      repointed across 20 files — the most of any pass. **Two currency defects and one self-inflicted
-      bug — see the box.** A **third pass then split it in two** on Iván's word:
-      `07-vector_to_raster.md` (6.6 k, the pixels and 07a–07c) and
-      **`07-published_products.md`** (4.9 k, 07d and 07e) — the line the box below proposed.
-
-> **What the step-07 pass found (2026-09-18).**
->
-> **(a) I broke a production file in the step-06 commit and pushed it.**
-> `workflow/07-burned_area_polygons.py` did not parse from `54e3e8d` until the commit below: a
-> citation rewrite put a double-quoted section name **inside** a double-quoted Python string
-> (`"… (docs/06 "The three call columns")"`). It is fixed, and there is a lesson worth keeping in
-> the protocol: **naming sections instead of numbering them puts quotes into citations, and
-> citations live inside string literals as often as inside comments.** A `§` never had this
-> problem. Every `.py`, `.R`, `.sh` and `.ipynb` the whole cleanup has touched has now been parsed —
-> all clean — and **that sweep should be the last step of every remaining pass**, not an
-> afterthought here.
->
-> **(b) The doc's status box said the `_v2` rebuild was in progress; it is not, and one part is
-> paused.** `logs/v2-driver/STATUS.md` (last tick 2026-09-18 20:15) reports 07a, 07b, 07c and 07e
-> complete on v2 and **07d paused — deprioritised 14 Sep because the statistics come first and do
-> not need it**. So the nine published subproducts are not on v2 while the month collection they
-> derive from is. The doc now points at the board as the source of truth instead of restating a
-> state that goes stale in a day. **A status table inside a doc competes with a status file that is
-> written every 15 minutes, and loses.**
->
-> **Iván, 2026-09-18: 07d is not paused — Vera (Brazil) ran it** on her side, to get past our slow
-> GEE queue, so the board never saw the tasks it was waiting for and the doc inherited a false
-> "paused". Every claim of unfinished work has been removed: the status box now states only that
-> asset ids carry `v<N>` and that the board, not a doc, says which have landed. **A state a doc can
-> assert but not observe should not be in the doc at all** — the board is wrong here too, and the
-> doc repeating it made one stale fact into two.
->
-> **(c) `C.PRODUCT_LULC` had moved and the doc still named the old asset.** It says
-> "currently `…collection3_integration_v1_buffer`, set 2026-07-29"; the constant is now the
-> published `mapbiomas_argentina_collection3_pb`. The distinction matters, because the **v1**
-> coverage products on the asset store really were built against the preliminary layer — that is
-> part of what the v2 re-export is *for*. Same family as the step-03 and step-08 findings: a
-> constant moved, the code followed, the doc did not.
->
-> **(d) `docs/07 §5` meant two different sections depending on who was citing it** —
-> `07-calendar_scars.R` and `watch_07c.py` both used it for the scar build, while §5 of the doc was
-> "The LULC mask… embedded upstream". Third instance of the same rot, after `docs/05 §3` and
-> `docs/10`. Nothing new to decide; recording it because three instances in one repo is the
-> argument, not one.
->
-> **(e) ⚠️ IT IS STILL 11.0 k WORDS, AND THAT IS THE ONE THING I WOULD NOT SIGN OFF ON.** The
-> extraction found only 4.0 k of history, because almost nothing in this doc is history: it is the
-> exclusion ruleset with three independent implementations, five sub-steps with their own scripts
-> and traps, nine encodings the platform decodes, and a user-facing layer with two storage defects.
-> Three tightening passes after the extraction bought ~300 words. **The remedy is structural, and
-> it is your call because the plan did not ask for a split here** (unlike `08`, and unlike `06`
-> where you asked mid-session). The line I would draw, if you want one:
->
-> | | holds | ≈ words |
-> |---|---|---|
-> | `07-vector_to_raster.md` | what is mapped and how the pixels are made: the decisions, the exclusion ruleset, the calendar partition, the grid, dieback, 07a, 07b, 07c | 6.2 k |
-> | `07-published_products.md` | what is packaged from them: "Products, and the shape they take", 07d's nine subproducts, 07e's polygon layer | 4.4 k |
->
-> The doc itself already draws that line — 07d and 07e need no vectors and no local work, and it
-> says of 07e that it "depends only on step 06, not on 07a–07d, so it can be rebuilt at any time
-> and in any order". Say the word and it is a 20-minute job; I did not do it unasked on the doc
-> that specifies the published product.
->
-> **Iván said yes, and it is done** (below).
-
-- [ ] `statistics/docs/statistics.md` (16.8 k, was `docs/09`) — **two sessions. FROZEN, with its
-      move, until the launch lands (24 Sep 2026).**
-- [ ] `statistics/docs/factsheet-sep2026-spec.md` (8.8 k, was `docs/10`) — **FROZEN until the
-      launch lands.** Stays Spanish. Lightest pass of all: it is a spec, and it is already done
-      its job; strip status chatter, leave the figure-by-figure content.
-
-> ## Phase 2 is done except the two frozen docs
->
-> **Everything not frozen is ticked** (2026-09-18, one unattended session). The two that remain are
-> the statistics pair, frozen by this plan until the launch lands on **24 Sep 2026** — six days
-> away at the time of writing. They were not touched, beyond repointing citations that pointed *at*
-> the docs being rewritten (Phase 0 left four broken links in `statistics.md`, which were fixed
-> because a dead relative link is not a rewrite) and the ~6 `docs/07 §N` references inside them.
->
-> **Three things to carry into those two passes**, all learned here:
->
-> 1. **Parse everything you touched, last.** `.py`, `.R`, `.sh`, `.ipynb`. Citing by name puts
->    quotes inside string literals, and one such rewrite shipped a file that did not parse for four
->    commits.
-> 2. **Grep the step's OUTPUTS, not only its inputs and its scripts.** Two of the three real defects
->    found in this session were recorded in a *downstream* doc, under the consumer that had to work
->    around them.
-> 3. **Check what the constants say before trusting a value in the doc.** `C.PRODUCT_LULC`,
->    `C.MONTH_OF_BURN_COL` and `C.bpts_target_col` had all moved under docs that still named the old
->    asset. `statistics.md` cites LULC, the product version and the toolkit's assets throughout, so
->    it is the most exposed doc in the repo to exactly this.
->
-> The Phase-0 warning about the **9 `docs/11` citations that kept their old section numbers** is
-> still live and lands in the `statistics.md` pass: `workflow/07-month_of_burn.py` and
-> `scripts/objects_region_tag.R` point at the right file with the wrong `§`.
+      repointed across 20 files — the most of any pass. Then a **third pass split it in two**
+      (`e9e610e`, Iván's call): `07-vector_to_raster.md` (6.6 k) keeps how the burned **pixels** are
+      made — the exclusion ruleset, the `_v2` re-export, the calendar partition, the grid, dieback,
+      07a–07c — and **`07-published_products.md`** (4.9 k) takes what is **packaged** from them:
+      07d's nine subproducts and 07e's polygon layer. `docs/07` bare still means the first.
 
 ### Phase 3 — how-to consolidation and the signposts (rule 1)
 
@@ -1023,23 +565,13 @@ Append one line per completed item: date — what — commit.
   `notes/07-exclusion_rules_choice.md`, `notes/07-verification_log.md` and
   `notes/07-export_post_mortems.md` extracted verbatim (4.0 k); §12.7 re-ordered back before §13 and
   §12.8 folded into the verification note; **94 citations** repointed across 20 files; the stale
-  `_v2`-in-progress box replaced by a pointer to `logs/v2-driver/STATUS.md` (07d is **paused**), and
-  `C.PRODUCT_LULC` corrected to the published col-3. **A Python syntax error I introduced in the
-  step-06 commit was found and fixed**; every touched `.py`/`.R`/`.sh`/`.ipynb` now parses.
-  The doc remains 11 k words — the split proposal is in its box, for Iván.
-- 2026-09-18 — **`07-vector_to_raster.md` SPLIT IN TWO**, on Iván's word, along the line the box
-  above proposed: `07-vector_to_raster.md` (6.6 k) keeps how the burned **pixels** are made — the
-  exclusion ruleset, the `_v2` re-export, the calendar partition, the pinned grid, dieback, and
-  07a–07c — and **`07-published_products.md` (4.9 k)** takes what is **packaged** from them: "Products,
-  and the shape they take", 07d's nine subproducts and 07e's polygon layer. ~20 citations repointed
-  across 12 files; `docs/07` still means the first file and the new one is cited by name, stated in
-  both headers. Also on the same pass, from Iván's comments: docs/08's four "open decisions" are
-  **three settled ones** (the `COLLECTION-1` spelling stays ours, Argentina does publish the
-  fire-object polygons as its own shared asset, the territorial layer is the ecorregiones; the
-  `frequency_burned` band name was struck), the 07d-paused claims are gone, `00-overview.md` says
-  what `08-postprocessing.md` is, and the three "X wins on conflict" boxes in CLAUDE.md,
-  `00-overview.md` and the external reading were replaced by a plain statement of which file
-  describes live code.
+  `_v2`-in-progress box replaced by a pointer to `logs/v2-driver/STATUS.md`, and `C.PRODUCT_LULC`
+  corrected to the published col-3. **A Python syntax error I introduced in the step-06 commit was
+  found and fixed**; every touched `.py`/`.R`/`.sh`/`.ipynb` now parses.
+- 2026-09-18 — **`07-vector_to_raster.md` split in two** (`e9e610e`): 11.0 k → 6.6 k + a new
+  `07-published_products.md` (4.9 k); ~20 citations repointed across 12 files. Same commit took
+  Iván's three comments: 07d is **not** paused (Vera ran it in Brazil), docs/08's four open
+  decisions became three settled ones, and `00-overview.md` now says what `08-postprocessing.md` is.
 - 2026-09-18 — **Phase 0 done**: 3 `git mv`s, `docs/notes/` + `docs/external/` created with
   their conventions, ~120 citations rewritten across 30 files, ROADMAP pointed here.
   Uncommitted at time of writing.
