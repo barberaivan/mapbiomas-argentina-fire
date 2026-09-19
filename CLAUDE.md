@@ -64,10 +64,17 @@ one step, e.g. the remap and the fit are both inputs to step 02):
 
 Other documentation:
 
-- `collection-01/README.md` — human orientation: repo structure, how to run each step, the
-  pipeline overview, status, and the **notebooks table** (what each `.qmd` contains).
-- `collection-01/models/README.md` — model output schema + coefficient export details.
+- `collection-01/README.md` — **the map**: what is in each directory and which doc explains it,
+  the pipeline overview, per-step status and the **notebooks table**. It carries **no commands** —
+  how to run a step is that step's `Run` section in `docs/`, and how to invoke one script is its
+  own `--help` or header comment.
+- `collection-01/scripts/README.md` — the 57 non-pipeline scripts, grouped by the step they serve.
+- `collection-01/models/README.md` — model artifact reference: folder layout, file schema,
+  coefficient export and the raw-scale prediction recipe.
+- `collection-01/statistics/README.md`, `collection-01/validation/README.md` — the two **episodic**
+  activities: signposts to their own `docs/`.
 - `BACKLOG.md` (repo root) — unscheduled work items, all collections. Read only when asked (above).
+   Claude has no permission to edit this file without explicit permission from the user.
 - `collection-00/README_00.md` and `collection-00/docs/` — pilot reproduction + ATBD.
 
 ## Development environment
@@ -162,8 +169,8 @@ stages can be inspected and limits avoided:
    solitary-pixel filter — are **already embedded upstream** in our pipeline and stricter there, so
    running them again is a no-op at best.
 
-See `collection-01/README.md` for the full structure and run commands, and the `docs/` notes
-above for per-step design.
+See `collection-01/README.md` for the directory map and per-step status, each step doc's `Run`
+section for the commands, and the `docs/` notes above for per-step design.
 
 ## Conventions & gotchas
 

@@ -493,8 +493,24 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
       "full rationale in CLAUDE.md" pointer was also dead; the rationale is in `docs/02`. Both
       sections are now one, keeping only what you need to *read* a file. `samples/README.md` (215
       words) was already a good signpost and only gained a pointer to `docs/01`.
-- [ ] **`collection-01/README.md` → map + links, NO commands** (currently ~half bash). ≤ 1.2 k words.
-- [ ] Root `README.md` — check it stays a tutorial and does not duplicate the pipeline.
+- [x] **`collection-01/README.md` → map + links, NO commands**: 6,166 → **1,423 words**, all 20
+      bash blocks gone. Every command it held now has exactly one home — a step doc's `Run`, or
+      `scripts/README.md` — which is what made deleting them safe rather than lossy. The
+      annotated per-file trees for `scripts/` and `statistics/` collapsed into one row each, now
+      that those directories have their own README. What stays is what nothing else owns: the
+      directory map, the `data/` layout, the pipeline table, the notebooks table and the per-step
+      status. **1,423 is 19 % over the 1.2 k target** and stays that way: the remainder is the
+      status table and the pipeline map, and `TEMPLATE.md`'s rule is that a target never overrides
+      content. The four factsheet notebook rows, each a 500-word Spanish essay duplicating
+      `statistics.md` §5.0, are one line each pointing there. **Two notebooks were missing from the
+      old table** (`snic_candidates_seeds_definition.qmd`, `validation_year_selection.qmd`) and are
+      now listed. Every link checked.
+- [x] Root `README.md` — checked: 573 words, still a clean setup tutorial, and it does **not**
+      duplicate the pipeline. Two pointers repaired, because this pass falsified them: it sent the
+      reader to `collection-01/README.md` for "how to run the pipeline", which no longer holds
+      commands, and to both collection READMEs for "reproduction instructions". It now opens on
+      `docs/00-overview.md`. The same two stale claims in **CLAUDE.md** were fixed for the same
+      reason — not a Phase 4 land-grab, just not leaving a claim this pass made false.
 
 ### Phase 4 — the index
 

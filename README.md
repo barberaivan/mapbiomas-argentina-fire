@@ -11,9 +11,9 @@ Annual burned area mapping for Argentina using Landsat satellite imagery, produc
 | Collection 0 | `collection-00/` | Complete | Patagonia | Logistic regression (GEE JS + R) |
 | Collection 1 | `collection-01/` | In development | All regions | Regularized logistic regression (GEE Python API + R `glmnet`) |
 
-See each collection's README for reproduction instructions:
-- [`collection-00/README_00.md`](collection-00/README_00.md)
-- [`collection-01/README.md`](collection-01/README.md)
+See each collection's README for what is where:
+- [`collection-00/README_00.md`](collection-00/README_00.md) — the completed pilot, with its ATBD
+- [`collection-01/README.md`](collection-01/README.md) — the map of the active collection
 
 ---
 
@@ -82,7 +82,9 @@ ls collection-01/models-store  # should list class_*_fit.rds etc.
 >
 > *Symlinks require Linux or macOS (or Windows with WSL / Developer Mode enabled).*
 
-For how to **run the pipeline** once set up, see [`collection-01/README.md`](collection-01/README.md).
+Once set up, **[`collection-01/docs/00-overview.md`](collection-01/docs/00-overview.md)** is where
+to start reading: the method in one page, and which step is which. Each step's own doc carries the
+commands to run it.
 
 ---
 
