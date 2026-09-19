@@ -470,11 +470,18 @@ Each pass = history → `notes/`, then rewrite to `TEMPLATE.md`, then fix inboun
 - [x] `scripts/run_*.sh` launchers: one line each in the relevant step doc's `Run`, nothing more.
       Verified — all five (`run_05_years`, `run_06_predict`, `run_06_inspect`, `run_07_scars`,
       `run_07_upload_zips`) plus `mem_monitor.sh` were already there.
-- [ ] **`scripts/README.md`** — NEW, the one real signpost gap: 66 files, no README. Group them by
-      purpose (download/format, launchers, GEE watchers, exploration, tests) and point each group
-      at its step doc. ~15 lines, no explanation.
-- [ ] `validation/README.md`, `statistics/README.md` — 5 lines each: what this is, that it is
-      **episodic** (not every collection runs it), → its own `docs/`.
+- [x] **`scripts/README.md`** — NEW. 57 files (not 66 — the count included `__pycache__` and the
+      three data subdirectories), grouped by the step they serve, each group pointing at its doc.
+      Opens by naming the **four kinds of thing** in there, which is what a stranger actually needs
+      before the table: launchers, gates, watchers/drivers, and trials/reports. Every file is in
+      exactly one row — checked mechanically — and every link resolves. One finding recorded in it:
+      **`export_region_raster_v2.py` is on no path**, because `C.REGION_RASTER` still points at the
+      v1 output, so the faster rebuild's asset was never adopted. Keep-or-delete is Iván's call.
+- [x] `validation/README.md`, `statistics/README.md` — NEW, ~15 lines each rather than 5: what it
+      is, **why it is episodic and therefore not in `docs/`**, the one framing fact a reader needs
+      before opening anything (validation is all fire-year; statistics has three sources), and the
+      pointers. `validation/`'s carries the `_v1`-strata-vs-`_v2`-product warning at the door,
+      because that is the thing you must not skip past.
 - [ ] `models/README.md` (1.1 k words), `samples/README.md` — check they are signposts, not encyclopedias.
 - [ ] **`collection-01/README.md` → map + links, NO commands** (currently ~half bash). ≤ 1.2 k words.
 - [ ] Root `README.md` — check it stays a tutorial and does not duplicate the pipeline.
