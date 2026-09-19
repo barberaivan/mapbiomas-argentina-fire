@@ -1,57 +1,30 @@
 #!/usr/bin/env Rscript
 # =============================================================================
-# 02-model_fitting.R  — fit one elastic-net logistic regression per veg_fire class
+# 02-model_fitting.R — fit one elastic-net logistic regression per veg_fire class
 # =============================================================================
-# Pipeline step 02 (R). Fits locally with glmnet. The fitting unit is the
-# **veg_fire class**, NOT the region: a class may span regions (e.g.
-# shrubland_cuyo-pampa), so the driver loads whichever region tables a class
-# needs (from config/veg_fire_remap.csv) and skips classes whose regions are not
-# all exported yet. Run from repo root, in an R IDE (RStudio / Positron) or:
+# Pipeline step 02 (R, glmnet, local). The fitting unit is the veg_fire CLASS, not the
+# region: a class may span regions, so the driver loads whichever region tables a class
+# needs (from config/veg_fire_remap.csv) and skips classes whose regions are not all
+# exported yet. Writes one coefficient CSV per class for GEE to deploy.
 #
+# Run from the repo ROOT, in an R IDE (RStudio / Positron) or:
+#
+#   Rscript collection-01/scripts/cv_feasibility_report.py --version 1   # pre-flight FIRST
 #   Rscript collection-01/workflow/02-model_fitting.R [version] [class_name ...]
 #     version       default "1"
-#     class_name…   optional; restrict to these veg_fire classes (default: all
+#     class_name...  optional; restrict to these veg_fire classes (default: all
 #                   fittable classes whose region data is available)
 #   e.g.  Rscript collection-01/workflow/02-model_fitting.R 1
-#         Rscript collection-01/workflow/02-model_fitting.R 1 grassland_pat
+#         FIT_CORES=2 Rscript collection-01/workflow/02-model_fitting.R 1 grassland_pat
 #
-# Run scripts/cv_feasibility_report.py FIRST per region to confirm usable K.
+# Design, the term set and the tuning: docs/02-model_fitting.md. The coefficient schema,
+# the centering fold-back and the CV design: models/README.md. Sequence:
+# docs/02-model_fitting.md "Run".
 #
-# DESIGN (reduced 129-term set; see notebooks/logistic_regression_design.qmd):
-#   The old canonical 427-term design was highly collinear and slow to fit. It is
-#   reduced to 129 terms (+ intercept): 11 focal mains (MIRBI dropped — exact
-#   linear combo of SWIR1/SWIR2), 32 prev-year mains (blue/red dropped — visible
-#   duplicates of green), 22 focal×focal interactions (pairwise-|r|>0.9 pruned +
-#   VIF screen) and 64 prev×focal interactions (curated B4–B6 blocks, median+sd).
-#   Interactions are formed from MEAN-CENTERED factors (better-conditioned under
-#   the elastic-net penalty); after fitting, the centering is folded back into the
-#   intercept + main slopes so the EXPORTED coefficients are on the RAW-product
-#   scale and GEE deploys raw band products (no means vector). The fold-back is
-#   verified numerically (predictions identical) on every fit.
-#
-# FITTING (see the qmd's CV-tuning section): the slow convergence was numerical,
-#   not statistical. Full data (no subsampling), nlambda=50, lambda.min.ratio=1e-4,
-#   thresh=1e-4 (relaxed from the 1e-7 default — the real speed lever), alpha grid
-#   {0.25,0.5,0.75}, selected at lambda.min. Per-class starting tol (THRESH_START) +
-#   adaptive fallback: any alpha whose CV exceeds a wall-clock budget (FIT_TIMEOUT_SEC)
-#   is aborted and refit at tol ×5, looping up to THRESH_MAX (then unbounded) — self-
-#   detecting, so no hardcoded slow-class list. No per-alpha checkpointing (fits are
-#   fast). Cores per class are auto-sized to stay within a RAM budget.
-#
-# STRUCTURE (region exceptions stay contained):
-#   * Generic machinery — design matrix, fold packing, CV, tuning, metrics, IO —
-#     is class/region-agnostic.
-#   * ALL class-specific sample rules live in SAMPLE_RULES (keyed by veg_fire_name,
-#     which already encodes region) and are applied by assemble_class_data().
-#   * fit_one_class() fits one model; main() resolves regions per class and loops.
-#
-# CV design (see models/README.md):
-#   Grouped K-fold (K=10), group = region-unique fire id (region_fireid, since
-#   bare fire_ids repeat across regions) → leave-several-fires-out.
-#   Folds per class via stratified greedy packing (balance obs + positives).
-#   Pure-negative fires (ash/drought, crops; burned=0 within their region) are
-#   point-distributed across folds, not held out. Adaptive K = min(10, n_fires_with_positives).
-#   Same foldid across alphas, tuned on binomial deviance. Out-of-fold p_i saved per obs.
+# STRUCTURE — region exceptions stay contained. The generic machinery (design matrix,
+# fold packing, CV, tuning, metrics, IO) is class/region-agnostic; ALL class-specific
+# sample rules live in SAMPLE_RULES, keyed by veg_fire_name, and are applied by
+# assemble_class_data(). fit_one_class() fits one model; main() loops.
 # =============================================================================
 
 suppressPackageStartupMessages({

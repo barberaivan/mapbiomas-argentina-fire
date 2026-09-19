@@ -2,10 +2,10 @@
 # =============================================================================
 # 06-object_model.R — object-based fire / non-fire classification (probit BART)
 # =============================================================================
-# Pipeline step 06 (R, stochtree). Fits ONE model on the labelled step-05 objects and
-# scores every object of a fire-year with a POSTERIOR probability of being fire, so the
-# step-07 upload carries a call per object and the round-2 point collection can be aimed
-# at the objects the model is unsure about. Design + rationale: docs/06-object_model.md.
+# Pipeline step 06 (R, stochtree, local). Fits ONE model on the labelled step-05 objects
+# and scores every object of a fire-year with a POSTERIOR probability of being fire, so
+# the step-07 products carry a call per object and a round-2 label collection can be
+# aimed at the objects the model is unsure about.
 #
 # Run from the repo ROOT:
 #   Rscript collection-01/workflow/06-object_model.R                  # fit, then time one year
@@ -13,40 +13,25 @@
 #   Rscript collection-01/workflow/06-object_model.R predict 2020 2014
 #   Rscript collection-01/workflow/06-object_model.R predict all      # every fire-year
 #   Rscript collection-01/workflow/06-object_model.R cv               # spatially-blocked (regions)
-#   Rscript collection-01/workflow/06-object_model.R cv grid 5         # 0.5 deg blocks -> 5 folds
+#   Rscript collection-01/workflow/06-object_model.R cv grid 5        # 0.5 deg blocks -> 5 folds
 #   Rscript collection-01/workflow/06-object_model.R cv random 5      # random 5-fold, for contrast
 # Env: OBJ_THREADS (8) MCMC_ITER (2000) POST_DRAWS (500) NUM_GFR (10) PRED_CHUNK (20000)
-# For all years use scripts/run_06_predict.sh (parallel, resumable) — see below.
 #
-# THE 20 PREDICTORS are objects_data_functions.R::PREDICTORS — 15 non-vegetation metrics plus 5
-# aggregated vegetation fractions (the 23 raw frac_c* columns summed by group). docs/06.
+#   # all years: prediction is single-threaded, so parallelise at the PROCESS level
+#   collection-01/scripts/run_06_predict.sh
 #
-# THE FITTING SET is the clean labelled table built by
-# scripts/objects_data_functions.R::clean_tagged() — one row per OBJECT, with the
-# unmatched labels, the both-classes objects, the duplicate labels and any NA predictor
-# removed and each cut reported. Uneven label density across objects is deliberately NOT
-# corrected: a label is a label, and reweighting by it would invent information.
+# Design: docs/06-object_model.md — "Foundations" for why probit BART, "The 20
+# predictors", "The three call columns" and "The classification threshold". Where the
+# labels come from and how the fitting set is cut: docs/06-object_labels.md.
 #
-# WHY probit BART VIA stochtree (docs/06 "Foundations"): no CV tuning to do honestly on ~5 k
-# labels, and the posterior gives a per-object interval — the targeting signal for a round-2
-# collection. stochtree's num_threads parallelises the GFR sampler and the MCMC, which is
-# genuine within-chain scaling of the fit.
+# NEVER GIVE THE MODEL A PREDICTOR THAT NAMES THE YEAR OR PROXIES FOR IT — that leak has
+# been found and fixed twice here. Read docs/06-object_model.md "Why no predictor may
+# identify the year" before touching PREDICTORS.
 #
-# PREDICTION IS SINGLE-THREADED (measured, stochtree 0.4.5): num_threads is a *sampler*
-# setting, and predict.bartmodel takes no thread argument — nor do the C++ predict entry
-# points. One process pegs one core, so `predict all` runs ~37 min on one core. The years
-# are independent, so parallelise at the PROCESS level: scripts/run_06_predict.sh runs one
-# Rscript per fire-year, 8 at a time (~5 min), resumable.
-#
-# MCMC BUDGET. num_mcmc is the RETAINED count and stochtree runs num_mcmc * keep_every
-# iterations, so MCMC_ITER=2000 / POST_DRAWS=500 means 2000 iterations thinned by 4 to 500
-# posterior draws. Thinning is what makes prediction affordable: cost is linear in draws,
-# and 500 draws still put ~25 order statistics below p_q05.
-#
-# PREDICTION IS THE MEMORY RISK, NOT THE FIT (docs/06). Never pass the full object set as
-# X_test to bart(): 1.69 M objects x 500 draws is 6.8 GB of doubles. Instead fit, serialize
-# to JSON, and predict per fire-year in PRED_CHUNK-row blocks, reducing each block to its
-# summaries and discarding the draws. Peak memory is then one block (20 k x 500 = 80 MB).
+# PREDICTION IS THE MEMORY RISK, NOT THE FIT. Never pass the full object set as X_test
+# to bart(): 1.69 M objects x 500 draws is 6.8 GB of doubles. Fit, serialize to JSON,
+# then predict per fire-year in PRED_CHUNK-row blocks, reducing each block to its
+# summaries and discarding the draws (docs/06-object_model.md "The model").
 # =============================================================================
 
 suppressPackageStartupMessages({

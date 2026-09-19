@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """
-collection-01/workflow/07-subproducts.py
+Step 07d — the nine DERIVED subproducts.
 
-Step 07d — the nine DERIVED subproducts, all of them from step 07a's month-of-burn
-collection plus the MapBiomas LULC.  No new vectors, no local work, no re-labelling
-(docs/07-published_products "07d — the nine derived subproducts").
+All nine come from step 07a's month-of-burn collection plus the MapBiomas LULC. No new
+vectors, no local work, no re-labelling:
 
     monthly_burned              annual_burned
     monthly_burned_coverage     annual_burned_coverage
@@ -12,33 +11,13 @@ collection plus the MapBiomas LULC.  No new vectors, no local work, no re-labell
     accumulated_burned          accumulated_burned_coverage
     year_last_fire
 
-**DO NOT INNOVATE ON THE ENCODINGS.**  They are what the MapBiomas platform decodes and what
-the statistics stage reads; every country writes them identically.  This script is a port of
-`Reference/2-Collection_Fire_Subproducts/{1_burned_area_products_monthly_annual_coverage,
-2_burned_area_frequency_accumulated_coverage,3_year_last_fire}` — same bands, same encodings,
-same dtypes, same pyramiding (`mode` throughout).  Three deliberate departures, all of them
-about plumbing rather than pixel values:
+**DO NOT INNOVATE ON THE ENCODINGS.** They are what the MapBiomas platform decodes and
+what the statistics stage reads; every country writes them identically. This is a port
+of the network's `Reference/2-Collection_Fire_Subproducts/` scripts 1-3 — same bands,
+encodings, dtypes and pyramiding.
 
-  1. **The grid is pinned** (`crs=C.SNIC_CRS` + `crsTransform=C.SNIC_TRANSFORM`), never
-     `scale=30` — which in EPSG:4326 is a *different* grid (docs/07 "One grid, pinned everywhere").  Same rule as 07a/07c.
-  2. **The export region is `C.ARG_BUFFER_FC`** (Argentina + 2 km), because
-     `regiones_fuego_argentina_v1` does not exist as a FeatureCollection (docs/07 "What is still open"); the
-     reference uses `regions.union().geometry()`.
-  3. **All nine products read the 07a month collection**, whereas the reference exports
-     `annual_burned` first and then has scripts 2 and 3 read that ASSET.  Ours is a plumbing
-     change only — `annual_burned` is *defined* as `month > 0`, so frequency built from the
-     month images is bit-identical to frequency built from the exported annual product, and
-     both being derived from the one pivot makes them consistent by construction rather than
-     by sequencing.  It also means the nine tasks are independent: no waiting for a 27-band
-     export to land before the 53-band ones can be submitted, and any single product can be
-     re-run alone.
-
-And the reference's `accumulated_burned` filename typo is NOT copied: script 2 builds
-`..._accumulate1_burned_v1` where the publish list expects `..._accumulated_burned_v1`
-(docs/07-published_products "Four traps in the reference code").
-
-Usage (from the repo ROOT)
---------------------------
+Usage (from the repo ROOT; --help for the full flag list)
+---------------------------------------------------------
   $PYTHON collection-01/workflow/07-subproducts.py                       # dry run, all 9
   $PYTHON collection-01/workflow/07-subproducts.py --check               # ROI audit
   $PYTHON collection-01/workflow/07-subproducts.py --launch              # 9 tasks
@@ -48,31 +27,15 @@ Usage (from the repo ROOT)
   $PYTHON collection-01/workflow/07-subproducts.py --launch \
       --roi=-61.6,-25.6,-61.1,-25.1        # -> <name>_roitest, delete afterwards
 
+The nine encodings, the four traps in the reference code, the three plumbing departures
+and which LULC is crossed in (`C.PRODUCT_LULC`, deliberately NOT `C.MAPBIOMAS_LULC`):
+docs/07-published_products.md "07d — the nine derived subproducts". Sequence:
+docs/07-vector_to_raster.md "Order of operations".
+
 Resumable: a product whose asset exists, or whose task is PENDING/RUNNING, is skipped.
-
-The LULC year, and the 2025 duplication
----------------------------------------
-`C.PRODUCT_LULC` — the PUBLISHED Argentina land-cover integration, NOT our internal `veg_fire`
-remap (docs/07-published_products "The four settled answers"), and deliberately NOT `C.MAPBIOMAS_LULC` either: that one is the model-side
-input `veg_fire` was derived from and stays frozen on the collection the model was fitted
-against, while these products must track whatever LULC Argentina publishes.  Currently the
-PUBLISHED col-3 (`mapbiomas_argentina_collection3_pb`), whose bands run 1985-2025, so nothing is
-duplicated forward; when the source
-ends before the series does, the last available year is duplicated forward as every reference
-country does (`.slice(-1).rename(['classification_2025'])`) and the substitution is printed.  The
-coverage products use the **same** calendar year as the burn (not the previous year, unlike
-`veg_fire`): they answer "which land cover burned in year Y, as classified in year Y".
-
-VERIFIED for col-2 v8, the preliminary col-3 and the published col-3 alike — their grids are
-byte-identical, so the
-proof transferred with the switch rather than needing to be redone: the LULC asset sits on the
-SAME 30 m lattice as the SNIC grid (same pixel size, origin offset by exactly 9953 columns /
--25102 rows, integers).  So combining it with the month raster on `C.SNIC_TRANSFORM` involves no
-resampling and no half-pixel shift — which for a CATEGORICAL band is the difference between a
-class code and its neighbour's.  Its footprint also contains the 2 km buffer
-(`contains == True`), so no burned pixel can fall outside the LULC and silently drop out of a
-`*_coverage` product (`add` propagates the mask).  `--check` re-measures that residual per year
-rather than trusting it.
+Task descriptions are namespaced `arg07d_` because `ee.data.listOperations()` is
+PROJECT-scoped and this compute project is shared with every other country's team
+(docs/07-published_products.md "Namespace the task descriptions").
 """
 
 from __future__ import annotations
@@ -356,12 +319,12 @@ def export(specs, years, launch, roi=None):
             "years": f"{years[0]}-{years[-1]}",
             "derived_from": C.MONTH_OF_BURN_COL,
             # The object exclusion rules the month collection was painted under (docs/07
-            # §1.1) — inherited, not applied here, but every product states its own selection.
+            # "Object exclusion ruleset") — inherited, not applied here, but every product states its own selection.
             **C.exclusion_rules(),
         }
         # Only the four `*_coverage` products encode land cover. The first launch stamped
         # `lulc_asset` on all nine, which left the five that contain no LULC at all advertising the
-        # collection they were exported alongside — and after the col-3 switch (§12.1) that value was
+        # collection they were exported alongside — and after the col-3 switch (docs/07-published_products "The four settled answers") that value was
         # not even current. Say which layer was crossed in, or say that none was.
         if sub.endswith("_coverage"):
             props["lulc_asset"] = C.PRODUCT_LULC

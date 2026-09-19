@@ -2,55 +2,31 @@
 # =============================================================================
 # 07-calendar_scars.R — calendar-year burn mask -> 8-connected SCARS (id + area)
 # =============================================================================
-# Step 07b (docs/07 "07b — the local scar build"). The network publishes scar id / area / size-range per CALENDAR
-# year, defined as "sets of spatially connected pixels within the same year". Our objects
-# are FIRE-YEAR entities under a deliberately non-standard connectivity (the 1-px dilation
-# of step 05), so the scars are a SEPARATE labelling pass:
+# Step 07b. The network publishes scar id / area / size-range per CALENDAR year, defined
+# as "sets of spatially connected pixels within the same year". Our objects are FIRE-YEAR
+# entities under a deliberately non-standard connectivity (step 05's 1-px dilation), so
+# the scars are a SEPARATE labelling pass, done locally because GEE cannot do it —
+# `connectedPixelCount` caps at 1024 px, far below a real scar.
 #
-#   * CALENDAR year, not fire-year — calendar Y = Jan-Apr Y (from FY Y-1) ⊎ May-Dec Y (FY Y).
-#   * PLAIN 8-CONNECTIVITY, intentionally NOT step 05's dilation connectivity: two distinct
-#     fires that touch become one scar, which is what the network's definition says.
-#   * A fire that straddles 31 December IS split into two scars, one per calendar year.
-#     That is the point of the per-pixel date assignment: annual, monthly and scar_size then
-#     agree pixel-for-pixel (docs/08 "How Argentina's route differs").
-#
-# GEE cannot do the labelling (`connectedPixelCount` caps at 1024 px ≈ 92 ha, far below a real
-# scar), which is why Brazil round-trips through Drive + Colab. We label locally instead, from
-# the per-carta SNIC tiles and the step-06 object polygons we already have on disk — no
-# download, no Drive.
-#
-# WHAT GOES IN THE VECTORS: `scar_id`, `area_ha`, `n_px`, `year`. NO size class — that is
-# derived in GEE from `area_ha`, so it follows whatever ranges the platform finally registers
-# (docs/external/mapbiomas-fuego-reference.md "Stage 4, scripts 4–6 — the scar-size chain" has the reference-vs-Workspace conflict).
-#
-# ONLY ACCEPTED OBJECTS CONTRIBUTE: `fire == 1 & area_ha >= MIN_FIRE_HA`. `fire` is the
-# deployed call — the collected label where there is one, else the model (docs/06 "The three call columns"); note
-# `fire_tag == -1` means "unlabelled", NOT "not fire". Positive selection is deliberate: 36
-# objects in the collection are all-dieback with a null `fire`/`date_median`, so "not
-# rejected" would wrongly admit them.
-#
-# VERIFIED (2026-07-29) that painting/rasterizing the object polygons reproduces the object
-# pixel set EXACTLY, so the mask built here is the mask GEE paints:
-#   * terra::cells(country template, accepted polys) for FY2020 -> 55,008,255 cells,
-#     identical to sum(n_pixels) over the same objects. Zero discrepancy over 55 M pixels.
-#   * In GEE, painted == candseed-burned with 0 painted-but-not-burned on the audited ROIs.
-# The `candseed > 0` intersection below is therefore a guard, not a correction — and the
-# per-year validation CSV records the residual so it is never silently assumed.
-#
-# TWO PASSES, because each fire-year feeds TWO calendar years and reading the 248 carta tiles
-# is the dominant cost — doing it once per fire-year rather than once per (calendar year,
-# fire-year) halves the I/O:
-#
-#   pass "pixels" (per FIRE-year, 28x): tiles -> accepted burned pixels -> effective date ->
-#       split into the two calendar halves -> cache <cache>/cy<Y>_fy<fy>.rds  (row, col, month)
-#   pass "scars"  (per CALENDAR year, 27x): read the two halves -> merge (later month wins on
-#       reburn) -> 8-connected union-find labelling -> area -> vectorize -> GPKG + zipped SHP
+# TWO PASSES, because each fire-year feeds TWO calendar years and reading the 248 carta
+# tiles is the dominant cost. Run `pixels` to completion first: a calendar year needs
+# BOTH its fire-years.
 #
 # Run from the repo ROOT:
 #   Rscript collection-01/workflow/07-calendar_scars.R pixels [fire_year ...]
 #   Rscript collection-01/workflow/07-calendar_scars.R scars  [cal_year ...]
 #   CARTAS=SK-19-V-A,SK-19-Y-A  Rscript ... pixels 1998     # tiny smoke test
 #   OBJ_CORES=<n>  parallelises the per-scar vectorize (as in step 05)
+#
+#   # both passes over every year, resumable:
+#   collection-01/scripts/run_07_scars.sh pixels
+#   collection-01/scripts/run_07_scars.sh scars
+#   $PYTHON collection-01/scripts/validate_scar_zips.py    # gate BEFORE the manual ingest
+#
+# Design: docs/07-vector_to_raster.md "07b — the local scar build" — the calendar
+# partition, the plain 8-connectivity, why a fire straddling 31 December becomes two
+# scars, and the proof that painting the object polygons reproduces the object pixel set
+# exactly. Sequence: docs/07-vector_to_raster.md "Order of operations".
 #
 # Outputs (collection-01/data/):
 #   scars-pixels-cache/cy<Y>_fy<fy>.rds   regenerable pixel cache (pass 1)

@@ -1,46 +1,30 @@
 """
-collection-01/workflow/03-bp_ts_metrics.py
+Step 03 — the burn-probability time series, reduced to annual metrics.
 
-Apply the fitted logistic-regression classifier (step 02) to every Landsat
-observation over the country, producing an observation-level burn-probability
-time series, then reduce it to annual summary metrics for the downstream
-segmentation step.
+Applies the step-02 classifier to every Landsat observation, then reduces the
+resulting per-observation probability series to per-pixel annual metrics. One
+16-band image `bpts_YYYY_<tile-id>` per focal year x MapBiomas carta.
 
-For each focal year × MapBiomas carta tile this exports a 16-band image
-``bpts_YYYY_<tile-id>`` to ``C.BP_TS_METRICS_COL``.
+It holds BOTH stages because they must share one graph — the per-observation
+probability is never materialized (docs/02-burn_probability.md, docs/03-bpts.md
+"Foundations").
 
-This is a large file BY NECESSITY: it holds two conceptual stages — (a) the
-per-observation burn probability (docs/02-burn_probability.md) and (b) the per-pixel
-time-series metrics (docs/03-bpts.md) — because the intermediate per-observation
-probability collection is far too large to export as an asset, so both must run inside
-one graph / one export. All of that machinery lives HERE (not in utils/functions.py)
-so this step is self-contained; only the truly cross-step helpers
-(Landsat/indices/MB-mosaic/veg_fire) are imported from ``utils.functions``.
+Usage (from the repo ROOT; --help for the full flag list)
+---------------------------------------------------------
+  # one tile-year (foreground is fine -- one task)
+  $PYTHON collection-01/workflow/03-bp_ts_metrics.py --year 2015 --tile SK-19-Y-A
+  # a whole year -- ~one task per carta, hundreds of task.start() round-trips: always tmux
+  tmux new-session -d -s bpts2015 \
+    '$PYTHON -u collection-01/workflow/03-bp_ts_metrics.py --year 2015 2>&1 | tee bpts2015.log'
+  # progress only: done / in flight / to launch
+  $PYTHON collection-01/workflow/03-bp_ts_metrics.py --year 2015 --status
 
-To drive these functions interactively (maps, sanity checks) import them by PATH —
-see scripts/test-03-bp_ts.py for the ``importlib`` idiom (this file's leading digit +
-hyphen make its name an invalid Python identifier, so a plain ``import`` won't work).
+Idempotent and cross-account: docs/03-bpts.md "Run". Distributed multi-account
+runs: docs/03-colab_multi_export.md.
 
-Run from the repo root:
-
-    # one tile-year (foreground is fine — one task)
-    $PYTHON collection-01/workflow/03-bp_ts_metrics.py --year 2015 --tile SK-19-Y-A
-    # all tiles for one year — submits ~one task per carta (hundreds); run in tmux:
-    tmux new-session -d -s bpts2015 \
-      '$PYTHON -u collection-01/workflow/03-bp_ts_metrics.py --year 2015 2>&1 | tee bpts2015.log'
-    # all years for one tile
-    $PYTHON collection-01/workflow/03-bp_ts_metrics.py --tile SK-19-Y-A
-    # everything (all years × all tiles — thousands of tasks; always tmux)
-    $PYTHON collection-01/workflow/03-bp_ts_metrics.py
-
-A bulk launch submits hundreds/thousands of tasks (many minutes of task.start()
-round-trips) — run it in tmux so it survives session closure (see CLAUDE.md
-"Running long scripts").  The launch is idempotent: tile-years that are already
-exported OR have a PENDING/RUNNING task are skipped, so a killed run can simply be
-re-run without duplicating in-flight tiles.
-
-Each invocation submits GEE export tasks and exits; monitor with --status or in the
-Code Editor Tasks panel.
+To import these functions interactively the filename must be loaded BY PATH -- its
+leading digit and hyphen make it an invalid Python identifier. `scripts/test-03-bp_ts.py`
+carries the `importlib` idiom.
 """
 
 import argparse
@@ -608,7 +592,7 @@ def bpts_image(year, tile_id, terms=None):
                .where(veg_fire.eq(C.VEG_FIRE_NON_OBSERVED), ee.Image.constant(-2)))
 
     # Integer encoding for storage (≈half the float32 size; see docs/03-bpts.md
-    # §3.7).  Everything is int16 (signed): probabilities ×PROB_SCALE fit ±10000,
+    # "Output bands and encoding").  Everything is int16 (signed): probabilities ×PROB_SCALE fit ±10000,
     # day-gaps (≲250) and DOY (1..366) fit well under 32767, and `n` keeps its
     # -1/-2 sentinels.  Signed (not uint16) on purpose — day-gaps are guaranteed
     # ≥0 by the ascending-date sort, but a stray negative would stay visibly

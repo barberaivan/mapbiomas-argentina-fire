@@ -1,76 +1,30 @@
 """
-collection-01/workflow/04-snic.py
+Step 04 — supervised SNIC burned-area segmentation on a non-calendar fire-year.
 
-Step 04 — supervised SNIC burned-area segmentation on a **non-calendar fire-year**,
-sharing one construction across stages:
+Two stages over one construction: the default stage builds `candseed` (1 = candidate,
+2 = seed, 3 = Patagonia dieback candidate) and exports it as `snic_<fy>`; `--to-asset`
+re-runs the same construction, masks it to that asset and bakes the R-facing bands
+(`abs_date`, `veg_fire`, `n`, `burned_around_{1,2,3}`) into `snic_metrics_<fy>`. SNIC
+itself is not recomputed at the second stage.
 
-  * default stage  (asset) — build `candseed` and export it to a GEE asset.
-  * `--to-asset`   (asset) — read the `candseed` asset and materialize the R-facing
-                             metric bands (`abs_date` + `veg_fire` + `n` +
-                             `burned_around_{1,2,3}`, stored as cell counts) to a
-                             companion `snic_metrics_<fy>`
-                             asset, WITHOUT re-storing `candseed`. Feeds the tiled direct
-                             download `download_snic.py`, which re-attaches `candseed` and
-                             pulls the stack per *carta* to local disk — no Drive, no Insync
-                             (docs/04 "The R-facing bands and the download",
-                             docs/notes/05-whole_country_redesign.md).
+All tunable settings live in `utils/constants.py` (Step 04 section); this file holds
+only procedure.
 
-All tunable settings live in `utils/constants.py` (Step 04 section); this file
-holds only procedure.
+Usage (from the repo ROOT; --help for the full flag list)
+---------------------------------------------------------
+  # tiny-ROI feasibility test first (submits `snic_test_1998`)
+  $PYTHON collection-01/workflow/04-snic.py --fire-year 1998 --test --launch
+  # build + sanity-check only, no task submitted
+  $PYTHON collection-01/workflow/04-snic.py --fire-year 2015
+  $PYTHON collection-01/workflow/04-snic.py --fire-year 2015 --launch
+  $PYTHON collection-01/workflow/04-snic.py --fire-year 2015 --to-asset --launch
+  # the whole archive (1998..2025) -- ~28 whole-country tasks each, use tmux
+  $PYTHON collection-01/workflow/04-snic.py --all --launch
+  $PYTHON collection-01/workflow/04-snic.py --all --to-asset --launch
 
-Design: docs/04-snic.md "How it works". Summary, per fire-year `Y1`
-(FY = 1 May Y1 → 30 Apr Y2, Y2 = Y1+1; named by the START year Y1):
-
-  1. Load the TWO calendar `bpts` images the fire-year spans (Y1 and Y2), decoded.
-     Either may be absent at the archive edges (FY1998 has only the 1999
-     image; FY2025 has only the 2025 image) — whichever exists is used, and the
-     two TRIMMED edge fire-years (jan99-apr99, may25-dec25) are still mapped, with
-     `system:time_start`/`time_end` set to their actual coverage and `partial=true`.
-  2. Per image, classify seed / candidate with the per-veg, per-pixel-K thresholds
-     (C.VEG_TABLE), and compute the K=2 mid-date (`date_post2 − jumpgap2/2`) as an
-     ABSOLUTE day count since epoch (cross-year safe).
-  3. Window-filter each image to the fire-year (Y1 img → keeps May–Dec Y1; Y2 img →
-     keeps Jan–Apr Y2) and combine per pixel: **seed > candidate > none** (`max`).
-     Each pixel's `abs_date` follows the image that won the max.
-  4. Patagonia slow-dieback forward padding (docs/04 "Patagonia dieback padding"):
-     in `forest_pat`/`shrubland_pat` west of C.PAT_LON_MAX, a pixel that is
-     seed-or-candidate in the Y2 image with
-     mid-date in [Jun, Nov] Y2 is added as a **candidate** (code `3`) where focal is 0.
-  5. Supervised SNIC (seeds grown through the candidate footprint, seedless islands
-     dropped) with `neighborhoodSize = C.SNIC_NEIGHBORHOOD_SIZE`.
-  6. Export ONLY `candseed ∈ {1,2,3}` (int16) to asset: 1 = candidate,
-     2 = seed, 3 = next-year (Patagonia dieback) candidate.
-
-`abs_date` / `veg_fire` are NOT stored in the asset. They are recreated at the
-metrics-asset stage (`--to-asset`) by re-running this construction (steps 1–4) and
-masking to the exported `candseed` asset. SNIC is NOT recomputed at that
-stage — the asset already holds the segmented mask.
-
-Assets land in the COLLECTION-1 `snic` ImageCollection (`C.SNIC_COL`) as
-`snic_<fire_year>` (e.g. `snic_2024`; a `--test` run uses `snic_test_<fire_year>`
-over a tiny ROI), on the bpts 30 m grid, over Argentina buffered ~2 km
-(`C.ARG_BUFFER_FC`), tagged `fire_year` / `system:time_start` (Y1-05-01) /
-`system:time_end` ((Y1+1)-04-30).
-
-Run from the repo root:
-
-    # tiny-ROI feasibility test first (submits `snic_test_1998`):
-    $PYTHON collection-01/workflow/04-snic.py --fire-year 1998 --test --launch
-    # single fire-year, build + sanity-check only (no task submitted):
-    $PYTHON collection-01/workflow/04-snic.py --fire-year 2015
-    # actually submit the asset:
-    $PYTHON collection-01/workflow/04-snic.py --fire-year 2015 --launch
-    # once the asset exists, materialize the metric bands to snic_metrics_2015:
-    $PYTHON collection-01/workflow/04-snic.py --fire-year 2015 --to-asset --launch
-    # the whole archive (1998..2025) — many whole-country tasks, use tmux:
-    $PYTHON collection-01/workflow/04-snic.py --all --launch
-    $PYTHON collection-01/workflow/04-snic.py --all --to-asset --launch
-
-Launching one fire-year is a single foreground-safe `task.start()`. A full `--all`
-run submits ~28 whole-country export tasks; per CLAUDE.md launch it inside tmux. Both
-stages are idempotent: the asset stage skips a fire-year whose asset already exists OR
-that has a PENDING/RUNNING task; the Drive stage skips one whose asset is missing (run
-the asset stage first) OR that has a PENDING/RUNNING Drive task.
+Design, the fire-year definition and the two partial edge years: docs/04-snic.md
+"How it works". Sequence, including the `download_snic.py` pull that follows:
+docs/04-snic.md "Run".
 """
 
 import argparse

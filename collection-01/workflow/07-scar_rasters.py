@@ -1,61 +1,25 @@
 #!/usr/bin/env python3
 """
-collection-01/workflow/07-scar_rasters.py
-
 Step 07c — the scar-size chain, from the uploaded calendar-year scar vectors.
 
-Runs AFTER:
-  * `07-calendar_scars.R scars` has built `data/scars-upload-cache/scars_<Y>.zip`, and
-  * Iván has ingested each one by hand as `C.ANNUAL_BURNED_VECTORS/scars_<Y>`
-    (no GCS bucket is reachable, so the zip is the deliverable — same hand-off as docs/06 "Upload to GEE").
+Paints the ingested `scars_<Y>` FeatureCollections into the network's three scar
+subproducts: `annual_burned_id`, `annual_burned_area_ha` and
+`annual_burned_scar_size_range`. Each is ONE multiband image with one band per
+calendar year, never one image per year.
 
-Produces the network's three scar subproducts, each a SINGLE MULTIBAND image with one band per
-calendar year — that is the published shape, confirmed by the launch guide ("Imagen multibanda
-con el ID de cada cicatriz") and by `ToPublish/2-toAsset-Public`, whose `band_format` property
-(`scar_area_ha_{year}`) only makes sense for a multiband image:
+Runs AFTER `07-calendar_scars.R scars` has built the zips and Ivan has ingested each
+one by hand as `C.ANNUAL_BURNED_VECTORS/scars_<Y>`.
 
-  | product                        | band              | encoding            | pyramiding |
-  |--------------------------------|-------------------|---------------------|------------|
-  | `annual_burned_id`             | `scar_id_YYYY`    | scar id, int        | mode       |
-  | `annual_burned_area_ha`        | `scar_area_ha_YYYY` | ha, float         | median     |
-  | `annual_burned_scar_size_range`| `scar_area_ha_YYYY` | class 1-8, uint8  | mode       |
-
-Two deliberate departures from the reference script `5-export_annual_burned_id_and_size_by_year`:
-
-  1. **We paint OUR `area_ha`, we do not recompute it.** The reference maps
-     `area_ha = feat.geometry().area()/10000` over the FC. For a pixel-edge polygon with interior
-     rings, GEE's geodesic polygon area is not the same number as the pixel-count area that every
-     other figure we publish is built from — and the statistics stage is checked to ~1 %
-     (statistics/docs/statistics.md). `07-calendar_scars.R` already wrote `area_ha` from the per-row cell area, so the
-     `.map()` is dropped.
-  2. **The size classes come from `C.SCAR_SIZE_LOWER_HA`, applied here and not baked into the
-     vectors.** The reference script's ranges do NOT match the published Fogo col-5 legend on the
-     same pixel values 1-8, so we use the LEGEND's (docs/external/mapbiomas-fuego-reference.md "Stage 4, scripts 4–6 — the scar-size chain"). Keeping the classification
-     server-side is what made that switch free after the vectors were already built -- one
-     re-export, not 27 re-uploads.
-
-And one invariant the reference cannot state, because its scars come from its own annual raster:
-**the scar mask is forced to equal the month-of-burn mask** (docs/07 "07c — the scar rasters"). They are built from
-the same pixel set — verified exactly, see `07-calendar_scars.R`'s header — so `--check` reports
-the residual per year and the export intersects the two masks so it is zero by construction.
-
-Usage (from the repo ROOT)
---------------------------
+Usage (from the repo ROOT; --help for the full flag list)
+---------------------------------------------------------
   $PYTHON collection-01/workflow/07-scar_rasters.py --check --years 2003,2020  # mask agreement
   $PYTHON collection-01/workflow/07-scar_rasters.py                  # dry run
   $PYTHON collection-01/workflow/07-scar_rasters.py --launch         # 3 export tasks
 
-Shape: three images of 27 BANDS, not 27 images of 3 bands (docs/07-published_products "Products, and the shape they take") — also what the reference
-does (script 5 exports `regions.union().geometry()` over `ee.List.sequence(1999, 2025)` in ONE task
-per subproduct, for a whole country, with no region split).
-
-**SETTLED 2026-07-29: the monolith holds.** All three tasks succeeded over the full country, and the
-LANDED assets verify exactly — 27 bands each on the pinned grid, `month-only = scar-only = 0` on
-2003/2020/2025, and every size class consistent with the painted `area_ha`. A `--per-year` +
-`--merge` fallback (27 small tasks into a `scar_year_parts` collection, then a light re-stack) was
-carried here in case one task painting 27 FeatureCollections would not hold; it went unused, so it
-was deleted rather than left as a second path to maintain. No GEE limit was ever measured against
-the monolith — it simply worked. The `--roi` smoke test went the same way.
+Design, the two departures from the reference script and the mask invariant:
+docs/07-vector_to_raster.md "07c — the scar rasters, and the mask invariant". The
+published shape and the band names: docs/07-published_products.md "Products, and the
+shape they take". Sequence: docs/07-vector_to_raster.md "Order of operations".
 """
 
 from __future__ import annotations
@@ -172,7 +136,7 @@ def _export_products(specs, years, launch):
                        "area_source": "pixel-count (local), not geometry().area()",
                        "derived_from": C.ANNUAL_BURNED_VECTORS,
                        # The object exclusion rules the SCARS were labelled under (docs/07
-                       # §1.1). They are inherited from 07b, not applied here — but the
+                       # "Object exclusion ruleset"). They are inherited from 07b, not applied here — but the
                        # product must still state them, or a scar raster cannot be told
                        # apart from one built before the rules existed.
                        **C.exclusion_rules()})

@@ -1,202 +1,48 @@
 #!/usr/bin/env python3
 """
-collection-01/workflow/07-burned_area_polygons.py
-
 Step 07e — the FIRE-OBJECT POLYGON LAYER: every mapped fire, all 28 fire-years, in one
 FeatureCollection, for sharing with early users.
 
-    projects/…/FIRE/COLLECTION-1/FINAL_PRODUCTS/burned_area_polygons_v1
+    projects/.../FIRE/COLLECTION-1/FINAL_PRODUCTS/burned_area_polygons_v<N>
 
-Nothing is computed here and no geometry is touched: the layer is the step-06 object set
-(`objects_raw_<fy>`, 28 FCs) filtered to the accepted fires and stripped to ten properties,
-merged and flattened across fire-years.  Measured: **1,263,079 rows for 1,263,076 objects,
-69.12 Mha** — a row-sum reports 74.23 Mha because one FY2000 object is stored as 4 rows, each
-carrying the whole object's `area_ha` (see below).
+Nothing is computed and no geometry is touched: the layer is the step-06 object set
+(`objects_raw_<fy>`, 28 FCs) under the same positive selection 07a paints, stripped to
+ten properties, merged and flattened across fire-years. It depends only on step 06, so
+it can be rebuilt at any time and in any order relative to 07a-07d.
 
-    fire == 1  AND  area_ha >= C.MIN_FIRE_HA
-
-the same POSITIVE selection step 07a paints (docs/07 'The decisions this step rests on').  `fire` is the deployed call — the
-collected label where there is one, else the probit-BART model (docs/06 "The three call columns") — so `fire_tag == -1`
-means *unlabelled*, never *not fire*, and "not rejected" is not the same filter: 36 objects are
-entirely `candseed==3` dieback with a null `fire`, and this excludes them.
-
-WHY "polygons" AND NOT "vectors"
---------------------------------
-`FINAL_PRODUCTS/annual_burned_vectors/` is already taken, by the CALENDAR-year scars that feed
-the scar-size chain (07b/07c).  Those are a different thing from these — plain 8-connectivity,
-calendar-clipped, one scar per connected burn — and reusing the network's word for both would put
-two unrelated layers one line apart in the asset tree under near-identical names.  "polygons" also
-says what a user actually gets, where a "vector" could be points or lines.
-
-⚠️ THIS LAYER IS IN `FINAL_PRODUCTS` BY DELIBERATE OVERRIDE of docs/08 open #8, which parked the
-fire-year vector database OUTSIDE `FINAL_PRODUCTS` until IPAM rules whether Argentina may publish
-it.  Iván's call (2026-07-30): early users get a link that stays valid if the ruling is yes, and
-Brazil's own col-5 `annual_burned_vectors` is the precedent that the door is open.  The leak risk
-is small — `ToPublish/2-toAsset-Public` copies an EXPLICIT subproduct list, not the folder — but
-if the ruling is no, this asset moves and the shared link dies with it.
-
-THE TEN PROPERTIES
-------------------
-| property        | source        | meaning                                                     |
-|-----------------|---------------|-------------------------------------------------------------|
-| `oid`           | `oid`         | stable object id, `<fy>_<n>` — the key to join user feedback |
-|                 |               | back to the object database and its 20 metrics              |
-| `fire_year`     | asset name    | the NON-calendar mapping year: 1 May *fy* → 30 Apr *fy*+1   |
-| `calendar_year` | `year_cal`    | the MODE of the object's per-pixel calendar years           |
-| `area_ha`       | `area_ha`     | pixel-count area (NOT a geodesic polygon area)              |
-| `date_med`      | `date_med`    | median burn date, ISO 8601 `YYYY-MM-DD`                     |
-| `date_min/max`  | `date_min/max`| first / last burn date, same encoding                       |
-| `p_mean`        | `p_mean`      | posterior mean fire probability (probit BART)               |
-| `p_width`       | `p_width`     | width of its credible interval, `p_q95 - p_q05`             |
-| `seed_mean`     | `seed_mean`   | mean SNIC seed burn probability over the object             |
-
-`fire_year` is NOT a property of the source FCs — it is only implicit in the asset name, so it is
-set per source collection here.  Every other name is carried through unchanged except `year_cal`,
-which is renamed for people who have never read docs/06.
-
-DATES ARE ISO STRINGS, AND THE FC IS `filterDate`-ABLE
-------------------------------------------------------
-The object database stores `date_med/min/max` as WHOLE DAYS since 1970-01-01 — an integer 19018
-that no user can read in the Inspector or in a QGIS attribute table.  Here they are written as
-`YYYY-MM-DD` strings instead (Iván, 2026-07-30).  Nothing is lost: the integers stay in the object
-database, `oid` joins back to them, and ISO-8601 still sorts and range-filters correctly because
-it sorts lexicographically (`ee.Filter.gte('date_med', '2021-01-01')`).
-
-On top of that each feature carries a GEE timestamp, so the collection answers `filterDate()` —
-the first thing a user reaches for:
-
-    system:time_start = date_med   (midnight UTC of the MEDIAN burn day)
-
-**`date_med`, and time_start ONLY — deliberately not the `date_min`..`date_max` interval** (Iván,
-2026-07-30).  With `system:time_end` also set, the date filter passes on interval INTERSECTION, so a
-fire burning 28 Dec → 4 Jan would be returned by a December query AND a January one, and summing
-`area_ha` across months would double-count it.  One timestamp keeps one fire in exactly one bucket,
-which is the same choice `calendar_year` already makes (the modal year, §13.3) — so `filterDate`
-results stay summable.  The true span is not hidden: `date_min` and `date_max` are right there, and
-readable.
-
-`select()` DROPS unlisted properties, `system:time_*` included, so the timestamps are set AFTER
-it — setting them first silently loses them (and a `filterDate` that quietly matches nothing looks
-exactly like a collection with no fires in that window).
-
-TWO THINGS TO TELL USERS, both recorded in the asset properties
----------------------------------------------------------------
-1. **`calendar_year` is the object's MAJORITY year, and the rasters do not agree with it.**  It is
-   `mode_int(cyear)` over the object's pixels (`05-objects_metrics.R:239`).  The published rasters
-   assign the calendar year and month PER PIXEL, so a fire straddling 31 December is split between
-   two years there and lands whole in one year here (docs/07 'The decisions this step rests on').  Neither is wrong; they answer
-   different questions, and a user who cross-tabulates the two without knowing this will find
-   "missing" area.
-2. **Fire-year 1998 is in this layer and in no published raster.**  3,845 polygons carry
-   `calendar_year` 1998 or 1999; the calendar series starts at 1999, so FY1998's Nov–Dec 1998 tail
-   (1,058,206 px, ~76 kha) appears here only (docs/07 'The verified calendar-year partition').
-
-`oid` IS UNIQUE PER OBJECT, NOT PER FEATURE — one FY2000 object is 4 rows
--------------------------------------------------------------------------
-`objects_raw_2000` itself stores `2000_57529` — a **1,706,171 ha** object — as **4 features** with
-disjoint geometry parts, each repeating the whole object's `area_ha` and dates.  That is a vertex
-split (`Export.table.toAsset(maxVertices=…)` cuts a geometry that exceeds the limit into pieces),
-and it happened UPSTREAM, in the step-06 upload: the sources total **1,263,079 rows / 1,263,076
-distinct `oid`**, and FY2000 is the only year affected (all 28 audited).  Two consequences:
-
-* this layer carries all 4 rows, faithfully — so a naive `aggregate_sum('area_ha')` over-counts the
-  layer by **5,118,513 ha** (3 extra copies of 1,706,171 ha).  That is the whole difference between
-  the 74.23 Mha this layer was first reported at and the 69.12 Mha it actually maps.  Dissolve by
-  `oid`, or subtract the split, before quoting an area — `--verify` prints both totals;
-* **never "fix" a duplicate with a blind `distinct('oid')` on THIS fire-year** — it would keep one
-  part and silently drop ~1.3 Mha of that fire (measured: `distinct('oid')` returns 1 row,
-  `distinct(['oid', '.geo'])` leaves all 4).  It is why the guard in `fires()` skips FY2000 and why
-  `--verify` expects exactly `KNOWN_VERTEX_SPLITS` extra rows instead of tolerating a surplus.
-
-The split cannot simply be undone: the 4 parts exist BECAUSE the whole geometry exceeds the
-exporter's vertex limit, so re-merging them would only be split again on write.
-
-⚠️ `objects_raw_2021` IS DUPLICATED IN STORAGE, AND NO COUNT REVEALS IT
-----------------------------------------------------------------------
-Both merged exports landed with **1,264,328 rows** against an expected 1,263,079 — the surplus being
-**1,249 FY2021 features present twice**, byte-identical in geometry and in all ten properties.  The
-second run reproduced *the same 1,249 `oid`s*, so this is deterministic, and the cause is in the
-stored source, not in the export.  Where it hides (all measured on `objects_raw_2021`):
-
-| stage | `.size()` | MATERIALISED (`aggregate_count` / `aggregate_array`) |
-|---|---|---|
-| raw | 66,393 | 66,393 |
-| `+ .filter(fire_filter())` | 53,263 | 53,263 |
-| `+ .map(one)` | 53,263 | **54,514** |
-
-`size()`, and any aggregation over a *plain filtered stored* collection, is answered from the
-asset's metadata and cannot see this.  Insert a map that CHANGES THE SCHEMA — `Feature.select()`,
-which is what `one()` does — and the aggregation can no longer be pushed down to storage, so GEE has
-to ITERATE the table, and iterating yields ~1,251 features that the metadata count denies.  An
-export iterates, so it writes them.
-
-Re-measured 2026-09-18: unchanged under THIS query (54,514 / 53,263 distinct `oid`), the asset never
-re-ingested, and the surplus is NOT in what we uploaded — the ingest package on disk is 66,393
-records for 66,393 distinct `oid`.  Two things measured that day that the table above cannot show:
-the surplus is QUERY-DEPENDENT (`area_ha >= 1` alone surfaces 241 rows, `fire == 1` alone and an
-unfiltered read surface none), and a bare `.map()` is not enough — `map(f => f.set(...))` and a map
-that rebuilds the feature from its geometry both return the clean 53,263 under the filter that
-yields 1,251.  So a clean count proves nothing about the next query.  Full table: docs/06
-"Gotchas".
-
-Two lessons worth more than the bug:
-
-1. **A count that agrees with itself is not a clean bill of health.** `size()`,
-   `aggregate_count('oid')` and `len(aggregate_array('oid'))` all said 53,263 on the filtered
-   source — three numbers, one pushed-down answer, and all three wrong about what a read returns.
-   The honest check materialises, and a bare `.map()` does not materialise: put a `select()`-bearing
-   map in front, or count on the LANDED asset.
-2. **A COMPLETED task is not evidence that each feature was written once**, and the ~0 EECU of a
-   table export tells you nothing either way.
-
-The fix is `distinct('oid')` inside `fires()` — see there for why NOT `distinct(['oid', '.geo'])`,
-and why the guard skips FY2000.  The root cause belongs upstream: `objects_raw_2021` should be
-re-ingested by step 06 (BACKLOG), and the acceptance gate must be the `select()`-map probe above,
-because every metadata count passes the bad asset.
-
-`--per-year` would NOT have helped, which is worth recording because it was kept as insurance
-against exactly this symptom: the FY2021 single-year export reads the same stored table and
-duplicates identically.  The size of the export was never the variable.
-
-IS ONE MERGED EXPORT FEASIBLE?  Measured, not assumed
------------------------------------------------------
-The 28 source shapefiles hold **5.12 GB** of raw `.shp` geometry for 1.689 M objects (~190
-vertices/polygon), so the fire-only subset is ~4-4.5 GB.  GEE already stores exactly that in the
-28 source assets — reading it is not the question.  One `Export.table.toAsset` shuffling 1.26 M
-complex multipolygons is: there is no documented feature limit, but this is the upper end of where
-such tasks succeed and the failure mode is `User memory limit exceeded` AFTER hours.  Precedent is
-against it — Brazil ships `mbfogo_col5_<year>_v1` per year, our scars are 27 per-year assets,
-`objects_raw` is 28; nobody in the network ships one merged all-years vector.  Building it locally
-and ingesting instead is worse: >2 GB breaks the Shapefile limit and no GCS bucket is reachable
-(docs/06 "Upload to GEE").
-
-SETTLED: it works.  Three tasks have now completed at 1.26 M features, in 2.6-3.7 h each, and the
-predicted `User memory limit exceeded` never appeared.  The per-fire-year fallback that guarded this
-(`--per-year`, `--year`, `burned_area_polygons_by_fire_year/`) is gone — it protected nothing.  What
-actually went wrong twice had nothing to do with export size: FY2021 exported ALONE duplicated
-identically, because the duplication is in the stored source (above).
-
-Usage (from the repo ROOT)
---------------------------
+Usage (from the repo ROOT; --help for the full flag list)
+---------------------------------------------------------
   $PYTHON collection-01/workflow/07-burned_area_polygons.py --check
   $PYTHON collection-01/workflow/07-burned_area_polygons.py --launch               # the merged layer
   $PYTHON collection-01/workflow/07-burned_area_polygons.py --launch --overwrite   # replace it
   $PYTHON collection-01/workflow/07-burned_area_polygons.py --verify               # THE gate
   $PYTHON collection-01/workflow/07-burned_area_polygons.py --set-props            # after landing
 
-`--overwrite` replaces the asset IN PLACE, keeping the name — which is the point: the path is
-already shared with early users, so a re-export must not become `_v2`.  GEE writes the new table and
-swaps it at completion, so the old one stays readable for the hours in between.
-
-  # as the SECOND account, so this does not queue behind the first account's tasks (the GEE task
-  # queue is per user). Only the compute project changes; the destination asset is the same:
+  # as the SECOND account, so this does not queue behind the first account's tasks (the
+  # GEE task queue is per user). Only the compute project changes; the destination asset
+  # is the same:
   $PYTHON collection-01/workflow/07-burned_area_polygons.py --launch \
       --project mapbiomas-argentina \
       --credentials ~/.config/earthengine/credentials.comahue
 
-Resumable: an asset that exists, or whose task is PENDING/RUNNING, is skipped.  Task descriptions
-are namespaced `arg07e_` because `ee.data.listOperations()` is PROJECT-scoped and this compute
-project is shared with every other country's team (docs/07-published_products 'Namespace the task descriptions').
+`--overwrite` replaces the asset IN PLACE, keeping the name — the point being that the
+path is already shared with early users, so a re-export must not become a new version.
+
+Design: docs/07-published_products.md "07e — the fire-object polygon layer, for early
+users" — the ten properties, why ISO dates and `system:time_start` only, why "polygons"
+and not "vectors", and which account submits it.
+
+TWO STORAGE DEFECTS make the guards in `fires()` load-bearing; do not simplify them
+without reading both sections first:
+  * `objects_raw_2021` is duplicated in storage and NO metadata count reveals it
+    (docs/07-published_products.md "`objects_raw_2021` is duplicated in storage").
+  * `oid` is unique per OBJECT, not per row — FY2000 is legitimately 4 rows
+    (docs/07-published_products.md "`oid` is unique per OBJECT, not per row").
+
+Resumable: an asset that exists, or whose task is PENDING/RUNNING, is skipped. Task
+descriptions are namespaced `arg07e_` because `ee.data.listOperations()` is
+PROJECT-scoped and this compute project is shared with every other country's team
+(docs/07-published_products.md "Namespace the task descriptions").
 """
 
 from __future__ import annotations
@@ -380,7 +226,7 @@ def fires(fire_year):
     # buy a distinction that matters in exactly one fire-year.
     #
     # That one fire-year is why this is conditional.  FY2000 legitimately holds 4 rows for
-    # `2000_57529` (a vertex split, §13.7), all sharing the oid, and `distinct('oid')` would keep
+    # `2000_57529` (a vertex split, docs/07-published_products "`oid` is unique per OBJECT, not per row"), all sharing the oid, and `distinct('oid')` would keep
     # one part and silently drop ~1.3 Mha of that fire.  FY2000 is left alone — it materialises
     # clean (54,069 rows for 54,066 objects, exactly the 3 split parts) so it needs no guard, and
     # `--verify` is what would catch it if that ever changed.

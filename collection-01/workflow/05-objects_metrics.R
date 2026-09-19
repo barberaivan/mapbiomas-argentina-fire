@@ -3,44 +3,29 @@
 # 05-objects_metrics.R — vectorize fire-year SNIC objects + per-object metrics
 # =============================================================================
 # Pipeline step 05 (R, terra/sf/data.table + a small Rcpp union-find). Consumes the
-# step-04 SNIC product for one fire-year — the per-carta tiles in snic-rasters/<fy>/
-# (7 bands incl. burned_around_{1,2,3} pre-computed in GEE; 04 §5b) — and turns the burned
-# pixels into
-# fire-scar OBJECTS with a metrics table, ready for the step-06 object filter. One fire-year
-# at a time; objects are global within a year (no tiling), so nearby fragments of the same
+# step-04 SNIC per-carta tiles for one fire-year and turns the burned pixels into fire
+# OBJECTS with a metrics table, ready for the step-06 classifier. One fire-year at a
+# time; objects are global within a year (no tiling), so nearby fragments of the same
 # scar share one id.
-#
-# SCALES TO THE WHOLE COUNTRY (docs/05). The three steps that broke at 9.16 B cells were
-# replaced (see docs/notes/05-whole_country_redesign.md for the profile that forced each change):
-#   * EXTRACT burned cells PER-CARTA TILE, not as.data.frame() on the whole mosaic — the
-#     latter builds 1:ncell (9.16 B) and R's cbind throws "long vectors not supported".
-#   * LABEL with a UNION-FIND (utils/label_uf.cpp: parent array only, edges streamed one
-#     window-offset at a time), not igraph (which OOM'd > 31 GB). The 1-px DILATION is done
-#     as a WIDER-WINDOW union with a veg-class distance threshold — no halo raster (§2 below).
-#   * VECTORIZE per-object in parallel (tiny local rasters), not by densifying a country-wide
-#     34 GB `pid` raster for one big as.polygons().
 #
 # Run from the repo ROOT (paths below are repo-relative):
 #   Rscript collection-01/workflow/05-objects_metrics.R [test] [fire_year ...]
-#     fire_year…  one or more START years (e.g. 2000). Default: every year present.
-#     test        read the small-ROI snic_test_<year> products → objects_test_<year>.
+#     fire_year...  one or more START years (e.g. 2000). Default: every year present.
+#     test        read the small-ROI snic_test_<year> products -> objects_test_<year>.
 #   OBJ_CORES=<n> parallelises the per-object vectorize (default: ~half the cores; 1 = serial).
 #   e.g.  OBJ_CORES=13 Rscript collection-01/workflow/05-objects_metrics.R 2000
 #
-# Design + rationale: docs/05-object_metrics.md. Procedure per fire-year:
-#   [1] Extract burned cells (per-carta tile) into a data.table with all bands.
-#   [2] Assign object ids via the 1-px DILATION connectivity (union-find, §2).
-#   [3] Per-object RASTER metrics (data.table over burned cells): seed share, veg_fire abundance
-#       (frac_c1..23), area_ha, {median,min,max} of abs_date + year_calendar (mode), n_mean
-#       (NOT a model predictor — docs/06; collection 2 should drop it),
-#       burned_around_{1,2,3}. Date/seed/year stats EXCLUDE candseed==3 dieback pixels.
-#   [4] Vectorize the objects (one (multi)polygon per id), parallel per-object.
-#   [5] Geometry SHAPE metrics (ported from collection-00 addShapeMetrics).
-#   [6] Write GPKG (oid + geometry ONLY) + two metric CSVs (raster, shape), keyed by oid — no join.
+#   # all years overnight, one Rscript per year, resumable — ABSOLUTE path, in tmux:
+#   collection-01/scripts/run_05_years.sh
+#
+# Design: docs/05-object_metrics.md "How it works" — the per-carta extract, the
+# union-find labelling with dilation as a wider union window, the per-object vectorize
+# and the metrics. What broke at 9.16 B cells and why each of those three replaced
+# something simpler: docs/notes/05-whole_country_redesign.md.
 #
 # Outputs (collection-01/data/objects-raw/):
 #   objects_<fire_year>.gpkg                — polygons (one per object) + `oid` only (no metrics)
-#   objects_<fire_year>_raster_metrics.csv  — raster metrics (aggregate_metrics), keyed by oid
+#   objects_<fire_year>_raster_metrics.csv  — raster metrics, keyed by oid
 #   objects_<fire_year>_shape_metrics.csv   — geometry/shape metrics, keyed by oid
 # =============================================================================
 
@@ -58,7 +43,7 @@ HERE   <- if (length(.this_file)) dirname(normalizePath(.this_file)) else getwd(
 UF_CPP <- file.path(HERE, "..", "utils", "label_uf.cpp")
 
 # ── config ───────────────────────────────────────────────────────────────────
-# Input: snic-rasters/<fy>/<carta>.tif — the step-04 per-carta tiles (04 §5b): 248 cartas,
+# Input: snic-rasters/<fy>/<carta>.tif — the step-04 per-carta tiles (docs/04 "The R-facing bands and the download"): 248 cartas,
 # 7 bands incl. burned_around_{1,2,3} PRE-COMPUTED in GEE as CELL COUNTS.
 SNIC_DIR <- "collection-01/data/snic-rasters"   # input: per-carta tiles (symlink into store)
 OUT_DIR  <- "collection-01/data/objects-raw"    # output: GPKG + the two metric CSVs
@@ -70,13 +55,13 @@ OUT_DIR  <- "collection-01/data/objects-raw"    # output: GPKG + the two metric 
 NO_DILATE_VEG <- c(1L, 2L, 3L, 12L, 13L, 15L, 17L, 18L, 19L)
 
 # Patagonia steppe dieback cut (docs/05 "Extract"): drop candseed==3 pixels EAST of this longitude.
-# SNIC pads dieback only west of -70.3 (04 §4.3); this tightens the western limit to -70.6.
+# SNIC pads dieback only west of -70.3 (docs/04 "Patagonia dieback padding"); this tightens the western limit to -70.6.
 DIEBACK_LON_CUT <- -70.6
 
 VEG_CODES   <- 1:23                 # burnable veg_fire classes (24/25 are sentinels)
 BA_RADII    <- c(1L, 2L, 3L)        # burned_around neighbourhood radii (px)
 EPOCH       <- "1970-01-01"         # abs_date is whole days since this
-EXPECT_BANDS <- c("abs_date", "veg_fire", "n",                    # per-carta tiles (04 §5b)
+EXPECT_BANDS <- c("abs_date", "veg_fire", "n",                    # per-carta tiles (docs/04 "The R-facing bands")
                   sprintf("burned_around_%d", BA_RADII), "candseed")
 DILATE_R    <- 3L                   # 1-px dilation ≡ union within Chebyshev ≤3 (docs/05 "Label")
 
@@ -160,7 +145,7 @@ label_uf <- function(dt, nc, dilate = TRUE) {
   if (!exists("uf_new", mode = "function")) Rcpp::sourceCpp(UF_CPP)
   N <- nrow(dt)
   dt[, idx := seq_len(N)]                               # node id, assigned in EXTRACT order
-  # per-node "no enlarged context" flag: ag/grass/pasture veg OR a candseed==3 dieback pixel (§2.2)
+  # per-node "no enlarged context" flag: ag/grass/pasture veg OR a candseed==3 dieback pixel (docs/05 "Label — union-find, with dilation as a wider window")
   ag_by_node <- (dt$veg_fire %in% NO_DILATE_VEG) | (dt$candseed == 3L)
   if (is.null(dt[["cell"]])) dt[, cell := (as.numeric(row) - 1) * nc + col]
   setkey(dt, cell)
@@ -194,7 +179,7 @@ mode_int <- function(x) { u <- unique(x); u[which.max(tabulate(match(x, u)))] }
 # From a burned-cell data.table (pid, candseed, veg_fire, abs_date, [n], cell_area,
 # burned_around_1..3) → ONE metrics data.table keyed by pid (docs/05 "Metrics"). Reducers are
 # data.table-GForce-optimizable (mean/median/min/max/sum/.N) except the calendar-year mode, kept in
-# its own tiny group-by. Date/seed/year stats EXCLUDE candseed==3 dieback pixels (§2.4). Used by
+# its own tiny group-by. Date/seed/year stats EXCLUDE candseed==3 dieback pixels (docs/05 "Metrics — raster-native, then geometry"). Used by
 # BOTH the union-find and the terra paths.
 aggregate_metrics <- function(dt, has_n) {
   dt[, is_seed := as.integer(candseed == 2L)]
@@ -236,7 +221,7 @@ objects_sparse <- function(tifs, r, tag = "") {
   message(sprintf("[%s] extract: %s burned cells", tag, format(nrow(dt), big.mark = ",")))
   nc    <- ncol(r)
   has_n <- "n" %in% names(dt)
-  if (!has_n) warning("no 'n' band — n-summaries skipped (04 §5).", call. = FALSE)
+  if (!has_n) warning("no 'n' band — n-summaries skipped (docs/04 \"The R-facing bands\").", call. = FALSE)
 
   # per-cell area: for a lon/lat grid it depends only on the ROW (latitude) → cellSize on a
   # 1-column strip (O(nrow)) mapped by row; identical to a full cellSize(), no full-grid scan.

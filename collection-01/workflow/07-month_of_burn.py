@@ -1,70 +1,41 @@
 #!/usr/bin/env python3
 """
-collection-01/workflow/07-month_of_burn.py
-
 Step 07a — MONTH OF BURN per CALENDAR YEAR, server-side in GEE.
 
-This is the hand-off from our fire-year mapping to the network's calendar-year products
-(docs/07 "candseed == 3", docs/07 "The verified calendar-year partition").  Nothing is uploaded here: the two inputs are already in GEE —
-the step-06 object FeatureCollections (`objects_raw_<fy>`, one per fire-year, the WHOLE
-object set with the `fire` call) and the SNIC per-pixel assets (`snic_<fy>.candseed`,
-`snic_metrics_<fy>.abs_date`).  We paint the accepted objects, read each pixel's own burn
-date from `abs_date`, and code it as the month within the calendar year.
+The hand-off from our fire-year mapping to the network's calendar-year products.
+Paints the accepted step-06 objects, reads each pixel's own burn date from the SNIC
+`abs_date`, and codes it as the month within the calendar year:
 
-    calendar year Y  =  Jan-Apr Y  from fire-year (Y-1)   ⊎   May-Dec Y  from fire-year Y
-
-Verified over all 28 fire-years: no object's date range leaves its own fire-year window, so
-the two contributions are a strict partition and the merge is a UNION — `max` only ever
-arbitrates genuine reburn, where the later date is what the pixel looks like at year end.
+    calendar year Y  =  Jan-Apr Y  from fire-year (Y-1)  U  May-Dec Y  from fire-year Y
 
 Output: one image per calendar year in `C.MONTH_OF_BURN_COL`, single band
-`burned_monthly`, uint8, value 1-12, MASKED everywhere else.  That collection is the
-network's stage-3 pivot: every raster subproduct (annual, monthly, coverage, frequency,
-accumulated, year-last-fire) is derived from it, and its mask is the mask the calendar-year
-scar layer must reproduce (step 07b, `07-calendar_scars.R`).
+`burned_monthly`, uint8, value 1-12, MASKED elsewhere. That collection is the pivot
+every other raster subproduct is derived from (07d), and its mask is the one the
+calendar-year scars must reproduce (07b, `07-calendar_scars.R`).
 
-Four things decide correctness — all four are in `_contribution()`:
-
-  1. PIN THE GRID.  `crs=C.SNIC_CRS` + `crsTransform=C.SNIC_TRANSFORM`, never `scale=30`.
-     All 56 SNIC assets share one lattice and so do the local carta tiles; `scale: 30` in
-     EPSG:4326 is a different grid and a half-pixel shift would misalign this raster from
-     the scar rasters painted from locally-built vectors.
-  2. THE OBJECT FOOTPRINT IS `paint`, INTERSECTED WITH THE REAL BURNED MASK.  Step 05
-     vectorized the accepted pixel set with holes as true interior rings, so painting
-     reproduces it — but `.And(candseed > 0)` is kept as the belt-and-braces net, and
-     `--check` reports how much the two disagree instead of trusting either.
-  3. REPLAY THE DIEBACK LONGITUDE CUT.  Step 05 dropped `candseed==3` east of
-     `C.DIEBACK_LON_CUT` before labelling; the `snic_<fy>` asset still carries those pixels.
-  4. DIEBACK PIXELS TAKE THEIR PARENT OBJECT'S DATE (`C.DIEBACK_USE_PARENT_DATE`).  Their own
-     `abs_date` is a next-year spring dieback-detection date, not a burn date.
-
-GEE has no per-pixel date decomposition: `abs_date` is whole days since epoch and there is
-no per-pixel `ee.Date`.  The month is recovered by thresholding against the 12 month-start
-day numbers of the calendar year — `month = Σ_k (date >= b_k)` — which is exact because the
-pixel set is already restricted to `[Y-01-01, (Y+1)-01-01)`.
-
-Usage (from the repo ROOT)
---------------------------
+Usage (from the repo ROOT; --help for the full flag list)
+---------------------------------------------------------
   $PYTHON collection-01/workflow/07-month_of_burn.py --year 2015            # dry run
   $PYTHON collection-01/workflow/07-month_of_burn.py --year 2015 --check    # small-ROI audit
   $PYTHON collection-01/workflow/07-month_of_burn.py --year 2015 --launch
-  $PYTHON collection-01/workflow/07-month_of_burn.py --all   --launch       # 27 tasks — tmux!
+  $PYTHON collection-01/workflow/07-month_of_burn.py --all   --launch       # 27 tasks -- tmux!
 
-  # timing benchmark into TESTS/, nothing production touched (statistics/docs/statistics.md §4)
-  $PYTHON collection-01/workflow/07-month_of_burn.py --year 2020 --launch \
-      --out-collection projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/TESTS/month_of_burn_benchmark \
-      --suffix _benchmark
+  # the local<->GEE cross-check. A year selector is always required, so use --all:
+  $PYTHON collection-01/workflow/07-month_of_burn.py --all --stats --launch
+  $PYTHON collection-01/workflow/07-month_of_burn.py --all --stats-read
 
-  # deploy the agriculture filter once the threshold is chosen (statistics/docs/statistics.md §2, §6)
-  $PYTHON collection-01/workflow/07-month_of_burn.py --all --launch --overwrite --agri-max 0.4
+The two object exclusion rules are ON BY DEFAULT and their thresholds are FINAL
+(`C.T_AGRI` / `C.T_GRASS`); `--t-agri` / `--t-grass` / `--no-exclusions` exist for
+exploration and TESTS/ exports only, never for a published asset.
 
-  # the local<->GEE cross-check (docs/07 "07b — the local scar build"). A year selector is always required, so use --all:
-  $PYTHON collection-01/workflow/07-month_of_burn.py --all --stats --launch   # submit the batch jobs
-  $PYTHON collection-01/workflow/07-month_of_burn.py --all --stats-read       # compare vs local
+Design, and the four things that decide correctness -- the pinned grid, the painted
+footprint, the dieback longitude cut and the parent-date substitution:
+docs/07-vector_to_raster.md "07a — the GEE month-of-burn build". Sequence:
+docs/07-vector_to_raster.md "Order of operations".
 
-`--all --launch` submits one export task per calendar year; run it inside tmux
-(CLAUDE.md "Running long scripts").  Resumable: a year whose asset exists, or whose export
-is already PENDING/RUNNING, is skipped unless `--overwrite`.
+Resumable: a year whose asset exists, or whose export is already PENDING/RUNNING, is
+skipped unless `--overwrite`. `--all --launch` submits one task per calendar year; run
+it inside tmux (CLAUDE.md "Running long scripts").
 """
 
 from __future__ import annotations
@@ -440,7 +411,7 @@ def export_year(cal_year, region, launch, overwrite=False,
     """Export one calendar year.
 
     `out_col` + `suffix` exist so a timing/benchmark run lands in TESTS/ instead of next to a
-    published product (statistics/docs/statistics.md §4.4). The task description carries the same suffix, because the
+    published product. The task description carries the same suffix, because the
     in-flight check matches on description and the compute project is shared with the whole
     network (CLAUDE.md): a bare `mob_2012` could collide with another country's task.
     """
@@ -518,7 +489,7 @@ def main():
                          "docs/07 'Object exclusion ruleset'. For exploration only — the default is FINAL.")
     ap.add_argument("--out-collection", default=None, metavar="ASSET",
                     help="write to this ImageCollection instead of the published one — for "
-                         "benchmark/timing runs (statistics/docs/statistics.md §4.4). Created if missing.")
+                         "benchmark/timing runs into TESTS/. Created if missing.")
     ap.add_argument("--suffix", default="", metavar="STR",
                     help="appended to the asset name AND the task description, e.g. '_benchmark'")
     ap.add_argument("--project", default=C.GEE_PROJECT,

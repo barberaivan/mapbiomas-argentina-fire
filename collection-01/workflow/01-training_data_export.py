@@ -1,22 +1,17 @@
 """
-collection-01/workflow/01-training_data_export.py
+Step 01 — export observation-level training data for the burn-probability model.
 
-Export observation-level training data for the col1 burn-probability model.
+One GEE FeatureCollection per region; one row per training point x valid Landsat
+observation, carrying the focal-date spectral features and the previous-year
+MapBiomas land-cover + mosaic values.
 
-For each region, produces one GEE FeatureCollection asset where each row is:
-  one training point × one valid Landsat observation
+Usage (from the repo ROOT; --help for the full flag list)
+---------------------------------------------------------
+  $PYTHON collection-01/workflow/01-training_data_export.py --region PAT --version 1
+  $PYTHON collection-01/workflow/01-training_data_export.py --region PAT --test-fire fire_07
 
-with all 17 focal-date spectral features and previous-year MapBiomas
-land-cover + mosaic data attached.
-
-Usage
------
-  python collection-01/workflow/01-training_data_export.py --region PAT --version 1
-
-PAT includes training fires from collection-00 (automatically checked).
-
-Definition of done: run end-to-end on one fire first, review output schema,
-then run the full region. See also TASK-DATA-EXPORT.md.
+Design: docs/01-training_data.md. Sequence and the downloads that follow it:
+docs/01-training_data.md "Run".
 """
 
 import argparse
