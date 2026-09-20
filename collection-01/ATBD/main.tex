@@ -1089,8 +1089,8 @@ public copy. It is Argentina's own layer and we share it directly, as a link to 
 \small
 [To be completed before release.] The public locations have to be confirmed here once the launch
 configuration is fixed with the network and with the MapBiomas Argentina coordination: the platform
-URL of the fire section, the public asset path and the exact asset names after the copy, the
-download page, and the form in which the vector database is shared.
+URL of the fire section, the public asset path, the download page, and the form in which the
+vector database is shared.
 \end{quote}
 
 \subsection{Using the products in Earth Engine}
@@ -1114,18 +1114,18 @@ var NAME = 'mapbiomas_argentina_fire_collection1_';
 var year = 2020;
 
 // Annual burned area: one band per year, 1 = burned.
-var annual = ee.Image(ROOT + NAME + 'annual_burned_v2')
+var annual = ee.Image(ROOT + NAME + 'annual_burned')
                .select('burned_area_' + year).selfMask();
 Map.addLayer(annual, {palette: ['#ff0000']}, 'burned ' + year);
 
 // Month of burn: 1-12.
-var monthly = ee.Image(ROOT + NAME + 'monthly_burned_v2')
+var monthly = ee.Image(ROOT + NAME + 'monthly_burned')
                 .select('burned_monthly_' + year).selfMask();
 Map.addLayer(monthly, {min: 1, max: 12, palette: ['#2c7bb6','#ffffbf','#d7191c']},
              'month of burn ' + year);
 
 // Fire frequency over the whole series: number of years burned.
-var freq = ee.Image(ROOT + NAME + 'frequency_burned_v2')
+var freq = ee.Image(ROOT + NAME + 'frequency_burned')
              .select('fire_frequency_1999_2025');
 Map.addLayer(freq, {min: 1, max: 10}, 'fire frequency');
 
@@ -1189,9 +1189,7 @@ reflectance series.
 These are listed in what we judge to be decreasing order of effect on mapping accuracy. They do not
 consider incorporating sensors other than Landsat, since for the first collections the priority is
 to refine the mapping without compromising the temporal extent of the product. In fact, Collection 2
-aims at mapping the whole Landsat record, from 1986 onwards, as the land-cover products do: the
-MapBiomas Argentina land cover starts in 1985 and every stage of this algorithm reads the previous
-year, so 1986 is the first year that can be mapped.
+aims at covering 1986--2026, the same span as the MapBiomas Argentina land-cover products.
 
 \paragraph{Training data that represents the false positives.} As in the pilot, the largest
 available gain is data on the processes that mimic fire: harvest, drought, flooding, logging,
@@ -1284,17 +1282,12 @@ full re-run.
 %   upstreams).
 %
 % DOUBTS FOR YOU
-% 1. 1986.  I wrote that the land cover starts in 1985 and that the algorithm
-%    reads y-1, so 1986 is the first mappable year.  Check the premise: the
-%    published col-3 LULC has bands classification_1985..2025, while the frozen
-%    model-side col-2 v8 covers 1986-2024 (utils/constants.py).  If Collection 2
-%    is meant to start in 1985, or to be bounded by Landsat 5 (1984) instead,
-%    this sentence has to change.
-% 2. Public asset names.  ROOT in the snippet is the network's public collection,
-%    but I do not know whether the "_v2" token survives Brazil's copy (their
-%    stage-2 script strips "_vN" from the classifications).  If it does not, the
-%    three ee.Image() lines need their names changed.  I flagged it inside the
-%    "[To be completed before release]" box.
+% 1. SETTLED by you: land cover runs from 1986, Collection 2 targets 1986-2026,
+%    and the text no longer argues from the previous-year requirement.  Note that
+%    mapping 1986 itself would need a different strategy, which the document does
+%    not discuss; say so there if you want it on the record.
+% 2. SETTLED by you: the "_v2" token is not copied to the public asset, so the
+%    snippet now reads annual_burned, monthly_burned and frequency_burned.
 % 3. The fire-object polygons are still cited from our own FINAL_PRODUCTS path in
 %    the snippet, because that layer is not copied to mapbiomas-public.  Tell me
 %    if you would rather drop those four lines from the example than publish the
