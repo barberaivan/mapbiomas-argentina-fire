@@ -43,3 +43,6 @@ collection-01/data/snic-direct/
 
 # step-05 batch run logs (run_05_years.sh / mem_monitor.sh) — runtime output
 collection-01/logs/
+
+# GDAL/QGIS sidecars for the committed figure rasters
+*.tif.aux.xml

@@ -26,8 +26,6 @@ theme_burn <- function(base_size = 16) {
       axis.line          = element_line(colour = "grey50", linewidth = 0.4),
       plot.title         = element_text(face = "bold", size = base_size + 2,
                                         margin = margin(b = 6)),
-      plot.subtitle      = element_text(size = base_size - 3, colour = "grey45",
-                                        margin = margin(b = 8)),
       legend.position    = "top"
     )
 }
@@ -67,9 +65,9 @@ make_panel <- function(K, outfile) {
   role <- factor(role, levels = c(lab_prev, lab_post, "other"))
 
   panel_levels <- c(
-    sprintf("A - The jump:  delta%d_peak, minfore%d_peak, maxback%d, jumpgap%d",
+    sprintf("[A] The jump:  delta%d_peak, minfore%d_peak, maxback%d, jumpgap%d",
             K, K, K, K),
-    sprintf("B - The time windows:  prevwidth%d, postwidth%d, date_post%d",
+    sprintf("[B] The time windows:  prevwidth%d, postwidth%d, date_post%d",
             K, K, K)
   )
   pA <- panel_levels[1]; pB <- panel_levels[2]
@@ -97,13 +95,15 @@ make_panel <- function(K, outfile) {
 
   txtA <- tibble(
     panel = factor(pA, levels = panel_levels),
+    # The jumpgap label sits LEFT of its arrow, not under it: centred under the
+    # arrow it lands on the rising limb of the series.
     x = c(mean(doy[prev_idx]), mean(doy[post_idx]), x_delta + 6,
-          (doy[tstar - 1L] + doy[tstar]) / 2),
-    y = c(-0.09, minfore + 0.08, (maxback + minfore) / 2, 0.42),
+          doy[tstar - 1L] - 6),
+    y = c(-0.09, minfore + 0.08, (maxback + minfore) / 2, 0.5),
     label = c(sprintf("maxback%d", K), sprintf("minfore%d", K),
               sprintf("delta%d_peak\n= %.2f", K, delta),
               sprintf("jumpgap%d\n= %d d", K, jumpgap)),
-    hjust = c(0.5, 0.5, 0, 0.5)
+    hjust = c(0.5, 0.5, 0, 1)
   )
 
   # ---- panel B: window widths and date_post --------------------------------
@@ -127,7 +127,7 @@ make_panel <- function(K, outfile) {
 
   fills <- setNames(c(col_prev, col_post, "grey80"),
                     c(lab_prev, lab_post, "other"))
-  sizes <- setNames(c(3.2, 3.2, 2.0), c(lab_prev, lab_post, "other"))
+  sizes <- setNames(c(4.6, 4.6, 3.0), c(lab_prev, lab_post, "other"))
 
   g <- ggplot(df, aes(doy, p)) +
     geom_hline(yintercept = 0, colour = "grey85", linewidth = 0.35) +
@@ -147,9 +147,9 @@ make_panel <- function(K, outfile) {
     geom_point(aes(fill = role, size = role), shape = 21, colour = "grey25",
                stroke = 0.5) +
     geom_text(data = txtA, aes(x = x, y = y, label = label, hjust = hjust),
-              size = 3.7, lineheight = 0.9, colour = "grey15") +
+              size = 5.4, lineheight = 0.9, colour = "grey15") +
     geom_text(data = txtB, aes(x = x, y = y, label = label, hjust = hjust),
-              size = 3.7, lineheight = 0.9, colour = "grey15") +
+              size = 5.4, lineheight = 0.9, colour = "grey15") +
     facet_wrap(~ panel, ncol = 1) +
     scale_fill_manual(name = NULL, values = fills) +
     scale_size_manual(guide = "none", values = sizes) +
@@ -158,10 +158,7 @@ make_panel <- function(K, outfile) {
     labs(
       x = "Day of year",
       y = "Burn probability",
-      title = sprintf("K = %d metrics on a burn-probability series", K),
-      subtitle = sprintf(paste0(
-        "Same series in both panels (t* = the observation of maximum jump). ",
-        "Blue = back window (%d obs), orange = fore window (%d obs)."), K, K)
+      title = sprintf("K = %d metrics on a burn-probability series", K)
     )
 
   ggsave(outfile, g, width = 12, height = 11, dpi = 160)

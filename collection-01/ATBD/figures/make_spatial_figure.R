@@ -1,32 +1,52 @@
 # ---------------------------------------------------------------------------
 # ATBD figure: the region-growing step, illustrated.
 #
-# English port of collection-00/docs/figures/map_spatial_analysis.R. The raster
-# is the pilot's (Rio Turbio and Cholila, Chubut, 2015) and is read in place;
-# only the panel titles and the legend are translated. The algorithm shown is
-# collection 0's, but the seed / candidate / region-growing logic is unchanged
-# in collection 1 -- what changed is which metrics the two cuts are taken on.
+# Four panels over the Collection 0 pilot window (Rio Turbio and Cholila,
+# Chubut), but all four are now Collection 1's own layers -- fire-year 2014,
+# the fire-year that holds the February 2015 fires. The raster is built by
+# `export_spatial_figure_raster.py`, which pulls every band from the Collection 1
+# assets and pins them to the production SNIC lattice.
+#
+#   (A) RED/GREEN/BLUE   post-fire Landsat median, Dec 2015 - Feb 2016
+#   (B) delta2_peak      the fire-year's change in burn probability
+#   (C) candseed         pre-SNIC seeds and candidates
+#   (D) snic             the seed-grown burned region
+#
+# Reflectance and delta2_peak arrive as int16 scaled by 10000 (the bpts
+# encoding); this script divides. Panel (C) has two classes, not three: the
+# Patagonian dieback padding (candseed 3) is folded into the candidates by the
+# export, because that is what it is by the time SNIC has run.
 #
 # Run from this directory:  Rscript make_spatial_figure.R
 # Writes: spatial_analysis.png
 # ---------------------------------------------------------------------------
+
+# tidyterra and ggspatial are installed in the SITE library, but R searches the user
+# library first, so an older user-library copy of a shared dependency (dplyr, tidyr)
+# shadows the newer one they require and the load fails. Prefer the site library; the
+# user library stays on the path as a fallback for anything only installed there.
+.libPaths(c(.Library.site, .libPaths()))
 
 suppressPackageStartupMessages({
   library(terra); library(tidyterra); library(ggplot2)
   library(patchwork); library(ggspatial)
 })
 
-SRC <- normalizePath(file.path("..", "..", "..", "collection-00", "docs",
-                               "figures", "raster_for_map.tif"))
+SRC <- "raster_for_map_c01.tif"
+if (!file.exists(SRC)) {
+  stop("missing ", SRC, " -- run: $PYTHON export_spatial_figure_raster.py")
+}
 r <- rast(SRC)
 
-prob     <- r[["prob"]]
+SCALE <- 10000  # int16 encoding of reflectance and delta2_peak
+
+delta    <- r[["delta2_peak"]] / SCALE
 candseed <- r[["candseed"]]
 snic     <- r[["snic"]]
-rgb      <- r[[c("red", "green", "blue")]]
+rgb      <- r[[c("RED", "GREEN", "BLUE")]] / SCALE
 
-pal_prob <- c("#000004", "#1c1044", "#4f127b", "#812581",
-              "#b5367a", "#e55063", "#fb8761", "#fec287")
+pal_delta <- c("#000004", "#1c1044", "#4f127b", "#812581",
+               "#b5367a", "#e55063", "#fb8761", "#fec287")
 
 theme_map <- theme_minimal() +
   theme(
@@ -62,18 +82,18 @@ p_sat <- ggplot() +
   labs(title = "(A) RGB image (post-fire)") +
   theme_map + theme(axis.text.x = element_blank())
 
-p_prob <- ggplot() +
-  geom_spatraster(data = prob) +
+p_delta <- ggplot() +
+  geom_spatraster(data = delta, maxcell = Inf) +
   scale_fill_gradientn(
-    colours = pal_prob, limits = c(0, 1), na.value = "black", name = NULL,
+    colours = pal_delta, limits = c(0, 1), na.value = "black", name = NULL,
     guide = guide_colorbar(barheight = unit(0.25, "cm"),
                            barwidth = unit(4, "cm"), ticks = FALSE)) +
   scale_x_continuous(n.breaks = 5) + scale_y_continuous(n.breaks = 5) +
-  labs(title = "(B) Annual burn probability") +
+  labs(title = "(B) Change in burn probability") +
   theme_map + theme(axis.text = element_blank())
 
 p_candseed <- ggplot() +
-  geom_spatraster(data = as.factor(candseed)) +
+  geom_spatraster(data = as.factor(candseed), maxcell = Inf) +
   scale_fill_manual(
     values = c("1" = "#3b4cc0", "2" = "#f768a1"),
     na.value = "black", name = "",
@@ -83,13 +103,13 @@ p_candseed <- ggplot() +
   theme_map
 
 p_snic <- ggplot() +
-  geom_spatraster(data = as.factor(snic)) +
+  geom_spatraster(data = as.factor(snic), maxcell = Inf) +
   scale_fill_manual(values = c("1" = "#3bceac"), na.value = "black", name = "") +
   labs(title = "(D) Burned-pixel clusters") +
   scale_x_continuous(n.breaks = 5) + scale_y_continuous(n.breaks = 5) +
   theme_map + theme(legend.position = "none", axis.text.y = element_blank())
 
-final_plot <- (p_sat | p_prob) / (p_candseed | p_snic)
+final_plot <- (p_sat | p_delta) / (p_candseed | p_snic)
 
 ggsave("spatial_analysis.png", final_plot,
        width = 15, height = 14, dpi = 300, units = "cm")
