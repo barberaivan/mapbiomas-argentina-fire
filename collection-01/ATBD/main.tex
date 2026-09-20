@@ -60,69 +60,36 @@
 
 This document describes the theoretical basis, the methodological framework and the operational
 considerations behind Collection 1 of MapBiomas Argentina Fuego: an annual, 30 m burned-area
-product covering the whole of Argentina for the period 1999--2025. It succeeds the ATBD of the
-Patagonian pilot (Collection 0), whose structure and concepts it inherits, and whose algorithm
-it replaces almost entirely.
+product covering the whole of Argentina for the period 1999--2025.
 
-\textbf{This ATBD is conceptual, and it is deliberately not a complete specification of the
-algorithm.} Every stage described below carries dozens of decisions --- thresholds, window
-lengths, encodings, tiling schemes, masks, edge cases --- and writing all of them down here would
-produce a document several times this length that nobody would read. What follows is the
-\emph{reasoning}: what each stage measures, why it measures it that way, and what it hands to the
-next stage. Readers who want to reproduce the algorithm elsewhere, or who need the exact value of
-a parameter, should go to the per-step technical notes in the project repository, at
+This ATBD is conceptual, and it is deliberately not a complete specification of the algorithm.
+Every stage described below carries many decisions, 
+but writing all of them down here would produce a document 
+that nobody would read. What follows is the reasoning: what each stage measures,
+why it measures it that way, and what it hands to the next stage. Readers who want to reproduce
+the algorithm elsewhere, or who need the exact value of a parameter, should go to the per-step
+technical notes in the project repository, at
 \href{https://github.com/barberaivan/mapbiomas-argentina-fire/tree/main/collection-01/docs}{\texttt{collection-01/docs}}
 (\url{https://github.com/barberaivan/mapbiomas-argentina-fire}). There is one note per workflow
 step, numbered to match it, and each one points onward to the production code, the configuration
-files and the analysis notebooks that justify its choices. Where this document says
-\enquote{see \texttt{docs/NN}}, that is the file it means.
+files and the analysis notebooks that justify its choices. We cite those documents here as
+\enquote{see \texttt{docs/NN}}.
 
 Validation and the statistical characterisation of the product are outside the scope of this
-document. They are separate activities that \emph{consume} the finished map rather than being
-stages of it, and they are documented on their own.
+document. They are separate activities that consume the finished map rather than being stages of
+it, and they are documented on their own.
 
-\subsection{Objectives of Collection 1}
+\subsection{Objectives and improvements in Collection 1}
 
-Collection 0 had two goals: to assemble a working group capable of producing burned-area maps for
-MapBiomas Argentina, and to develop a mapping algorithm of reasonable accuracy with a relatively
-low demand of human effort for training-data collection. Both were met at the scale of one region.
-Collection 1 sets out to
-
-\begin{itemize}
-  \item extend the mapping to the \textbf{entire national territory} and to a multi-decadal
-        Landsat record;
-  \item replace the parts of the pilot algorithm that did not generalise --- in particular the
-        hand-drawn masks and the empirical object filter --- with \textbf{data-driven,
-        reproducible components}; and
-  \item deliver the set of burned-area subproducts that the MapBiomas Fuego network publishes for
-        every participating country \parencite{alencar2022mapbiomas_fire}.
-\end{itemize}
-
-\subsection{Spatial and temporal extent}
-
-Collection 1 maps the whole of Argentina, buffered by approximately 2 km so that no coastal or
-border pixel is clipped, and works over the five regions defined by MapBiomas Argentina ---
-Patagonia; Monte, Puna and Altos Andes (\enquote{Cuyo}); Chaco; Pampas; and Atlantic Forest
-(Fig.~\ref{fig-regions}). The regions are not processing units in the sense that the pilot
-anticipated: they enter the algorithm as a \emph{covariate} (Section~\ref{sec-vegfire}), while
-the actual processing runs over the national 1:250,000 chart grid, the \emph{cartas}
-(Section~\ref{sec-grid}), or --- from the object stage onwards --- over the whole country at once.
-
-\begin{figure}[ht]
-  \centering
-  \includegraphics[width=0.40\textwidth]{regions_argentina.png}
-  \caption{The five regions defined by MapBiomas Argentina (black). The blue rectangle is the
-  Collection 0 pilot area, shown here only for reference: Collection 1 maps the whole country.}
-  \label{fig-regions}
-\end{figure}
-
-\FloatBarrier
-
-The spectral stage evaluates Landsat observations from 1998 onwards and produces annual layers for
-the calendar years \textbf{1999--2025}. The year 1998 is used only as the previous-year reference
-that the annual metrics require. From the segmentation stage onwards the algorithm works in a
-\textbf{fire year} running from 1 May to 30 April (Section~\ref{sec-fireyear}), which yields fire
-years 1998--2025, the first and the last being partial by construction.
+In Collection 0 (the pilot) we assembled a working group capable of producing burned-area maps for
+MapBiomas Argentina, and developed a mapping algorithm of reasonable accuracy with a relatively
+low demand of human effort for training-data collection. We produced fire maps for a fraction of the
+country, in NW Patagonia. Collection 1 aimed at extending the mapping to the entire national territory,
+still covering the 1999-2025 period,
+and improving the mapping algorithm in the aspects that were known to be problematic. In particular, 
+we used more complex models in the spectral analysis, changed the time-series metrics in the temporal
+analysis, used a fire-year-based spatial analysis to avoid splitting fires that cross calendar-years, 
+and applied a model to separate fire from non-fire polygons (replacing an empirical decision tree).
 
 \subsection{Input datasets}
 
@@ -135,96 +102,97 @@ layers, processed almost entirely in Google Earth Engine
 All available Landsat Collection 2 Level-2 (surface reflectance) scenes at 30 m intersecting the
 territory and the period were used \parencite{landsatc2}. During the mapped period the active
 sensors were Landsat 5 TM (until 2013), Landsat 7 ETM+ (from mid-1999), Landsat 8 OLI (from 2013)
-and Landsat 9 OLI-2 (from 2021). The six reflective bands --- blue, green, red, near infrared
-(NIR) and the two shortwave infrared bands (SWIR1, SWIR2) --- are read, and a set of spectral
-indices is derived from them (Section~\ref{sec-predictors}).
+and Landsat 9 OLI-2 (from 2021). Six reflective bands are read: blue, green, red, near infrared
+(NIR) and the two shortwave infrared bands (SWIR1, SWIR2). A set of spectral indices is derived
+from them (Section~\ref{sec-predictors}).
 
 Scenes acquired on the same date are collapsed into a single date-mosaic before anything else
-happens, so that the unit the algorithm reasons about is a \textbf{date}, not a scene footprint.
-A \emph{carta} is covered by roughly 150 such dates in a padded focal year.
+happens, so that the unit the algorithm reasons about is a date, not a scene footprint.
 
 \subsubsection{Quality filters}
 
 Landsat observations are masked with the QA\_PIXEL band delivered with the Collection 2 surface
 reflectance products, excluding cloud, dilated cloud, cloud shadow, snow and water.
 
-\textbf{No temporal interpolation and no spatial gap-filling are applied.} A missing observation
-stays missing. This is a deliberate constraint rather than an omission: the temporal stage
-(Section~\ref{sec-temporal}) reads real acquisition dates and counts real observations, and both
-would be corrupted by synthetic values. The direct consequence is that observation density varies
-in space and in time --- strongly so before 2000, when only Landsat 5 and a newly launched
-Landsat 7 were flying --- and the algorithm carries that density forward as an explicit quality
-channel rather than hiding it.
+No temporal interpolation and no spatial gap-filling are applied. A missing observation stays
+missing. This is a deliberate constraint rather than an omission: the temporal stage
+(Section~\ref{sec-temporal}) reads real acquisition dates and counts real observations. 
+The direct consequence is that observation density varies
+in space and in time, strongly so before 2000, when only Landsat 5 and a newly launched Landsat 7
+were flying. The algorithm carries that density forward as an explicit quality channel.
 
 \subsubsection{Spectral harmonisation between sensors}
 
-Because the series combines sensors with slightly different spectral responses, Landsat 5 TM and
-Landsat 7 ETM+ reflectances are transformed into the Landsat 8/9 OLI domain band by band, using
-the coefficients of \textcite{roy2016harmonization}. OLI and OLI-2 observations are left
+Landsat 5 TM and
+Landsat 7 ETM+ reflectances were transformed into the Landsat 8/9 OLI domain band by band, using
+the coefficients of \textcite{roy2016harmonization}. OLI and OLI-2 observations were left
 untouched. This reduces artificial discontinuities at sensor transitions, which in a change
 detector would otherwise be read as change.
 
 \subsubsection{MapBiomas Argentina land cover}
 
 The annual land use and land cover (LULC) classification of MapBiomas Argentina
-\parencite{mapbiomasarg} is used for two distinct purposes, and both read the
-\textbf{previous year} (\(y-1\)) relative to the year being mapped:
+\parencite{mapbiomasarg} is used for two distinct purposes, and both read the previous year
+(\(y-1\)) relative to the year being mapped:
 
 \begin{enumerate}
-  \item it defines the \textbf{fire class} (\texttt{veg\_fire}) of every pixel, which selects
-        which burn-probability model judges that pixel, and which surfaces are excluded from
-        mapping altogether as non-burnable (Section~\ref{sec-vegfire});
+  \item it defines the fire class (\texttt{veg\_fire}) of every pixel, which selects which
+        burn-probability model judges that pixel, and which surfaces are excluded from mapping
+        altogether as non-burnable (Section~\ref{sec-vegfire});
   \item it supplies the object-level vegetation composition metrics used by the object classifier
         (Section~\ref{sec-objmetrics}).
 \end{enumerate}
 
-Reading \(y-1\) is not a detail. The land cover of a burned pixel changes \emph{because} it
-burned, so using the focal year's classification would let the fire we are trying to detect decide
-how it is detected. The same rule is applied everywhere the classification is consumed.
+We use \(y-1\) because the land cover of a burned pixel changes because it burned, so
+using the focal year's classification would let the fire we are trying to detect decide how it is
+detected. The same rule is applied everywhere the classification is consumed.
 
 \subsubsection{MapBiomas annual mosaic}
 
-The second ancillary layer is the MapBiomas Argentina \textbf{annual mosaic} --- the reflectance
-summary that the land-cover initiative itself classifies. Forty of its bands are used: the six
-optical bands plus NDVI, NDWI, NPV and NDFI \parencite{souza2005ndfi}, each summarised as annual
-median, dry-season median, wet-season median and standard deviation. Again, the mosaic of the
-\textbf{previous} year is attached to every observation.
+The second ancillary layer is the MapBiomas Argentina annual mosaic: the reflectance summary that
+the land-cover initiative itself classifies. Forty of its bands are used: the six optical bands
+plus NDVI, NDWI, NPV and NDFI \parencite{souza2005ndfi}, each summarised as annual median,
+dry-season median, wet-season median and standard deviation. Again, the mosaic of the previous
+year is attached to every observation.
 
-This layer is what gives the burn-probability model its \emph{baseline}. A burn scar is not a
-spectral value; it is a departure from what that particular pixel normally looks like, and how
-large a departure counts depends on the pixel's productivity, seasonality and spectral
-variability. The previous-year mosaic encodes all three, and it does so per pixel, which is what
-allows a single model to work across an enormous productivity gradient. Collection 0 built the
-same idea with hand-made robust annual minima and maxima of four indices; Collection 1 replaces
-them with a layer that MapBiomas already computes, is already quality-controlled, and is far
-richer.
+This layer is used to allow for the spectral information of a focal date to be interpreted
+in the context of what the vegetation characteristics were in the previous year. 
+A burn scar is not a spectral
+value alone: we assign burn probability based on its spectral data but considering what it was
+in the previous year, from the land cover class and from this mosaic. The mosaic informs 
+within-class variability in vegetation structure and moisture.
 
 \subsection{Computing platforms}
 
 Most of the pipeline runs in GEE, which stores the entire Landsat archive and the MapBiomas
 products and provides the compute to evaluate a model over them. Two stages run locally: the
 fitting of the burn-probability models, in R \parencite{R} with \texttt{glmnet}
-\parencite{friedman2010glmnet}, and the entire object stage --- vectorisation, object metrics and
-the object classifier --- also in R, on tabular and raster data downloaded from GEE. Only
-coefficients and object attributes cross between the two environments, never imagery.
+\parencite{friedman2010glmnet}, and the entire object stage, that is vectorisation, object metrics
+and the object classifier, also in R, on tabular and raster data downloaded from GEE.
 
-The GEE compute project is shared with the whole MapBiomas Fuego network, which has one practical
-consequence worth recording: every task launched by Argentina carries a namespaced description, and
-no task is ever inspected or cancelled on the basis of a generic name.
+\subsection{The processing grid}\label{sec-grid}
+
+Every image-based step runs over the MapBiomas Argentina working grid, the national 1:250,000
+chart series, locally called \textit{cartas}. Each sheet covers roughly
+14,000 km\textsuperscript{2}, and 248 of them intersect the buffered country. Tiling by chart
+sheet rather than by Landsat WRS-2 path/row is what lets one step read another step's tile and
+assemble the results on a single lattice with no resampling anywhere in the chain. All exports
+pin the projection and the affine transform explicitly, never a nominal scale, because in
+geographic coordinates a nominal 30 m scale is a different grid.
 
 \section{The burned-area mapping algorithm}
 
-The algorithm detects burned area at the finest temporal and spatial resolution Landsat allows ---
-one 30 m pixel on one observation date --- by exploiting the \textbf{spectral}, \textbf{temporal}
-and \textbf{spatial} signature of fire, in that order. Each stage consumes what the previous one
-produced and adds a kind of evidence the previous one could not see (Fig.~\ref{fig-algo}).
+The algorithm detects burned area at the finest temporal and spatial resolution Landsat allows,
+one 30 m pixel on one observation date, by exploiting the spectral, temporal and spatial signature
+of fire, in that order. Each stage consumes what the previous one produced and adds a kind of
+evidence the previous one could not see (Fig.~\ref{fig-algo}).
 
 \begin{figure}[ht]
   \centering
   \includegraphics[width=0.82\textwidth]{algorithm_c00_placeholder.png}
-  \caption{\textbf{Placeholder.} The diagram of the Collection 0 algorithm, shown here while the
-  Collection 1 diagram is being prepared. The overall shape --- spectral, then temporal, then
-  spatial context, then the published subproducts --- still holds, but several boxes have changed:
+  \caption{Placeholder. The diagram of the Collection 0 algorithm, shown here while the
+  Collection 1 diagram is being prepared. The overall shape still holds: spectral, then temporal,
+  then spatial context, then the published subproducts. Several boxes have changed, though.
   Collection 1 has no annual probabilistic classifier and no hand-drawn masks, and its object
   filter is a fitted classifier rather than a set of thresholds.}
   \label{fig-algo}
@@ -233,117 +201,81 @@ produced and adds a kind of evidence the previous one could not see (Fig.~\ref{f
 \FloatBarrier
 
 \begin{description}
-  \item[Spectral --- is this observation burned?] A probabilistic classifier scores a single
+  \item[Spectral: is this observation burned?] A probabilistic classifier scores a single
     pixel on a single date, from its own reflectance and indices plus previous-year context. The
-    output is a \textbf{burn probability per observation}. Nothing is decided here.
-  \item[Temporal --- was this pixel burned this year, and when?] A burn probability on one date is
-    not a detection: cloud shadow, wet soil and dark surfaces all raise it. What distinguishes
-    fire is what the probability does \emph{through time} --- it rises and \emph{stays} risen. The
-    second stage quantifies, per pixel and per calendar year, a \textbf{maintained increase} in
-    burn probability, together with the date on which it happened.
-  \item[Spatial --- is this pixel part of a fire?] Fires are patches, not independent pixels. The
+    output is a burn probability per observation.
+  \item[Temporal: was this pixel burned this year, and when?] High burn probability on one date is
+    not necessarily fire. Cloud shadow and dark surfaces can raise it, and it can easily happen 
+    when the burn probability model is not trained on that rare conditions. 
+    In addition, low-productivity areas may look like burned, but they are steadily that way, not
+    presenting change. Hence, what helps separate
+    these cases is the time-series of burn probability. It rises, and it stays high. The second stage
+    quantifies, per pixel and per calendar year, a maintained increase in burn probability,
+    together with the date on which it happened.
+  \item[Spatial: is this pixel part of a fire, and is this change-polygon fire?] Fires are patches, 
+    not independent pixels. The
     third stage brings that context in twice: a region-growing algorithm converts per-pixel
-    evidence into scar \textbf{objects}, and a classifier then judges each object on properties no
-    pixel has --- shape, size, vegetation composition, seed density, the spread of burn dates.
+    evidence into scar objects, and a classifier then judges each object on properties no pixel
+    has, such as shape, size and vegetation composition.
 \end{description}
 
-\subsection{The unifying principle: keep quantities, decide late}
-
-One idea runs through all three stages: \textbf{quantitative information is preserved for as long
-as possible}, so that every later step can weigh the earlier evidence instead of inheriting
-someone else's verdict. The temporal stage analyses a burn probability, not a hard burned/unburned
-class. The region-growing step judges pixels on numeric metrics, which is the only reason the
+A unifying idea in our approach is that quantitative information is preserved for as long as
+possible, so that every later step can weigh the earlier evidence instead of inheriting a hard
+classification. The temporal stage analyses a burn probability, not a hard burned/unburned class.
+The region-growing step judges pixels on numeric metrics, which is the only reason the
 seed/candidate distinction can be expressed at all. The object classifier consumes continuous
-metrics and returns a \emph{probability} of fire, which is used to filter but is also published,
-so a user can apply a stricter or a looser threshold than ours. A pipeline that thresholded early
-would be simpler, and would throw away exactly the evidence the next stage needs.
-
-\subsection{The processing grid}\label{sec-grid}
-
-Every image-based step runs over the MapBiomas Argentina working grid --- the national
-1:250,000 chart series, locally called \emph{cartas}. Each sheet covers roughly
-14,000 km\textsuperscript{2}, and 248 of them intersect the buffered country. Tiling by chart
-sheet rather than by Landsat WRS-2 path/row is what lets one step read another step's tile and
-assemble the results on a single lattice with no resampling anywhere in the chain. All exports
-pin the projection and the affine transform explicitly, never a nominal scale, because in
-geographic coordinates a nominal 30 m scale is a \emph{different} grid.
+metrics and returns a probability of fire, which is used to filter but is also published, so a
+user can apply a stricter or a looser threshold than ours.
 
 \section{Spectral stage: burn probability per observation}\label{sec-spectral}
 
 \subsection{Foundations}
 
-\textbf{The unit of judgement is the observation, not the year.} The model asks, for a single
-pixel on a single date, how likely it is that this pixel is burned, using spectral information
-only. Every usable Landsat observation is evaluated, so a fire is detected as a \emph{change in
-the series} rather than as a signature in a summary image. The approach follows
-\textcite{long2019}, where all Landsat observations are scored.
+The unit of judgement is the observation: a pixel-date. The model asks, for a single pixel on a
+single date, how likely it is that this pixel is burned, using spectral and land cover information only. Every
+usable Landsat observation is evaluated, so a fire is detected as a change in the series rather
+than as a signature in a summary image. The approach follows \textcite{long2019}, where all
+Landsat observations are scored.
 
-This is the opposite end of the design space from MapBiomas Fire Brazil, which classifies an
-\textbf{annual mosaic} --- the same way land cover is mapped everywhere in the network.
-Classifying a mosaic is cheaper and reuses the land-cover machinery, but it collapses the time
-axis exactly where the information is: the date of the burn, the pre-fire baseline of that
-specific pixel, and the distinction between a scar and a spectrally similar surface that was
-always dark. Keeping the observation as the unit is what makes the temporal stage possible at all.
-
-It is also a choice about \emph{time granularity}. There are methods that avoid discretising time
-altogether: CCDC fits a continuous harmonic model per pixel and flags breaks in it
-\parencite{zhu2014ccdc}, and CODED extends that idea to forest degradation with spectral unmixing
-\parencite{bullock2020coded}. MapBiomas works in discrete annual units, and so does this
-collection: the product is one burned-area map per year, so aggregating the raw Landsat
-information by year is the natural shape for everything upstream of it.
-
-The consequence for training data is direct: \textbf{a training point is not a label}. The label
-is per observation, assigned from where that observation's date falls relative to the fire.
+This is the opposite end of the design space from MapBiomas Fire Brazil 
+\parencite{alencar2022mapbiomas_fire}, which classifies an
+annual mosaic, the same way land cover is mapped everywhere in the network. Classifying a mosaic
+is cheaper, but it loses the temporal information, which requires more data and more flexible 
+and expensive models to separate burned from unburned land.
 
 \subsection{Training data}
 
-Training points were collected interactively by domain experts, fire by fire. For each selected
-fire the collector delimits a pre-fire and a post-fire window on the Landsat record, and then
+Training points were collected interactively by domain experts, based mostly on fire events and 
+areas similar to fire spectrally, to train the model on the false positive cases. For each selected
+fire the collector delimits a pre-fire and a post-fire period on the Landsat record, and then
 places burned and unburned points inside the scar and its surroundings, aiming to cover as much of
 the spectral variability of each class as possible and inspecting index time series wherever the
 classification is doubtful.
 
-Collection 1 extends this protocol from 30 fires in one region to \textbf{198 fires across the
-five regions} (13 in Atlantic Forest, 30 in Cuyo, 37 in Pampas, 47 in Patagonia, 71 in Chaco),
-holding \textbf{147,222 points}. The full Landsat time series is then extracted at every point,
-which turns those points into \textbf{6,177,098 observations}. Labels are assigned by window:
-observations of a burned point after the fire are labelled burned; observations of a burned point
-before the fire, and all observations of unburned points, are labelled unburned.
+Collection 1 extends this protocol from 30 fires in one region to 198 fires across the five
+MapBiomas regions (13 in Atlantic Forest, 30 in Cuyo, 37 in Pampas, 47 in Patagonia, 71 in Chaco), holding
+147,222 points. The full Landsat time series is then extracted at every point, which turns those
+points into 6,177,098 observations. Labels are assigned by window: observations of a burned point
+after the fire are labelled burned; observations of a burned point before the fire, and all
+observations of unburned points are labelled unburned.
 
-The efficiency argument made in the pilot ATBD holds and is worth restating, because it is the
-reason this protocol was kept: each collected point yields roughly forty labelled observations, so
-the sampling effort buys an order of magnitude more training data than placing one point per
-observation would. Observations from the same point are temporally correlated, so the effective
-gain is smaller than the nominal one --- but the time series is needed anyway, since it is the
-series, not the single observation, that the rest of the algorithm reads.
-
-\textbf{Fires with no burned points are collected on purpose.} Several of the sampled
-\enquote{fires} are in fact drought-affected steppe or volcanic-ash deposits --- events that look
-like fire in the indices and were the largest source of commission error in the pilot. They enter
-the training set as unburned-only, and dropping them would remove the hardest negatives the model
-ever sees.
+A few of the sampled events are not \enquote{fires} but
+drought-affected steppe, volcanic-ash deposits or cropland harvest areas.
+These are events that look like fire in some indices and 
+were the largest source of commission error, both in the pilot and in Collection 1. 
+They enter the training set
+as unburned-only, and dropping them would remove the hardest negatives the model ever sees.
 
 \subsection{The cleaning gate}
 
-Collectors make mistakes: a post-fire window set too generously, a date that belongs to the next
-fire, an entire fire that should not be in the training set at all. A mandatory cleaning pass sits
-between the download of the observations and the fit, adding a boolean \texttt{fit} column that
-marks which observations the model is allowed to see; the fitting script refuses to run without
-it.
+Observations were cleaned before the models were fit. We visually inspected the NBR and NBR2 
+time-series
+of all points (\emph{spaghetti plots}) per event and further delineated pre- and post-fire 
+periods to keep clear signal only. 
+Of the 6,177,098 extracted observations, 5,923,062 pass the gate, of which 541,789 (9.1\,\%) are
+labelled burned. 
 
-The pass has two layers. A \textbf{base hard filter} keeps only observations inside the valid
-window for the point's type, from the collector's own pre/post dates. On top of it sit
-\textbf{per-fire manual edits}, transcribed from a reviewed workbook --- typically of the form
-\enquote{keep only the first three post-fire dates} or \enquote{drop this fire}. The edits are
-ranked over the fire's \emph{unique dates}, pooled across all of its burned points, not over each
-point's own observation count; that distinction is the single most common way to mis-apply such a
-rule.
-
-Of the 6,177,098 extracted observations, \textbf{5,923,062 pass the gate}, of which
-\textbf{541,789 (9.1\,\%) are labelled burned}. The edits are verified visually on per-fire panels
-that plot the fitted burn probability against the raw indices and mark held-out dates
-(Fig.~\ref{fig-ts-panel}).
-
+% [Claude, we have to think later whether this figure remains or not, I lean towards no]
 \begin{figure}[ht]
   \centering
   \includegraphics[width=0.86\textwidth]{ts_panel_pat_fire01.png}
@@ -352,58 +284,48 @@ that plot the fitted burn probability against the raw indices and mark held-out 
   blue the unburned class. The top two rows show the raw NBR and NBR2 series and the shaded
   pre-fire and post-fire windows defined by the collector; the bottom two show the predicted burn
   probability per observation, raw and smoothed. Unburned points keep a low probability throughout,
-  while burned points jump to near 1 at the fire and stay there --- the signature the temporal
+  while burned points jump to near 1 at the fire and stay there. That is the signature the temporal
   stage is built to measure.}
   \label{fig-ts-panel}
 \end{figure}
 
 \FloatBarrier
 
-\subsection{Fire classes: the \texttt{veg\_fire} remap}\label{sec-vegfire}
+\subsection{Vegetation classes for fire}\label{sec-vegfire}
 
-\textbf{A separate model is fitted per vegetation type}, because burn signatures differ by fuel:
-what a scar does to the spectral series of a closed forest is not what it does in grassland or
-open shrubland, and one pooled model would fit the average of surfaces that do not behave alike.
-
-The unit of stratification is the \texttt{veg\_fire} class, obtained by crossing the MapBiomas
+A separate model is fitted per vegetation type, because the effect of fire on the spectral properties
+varies among them. The unit of stratification is the \texttt{veg\_fire} class, 
+obtained by crossing the MapBiomas
 region with the MapBiomas LULC class of the previous year and remapping the result through a
-single lookup table. The table yields \textbf{23 fittable classes} plus two non-fittable sentinels
---- \emph{non-burnable} (water, rock, ice, urban, bare) and \emph{non-observed}. Only the 23 are
-ever predicted, so the non-burnable mask that the network's post-processing applies at the end is,
-in this algorithm, applied at the very beginning.
+single lookup table. The table yields 23 fittable classes plus two non-fittable ones:
+non-burnable (water, rock, ice, urban, bare) and non-observed. Only the 23 are ever predicted,
+while the others are masked.
 
 The class names carry both the vegetation type and the region it belongs to:
 \texttt{forest\_pat}, \texttt{grassland\_pampa}, \texttt{shrubland-open\_chaco},
-\texttt{agriculture\_chaco}, and so on. \textbf{The grouping is not purely ecological --- data
-availability was a hard constraint.} A strictly within-region remap was considered first, but
+\texttt{agriculture\_chaco}, and so on. The grouping is not purely ecological, because data
+availability was a hard constraint. A strictly within-region remap was considered first, but
 several classes are better off crossing regions: partly for spectral and land-use similarity,
 partly because data collection was organised by region and that did not guarantee that every class
-would be represented in every region. So a class may span regions ---
-\texttt{agriculture\_cuyo-pat} covers both Cuyo and Patagonia. \textbf{The remap is an open path
-for improvement}: with more collected fires, groups currently merged for want of data could be
-split on their own merits.
-
-Classes backed by few fires are fitted anyway rather than dropped or merged further; the
-alternative removes a vegetation type from the map entirely. The cost is visible in the
-cross-validation, where the number of folds is capped by the number of fires carrying positives.
+would be represented in every region. So a class may span regions, as
+\texttt{agriculture\_cuyo-pat} covers both Cuyo and Patagonia. The remap is an open path for
+improvement: with more collected fires, groups currently merged for want of data could be split.
 
 \subsection{Model structure}
 
-\textbf{The model has to be deployable inside GEE, and that constraint chose it.} A fitted
-logistic regression is a set of coefficients plus a simple equation: trivial to store, to version
-and to ship as a CSV, and cheap to evaluate over billions of pixel-dates. The richer classifiers
-GEE offers natively --- random forest, boosted trees --- fail at both ends here. It is doubtful
-they could be fitted on this many training observations, and a fitted one cannot be saved as an
-asset, which is precisely what deploying over the whole Landsat archive requires. External
+As the burn probability model at the observation model had to compute predictions over the whole 
+Landsat archive over the study area and period, it had to be deployed inside GEE
+(otherwise, it would require exporting all images, in a similar strategy as MapBiomas Brazil does
+with annual mosaics; \cite{alencar2022mapbiomas_fire}). In addition, we needed a probabilistic
+classifier, so burn probability and not a hard burned/unburned class could be analysed as a function
+of time. Hence, we used a logistic regression. The fitted model is a set of coefficients plus a 
+simple equation: trivial to store, to version and to
+ship as a CSV, and cheap to evaluate over billions of pixel-dates. The richer classifiers GEE
+offers natively, random forest and boosted trees, fail at both ends here. It is doubtful they
+could be fitted on this many training observations, and a fitted one cannot be saved as an asset,
+which is precisely what deploying over the whole Landsat archive requires. External
 machine-learning services would lift both limits at a large step up in complexity and at a
 monetary cost to the initiative.
-
-We also wanted a \textbf{natively probabilistic} model, because everything downstream consumes a
-probability rather than a hard class: the temporal metrics read the \emph{shape} of \(p\) through
-time. The GEE constraint bites again --- a probability-mode random forest is not exportable, and
-extracting calibrated probabilities from a regression-mode forest on binary data means tuning
-minimum node size against \(N\), a dependency that would have to be re-tuned per class. Logistic
-regression gives the probability by construction, with nothing to tune for it.
 
 The probability that the observation of pixel \(c\) at time \(t\) corresponds to burned is
 
@@ -417,19 +339,18 @@ The probability that the observation of pixel \(c\) at time \(t\) corresponds to
 
 \noindent where \(\alpha\) and \(\beta\) are estimated parameters, \(k \in \{1,\dots,23\}\) is the
 \texttt{veg\_fire} class, and the notation \(k[c]\) indicates the class of pixel \(c\) in the year
-\emph{previous} to the one time \(t\) belongs to. \(J = 51\) is the number of regression terms in
-the deployed model.
+previous to the one time \(t\) belongs to. \(J = 51\) is the number of regression terms in the
+deployed model.
 
-\textbf{Every class shares one predictor set}, chosen globally rather than per class: only the
-coefficients differ between vegetation types. That keeps deployment cheap in the same way the
-model itself does --- the prediction pipeline builds one band set once and reuses it for all 23
-classes, instead of assembling a different design per vegetation type and paying for it at every
-pixel-date.
+All classes share the same predictor set, chosen globally rather than per class: only the coefficients
+differ between vegetation types. That keeps deployment cheap in the same way the model itself
+does. The prediction pipeline builds one band set once and reuses it for all 23 classes, instead
+of assembling a different design per vegetation type and paying for it at every pixel-date.
 
 \subsection{Predictors}\label{sec-predictors}
 
-Twenty-one spectral features are computed for every Landsat observation: the six optical bands and
-fifteen indices --- NBR \parencite{key_benson_2006}, NBR2
+Twenty-one spectral features are computed for every Landsat observation. Six of them are the
+optical bands; the other fifteen are indices: NBR \parencite{key_benson_2006}, NBR2
 \parencite{usgs_landsat_burned_area_2021}, MIRBI \parencite{trigg_flasse_2001}, NDVI
 \parencite{tucker_1979}, the three tasselled-cap components \parencite{baig2014tasseled}, NDMI
 \parencite{gao1996ndwi}, NDSI \parencite{hall1995ndsi}, SAVI \parencite{huete1988savi}, NDWI
@@ -449,60 +370,50 @@ ones that still carry most of the fire signal:
   \end{aligned}
 \end{equation*}
 
-The candidate design was much larger than the deployed one. It began as several hundred terms ---
-all focal features, all mosaic summaries and a large set of interactions --- and was reduced in two
-steps, first to 129 terms and then, by ranking those terms globally and cutting the ranking, to the
+The candidate design was much larger than the deployed one. It began as several hundred terms: all
+focal features, all mosaic summaries and a large set of interactions. It was reduced in two steps,
+first to 129 terms and then, by ranking those terms globally and cutting the ranking, to the
 deployed set. Predictive skill is flat from the full fit down to about fifty terms and falls below
-that, so the smallest set on the flat part was deployed. The reduction is not cosmetic: \emph{the
-number of terms is the dominant cost of the prediction stage}, since each term becomes one image
-band that must be built and multiplied at every pixel-date. The deployed set costs about 25\,\%
-less compute per tile than the 129-term one.
+that, so the smallest set on the flat part was deployed. The reduction is not cosmetic: the number
+of terms is the dominant cost of the prediction stage, since each term becomes one image band that
+must be built and multiplied at every pixel-date. The deployed set costs about 25\,\% less compute
+per tile than the 129-term one.
 
 The deployed model carries an intercept plus 51 terms, in five blocks:
 
 \begin{itemize}
-  \item \textbf{10 focal main effects} --- GREEN, RED, NIR, SWIR1, SWIR2, NBR, NBR2, NDVI, NDMI,
-        NDSI, all measured on the observation being scored;
-  \item \textbf{14 previous-year mosaic main effects} --- medians, dry/wet composites and standard
-        deviations of the optical bands and of NDVI, NDWI, NPV and NDFI;
-  \item \textbf{10 focal\,\(\times\)\,focal interactions} --- e.g.\ NBR\,\(\times\)\,NBR2,
+  \item 10 focal main effects: GREEN, RED, NIR, SWIR1, SWIR2, NBR, NBR2, NDVI, NDMI, NDSI, all
+        measured on the observation being scored;
+  \item 14 previous-year mosaic main effects: medians, dry/wet composites and standard deviations
+        of the optical bands and of NDVI, NDWI, NPV and NDFI;
+  \item 10 focal\,\(\times\)\,focal interactions, for example NBR\,\(\times\)\,NBR2 and
         SWIR1\,\(\times\)\,NDVI;
-  \item \textbf{4 same-band interactions} --- a focal band with its own previous-year median
-        (GREEN, NIR, SWIR2, NDVI), which is the model's explicit \emph{change} term: the product of
-        today's value with this pixel's baseline;
-  \item \textbf{13 cross interactions} between previous-year mosaic summaries and focal fire
-        indices or focal bands.
+  \item 4 same-band interactions: a focal band with its own previous-year median (GREEN, NIR,
+        SWIR2, NDVI), which is the model's explicit change term, the product of today's value with
+        this pixel's baseline;
+  \item 13 cross interactions between previous-year mosaic summaries and focal fire indices or
+        focal bands.
 \end{itemize}
 
-The design deserves a word, because it is what makes a linear model work across a country. A
-logistic regression on raw indices alone would be exactly the \enquote{one threshold everywhere}
-approach that the pilot ATBD argued against; the optimal NBR cut for a Patagonian forest is not the
-optimal cut for Chaco open shrubland. The previous-year mosaic main effects let the model shift
-its intercept with the pixel's normal appearance, and the cross and same-band interactions let it
-change the \emph{slope} of its response to a fire index according to that appearance. Fitting a
-separate model per \texttt{veg\_fire} class handles the between-type differences; the interactions
-with the previous-year baseline handle the within-type gradient in productivity, structure and
-seasonality.
+Fitting a separate
+model per \texttt{veg\_fire} class handles the between-type differences; the interactions with the
+previous-year baseline handle the within-type gradient in productivity, structure and seasonality.
 
 \subsection{Fitting, regularisation and cross-validation}
 
-The design is strongly collinear by construction --- indices share bands, interactions share
-factors --- so the models are fitted by \textbf{elastic net} \parencite{zou2005elasticnet} with
-\texttt{glmnet} \parencite{friedman2010glmnet}, maximising the penalised Bernoulli likelihood. The
-mixing parameter \(\alpha\) is tuned over \(\{0.25, 0.5, 0.75\}\) --- pure ridge and pure lasso were
-dropped after never winning --- and \(\lambda\) is selected at the cross-validated minimum.
+The design is strongly collinear by construction, since indices share bands and interactions share
+factors, so the models are fitted by elastic net \parencite{zou2005elasticnet} with \texttt{glmnet}
+\parencite{friedman2010glmnet}, maximising the penalised Bernoulli likelihood. The mixing
+parameter \(\alpha\) is tuned over \(\{0.25, 0.5, 0.75\}\); pure ridge and pure lasso were dropped
+after never winning. \(\lambda\) is selected at the cross-validated minimum.
 
-\textbf{Cross-validation holds out whole fires.} Observations from a single fire are strongly
-correlated in space and in time; splitting them across folds would report a skill the model does
-not have on a new fire. Folds are therefore grouped on a region-unique fire identifier, with
-stratified packing so that folds carry comparable numbers of positives, and \(K\) is adaptive:
+Cross-validation holds out whole fires. Observations from a single fire are strongly correlated in
+space and in time; splitting them across folds would report a skill the model does not have on a
+new fire. Folds are therefore grouped on a region-unique fire identifier, with stratified packing
+so that folds carry comparable numbers of positives, and \(K\) is adaptive:
 \(K = \min(10, \text{fires with positives})\). Twenty-one of the 23 classes reach \(K = 10\); two
 fit at 7 and 6. Out-of-fold predictions are stored per observation and are what the per-class
-diagnostics --- calibration, omission and commission, by-fire breakdowns --- are computed on.
-
-Interactions are fitted on mean-centred factors for numerical stability and then folded back to
-the raw-product scale when the coefficients are exported, so that the deployed model is a plain
-dot product with no centring step.
+diagnostics are computed on: calibration, omission and commission, by-fire breakdowns.
 
 \subsection{Deployment in Earth Engine}\label{sec-deploy}
 
@@ -510,70 +421,68 @@ The fitted models reach GEE as one small CSV of coefficients per class. Turning 
 a prediction over a whole country raises one design question, and the answer shapes the rest of the
 pipeline.
 
-The obvious implementation --- evaluate each class's model on its own masked subset and mosaic the
-results --- builds 23 parallel branches of the same computation graph. Instead, \textbf{the class
-selection is pushed into the data}: every term becomes one image band whose per-pixel value is
-\emph{that pixel's class's coefficient} for that term, written by remapping the \texttt{veg\_fire}
-image through the 23 coefficient values. A pixel of class 7 then carries class 7's coefficient for
-every term, and its neighbour of class 12 carries class 12's, in the same band. Prediction becomes
-a single arithmetic expression, identical everywhere, and choosing the model costs nothing at
-evaluation time. This is also why the predictor set has to be shared across classes in the first
-place.
+The obvious implementation builds 23 parallel branches of the same computation graph: evaluate
+each class's model on its own masked subset, then mosaic the results. Instead, the class selection
+is pushed into the data. Every term becomes one image band whose per-pixel value is that pixel's
+class's coefficient for that term, written by remapping the \texttt{veg\_fire} image through the
+23 coefficient values. A pixel of class 7 then carries class 7's coefficient for every term, and
+its neighbour of class 12 carries class 12's, in the same band. Prediction becomes a single
+arithmetic expression, identical everywhere, and choosing the model costs nothing at evaluation
+time. This is also why the predictor set has to be shared across classes in the first place.
 
-Two further properties of the deployment are worth recording. First, every multiplication renames
-its operands to identical band names before multiplying, rather than relying on band-matching
-rules, so a coefficient can never be silently paired with the wrong band. Second, a masked pixel is
-\textbf{masked, never zero}: cloud, no-data and non-burnable pixels contribute nothing at all, they
-are not observations with probability zero.
-
-\textbf{The per-observation probability is never written to an asset.} Over a padded year a carta
-is covered by roughly 150 dates, so storing the probability per observation would mean about 150
-layers per tile-year where the annual summary that follows has 16 bands --- an order of magnitude
-more data than a product that is already on the order of a terabyte. And nothing downstream wants
-a single observation's probability: what carries the evidence is the \emph{shape} of the series.
-Since the model is a coefficient set plus a dot product, recomputing it inside the graph is far
-cheaper than writing it out and reading it back. The spectral and temporal stages are therefore two
-concepts but one piece of code.
+The per-observation probability is never written to an asset. Over a padded year a carta tile is
+covered by roughly 150 dates, so storing the probability per observation would mean about 150
+layers per tile-year where the annual summary that follows has 16 bands, an order of magnitude
+more data than a product that is already on the order of a terabyte. Nothing downstream requires
+a single observation's probability: what carries the evidence is the shape of the series. Since
+the model is a coefficient set plus a dot product, recomputing it inside the graph is far cheaper
+than writing it out and reading it back. The spectral and temporal stages are therefore two
+concepts but one computational step.
 
 \section{Temporal stage: burn-probability time-series metrics}\label{sec-temporal}
 
 \subsection{Foundations}
 
 For every focal year and every carta, this stage reads the burn probability of every Landsat
-observation of every pixel and reduces that per-pixel series to a \textbf{16-band annual summary}:
-how high the probability got, how persistently it stayed there, how sharply it jumped, when, and on
-how many observations the answer rests. It never decides that a pixel burned. It measures the
-evidence that the spatial stage segments and the object model classifies.
+observation of every pixel and reduces that per-pixel series to a 16-band annual summary: how high
+the probability got, how persistently it stayed there, how sharply it jumped, when, and on how
+many observations all was computed. It never decides that a pixel burned. It summarises the evidence
+that the spatial stage classifies.
 
-\textbf{This is the fire team's annual mosaic --- except that it is a prediction, not an
-aggregation.} Every MapBiomas initiative reduces the raw Landsat archive to one annual layer per
-tile and builds everything downstream on it; for land cover that layer is the annual mosaic, a
-summary of \emph{reflectance}. This layer is the fire equivalent, one level up, with a difference
-that decides a great deal: the model has already been applied, so what gets annualised is a
-\emph{burn probability}. That buys more per byte --- the vegetation-specific model, the
-previous-year context and the cloud masking are all resolved once, and no later stage ever touches
-a Landsat scene again --- and it costs a dependency the plain mosaic does not have: this layer
-inherits the model, its training data and the land-cover collection that defines
-\texttt{veg\_fire}, so improving any of the three means recomputing it.
+This is the fire team's annual mosaic, except that it is a prediction, not an aggregation. Every
+MapBiomas initiative reduces the raw Landsat archive to one annual layer per tile and builds
+everything downstream on it; for land cover that layer is the annual mosaic, a summary of
+reflectance. For the fire team it is a set of bands from the date of minimum NBR in a year.
+This layer is the equivalent of the MapBiomas Argentina Fire team, 
+one level up, with a difference that decides a
+great deal: the model has already been applied, so what gets annualised are burn probability time-series metrics.
+That provides more information density, 
+since the vegetation-specific model, the previous-year context and the
+cloud masking are all resolved once, and no later stage ever touches a Landsat scene again. 
+However, it
+also costs a dependency the plain mosaic does not have: this layer inherits the model, its
+training data and the land-cover collection that defines \texttt{veg\_fire}, so improving any of
+the three means recomputing it, which is the most expensive step of the whole
+algorithm.
 
-\textbf{Burn probability has to be smoothed before it is read as detection.} A single high
-observation is as likely to be shadow, ash or a wet scene as fire. Collection 0 smoothed with a
-median over five observations. Here, vegetation types recover at very different speeds and image
-density varies by pixel and by year, so the stage carries \textbf{two shorter windows} --- \(K=3\)
-and \(K=2\) --- and exports both, leaving the choice between them to the next stage, per pixel.
+Burn probability has to be smoothed before it is read as detection. A single high observation is
+as likely to be shadow, ash or a wet scene as fire. 
+As different vegetation types recover at very different speeds and image density varies by
+pixel and by year, the stage carries two temporal windows for aggregation, \(K=3\) and \(K=2\), 
+and exports both, leaving the choice between them to the next stage, per pixel.
 
-\textbf{The evidence is three things: magnitude, persistence and change}, all measured in
-\emph{numbers of valid observations} and never in elapsed time, because the Landsat series is
-irregular and its density is itself informative.
+The burn evidence is three properties: magnitude, persistence and change. All three are measured in numbers
+of valid observations and never in elapsed time, because the Landsat series is irregular and its
+density is itself informative.
 
-\subsection{The jump, and why it is defined that way}
+\subsection{The burn probability jump}
 
 Let \(\{p_t\}\) be the series of burn probabilities of a pixel, ordered by date, and let \(d_t\) be
-the day number of observation \(t\) counted from 1 January of the focal year --- so that padding
+the day number of observation \(t\) counted from 1 January of the focal year, so that padding
 observations from the previous year are negative, those from the next year exceed 365, and every
 difference is an exact whole-day count across the year boundary.
 
-For a window of \(K\) observations, define
+For a window of \(K\) observations, we define
 
 \begin{equation}
   \label{eq-delta}
@@ -584,35 +493,36 @@ For a window of \(K\) observations, define
   \end{aligned}
 \end{equation}
 
-The asymmetry between the two operators is the core of the method. Taking the \textbf{minimum}
-forward demands that the high signal be \emph{sustained}: a single isolated spike does not
-qualify, because one low value among the next \(K\) observations collapses the floor. Taking the
-\textbf{maximum} backward demands that the pixel was \emph{cleanly} low before: one high previous
-value is enough to cancel the jump, which is what stops a noisy low observation inside an
-already-burned scar from manufacturing a second detection of the same fire. \(\mathrm{delta}_K\)
-is therefore the most conservative reading of a step that the series admits.
+The asymmetry between the two operators is the core of the method. Taking the minimum forward
+demands that the high signal be sustained: a single isolated spike does not qualify, because one
+low value among the next \(K\) observations collapses the floor. Taking the maximum backward
+demands that the pixel was cleanly low before: one high previous value is enough to cancel the
+jump, which is what stops a noisy low observation inside an already-burned scar from manufacturing
+a second detection of the same fire. \(\mathrm{delta}_K\) is therefore the most conservative
+reading of a step that the series admits.
 
 Alongside the jump, the stage records the time structure around it (Fig.~\ref{fig-bpts3}):
 \(\mathrm{jumpgap}\), the number of days between the last low observation and the first high one;
 \(\mathrm{prevwidth}\) and \(\mathrm{postwidth}\), the spans in days of the back and fore windows;
 and \(\mathrm{date\_post}\), the day of year of the post-jump observation. \(\mathrm{jumpgap}\) is
-strong fire evidence when \emph{short}: a long one may be slow change --- drought, dieback,
-harvest --- rather than fire, or a fire seen through a thin image series. The two widths report how
+strong fire evidence when short. A long one may be slow change, such as drought, dieback or
+harvest, rather than fire, or a fire seen through a thin image series. The two widths report how
 much calendar time the windows actually cover, which under sparse imagery can be most of a season.
 
 \begin{figure}[ht]
   \centering
   \includegraphics[width=0.92\textwidth]{bpts_metrics_k3.png}
-  \caption{The \(K=3\) time-series metrics on a synthetic burn-probability series. \textbf{(A)}
-  The jump. The black segment over the three \emph{back} observations marks
-  \(\mathrm{maxback}_3\) (their maximum); the black segment over the three \emph{fore}
+  \caption{The \(K=3\) time-series metrics on a synthetic burn-probability series, which 
+  is the same over (A) and (B). (A)
+  The jump. The black segment over the three back observations marks
+  \(\mathrm{maxback}_3\) (their maximum); the black segment over the three fore
   observations marks \(\mathrm{minfore}_3\) (their minimum); the red arrow is
   \(\mathrm{delta}_3\), the magnitude of the sustained jump, and the purple arrow is
-  \(\mathrm{jumpgap}_3\). \textbf{(B)} The time the windows span: \(\mathrm{prevwidth}_3\) and
+  \(\mathrm{jumpgap}_3\). (B) The time the windows span: \(\mathrm{prevwidth}_3\) and
   \(\mathrm{postwidth}_3\) in days, and the green dashed line at \(\mathrm{date\_post}_3\), the
   anchor from which the burn date is estimated. The \(K=2\) family is identical in construction but
-  uses windows of two observations, which makes it more permissive and more sensitive --- fewer
-  consecutive observations are needed to confirm the jump --- and therefore useful where image
+  uses windows of two observations, which makes it more permissive and more sensitive, since fewer
+  consecutive observations are needed to confirm the jump, and therefore useful where image
   density is low.}
   \label{fig-bpts3}
 \end{figure}
@@ -621,23 +531,22 @@ much calendar time the windows actually cover, which under sparse imagery can be
 
 \subsection{The peak, and what is stored}
 
-Each \(\mathrm{delta}_K\) is collapsed \textbf{independently} to the observation \(t^{*}\) at which
-it is maximal within the focal year, and its whole bundle of companion values is read at that
+Each \(\mathrm{delta}_K\) is collapsed independently to the observation \(t^{*}\) at which it is
+maximal within the focal year, and its whole bundle of companion values is read at that
 observation. The two families are collapsed separately on purpose: the optimal transition
 observation differs by window, and tying both to one peak would mis-anchor the other.
 
-Three further bands are not tied to any peak --- the maximum raw probability of the year, and the
+Three further bands are not tied to any peak: the maximum raw probability of the year, and the
 maxima of \(\mathrm{minfore}_2\) and \(\mathrm{minfore}_3\) over the whole series, which measure
 sustained magnitude regardless of whether it arrived as a jump. Finally, \(n\), the count of valid
-focal observations, is exported as the \textbf{sole density and quality channel}; it also carries
-sentinel values marking non-burnable and non-observed pixels, and it is the one band that is never
-masked.
+focal observations, is exported as the sole density and quality metric; it also carries
+values marking non-burnable and non-observed pixels, and it is the one band that is never masked.
 
-Table~\ref{tab-bpts-bands} lists the 16 bands. All are encoded as signed 16-bit integers ---
-probabilities scaled by \(10^4\), days as days --- which roughly halves the size of the asset.
+Table~\ref{tab-bpts-bands} lists the 16 bands. All are encoded as signed 16-bit integers,
+probabilities scaled by \(10^4\) and days as days, which roughly halves the size of the asset.
 Missing data is never given a probability: a pixel with no valid observations comes back with
-\(n = 0\) and everything else masked. A pixel whose series is too short for a given window has
-\emph{that window's} bands masked, which is a quality flag rather than an error.
+\(n = 0\) and everything else masked. A pixel whose series is too short for a given window has that
+window's bands masked, which is a quality flag rather than an error.
 
 \begin{table}[ht]
 \centering
@@ -649,7 +558,7 @@ Missing data is never given a probability: a pixel with no valid observations co
 \toprule
 Concept & Band(s) & What it measures \\
 \midrule
-Change      & \texttt{delta3\_peak}, \texttt{delta2\_peak}       & the sustained jump --- the central fire indicator \\
+Change      & \texttt{delta3\_peak}, \texttt{delta2\_peak}       & the sustained jump, the central fire indicator \\
 Persistence & \texttt{minfore3\_peak}, \texttt{minfore2\_peak}   & the probability floor just after the jump \\
 Sharpness   & \texttt{jumpgap3}, \texttt{jumpgap2}               & days between the last low and the first high obs. \\
 Window span & \texttt{prevwidth3}, \texttt{prevwidth2}           & days spanned by the back window \\
@@ -666,79 +575,69 @@ Quality     & \texttt{n}                                         & count of vali
 
 Note that \(\mathrm{maxback}_K\) is not stored: it is exactly
 \(\mathrm{minfore}_K - \mathrm{delta}_K\) and is recovered whenever it is needed. Note also that
-\texttt{date\_post} is \emph{not} the fire date. It is the day of the post-jump observation, and
-the burn date used downstream is the mid-point between the last low and the first high
-observation, \(\mathrm{date\_post}_2 - \mathrm{jumpgap}_2/2\).
+\texttt{date\_post} is not the fire date. It is the day of the post-jump observation, and the burn
+date used downstream is the mid-point between the last low and the first high observation,
+\(\mathrm{date\_post}_2 - \mathrm{jumpgap}_2/2\).
 
 \subsection{Crossing the year boundary}
 
-Window metrics starve at the extremes of a series --- \(\mathrm{maxback}_3\) needs three
-observations behind it, \(\mathrm{minfore}_3\) two ahead --- and in a fire-prone country the start
+Window metrics starve at the extremes of a series, since \(\mathrm{maxback}_3\) needs three
+observations behind it and \(\mathrm{minfore}_3\) two ahead, and many parts of Argentina the start
 and the end of the calendar year are in the middle of the burning season. The focal year therefore
-\textbf{borrows three observations from the previous year and two from the next}: asymmetric on
-purpose, because symmetric padding of two would under-supply the back window at the first focal
-observation.
+borrows three observations from the previous year and two from the next: asymmetric on purpose,
+because symmetric padding of two would under-supply the back window at the first focal observation.
 
 The neighbouring observations cannot simply be taken from the adjacent scenes, since the literal
 nearest scene may be cloud-masked at this pixel. Burn probability is instead computed for a margin
-of a few months on each side and the three latest previous and two earliest next \emph{valid}
+of a few months on each side and the three latest previous and two earliest next valid
 observations are kept per pixel; the margin is widened for 1999 and 2000, where the archive is
 thin. Padded observations use the focal year's previous-year context, which is strictly the wrong
 year for them but is the better approximation over three-plus-two observations.
 
-Crucially, \textbf{the search for \(t^{*}\) is always restricted to focal observations}. Padding is
-only ever \emph{context}, so a burn can never be detected twice in two adjacent years --- which
-means that, unlike the pilot, this collection has no cross-year duplicates to remove later.
+Crucially, the search for \(t^{*}\) is always restricted to focal observations. Padding is only
+ever context, so a burn can never be detected twice in two adjacent years, which means that
+there are no cross-year duplicates to remove later.
 
 \subsection{Cost}
 
 This is the most expensive artifact in the collection, in compute and in storage: a complete year
 is roughly 55 GiB over the 248 cartas, and the 27 years are on the order of 1.4 TiB. Per-account
 task parallelism in GEE is limited, so a whole-country year cannot be produced by one person in
-reasonable time; production ran as a distributed, multi-account export, one contributor per year,
-with an idempotent launcher that skips any tile which already has a finished asset or a running
-task.
+reasonable time; production ran as a distributed, multi-account export, one contributor per year.
 
-Two consequences follow for anyone planning a change. First, the optimisation levers are all
-\emph{product-level} --- number of terms, window length, band set --- and each one changes the
-model or the output; there are no late tweaks to be had, because profiling puts the entire array
-and time-series machinery below 1\,\% of per-tile cost, with the expense sitting in the model
-arithmetic and the cloud masking over roughly 150 scenes. Second, \textbf{re-running this layer is
-a collection-level decision}, not a step-level one.
+The high computational cost of this step requires a careful planning on the timing of improvements
+to be made upstream.
 
 \section{Spatial stage I: segmentation into scar objects}\label{sec-snic}
 
 \subsection{Foundations}
 
-\textbf{Seeds and candidates are how this stage avoids deciding early.} A single probability cut
-would force one threshold to be both sensitive and specific. Instead a \emph{strict} cut defines
-where a scar certainly started --- the \textbf{seeds} --- and a \emph{permissive} cut defines where
-one could plausibly extend --- the \textbf{candidates} --- and region growing resolves the two: a
-candidate joins a scar only if it is connected to a seed, and a candidate island with no seed in
-it is dropped altogether (Fig.~\ref{fig-region-growing}).
+From the time series metrics we can define pixels that are clearly burned and those that are 
+plausible burned. In both cases, but mostly in the second ones, the spatial context is highly
+informative: plausibly burned pixels that are isolated are probably noise, while those connected
+to clearly burned pixels are probably fire. We exploit this information by computing a region
+growing algorithm from \textit{seeds}, the clearly burned pixels to \textit{candidates}, the plausibly
+burned ones. Candidate islands with no seeds inside are dropped (Fig.~\ref{fig-region-growing}).
 
-This exploits a favourable trade-off between the two error types. Seeds have high omission and low
-commission error; candidates the opposite. A pixel whose own evidence is weak is accepted when it
+This strategy exploits a favourable trade-off between the two error types. Seeds have high omission and low
+commission error; candidates, the opposite. A pixel whose own evidence is weak is accepted when it
 belongs to a patch whose evidence is strong, and rejected when it stands alone. Region growing has
 been used this way in burned-area mapping for decades, exactly because fire is spatially contagious
 \parencite{adams_bischof_1994,haralick_shapiro_1985,fraser2000,giglio2009,hawbaker2020,long2019}.
 
-The stage errs deliberately towards \textbf{recall}: precision is recovered at the object
-classifier of Section~\ref{sec-objmodel}, which can see the patch's shape, size and seed density
---- things no pixel can report.
+The stage errs deliberately towards recall: precision is recovered at the object classifier of
+Section~\ref{sec-objmodel}, which can see the patch's shape, size and seed density, things no
+pixel can report.
 
 \begin{figure}[ht]
   \centering
   \includegraphics[width=\textwidth]{spatial_analysis.png}
   \caption{The region-growing step, illustrated on two fires that burned in 2015 in Chubut
-  province (Río Turbio to the north, Cholila to the south). \textbf{(A)} RGB composite of the
+  province (Río Turbio to the north, Cholila to the south). (A) RGB composite of the
   following summer, for reference only; black areas are masked by the quality filters.
-  \textbf{(B)} The per-pixel evidence of burning. \textbf{(C)} Seeds and candidates, obtained by
-  applying a strict and a permissive cut to that evidence. \textbf{(D)} The output of the region
-  growing: the candidate pixels connected to at least one seed. \emph{The panels were produced for
-  the Collection 0 pilot, whose per-pixel evidence was an annual burn probability; in Collection 1
-  the same two cuts are applied to the jump metrics of Section~\ref{sec-temporal}. The logic of the
-  step is unchanged.}}
+  (B) The per-pixel evidence of burning as \texttt{delta2\_peak}. (C) Seeds and candidates, obtained by
+  applying a strict and a permissive cut to that evidence. (D) The output of the region
+  growing: the candidate pixels connected to at least one seed.}
   \label{fig-region-growing}
 \end{figure}
 
@@ -746,65 +645,68 @@ classifier of Section~\ref{sec-objmodel}, which can see the patch's shape, size 
 
 \subsection{The fire year}\label{sec-fireyear}
 
-\textbf{A fire is an object in space \emph{and} in time, and this stage buys the time axis with a
-calendar rather than with an algorithm.} Segmenting calendar years independently splits every scar
-that straddles 31 December and duplicates it across two years. The obvious repairs --- a temporal
-firebreak inside the segmentation, a backward gap-fill from the previous year --- were built first
-and did not work, because the per-pixel dates are too noisy to serve as a barrier. The problem
-disappears entirely if the year boundary is placed where almost nothing is burning.
+A fire is an object in space and in time, and this stage buys the time axis with a calendar rather
+than with an algorithm. Segmenting calendar years independently splits every scar that straddles
+31 December and duplicates it across two years. We initially tried to pad the previous years 
+and apply a temporal firebreak inside the segmentation, but it did not
+work, because the per-pixel dates are too noisy to serve as a barrier. The problem disappears
+almost entirely if the year boundary is placed where almost nothing is burning.
 
-The \textbf{fire year} therefore runs from \textbf{1 May of year \(Y_1\) to 30 April of year
-\(Y_1+1\)} and is named after its starting year. May is the country-wide trough of fire activity
---- in MODIS and VIIRS active fires and in our own burn dates --- so no region's season is cut in
-half: the summer burners of the south and centre and the winter--spring season of the north both
-fall inside a single May-to-April year. One national boundary is a compromise; Patagonia would
-ideally break in June or July. Defining a separate fire year per region was tried and abandoned,
-because processing the whole country in one pass brought far more benefit than the optimum boundary
-would have.
+The \emph{fire year} therefore runs from 1 May of year \(Y_1\) to 30 April of year \(Y_1+1\) and is
+named after its starting year. May is the country-wide trough of fire activity, in MODIS and VIIRS
+active fires and in our own burn dates, so no region's season is cut in half: the summer burners
+of the south and centre and the winter--spring season of the north both fall inside a single
+May-to-April year. One national boundary is a compromise; Patagonia would ideally break in June--July. 
+Defining a separate fire year per region was tried and abandoned, because processing the
+whole country in one pass brought far more benefit than the optimum boundary would have.
 
 Since the annual metrics cover calendar years 1999--2025, the fire years mapped are 1998--2025,
-with two \textbf{partial} edges: fire year 1998 holds only the January--April 1999 tail, and fire
-year 2025 only the May--December 2025 head. Both are flagged as partial in the asset metadata, and
-anything that averages across fire years has to know.
+with two partial edges: fire year 1998 holds only the January--April 1999 tail, and fire year 2025
+only the May--December 2025 head. Both are flagged as partial in the asset metadata, and anything
+that averages across fire years has to know.
+
+Although the spatial analysis stage works in fire years, the products are delivered in calendar years,
+in line with what the MapBiomas Fire network delivers \parencite{alencar2022mapbiomas_fire}.
 
 \subsection{Seeds, candidates and dates}
 
 A fire year spans two calendar-year metric images, and each is thresholded before they are
 combined.
 
-\textbf{Candidates} are pixels whose \(\mathrm{delta}_2\) exceeds a permissive cut --- always the
-\(K=2\) family, because it gives the broadest footprint. \textbf{Seeds} are pixels whose
-\(\mathrm{delta}_K\) exceeds a strict cut, with \textbf{\(K\) chosen per pixel} from its
-vegetation class and its observation count \(n\): a pixel whose series is dense enough for its
-class is judged on the conservative \(K=3\) metric, and a pixel in a thin part of the archive on
-the permissive \(K=2\) one. A temporal-gap gate also applies, rejecting seeds whose
-\(\mathrm{jumpgap}\) exceeds an \(n\)-adaptive ceiling --- that is, rejecting changes too slow to
-be fire, which is precisely the drought signature that forced hand-drawn masks in the pilot. Cuts
-are set per vegetation class, with global defaults, and non-vegetated classes receive an
-unreachable cut so that they can never fire.
+Candidates are pixels whose \(\mathrm{delta}_2\) exceeds a permissive cut, always the \(K=2\)
+family, because it gives the broadest footprint. Seeds are pixels whose \(\mathrm{delta}_K\)
+exceeds a strict cut, with \(K\) chosen per pixel from its vegetation class and its observation
+count \(n\): a pixel whose series is dense enough for its class is judged on the conservative
+\(K=3\) metric, and a pixel in a thin part of the archive on the permissive \(K=2\) one. A
+temporal-gap gate also applies, rejecting seeds whose \(\mathrm{jumpgap}\) exceeds an
+\(n\)-adaptive ceiling: that is, rejecting changes too slow to be fire, which is precisely the
+drought signature that forced hand-drawn masks in the pilot. The deployed cuts are global, set by
+visual exploration of the metric images rather than fitted; per-class cuts calibrated on data were
+tried and dropped after failing out of sample. Non-vegetated classes receive an unreachable cut so
+that they can never fire.
 
-Each pixel's \textbf{burn date} is taken from the \(K=2\) family as
+Each pixel's burn date is taken from the \(K=2\) family as
 \(\mathrm{date\_post}_2 - \mathrm{jumpgap}_2/2\), converted to an absolute day count since a fixed
 epoch, so that every later date comparison is safe across year boundaries.
 
-The two calendar images are then \textbf{filtered by date and combined}. Only pixels whose burn
-date falls inside \([\,1\ \mathrm{May}\ Y_1,\ 1\ \mathrm{May}\ Y_1{+}1)\) are kept: the \(Y_1\)
-image contributes May--December, the \(Y_1{+}1\) image January--April, and a detection dated before
-May of \(Y_1\) belongs to the previous fire year and is dropped. Where both images claim a pixel,
-they are combined by rank --- seed beats candidate beats nothing --- and the date follows the image
-that won. This is what turns two calendar layers into one non-calendar fire year.
+The two calendar images are then filtered by date and combined. Only pixels whose burn date falls
+inside \([\,1\ \mathrm{May}\ Y_1,\ 1\ \mathrm{May}\ Y_1{+}1)\) are kept: the \(Y_1\) image
+contributes May--December, the \(Y_1{+}1\) image January--April, and a detection dated before May
+of \(Y_1\) belongs to the previous fire year and is dropped. Where both images claim a pixel, they
+are combined by rank, with seed beating candidate and candidate beating nothing, and the date
+follows the image that won. This is what turns two calendar layers into one non-calendar fire year.
 
 \subsection{Slow post-fire dieback in Andean Patagonia}
 
-Andean Patagonian forest dies \emph{slowly} after fire: part of a real scar crosses the change
-thresholds only in the \emph{following} fire year, when the canopy finally collapses. For forest
-and shrubland pixels west of a longitude cut, a pixel that is seed or candidate in the next
-calendar image with a mid-winter to spring date is added to the focal year as a \textbf{candidate},
-flagged with its own code --- never as a seed, because dieback must be able to \emph{extend} a
-detected scar but never to \emph{create} one. Since padding survives region growing only where it
-connects to a genuine focal seed, it cannot manufacture a fire. These pixels carry a next-year
-date, so they are excluded from every date statistic downstream and inherit their parent object's
-date instead.
+When low severity fires burn Andean Patagonian forest, they die slowly: 
+part of a real scar crosses the change thresholds
+only in the following fire year, when the canopy finally collapses. For forest and shrubland
+pixels west of a longitude cut, a pixel that is seed or candidate in the next calendar image with
+a mid-winter to spring date is added to the focal year as a candidate, flagged with its own code.
+It is never added as a seed, because dieback must be able to extend a detected scar but never to
+create one. Since padding survives region growing only where it connects to a genuine focal seed,
+it cannot manufacture a fire. These pixels carry a next-year date, so they are excluded from every
+date statistic downstream and inherit their parent object's date instead.
 
 \subsection{Supervised region growing}
 
@@ -813,46 +715,48 @@ The region growing itself uses SNIC (Simple Non-Iterative Clustering,
 segmentation method, and its most common use is to partition a wall-to-wall image from uniformly
 placed seeds and spectral features. Here it is used in a far more guided way: we supply the seeds
 and we supply the footprint through which they may grow, so what would ordinarily be a
-segmentation becomes a classification --- SNIC is the mechanism, and the seed/candidate definition
-is the model.
+segmentation becomes a classification. In this \emph{supervised SNIC}, SNIC is the mechanism and
+the seed and candidate definition is the model.
 
-Two details matter. Seed clumps below a small size are \textbf{demoted to candidates} before
-growing: they no longer seed, but they remain in the footprint so that a genuine cluster can still
-grow through them. And the growing runs on the \textbf{whole country in one pass}, not
-region by region: SNIC's memory footprint depends on its internal tile size and neighbourhood
-buffer, not on the extent of the export, so a national run costs what a regional one costs, and a
-large neighbourhood heals the internal seams. Only the \emph{mask} of the result is kept --- the
-cluster identifiers are discarded, because the objects are relabelled globally in the next stage.
+Seed clumps below a small size are demoted to candidates before growing: they
+no longer seed, but they remain in the footprint so that a genuine cluster can still grow through
+them. 
+
+The algorithm runs on the whole country in one pass per fire year, not region by region: SNIC's memory
+footprint depends on its internal tile size and neighbourhood buffer, not on the extent of the
+export, so a national run costs what a regional one costs, and a large neighbourhood heals the
+internal seams. Only the mask of the result is kept; the cluster identifiers are discarded,
+because the objects are relabelled globally in the next stage.
 
 The output is one image per fire year with a single band distinguishing candidate, seed and dieback
 padding, masked everywhere else. Burned pixels are 0.3--1\,\% of the country, which is what makes
-the whole national layer small enough to download.
+the whole national layer small enough to download and process the next stage locally.
 
 \section{Spatial stage II: fire objects and the object classifier}\label{sec-objects}
 
 \subsection{From pixels to objects}
 
-\textbf{This stage materialises the fire patch so that it can be judged as a patch.} A patch has
-properties no pixel has --- shape, size, vegetation composition, a spread of burn dates --- and
-those are what separate a real scar from a field of spectrally similar noise.
+This stage materialises the fire patch so that it can be judged as a patch. A patch has properties
+no pixel has, such as shape, size and vegetation composition, variables useful to separate a real 
+scar from a field of spectrally similar noise.
 
-Objects are the connected components of the burned pixels, labelled \textbf{one fire year at a
-time, whole-country and untiled}, so that an object is global within its year and a scar is never
-split by a processing seam. Labelling uses a union-find structure \parencite{tarjan1975uf}, which
-needs only one integer per burned cell; the country's 30 m lattice holds 9.16 billion cells while a
+Objects are the connected components of the burned pixels, labelled one fire year at a time,
+whole-country and untiled, so that an object is global within its year and a scar is never split
+by a processing seam. Labelling uses a union-find structure \parencite{tarjan1975uf}, which needs
+only one integer per burned cell; the country's 30 m lattice holds 9.16 billion cells while a
 heavy fire year holds around 116 million burned ones, three orders of magnitude fewer, and every
 stage of this part of the pipeline is sized by the latter.
 
-\textbf{Connectivity is wider than eight-neighbour adjacency, and selectively so.} A real scar
-frequently breaks into fragments one or two pixels apart, and gluing them recovers one fire instead
-of five. The rule is equivalent to dilating the burned mask by one pixel, labelling, and dropping
-the halo --- but it is implemented as a wider union window, which avoids ever materialising the
-dilation. Two burned cells are joined if their Chebyshev distance is at most 3 when both have
-\emph{enlarged context}, at most 2 when only one does, and at most 1 --- plain eight-connectivity
---- when neither does. A cell is denied enlarged context when it is agriculture, pasture or
-temperate grassland, where bridging distinct burned fields would inflate commission error, or when
-it is a dieback pixel, which may only extend a scar. Everything else --- forests, shrublands, the
-arid grasslands --- keeps it, because in sparse fuels bridging recovers a single real scar.
+Connectivity is wider than eight-neighbour adjacency, and selectively so. A real scar frequently
+breaks into fragments one or two pixels apart, and gluing them recovers one fire instead of many.
+The rule is equivalent to dilating the burned mask by one pixel, labelling, and dropping the halo,
+but it is implemented as a wider union window, which avoids ever materialising the dilation. Two
+burned cells are joined if their Chebyshev distance is at most 3 when both have enlarged context,
+at most 2 when only one does, and at most 1, plain eight-connectivity, when neither does. A cell is
+denied enlarged context when it is agriculture, pasture or temperate grassland, where bridging
+distinct burned fields would inflate commission error, or when it is a dieback pixel, which may
+only extend a scar. Everything else keeps it, that is forests, shrublands and the arid grasslands,
+because in sparse fuels bridging recovers a single real scar.
 
 Each labelled object is then vectorised into one, possibly multi-part, polygon. Disconnected
 fragments joined by the bridging rule dissolve into a single multipolygon, so the bridge is
@@ -860,104 +764,84 @@ preserved natively in the geometry.
 
 \subsection{Object metrics}\label{sec-objmetrics}
 
-The metric set is deliberately narrow --- only what the classifier uses --- and is computed
-directly over the burned cells rather than over the polygons, which is both faster and exact for
-area.
+The metric set is deliberately narrow, only what the classifier uses, and is computed directly
+over the burned cells rather than over the polygons, which is both faster and exact for area.
 
 \begin{itemize}
-  \item \textbf{Seed fraction}: the share of the object's pixels that are seeds. This is the single
-        most discriminating metric for fire against noise: real scars are densely seeded, noise is
-        not.
-  \item \textbf{Neighbourhood density}: the mean, over the object's pixels, of the burned fraction
-        within square windows of one, two and three pixels' radius. Sparse, threadlike objects
-        score low; solid scars score high.
-  \item \textbf{Size}: area in hectares, and pixel count.
-  \item \textbf{Dates}: the median, minimum and maximum burn date of the object's pixels, and the
-        calendar year that most of its pixels fall in.
-  \item \textbf{Vegetation composition}: the fraction of the object's pixels in each
-        \texttt{veg\_fire} class.
-  \item \textbf{Shape}: perimeter, convexity (area over convex-hull area), bounding-box fill and
+  \item Seed fraction: the share of the object's pixels that are seeds. This is the single most
+        discriminating metric for fire against noise: real scars are densely seeded.
+  \item Neighbourhood density: the mean, over the object's pixels, of the burned fraction within
+        square windows of one, two and three pixels' radius. Sparse, threadlike objects score low;
+        solid scars score high.
+  \item Size: area in hectares, and pixel count.
+  \item Dates: the median, minimum and maximum burn date of the object's pixels, and the calendar
+        year that most of its pixels fall in.
+  \item Vegetation composition: the fraction of the object's pixels in each \texttt{veg\_fire}
+        class.
+  \item Shape: perimeter, convexity (area over convex-hull area), bounding-box fill and
         elongation, circularity \(4\pi A/P^2\) and shape index \(P/(2\sqrt{\pi A})\).
 \end{itemize}
 
-Area is measured on the ellipsoid, which means a pixel is not 0.09 ha: at these latitudes one
+Area is measured on the ellipsoid, which means a Landsat pixel is not 0.09 ha: at these latitudes one
 Landsat pixel covers about 831 m\textsuperscript{2} at 22°S and 517 m\textsuperscript{2} at 55°S.
-A size class is therefore a \emph{range} of pixel counts, and the same 15-pixel object changes size
-class between the north of the country and Patagonia.
+A size class is therefore a range of pixel counts, and the same 15-pixel object changes size class
+between the north of the country and Patagonia.
 
 \subsection{Object labels}\label{sec-objlabels}
 
-The classifier is fitted on \textbf{about five thousand fire / non-fire labels collected by hand}.
-Collectors work in the GEE Code Editor on the seed-and-candidate layer itself --- not on uploaded
-polygons --- because that layer already shows, per pixel, candidate against seed on exactly the
+The classifier is fitted on about five thousand fire / non-fire labels collected by hand.
+Collectors worked in the GEE Code Editor on the seed-and-candidate layer itself, not on uploaded
+polygons, because that layer already shows, per pixel, candidate against seed on exactly the
 clusters the region growing kept, which makes shape and seed density, the most informative signal,
 fully visible without any vector data. Each collaborator exports a single asset; drawing-layer
-names carry the class and the fire year. Labels are then matched to \emph{objects}, not to pixels,
-and the object inherits the label.
+names carry the class and the fire year. Labels are then matched to objects, not to pixels, and
+the object inherits the label. This process yielded a fitting set of 5,255 objects:
+2,788 fire and 2,467 non-fire.
 
-Cleaning the label--object pairs --- dropping labels that hit no object, objects labelled both ways,
-and duplicate labels on an already-labelled object --- yields a fitting set of \textbf{5,255
-objects}, 2,788 fire and 2,467 non-fire.
-
-\textbf{The labelled sample is not a random sample of objects}, and this single fact conditions
-every number the model produces. Labels were collected where fires were known to be, so per-year
+The labelled sample is not a random sample of objects, and this single fact conditions every
+number the model produces. Labels were collected where fires were known to be, so per-year
 prevalence in the fitting set runs from 0.00 to 1.00, seven fire years have no labels at all, and
-small objects are strongly under-sampled. The model's \emph{ranking} and its \emph{uncertainty} are
-the product, not a calibrated probability; the deployed decision thresholds are a lower bound; and
-the cross-validation design has to be chosen with this sampling in mind. Fixing it is a
-\emph{collection} task, not a modelling one: a randomly sampled set of small-object labels.
+small objects are strongly under-sampled. The model's ranking and its uncertainty are the product,
+not a calibrated probability; the deployed decision thresholds are a lower bound; and the
+cross-validation design has to be chosen with this sampling in mind. Fixing it is a collection-level
+task: it needs a randomly sampled set of small-object labels.
 
 \subsection{The classifier}\label{sec-objmodel}
 
-\textbf{A classifier, not a threshold filter.} Collection 0 decided fire with a hand-built rule
-over size, shape and neighbourhood density. Reproduced verbatim against our labels, that filter
-scores an accuracy of 0.62 and a sensitivity of 0.50, against 0.81 and 0.85 for the model at the
-deployed cuts --- and it fails worst exactly where the objects are, discarding 81\,\% of the real
-fires in the 1--50 ha band, which holds 83\,\% of all objects. Two of its ideas survive: a hard
-minimum-size cut, and reasoning stratified by size.
+The model is a probit Bayesian Additive Regression (and Classification) Tree (BART; \cite{chipman2010bart,albert1993probit}), 
+fitted locally in R with
+\texttt{stochtree} \parencite{stochtree}. The choice follows from what five thousand labels allow.
+There is no honest way to tune a boosted ensemble's hyperparameters on a set this small, whereas
+BART's defaults are calibrated regularisation priors rather than placeholders. More importantly,
+the posterior yields a per-object interval on the probability: both an uncertainty statement that
+can be published and the targeting signal for a second round of label collection. 
 
-\textbf{The model is a probit BART} \parencite{chipman2010bart,albert1993probit}, fitted locally in
-R with \texttt{stochtree} \parencite{stochtree}. The choice follows from what five thousand labels
-allow. There is no honest way to tune a boosted ensemble's hyperparameters on a set this small,
-whereas BART's defaults are calibrated regularisation priors rather than placeholders. More
-importantly, the posterior yields a \textbf{per-object interval} on the probability --- both an
-uncertainty statement that can be published and the targeting signal for a second round of label
-collection. The fit takes about ninety seconds; scoring the whole object set is done fire year by
-fire year in blocks, so that peak memory is one block however many objects exist.
+The model is applied to all 28 fire years and 1,689,419 objects.
 
-The model is applied to \textbf{all 28 fire years and 1,689,419 objects}.
+\subsection{Predictors}
 
-\subsection{Predictors, and why none may name the year}
+Twenty predictors are used. Fifteen are size, shape, density, seed and date-structure metrics; the
+other five are aggregated vegetation fractions: agriculture, flooded grassland, pasture, temperate
+grassland and woody. The aggregation replaced the 23 raw class fractions, which were 58\,\% of the
+design matrix and consumed the model's split budget without adding skill; membership of each group
+is derived from the remap table by name, so a remap change follows through automatically. The five
+groups are deliberately not a partition and do not sum to one.
 
-Twenty predictors are used: fifteen size, shape, density, seed and date-structure metrics, plus
-\textbf{five aggregated vegetation fractions} --- agriculture, flooded grassland, pasture,
-temperate grassland and woody. The aggregation replaced the 23 raw class fractions, which were
-58\,\% of the design matrix and consumed the model's split budget without adding skill; membership
-of each group is derived from the remap table \emph{by name}, so a remap change follows through
-automatically. The five groups are deliberately not a partition and do not sum to one.
-
-\textbf{No predictor may name the year or act as a proxy for it}, and the rule has already cost
-three candidates. Per-year label prevalence in the fitting set is an artifact of where people drew,
-so a model given the year learns that sampling pattern and applies it to every object of that year.
-The fire year and the calendar year were removed for leaking the labels outright --- out of fold,
-the prediction for a year \emph{was} its label prevalence --- and the mean observation count was
-removed as a \emph{soft era proxy}: observation density rises as sensors come online, which lets an
-improving archive masquerade as a rising fire regime. All three keep their roles as product
-attributes; none of them is a predictor.
-
-The same rule is why season enters as \(\sin\) and \(\cos\) of the day of year rather than as the
-day itself --- season is legitimate information, but it must be \textbf{circular}, since the fire
-season straddles the turn of the year --- and why no absolute time coordinate is a predictor, burn
-dates included. Note that spatially blocked cross-validation cannot detect this class of leak,
-because it blocks space and leaves the year on both sides of every split; a standing per-year check
-is run instead.
+No predictor may name the year or act as a proxy for it. The proportion of burned objects in the
+fitting set varies among years as an artifact of sampling, so the fire year, the calendar year and
+the mean observation count per object were all dropped: the first two leak the labels directly, and
+the third is a proxy for the era, since observation density rises as sensors come online. They
+remain product attributes, but none of them is a predictor. Season is legitimate information and
+does enter the model, as \(\sin\) and \(\cos\) of the day of year, which keeps it circular across
+the turn of the year without carrying any absolute time coordinate.
 
 \subsection{The decision threshold}
 
-\textbf{A cut of 0.5 is wrong, and the right cut rises with object size.} Thresholds are swept on
-\emph{out-of-fold} probabilities --- never in-sample, or the cut would be chosen against answers the
-model has already seen --- and selected by Youden's \(J\) \parencite{youden1950}, which is the only
-criterion here that does not move with prevalence.
+A probability cut of 0.5 was far from optimal, and the right cut rises with object size. 
+Thresholds were swept on
+out-of-fold probabilities and selected by Youden's \(J\) \parencite{youden1950}, which is the only
+criterion here that does not move with prevalence. Sweeping in sample is never done, since the cut
+would then be chosen against answers the model has already seen.
 
 \begin{table}[ht]
 \centering
@@ -967,12 +851,12 @@ size cut rather than a threshold is the right tool.}
 \label{tab-thresholds}
 \begin{tabular}{l r r c c c}
 \toprule
-Size band & labels & prevalence & \textbf{cut} & \(J\) at the cut & \(J\) at 0.5 \\
+Size band & labels & prevalence & cut & \(J\) at the cut & \(J\) at 0.5 \\
 \midrule
 \(<\) 1 ha        & 114  & 0.254 & 0.250 & 0.826 & 0.643 \\
-1--50 ha          & 3217 & 0.468 & \textbf{0.202} & 0.600 & 0.492 \\
-50--300 ha        & 1192 & 0.576 & \textbf{0.436} & 0.645 & 0.631 \\
-\(\ge\) 300 ha    & 732  & 0.773 & \textbf{0.690} & 0.706 & 0.662 \\
+1--50 ha          & 3217 & 0.468 & 0.202 & 0.600 & 0.492 \\
+50--300 ha        & 1192 & 0.576 & 0.436 & 0.645 & 0.631 \\
+\(\ge\) 300 ha    & 732  & 0.773 & 0.690 & 0.706 & 0.662 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -982,41 +866,41 @@ Size band & labels & prevalence & \textbf{cut} & \(J\) at the cut & \(J\) at 0.5
 The bootstrap intervals on the three deployed cuts are close to disjoint, so the differences are
 signal rather than noise: the model is far more confident on large objects, and a single threshold
 would be simultaneously too high for small objects and too low for large ones. The gain lands where
-the error was --- sensitivity in the 1--50 ha band rises from 0.596 to 0.837.
+the error was: sensitivity in the 1--50 ha band rises from 0.596 to 0.837.
 
-Two qualifications. First, \textbf{the threshold governs object counts, not the area headline}: on
-a heavy year the band cuts call some 64,000 objects fire against 50,500 at a flat 0.5, for an
-increase of well under 2\,\% in burned area, because area is dominated by large objects the model
-is confident about. Second, \textbf{the cuts are a lower bound}. \(J\) is prevalence-invariant as a
-\emph{measure}, but the cut it selects is optimal for the prevalence of the set it was selected on,
-and that set is not the population (Section~\ref{sec-objlabels}).
+Two qualifications. First, the threshold governs object counts, not the area headline: on a heavy
+year the band cuts call some 64,000 objects fire against 50,500 at a flat 0.5, for an increase of
+well under 2\,\% in burned area, because area is dominated by large objects the model is confident
+about. Second, the cuts are a lower bound. \(J\) is prevalence-invariant as a measure, but the cut
+it selects is optimal for the prevalence of the set it was selected on, and that set is not the
+population (Section~\ref{sec-objlabels}).
 
-Where a human label exists for an object, it \textbf{overrides} the model's call. The published
-call is therefore the collected label where there is one and the model's call otherwise, and the
-three columns are kept separate in the product so that the provenance of every call is visible.
+Where a human label exists for an object, it overrides the model's call. The published call is
+therefore the collected label where there is one and the model's call otherwise, and the three
+columns are kept separate in the product so that the provenance of every call is visible.
 
 \subsection{Performance}
 
 Cross-validation blocks space into 0.5° cells assigned to five folds. This removes the adjacency
-leak --- objects from one drawn polygon are neighbours --- while keeping every region in every fold,
-which is the deployment condition. Leave-one-region-out was run for comparison and is the harshest
-possible test, but it is not the condition the model is used in: every region does have labels in
-production, and held-out prevalence swings from 0.10 in Patagonia to 0.83 in the Pampas, so a
-fold's model would be trained on a class mix it is never scored on. \textbf{The fold design decides
-the answer}, and the choice has to be argued rather than defaulted.
+leak, since objects from one drawn polygon are neighbours, while keeping every region in every
+fold, which is the deployment condition. Leave-one-region-out was run for comparison and is the
+harshest possible test, but it is not the condition the model is used in: every region does have
+labels in production, and held-out prevalence swings from 0.10 in Patagonia to 0.83 in the Pampas,
+so a fold's model would be trained on a class mix it is never scored on. The fold design decides
+the answer, and the choice has to be argued rather than defaulted.
 
 \begin{table}[ht]
 \centering
 \caption{Spatially blocked cross-validated performance, pooled over folds, at a flat 0.5 cut and at
-the deployed per-band cuts. AUC is 0.891 pooled; the observation-weighted \emph{within-year} AUC is
-0.845 over the eighteen years carrying both classes --- that is the figure to watch for leakage.}
+the deployed per-band cuts. AUC is 0.891 pooled; the observation-weighted within-year AUC is
+0.845 over the eighteen years carrying both classes, and that is the figure to watch for leakage.}
 \label{tab-cv}
 \begin{tabular}{l c c}
 \toprule
  & at 0.5 & at the deployed cuts \\
 \midrule
 Accuracy     & 0.790 & 0.814 \\
-Sensitivity  & 0.717 & \textbf{0.845} \\
+Sensitivity  & 0.717 & 0.845 \\
 Specificity  & 0.872 & 0.780 \\
 \bottomrule
 \end{tabular}
@@ -1025,63 +909,72 @@ Specificity  & 0.872 & 0.780 \\
 \FloatBarrier
 
 Performance is not uniform across sizes. Above 300 ha the model is nearly clean (AUC 0.923); the
-weak band is \textbf{1--50 ha} (AUC 0.871), which is also where 83\,\% of the objects are, and
-where at a flat 0.5 cut the model would miss two fires in five. That band is 61\,\% of the labels
-but 83\,\% of the population --- the same under-sampling that the threshold caveat and the posterior
-widths both report.
+weak band is 1--50 ha (AUC 0.871), which is also where 83\,\% of the objects are, and where at a
+flat 0.5 cut the model would miss two fires in five. That band is 61\,\% of the labels but 83\,\%
+of the population, the same under-sampling that the threshold caveat and the posterior widths both
+report.
 
-Variable importance was assessed with four different measures, because the predictors are strongly
-correlated --- area with pixel count with perimeter, the three nested neighbourhood windows --- and
-each measure mishandles correlation in its own way. Partial-dependence curves were avoided for the
-same reason and \textbf{accumulated local effects} \parencite{apley2020ale} used instead: a partial
-dependence plot averages over combinations that do not exist, such as a one-pixel object with a ten
-kilometre perimeter, and invents effects there. \textbf{Two predictors carry the model}: the
-temperate-grassland fraction and the seed fraction. That is the intended story --- real scars are
-densely seeded, and the fuel type decides how a burned patch looks. The size and shape block is
-nearly inert, and pixel count is last of the twenty on every measure. Reassuringly, no predictor
-shows the signature that exposed the year leak: a large split share concentrated near the root of
-the trees with an effect that tracks the calendar.
+\subsection{Additional filters and minimum mapped size}
 
-\subsection{The minimum mapped size}
+Two commission patterns survived the object classifier and were only visible once the model was
+applied out of sample, over the whole country and all fire years: agricultural fields mapped as
+fire across the country, and objects of \texttt{grassland\_pampa} mapped as fire in the
+agricultural Pampa. Harvest, tillage and stubble burning look like a burn scar to a single-date
+spectral model, and the \texttt{veg\_fire} remap deliberately keeps agriculture burnable, so those
+pixels were never excluded from the candidate set. Both patterns are compact and densely seeded,
+which is exactly the case the object classifier cannot resolve, so they are removed by two explicit
+exclusion rules applied to the objects themselves rather than by masking the rasters. Excluding
+whole objects keeps the vector layer and every raster identical by construction.
 
-Scoring the full population answers the question the minimum-size decision was supposed to rest on
---- \emph{is the model measurably less able to classify small objects?} --- and the answer is: not
-distinctively. Posterior uncertainty does fall monotonically with size, with mean interval width
-going from 0.41 below half a hectare to 0.13 above a thousand hectares, but the model is
-\textbf{unsure everywhere}: the global mean width is 0.32 and 31\,\% of all objects have an
-interval that straddles their own decision cut.
+Rule A removes objects that are almost entirely Pampa grassland (a \texttt{grassland\_pampa}
+fraction above 0.70), burned between 1 July and 15 November, smaller than 150 ha, and lying in the
+agricultural Pampa, delimited by a hand-drawn polygon. The three confinements are what make the
+rule safe. The season matters because Pampa grassland does burn outside that window and that fire
+is real; the area and size limits matter because the same vegetation class covers the marshes of
+the Delta del Paraná, which burn inside the window: an unconfined version of the rule deleted two
+thirds of the Delta's burned area, including the 121 kha Islas del Paraná fire of 2020. Rule B
+removes objects whose agriculture fraction exceeds 0.40, counting the three annual-cropping
+\texttt{veg\_fire} classes but not perennials and orchards. It applies everywhere and in every
+season.
 
-Two conclusions follow. \textbf{The honest argument for a one-hectare minimum is cost and benefit,
-not uncertainty}: it discards 3.4\,\% of the objects for 0.044\,\% of the area. And the interval
-width is reporting \emph{covariate shift} --- BART widens its posterior where it has no data, and
-31\,\% undecided is that message about five thousand labels against 1.69 million objects. The
-one-hectare cut is applied as a hard rule, which also satisfies, more strictly, the solitary-pixel
-filter of the network's common post-processing, since one hectare is about eleven pixels.
+The two rules are of similar size and cannot both fire on the same object at these thresholds. On
+fire year 2020 rule A removes 3.2\,\% of the burned area and rule B 3.8\,\%, together 7.0\,\%.
+Over the 28 fire years they take the mapped total from 69.12 Mha to 63.33 Mha, a reduction of
+8.4\,\%.
+
+The last filter is a minimum mapped size of one hectare, applied as a hard rule. The argument for
+it is cost and benefit rather than model uncertainty: it discards 3.4\,\% of the objects for
+0.044\,\% of the area. Posterior uncertainty does fall with object size, from a mean interval
+width of 0.41 below half a hectare to 0.13 above a thousand hectares, but the model is unsure
+everywhere, with a global mean width of 0.32 and 31\,\% of all objects straddling their own
+decision cut, so small objects are not distinctively harder to classify. The one-hectare cut also
+satisfies, more strictly, the solitary-pixel filter of the network's common post-processing, since
+one hectare is about eleven pixels. Objects below it are scored like everything else but are not
+published.
 
 \section{Products}\label{sec-products}
 
-Steps one to six are the algorithm; what follows is delivery. The fire-year objects are
-re-partitioned into \textbf{calendar years}, with the year and the month assigned \textbf{per pixel}
-from that pixel's own burn date rather than per object, and the published layers are derived from
-those pixels. Two of the network's post-processing stages --- the non-burnable land-cover mask and
-the solitary-pixel filter --- are already embedded further upstream in this algorithm and more
-strictly than the specification asks, so running them again would be a no-op at best.
+Our algorithm ends with a set of fire objects per fire-year; afterwards,
+all that remains is postprocessing to make the MapBiomas Fire network raster products.
+The fire-year objects are
+re-partitioned into calendar years, with the year and the month assigned per pixel from that
+pixel's own burn date rather than per object, and the published layers are derived from those
+pixels. 
 
 \subsection{The six subproducts}
 
-\textbf{The published products are the ones the MapBiomas Fuego network defines.} They are not
-Argentina's design and they are not justified here: every participating country publishes the same
-set, in the same shape and with the same pixel encodings, so that the layers are comparable across
-the network and readable by the same platform. Argentina delivers all six --- \emph{annual},
-\emph{monthly}, \emph{accumulated}, \emph{frequency}, \emph{year of last fire} and \emph{scar size};
-some countries deliver only the first four.
+The published products are the ones the MapBiomas Fuego network defines. They are not Argentina's
+design and they are not justified here: every participating country publishes the same set, in the
+same shape and with the same pixel encodings, so that the layers are comparable across the network
+and readable by the same platform. Argentina delivers all six: annual, monthly, accumulated,
+frequency, year of last fire and scar size. Some countries deliver only the first four.
 
-The six become twelve assets: four have a \emph{coverage} variant crossing the burned pixels with
-the published MapBiomas Argentina land cover of the same year, and the scar-size product comes with
-the scar identifier and the scar area it derives from. Every asset is a \textbf{single multiband
-image with one band per year}, not one image per year --- 27 bands (1999--2025) for the annual,
-monthly and year-of-last-fire products, 53 for the frequency and accumulated ones, one per two-sided
-window (Table~\ref{tab-products}).
+The six become twelve assets: four have a coverage variant crossing the burned pixels with the
+published MapBiomas Argentina land cover of the same year, and the scar-size product comes with
+the scar identifier and the scar area it derives from. Every asset is a single multiband image
+with one band per year, not one image per year: 27 bands (1999--2025) for the annual, monthly and
+year-of-last-fire products, 53 for the frequency and accumulated ones, one per two-sided window
+(Table~\ref{tab-products}).
 
 \begin{table}[ht]
 \centering
@@ -1112,24 +1005,24 @@ Subproduct & Band name & What a pixel holds \\
 
 \FloatBarrier
 
-A \textbf{scar} is a connected group of burned pixels within one calendar year, labelled with plain
-eight-connectivity --- the network's definition, and deliberately not the wider connectivity the fire
+A scar is a connected group of burned pixels within one calendar year, labelled with plain
+eight-connectivity: the network's definition, and deliberately not the wider connectivity the fire
 objects of Section~\ref{sec-objects} use. The eight size classes are the platform's published legend:
 \(<\)10, 10--250, 250--500, 500--5,000, 5,000--10,000, 10,000--50,000, 50,000--100,000 and
-\(\ge\)100,000 ha. Argentina populates all eight; the largest scar in the series is 219,410 ha, in
-2003. The scars also exist as vectors, one FeatureCollection per calendar year.
+\(\ge\)100,000 ha. Argentina populates all eight. 
+The scars also exist as vectors, one FeatureCollection per calendar year.
 
-Two reading rules follow from how the pixels are built. \textbf{The month of burn is measured, not
-inferred}: it comes from the pixel's own burn date rather than from the date of a minimum-NBR
-composite, which is how most of the network derives it. And \textbf{a fire that straddles 31 December
-is two scars}, one in each calendar year --- the price of assigning the date per pixel, and what
+Two reading rules follow from how the pixels are built. The month of burn is measured, not
+inferred: it comes from the pixel's own burn date rather than from the date of a minimum-NBR
+composite, which is how most of the network derives it. And a fire that straddles 31 December is
+two scars, one in each calendar year. That is the price of assigning the date per pixel, and what
 makes the annual, monthly and scar-size layers agree pixel for pixel.
 
 \subsection{The fire-object vector database}\label{sec-polygons}
 
-Alongside the six, and not one of them, Argentina publishes the \textbf{fire objects themselves} as a
-single vector layer: \texttt{burned\_area\_polygons\_v2}, \textbf{1,012,645 objects covering
-63.33 Mha}, every mapped fire of all 28 fire years in one FeatureCollection. It is the output of
+Alongside the six products, Argentina publishes the fire objects themselves as a
+single vector layer: \texttt{burned\_area\_polygons\_v2}, 1,012,645 objects covering 63.33 Mha,
+every mapped fire of all 28 fire years in one FeatureCollection. It is the output of
 Section~\ref{sec-objects} under the published selection, with nothing recomputed and no geometry
 touched.
 
@@ -1143,92 +1036,67 @@ credible interval; and \texttt{seed\_mean}. Every feature is stamped with
 \texttt{system:time\_end} is deliberately not set, so that one fire falls in exactly one time bucket
 and filtered areas stay summable.
 
-\textbf{Three things a user of this layer must know.}
+Users of this layer must consider what follows:
 
 \begin{itemize}
-  \item \textbf{It is a fire-year layer, and the rasters are calendar-year layers.}
-        \texttt{calendar\_year} is the \emph{majority} year of the object's pixels, while every raster
+  \item It is a fire-year layer, and the rasters are calendar-year layers.
+        \texttt{calendar\_year} is the majority year of the object's pixels, while every raster
         above assigns year and month per pixel. A fire straddling 31 December is split across two
-        years in the rasters and lands whole in one year here. Neither is wrong, but cross-tabulating
+        years in the rasters, but lands whole in one year here. Neither is wrong, but cross-tabulating
         the two without knowing this produces apparent \enquote{missing} area.
-  \item \textbf{Fire year 1998 exists here and in no published raster.} The calendar series starts in
-        1999, so the November--December 1998 tail --- 3,845 polygons, about 76 kha --- is only in this
+  \item Fire year 1998 exists here and in no published raster. The calendar series starts in
+        1999, so the November--December 1998 tail, 3,845 polygons and about 76 kha, is only in this
         layer.
-  \item \textbf{Area must be summed per object, not per row.} One very large fire year 2000 object
+  \item Area must be summed per object, not per row. One very large fire year 2000 object
         exceeded Earth Engine's vertex limit on ingest and is stored as four features that each repeat
         the whole object's attributes. Summing \texttt{area\_ha} row by row overstates the layer by
         5.1 Mha.
 \end{itemize}
 
-\subsection{What Argentina delivers, and what is only ours}
+\subsection{Useful assets for expert users}
 
-Not every country in the network delivers the same set, and the network's own scripts mention more
-layers than any single country produces. It is worth being explicit about which of the layers
-described above are Argentina's obligation to the network, and which exist only here.
-
-\textbf{Argentina delivers all six subproducts} --- annual, monthly, accumulated, frequency, year of
-last fire, and scar size --- together with the four \emph{coverage} variants and the two companion
-scar rasters they are built from, which is the twelve assets of Table~\ref{tab-products}. The launch
-guide's country table marks Argentina for all six; several countries deliver only the first four.
-
-\textbf{Three layers that appear in the network's publishing scripts are not Argentina's}: fire
-severity, the interval since the previous fire, and time since fire
-(\texttt{severity\_class},
-\texttt{interval\_since\_fire}, \texttt{time\_after\_fire}). They are listed there but are not in
-the country table for Argentina --- they are additions from other countries' chains. Collection 1
-does not produce them, and their absence is a scope decision rather than an omission.
-
-\textbf{The fire-object vector database is ours alone.} It is delivered alongside the six, but it is
-not one of them: it is not part of the network's common specification, no other country publishes
-its equivalent as part of the launch, and it is not copied into the network's public collection ---
-that copy takes an explicit list of subproducts, which this layer is not on. It exists because the
-algorithm of Sections~\ref{sec-snic} and~\ref{sec-objects} produces fire \emph{objects} as its
-natural output, and discarding them to publish only the rasters derived from them would throw away
-the level at which this collection actually reasons about fire. A user who wants burned area in the
-network's shape takes the six; a user who wants individual fires, with their dates, their size and
-the classifier's confidence in each one, takes this layer, and takes it from us
-(Section~\ref{sec-polygons}).
-
-The same asymmetry runs the other way and is worth stating once: \textbf{several things this
-algorithm computes are not published at all}. The per-observation burn probability is never
-materialised (Section~\ref{sec-deploy}); the annual time-series metrics and the segmentation output
-exist as intermediate assets in the production tree, not as products; and the twenty object metrics
-that feed the classifier are in the object database but only a handful of them reach the vector
-layer. None of that is a deliverable, and none of it is supported for external use.
+Our algorithm provides intermediate products, like the time series metrics and the 
+SNIC layers, which experienced users may request. They are available as
+GEE assets, and can be made public on request.
 
 \subsection{Where the products live}
 
-The assets above are produced in the project's own Earth Engine folder:
+The first route to the products is the MapBiomas Argentina platform:
 
 \begin{center}
-\small\texttt{projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/FINAL\_PRODUCTS/}
+\small\url{https://argentina.mapbiomas.org/}
 \end{center}
 
-\noindent That is \textbf{not} where a user should look for them --- it is the production tree, its
-contents are versioned and rebuilt, and access to it is restricted to the team.
+\noindent Its fire section is the interactive view of exactly the layers described above: they can be browsed by year, month and frequency, crossed with territories
+and land cover, and downloaded as statistics. That platform, and the MapBiomas Argentina website
+around it, is the entry point for the general public and the one we point users to.
 
-The six subproducts reach the public through the MapBiomas Fuego network: they are copied, by an
-explicit subproduct list, into the network's public asset collection, and from there they are
-rendered on the MapBiomas Argentina platform, where they can be browsed by year, month, frequency and
-territory and downloaded as statistics. The entry point for the general public is
-\url{https://argentina.mapbiomas.org/}, and the fire section of the platform is the interactive
-view of exactly these layers.
+The second route is Earth Engine. The six subproducts and their coverage variants are copied, by an
+explicit subproduct list, into the MapBiomas network's public asset collection:
 
-The fire-object vector database is different: it is \textbf{Argentina's own layer}, not one of the
-network's six, so it is not swept into the public copy. We share it directly, as a link to the asset
-above.
+\begin{center}
+\small\texttt{projects/mapbiomas-public/assets/argentina/fire/collection1/}
+\end{center}
+
+\noindent These copies are readable by anyone and are what the platform itself ingests, so they are
+the layers to use in any Earth Engine analysis. The download page of the platform serves the same
+products as cloud-optimised GeoTIFFs, one file per band, for users who work outside Earth Engine.
+
+The fire-object vector database is not one of the network's six, so it is not swept into that
+public copy. It is Argentina's own layer and we share it directly, as a link to the asset.
 
 \begin{quote}
 \small
-\textbf{[To be completed before release.]} The exact public locations --- the platform URL of the
-fire section, the public asset path of the network copy, the download page for the statistics, and
-the form in which the vector database is shared --- have to be filled in here once the launch
-configuration is fixed with the network and with the MapBiomas Argentina coordination.
+[To be completed before release.] The public locations have to be confirmed here once the launch
+configuration is fixed with the network and with the MapBiomas Argentina coordination: the platform
+URL of the fire section, the public asset path and the exact asset names after the copy, the
+download page, and the form in which the vector database is shared.
 \end{quote}
 
 \subsection{Using the products in Earth Engine}
 
-The quickest way to see the products is the Earth Engine Code Editor. The snapshot below loads the
+The platform is the quickest route to look at the products; this section is for users who want to
+work with them in Earth Engine. The snapshot below loads the
 annual and monthly layers for one year, the frequency layer for the whole series, and the fire-object
 polygons, with the visualisations the platform uses:
 
@@ -1241,7 +1109,7 @@ Code Editor tab:
 
 \begin{small}
 \begin{verbatim}
-var ROOT = 'projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/FINAL_PRODUCTS/';
+var ROOT = 'projects/mapbiomas-public/assets/argentina/fire/collection1/';
 var NAME = 'mapbiomas_argentina_fire_collection1_';
 var year = 2020;
 
@@ -1261,8 +1129,11 @@ var freq = ee.Image(ROOT + NAME + 'frequency_burned_v2')
              .select('fire_frequency_1999_2025');
 Map.addLayer(freq, {min: 1, max: 10}, 'fire frequency');
 
-// The fire-object vector database: one feature per mapped fire.
-var fires = ee.FeatureCollection(ROOT + 'burned_area_polygons_v2')
+// The fire-object vector database: one feature per mapped fire.  Argentina's own
+// layer, shared by us, so it is not under the network's public collection.
+var POLYGONS = 'projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/'
+             + 'FINAL_PRODUCTS/burned_area_polygons_v2';
+var fires = ee.FeatureCollection(POLYGONS)
               .filterDate(year + '-01-01', (year + 1) + '-01-01');
 var style = {color: 'white', fillColor: '00000000', width: 1};
 Map.addLayer(fires.style(style), {}, 'fire objects ' + year);
@@ -1272,11 +1143,13 @@ Map.setCenter(-64, -34, 5);
 \end{small}
 
 \noindent Note the two patterns every consumer needs: a subproduct is one image and a year is one
-\textbf{band} of it, and the polygon layer is filtered by date rather than by a year property,
-because each fire carries a single timestamp taken from its median burn date.
+band of it, and the polygon layer is filtered by date rather than by a year property, because each
+fire carries a single timestamp taken from its median burn date.
 
 \section{Reproducibility}
 
+% [Claude, we must check later if put here the mapbiomas-github which points to my repo
+% or my repo directly.]
 The code and the documentation needed to reproduce this workflow are hosted on
 \href{https://github.com/barberaivan/mapbiomas-argentina-fire}{GitHub}. The repository is organised
 as one directory per collection; Collection 1 lives in \texttt{collection-01/}, with the numbered
@@ -1292,133 +1165,146 @@ referenced from those notes.
 
 \section{Limitations and known challenges}
 
-\subsection{Where the algorithm struggles}
-
-\textbf{Productive, actively managed landscapes are the hardest case.} In agricultural regions the
+Productive, actively managed landscapes are the hardest case. In agricultural regions the
 region-growing step produces poor clusters: harvest patches enter the candidate footprint and are
 occasionally merged into a genuine scar. No spatial strategy can repair this, because the ambiguity
-is already present in the per-observation probability --- a harvested field and a burned field look
+is already present in the per-observation probability: a harvested field and a burned field look
 alike to a single-date spectral model. Improving fire mapping in croplands and sown pastures
-requires better \emph{spectral} models, which in turn requires collecting training data specifically
-on those confusions.
+requires better spectral models, which in turn requires collecting training data specifically on
+those confusions.
 
 The object classifier was conceived from the pilot's experience, where many false positives were
 easily separable from fire by shape and seed density: dendritic, sparse objects associated with
-drought and volcanic ash. It does that job well, and it also removes clearing-type disturbances ---
-roads, urbanisation --- that the pilot confounded with fire. But in regions where the false
-positives are compact and densely seeded, it helps much less. It is a filter on \emph{patch
-geometry and density}, and it cannot recover information the spectral stage did not capture.
+drought and volcanic ash. It does that job well, and it also removes clearing-type disturbances
+such as roads and urbanisation, which the pilot confounded with fire. But in regions where the
+false positives are compact and densely seeded, it helps much less. It is a filter on patch
+geometry and density, and it cannot recover information the spectral stage did not capture.
 
-\textbf{Understorey fires in the most productive systems remain largely undetected}, as they were in
-the pilot: a fire that burns beneath an intact canopy leaves little signal in a 30 m
-top-of-canopy reflectance series.
+Understorey fires in the most productive systems remain largely undetected, as they were in the
+pilot: a fire that burns beneath an intact canopy leaves little signal in a 30 m top-of-canopy
+reflectance series.
 
-\subsection{Limitations inherited from the data}
-
-\textbf{The object classifier's labelled sample is the binding limitation of the whole spatial
-stage} (Section~\ref{sec-objlabels}). Until a randomly sampled set of labels exists, the deployed
-thresholds must be treated as a lower bound and the per-object probability as a ranking rather than
-as a calibrated probability.
-
-\textbf{Observation density varies enormously through the series}, and the algorithm handles it
-explicitly --- an adaptive window choice, an adaptive gap gate, and an exported quality band --- but
-handling is not equivalence. Detections in 1999--2001, when only two sensors were flying and one of
-them had just launched, rest on fewer observations than detections in 2015. A residual increasing
-trend in the fire-object rate survives the removal of the era-proxy predictor; it is
-\textbf{unattributed rather than demonstrated to be clean}, and it should not be published as a
-fire-regime finding without an independent record to check it against.
-
-\textbf{The edge fire years are partial by construction} (Section~\ref{sec-fireyear}): 1998 holds
-only four months and 2025 only eight. Completing them requires extending the temporal stage back to
-May 1998 and forward through 2026.
-
-\textbf{The land cover used to select models is frozen}. The \texttt{veg\_fire} classification comes
-from a specific MapBiomas LULC collection, deliberately held fixed, because it decides which model
-judges each pixel and therefore the entire downstream candidate set. A newer land-cover collection
-reassigns that wherever a class changed, so the layer cannot be half-migrated: either the whole
-collection moves or none of it does.
-
-\subsection{Limitations of shape}
-
-\textbf{A fire that crosses 31 December becomes two scars} in the published calendar-year products,
-because year and month are assigned per pixel. Within the algorithm the fire is one object in one
-fire year; the split is a property of the delivery format, and the fire-object layer preserves the
-undivided event.
-
-\textbf{The minimum mapped unit is one hectare.} Smaller objects are scored like everything else but
-are not published; they are 3.4\,\% of the objects and 0.044\,\% of the area.
-
-\section{Priority lines of improvement}
+\section{Prioritized lines of improvement}
 
 These are listed in what we judge to be decreasing order of effect on mapping accuracy. They do not
 consider incorporating sensors other than Landsat, since for the first collections the priority is
-to refine the mapping without compromising the temporal extent of the product.
+to refine the mapping without compromising the temporal extent of the product. In fact, Collection 2
+aims at mapping the whole Landsat record, from 1986 onwards, as the land-cover products do: the
+MapBiomas Argentina land cover starts in 1985 and every stage of this algorithm reads the previous
+year, so 1986 is the first year that can be mapped.
 
 \paragraph{Training data that represents the false positives.} As in the pilot, the largest
-available gain is data on the processes that mimic fire --- harvest, drought, flooding, logging,
-insect defoliation, ash deposition --- collected explicitly as negatives, region by region. The
-Collection 1 training set already contains some of these, and they demonstrably help; there are
-nowhere near enough of them. Because these processes are spectrally similar to burning, the
-\emph{relative} abundance of each class in the training set matters as much as the absolute number
-of samples: the less separable the classes, the more the prior implied by the sampling drives the
-fitted probability.
+available gain is data on the processes that mimic fire: harvest, drought, flooding, logging,
+insect defoliation, ash deposition. They have to be collected explicitly as negatives, region by
+region. The Collection 1 training set already contains some of these, and they demonstrably helped;
+there are nowhere near enough of them. Collecting more data in productive areas is a main priority.
 
 \paragraph{A randomly sampled set of object labels.} The second-largest gain costs the least effort.
-A few thousand labels drawn at random from the object population --- rather than from where fires
-were known --- would convert the object classifier's output from a ranking into a calibrated
-probability, put the size-band thresholds on a defensible footing, and let the population fire rate
-be estimated rather than assumed. Objects with wide posterior intervals are the natural targets for
-a second round.
+A few thousand labels drawn at random from the object population, rather than from where fires were
+known, would convert the object classifier's output from a ranking into a calibrated probability,
+put the size-band thresholds on a defensible footing, and let the population fire rate be estimated
+rather than assumed. Objects with wide posterior intervals are the natural targets for a second
+round.
+
+\paragraph{Thresholds for seeds and candidates.} The deployed cuts were set by visual exploration
+and are global (Section~\ref{sec-snic}), and they are the largest single lever in the segmentation:
+everything the object stage sees is what they let through. Investing the time to define them per
+\texttt{veg\_fire} class, on data rather than by eye, would probably improve the quality of the
+SNIC objects more than anything else at this stage.
 
 \paragraph{Better use of the temporal metrics in the segmentation.} The sixteen exported bands were
 fixed before the segmentation stage existed, and some of them are never read. The interesting
-question is not only which to drop but \textbf{which the segmentation should have been using}: the
-seed and candidate cuts currently rest on the jump metrics and the observation count, leaving the
-sharpness and the window-span bands --- the ones that best separate abrupt change from gradual
-change --- almost unused. This is the cheapest available improvement in commission error, because it
-requires no re-export.
+question is not only which to drop but which the segmentation should have been using: the seed and
+candidate cuts currently rest on the jump metrics and the observation count, leaving the sharpness
+and the window-span bands, the ones that best separate abrupt change from gradual change, almost
+unused. This is the cheapest available improvement in commission error, because it requires no
+re-export.
 
 \paragraph{Splitting the vegetation remap.} Several \texttt{veg\_fire} classes are currently merged
 across regions for want of data rather than on ecological grounds (Section~\ref{sec-vegfire}). With
-more collected fires, those groups can be split and fitted on their own merits, which directly
+more collected fires, those groups can be split and fitted separately, which directly
 improves the per-class fit where it is weakest.
 
 \paragraph{The spectral model itself.} The logistic regression can be extended to a categorical
-regression predicting the probability of several classes at once --- unburned, burned, cloud, water,
-ash, clearing, drought --- instead of a binary one; or simple auxiliary models can be multiplied
-into it, for instance a brightness-based probability of cloud, snow or ash. Both remain compatible
-with the constraint that the model has to run inside GEE over the entire archive. This is also where
-richer classifiers would pay off most, if a deployment path for them existed.
+regression predicting the probability of several classes at once, such as unburned, burned, cloud,
+water, ash, clearing and drought, instead of a binary one; or simple auxiliary models can be
+multiplied into it, for instance a brightness-based probability of cloud, snow or ash. Both remain
+compatible with the constraint that the model has to run inside GEE over the entire archive. This
+is also where richer classifiers would pay off most, if a deployment path for them existed.
 
-\paragraph{Provenance stamping.} A practical, cheap improvement: every exported annual-metrics asset
-records its year and its tile but \emph{not} which coefficient set produced it. Because the
-coefficients enter through a per-pixel remap, a model improvement affecting one vegetation class
-changes nothing in tiles where that class is absent, so a partial re-export is technically sound ---
-but it would be of undocumented provenance. Stamping the deployed model version on every asset costs
-nothing and is what makes a partial re-run auditable.
-
-\section{Considerations for Collection 2}
-
-Re-running the temporal stage is the single largest commitment a collection can make --- on the
-order of a terabyte and weeks of distributed export --- so the decisions that force it belong on the
-table early, with time to think, rather than in the run-up to a launch. Three of them are already
-identified: whether to recompute against a newer land-cover collection, which reassigns
-\texttt{veg\_fire} everywhere a class changed and therefore cannot be done by halves; whether a
-model improvement may be applied to part of the country, which is technically possible and currently
-blocked only by the provenance-stamping gap above; and which of the sixteen bands to keep.
-
-Two metrics should simply stop being computed. The mean observation count per object is not a
-predictor and carrying it invites the era-proxy mistake; the observation count belongs where it is
-already used and normalised, inside the seed definition. And pixel count should give way entirely to
-area, since the pixel scale is latitude-dependent and the model confirms that the count carries
-nothing the area does not.
-
-Beyond that, the two open fronts are the ones named above: training data on the confounding
-processes, and a randomly sampled set of object labels. Both are collection effort rather than
-algorithmic development, and both are the kind of work whose payoff is invisible until it is done.
+\paragraph{Planning and versioning a change to the spectral model.} Any change to the spectral
+model has to be paid for in the temporal stage, which is the single largest commitment a collection
+can make: about a terabyte of assets and some fifteen days of distributed export for the whole
+country and series. That cost is what makes provenance worth fixing first. Every exported
+annual-metrics asset records its year and its tile but not which coefficient set produced it, and
+because the coefficients enter through a per-pixel remap, a model improvement affecting one
+vegetation class changes nothing in the tiles where that class is absent. A partial re-export is
+therefore technically sound, and the only thing that stops it being auditable is the missing stamp.
+Recording the deployed model version on every asset costs nothing, and it is what would let an
+improvement be rolled out over the part of the country it actually changes instead of forcing a
+full re-run.
 
 \newpage
 
 \printbibliography
 
 \end{document}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% CLAUDE'S NOTES, 2026-09-20 — answers to the [Claude, ...] comments, and what
+% I could not settle on my own.  Delete this block once reviewed.
+%
+% DONE
+% - Predictors of the object model: the two leakage paragraphs are now one short
+%   paragraph (year / calendar year / mean observation count dropped, sampling
+%   artifact, season as sin+cos).
+% - Variable importance: nothing is left in the document about a formal analysis.
+%   The seed-fraction claim survives where it always was, in "Object metrics"
+%   ("the single most discriminating metric for fire against noise").
+% - New section "Additional filters and minimum mapped size": rules A and B and
+%   the 1 ha cut, written from docs/07-vector_to_raster "Object exclusion
+%   ruleset".  The old "The minimum mapped size" subsection and the 1 ha
+%   paragraph that was in Limitations are folded into it.
+% - "Seeds, candidates and dates" now says the deployed cuts are global and were
+%   set by visual exploration, and that the data-calibrated per-class cuts were
+%   dropped after failing out of sample (docs/04-snic).
+% - Prioritized lines of improvement: the seed/candidate threshold item now comes
+%   first, above the temporal-metrics one.  "Considerations for Collection 2" is
+%   gone; its compute-cost and versioning argument is now the last item,
+%   "Planning and versioning a change to the spectral model".
+% - "Where the products live" rewritten around the public routes only: platform
+%   first, then the network's public GEE collection, then the download page.  The
+%   production tree path is no longer in the document.  The Code Editor snippet
+%   now reads from projects/mapbiomas-public/assets/argentina/fire/collection1/.
+% - Fixed on the way: \texti -> \emph, \cietalt -> \cite, \citep/\citealt ->
+%   \parencite/\cite (natbib commands do not exist with biblatex and broke the
+%   build), a stray "}" in "Spatial stage I: Foundations", the key
+%   alencar2022_mapbiomas_fire -> alencar2022mapbiomas_fire, and seven spelling
+%   slips (previoues, Theser, aggregateion, padd, severiy, probablity,
+%   upstreams).
+%
+% DOUBTS FOR YOU
+% 1. 1986.  I wrote that the land cover starts in 1985 and that the algorithm
+%    reads y-1, so 1986 is the first mappable year.  Check the premise: the
+%    published col-3 LULC has bands classification_1985..2025, while the frozen
+%    model-side col-2 v8 covers 1986-2024 (utils/constants.py).  If Collection 2
+%    is meant to start in 1985, or to be bounded by Landsat 5 (1984) instead,
+%    this sentence has to change.
+% 2. Public asset names.  ROOT in the snippet is the network's public collection,
+%    but I do not know whether the "_v2" token survives Brazil's copy (their
+%    stage-2 script strips "_vN" from the classifications).  If it does not, the
+%    three ee.Image() lines need their names changed.  I flagged it inside the
+%    "[To be completed before release]" box.
+% 3. The fire-object polygons are still cited from our own FINAL_PRODUCTS path in
+%    the snippet, because that layer is not copied to mapbiomas-public.  Tell me
+%    if you would rather drop those four lines from the example than publish the
+%    production path.
+% 4. The diagnostic panel figure (fig-ts-panel, Cholila) is still in, with your
+%    comment above it.  Your call; if it goes, the cleaning-gate subsection reads
+%    fine without it.
+% 5. Reproducibility section: still pointing at github.com/barberaivan.  Waiting
+%    on your decision about the MapBiomas GitHub organisation.
+% 6. Figure fig-algo is still the Collection 0 placeholder diagram.
+% 7. The abbreviation "SNIC objects" is used in the improvement item; elsewhere
+%    the document says "fire objects".  Unify if you care.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
