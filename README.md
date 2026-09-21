@@ -102,4 +102,4 @@ commands to run it.
 
 ## Documentation
 
-- **ATBD** (methodology): [`collection-00/docs/.../mapbiomas_fire_argentina_atbd_pilot_2025.pdf`](collection-00/docs/documentation_pilot_latex/build/mapbiomas_fire_argentina_atbd_pilot_2025.pdf) — primary reference for collection 0; collection 1 ATBD in preparation.
+- **ATBD** (methodology): [`collection-01/ATBD/build/main.pdf`](collection-01/ATBD/build/main.pdf) — the collection 1 document, in English (draft; source in [`collection-01/ATBD/`](collection-01/ATBD/)). The pilot's is [`collection-00/docs/.../mapbiomas_fire_argentina_atbd_pilot_2025.pdf`](collection-00/docs/documentation_pilot_latex/build/mapbiomas_fire_argentina_atbd_pilot_2025.pdf).

@@ -33,6 +33,7 @@ the previous-year MapBiomas mosaic bands are attached from the year *prior* to e
 
 | Directory | What is in it | Read |
 |---|---|---|
+| [`ATBD/`](ATBD/) | the **Algorithm Theoretical Basis Document** — the method written for readers outside the project, one level above `docs/`: what each stage measures and why, not the parameters | [`ATBD/README.md`](ATBD/README.md) |
 | [`docs/`](docs/) | **the map-making chain and nothing else** — `00-overview` plus one doc per step, `notes/` (the lab notebook) and `external/` (readings of code we do not own) | [`docs/00-overview.md`](docs/00-overview.md) |
 | [`workflow/`](workflow/) | the numbered pipeline steps, mixed Python and R. One step, one export | the matching `docs/NN-*.md` |
 | [`scripts/`](scripts/) | everything that is *not* a numbered step: launchers, gates, watchers, trials | [`scripts/README.md`](scripts/README.md) |

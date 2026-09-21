@@ -31,6 +31,7 @@ the completed Patagonia pilot — reference, frozen, not active work.
 
 | Document | What it is |
 |---|---|
+| [`ATBD/`](collection-01/ATBD/) | the **ATBD** — the conceptual document above `docs/`, and the one that goes outside the project. Says what each stage measures and why; sends every parameter, threshold and asset id to `docs/` |
 | [`docs/00-overview.md`](collection-01/docs/00-overview.md) | **read first** — the method in one page: spectral → temporal → spatial, and which step is which |
 | [`docs/TEMPLATE.md`](collection-01/docs/TEMPLATE.md) | the shape a step doc follows — read before writing or rewriting one |
 | `docs/01-training_data.md` | step 01 — training-data export, labels, inputs |

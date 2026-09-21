@@ -17,8 +17,7 @@ preamble and style.
 | `frontpage.tex` | title page (logo, collection, version, team) |
 | `references.bib` | bibliography |
 | `figures/` | the seven images, plus the scripts that regenerate the non-copied ones |
-| `author_order.R` | the author-order draw between Lican Martínez and Ramón Peña Agrest: a public drand round fixes it, so the result is reproducible and nobody could have steered it. Its header comment is the documentation |
-| `claude_comments.md` | **read this first if you are reviewing the draft** — decisions taken, open doubts, what is provisional |
+| `checklist.md` | **read this first** — the three things still missing, and what each one is waiting on |
 | `build/` | LaTeX output; `build/main.pdf` is the document |
 
 ## Build

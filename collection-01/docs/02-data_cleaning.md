@@ -21,6 +21,9 @@ asset — the same tier as `download_observations.py`.
 | **in** | the per-fire manual edits, one sheet per region | `data/data_cleaning.xlsx` |
 | **out** | the same CSVs with a boolean `fit` column added | in place |
 
+Over the five regions the gate keeps **5,923,062 of the 6,177,098 downloaded observations** (95.9 %),
+of which 541,789 (9.1 %) are labelled burned.
+
 Re-running is **idempotent** — it recomputes only `fit`, and never touches the original columns.
 Edit the `RULES` table and re-run to revise.
 

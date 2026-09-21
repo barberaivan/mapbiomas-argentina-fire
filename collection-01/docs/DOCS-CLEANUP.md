@@ -574,8 +574,6 @@ has a real ATBD. No pass, no template, no extraction.
       `statistics/docs/statistics.md`. Left unfixed on purpose: one link is the piecemeal this item
       exists to avoid. Re-run that check at the start of this sweep; it is cheap and it is the
       right entry point.
-- [ ] Write the **collection-1 ATBD**, in one deliberate pass: collection 0's ATBD supplies the
-      **structure**, `00-overview.md` + the `Key decisions` sections supply the **content**.
 - [ ] **Reduction 2** (see §2): once the ATBD exists, the `Key decisions` sections shrink to
       pointers. Only then is the "explanation moves out of docs" half of the plan complete.
 

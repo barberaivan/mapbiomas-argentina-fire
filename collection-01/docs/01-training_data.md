@@ -36,7 +36,7 @@ Landsat C2 SR + MapBiomas mosaic (`y−1`) + expert-collected points
 | **in** | burned / unburned points collected interactively per fire by domain experts | GEE assets — collection procedure and layout in [`../samples/README.md`](../samples/README.md) |
 | **out** | observations, one asset per fire | `COLLECTION-1/TRAINING-DATA/{region}/training_observations-fire_NN_v{version}` |
 | **out** | per-run reproducibility log | `workflow/01-training_data_export/run_{region}_v{version}.json` |
-| **out** | pooled observations for the local fit (~5.7 M obs over 5 regions, git-ignored) | `data/training_observations_{region}_v{version}.csv` |
+| **out** | pooled observations for the local fit (6,177,098 obs over 5 regions, of which 5,923,062 pass the step-02 `fit` gate; git-ignored) | `data/training_observations_{region}_v{version}.csv` |
 
 Landsat is QA_PIXEL-masked (cloud, cloud shadow, snow, water); L5/L7 reflectance is harmonized
 to the OLI domain (Roy et al. 2016) and OLI/OLI-2 left as-is. There is **no temporal

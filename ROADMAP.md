@@ -20,23 +20,20 @@ Read it at the start of every session, before planning anything.
 
 ## Next
 
-**Ordenar y limpiar el repo — el plan vive en [`DOCS-CLEANUP.md`](DOCS-CLEANUP.md)** (raíz del
-repo): el orden de las fases, la plantilla, a dónde va cada archivo y el protocolo de sesión.
+**Ordenar y limpiar el repo — el plan vive en [`collection-01/docs/DOCS-CLEANUP.md`](collection-01/docs/DOCS-CLEANUP.md)**: el orden de las fases, la plantilla, a dónde va cada archivo y el protocolo de sesión.
 El braindump que lo originó está absorbido en §1 de ese plan; la versión original queda en el
 historial de git.
 
 ## After
 
 - **El ATBD de Argentina Fuego Col1**, que nadie más puede escribir por nosotros.
-    Hay un **borrador en [`collection-01/ATBD/`](collection-01/ATBD/)** (LaTeX, inglés, 31 pp.),
-    pendiente de revisión de Iván. Leer primero `ATBD/claude_comments.md`: lista los marcadores que
-    hay que completar — el diagrama del algoritmo, la lista del equipo, el link de snapshot del Code
-    Editor y el párrafo de dónde viven los productos para el público.
-    **Cuando el ATBD se dé por cerrado, hay que indexarlo en los README del repo**: no hay
-    ni una línea que apunte a él todavía. Van al menos `collection-01/README.md` (el mapa de
-    directorios) y la tabla de documentación de `CLAUDE.md`, diciendo qué es —el documento
-    conceptual, por encima de `docs/`— y en qué se diferencia de las notas por paso. Un ATBD que no
-    figura en ningún índice no lo encuentra nadie que llegue al repo.
+    El **borrador está en [`collection-01/ATBD/`](collection-01/ATBD/)** (LaTeX, inglés, 27 pp.),
+    revisado por Iván y con la portada al día. **Lo que falta está en
+    [`ATBD/checklist.md`](collection-01/ATBD/checklist.md)**, tres ítems: el diagrama del
+    algoritmo, las direcciones públicas de fuego (Gonza y Luna) y el snippet de GEE más el link de
+    snapshot (Vera).
+    ✅ Indexado (21 sep): `collection-01/README.md`, la tabla de documentos de `CLAUDE.md` y el
+    README raíz apuntan al ATBD.
 - **Seguir explorando análisis para el lanzamiento de diciembre**. 
     Ahí hay 4 factsheet-related notebooks; factsheet_sep2026 es el que soporta el factsheet
     del lanzamiento de Col3 ARG en septiembre.

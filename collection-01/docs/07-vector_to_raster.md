@@ -337,7 +337,11 @@ address an old product deliberately (a v1-vs-v2 comparison).
 side and **they copy it over the public asset**, so the public id — and therefore the Workspace
 registration, the `band_format` lookup and every download link — does not change
 ([`../statistics/docs/statistics.md`](../statistics/docs/statistics.md) §11 "Publication and
-launch").
+launch"). **That public id keeps a `_v1` token**, measured 2026-09-21 against the countries
+already published: Paraguay, Chile and Brazil all read
+`…/<country>/fire/collection1/mapbiomas_<country>_fire_collection1_<subproduct>_v1`. Ours will be
+`mapbiomas_argentina_fire_collection1_<subproduct>_v1` however many times we bump `PRODUCT_VERSION`
+on our side.
 Versioning on our side then buys three things overwriting would not:
 
 1. the v1 products stay readable while v2 is built, so a number can be traced to the layer it came

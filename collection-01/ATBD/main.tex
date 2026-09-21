@@ -69,8 +69,8 @@ that nobody would read. What follows is the reasoning: what each stage measures,
 why it measures it that way, and what it hands to the next stage. Readers who want to reproduce
 the algorithm elsewhere, or who need the exact value of a parameter, should go to the per-step
 technical notes in the project repository, at
-\href{https://github.com/barberaivan/mapbiomas-argentina-fire/tree/main/collection-01/docs}{\texttt{collection-01/docs}}
-(\url{https://github.com/barberaivan/mapbiomas-argentina-fire}). There is one note per workflow
+\href{https://github.com/mapbiomas/argentina-fire/tree/main/collection-01/docs}{\texttt{collection-01/docs}}
+(\url{https://github.com/mapbiomas/argentina-fire}). There is one note per workflow
 step, numbered to match it, and each one points onward to the production code, the configuration
 files and the analysis notebooks that justify its choices. We cite those documents here as
 \enquote{see \texttt{docs/NN}}.
@@ -275,21 +275,6 @@ periods to keep clear signal only.
 Of the 6,177,098 extracted observations, 5,923,062 pass the gate, of which 541,789 (9.1\,\%) are
 labelled burned. 
 
-% [Claude, we have to think later whether this figure remains or not, I lean towards no]
-\begin{figure}[ht]
-  \centering
-  \includegraphics[width=0.86\textwidth]{ts_panel_pat_fire01.png}
-  \caption{Diagnostic panel for one collected fire (Cholila, Patagonia, 2015). Thin lines are
-  individual training points, thick lines the median across points; orange is the burned class,
-  blue the unburned class. The top two rows show the raw NBR and NBR2 series and the shaded
-  pre-fire and post-fire windows defined by the collector; the bottom two show the predicted burn
-  probability per observation, raw and smoothed. Unburned points keep a low probability throughout,
-  while burned points jump to near 1 at the fire and stay there. That is the signature the temporal
-  stage is built to measure.}
-  \label{fig-ts-panel}
-\end{figure}
-
-\FloatBarrier
 
 \subsection{Vegetation classes for fire}\label{sec-vegfire}
 
@@ -948,9 +933,8 @@ it is cost and benefit rather than model uncertainty: it discards 3.4\,\% of the
 width of 0.41 below half a hectare to 0.13 above a thousand hectares, but the model is unsure
 everywhere, with a global mean width of 0.32 and 31\,\% of all objects straddling their own
 decision cut, so small objects are not distinctively harder to classify. The one-hectare cut also
-satisfies, more strictly, the solitary-pixel filter of the network's common post-processing, since
-one hectare is about eleven pixels. Objects below it are scored like everything else but are not
-published.
+satisfies, more strictly, the solitary-pixel filter of the network's common post-processing.
+Objects below it are scored like everything else but are not published.
 
 \section{Products}\label{sec-products}
 
@@ -1061,15 +1045,17 @@ GEE assets, and can be made public on request.
 
 \subsection{Where the products live}
 
-The first route to the products is the MapBiomas Argentina platform:
+The first route to the products is the MapBiomas Argentina platform, and the website around it:
 
 \begin{center}
+\small\url{https://plataforma.argentina.mapbiomas.org/}\\[0.2cm]
 \small\url{https://argentina.mapbiomas.org/}
 \end{center}
 
-\noindent Its fire section is the interactive view of exactly the layers described above: they can be browsed by year, month and frequency, crossed with territories
-and land cover, and downloaded as statistics. That platform, and the MapBiomas Argentina website
-around it, is the entry point for the general public and the one we point users to.
+\noindent The platform's fire section is the interactive view of exactly the layers described
+above: they can be browsed by year, month and frequency, crossed with territories and land cover,
+and downloaded as statistics. That is the entry point for the general public and the one we point
+users to.
 
 The second route is Earth Engine. The six subproducts and their coverage variants are copied, by an
 explicit subproduct list, into the MapBiomas network's public asset collection:
@@ -1079,18 +1065,26 @@ explicit subproduct list, into the MapBiomas network's public asset collection:
 \end{center}
 
 \noindent These copies are readable by anyone and are what the platform itself ingests, so they are
-the layers to use in any Earth Engine analysis. The download page of the platform serves the same
-products as cloud-optimised GeoTIFFs, one file per band, for users who work outside Earth Engine.
+the layers to use in any Earth Engine analysis. Each one is named
+\texttt{mapbiomas\_argentina\_fire\_collection1\_<subproduct>\_v1}: the version token belongs to the
+published copy and is set by the network, so it does not follow our internal product version. The download page,
+
+\begin{center}
+\small\url{https://argentina.mapbiomas.org/descargas/}
+\end{center}
+
+\noindent serves the same products as cloud-optimised GeoTIFFs, one file per band, for users who
+work outside Earth Engine.
 
 The fire-object vector database is not one of the network's six, so it is not swept into that
 public copy. It is Argentina's own layer and we share it directly, as a link to the asset.
 
 \begin{quote}
 \small
-[To be completed before release.] The public locations have to be confirmed here once the launch
-configuration is fixed with the network and with the MapBiomas Argentina coordination: the platform
-URL of the fire section, the public asset path, the download page, and the form in which the
-vector database is shared.
+[To be completed before release.] Two things have to be confirmed here once the launch
+configuration is fixed with the network and with the MapBiomas Argentina coordination: the address
+of the fire section itself, which the sibling countries publish as a page of their own, and the
+form in which the fire-object vector database is shared.
 \end{quote}
 
 \subsection{Using the products in Earth Engine}
@@ -1111,21 +1105,22 @@ Code Editor tab:
 \begin{verbatim}
 var ROOT = 'projects/mapbiomas-public/assets/argentina/fire/collection1/';
 var NAME = 'mapbiomas_argentina_fire_collection1_';
+var V    = '_v1';   // version token of the published copy
 var year = 2020;
 
 // Annual burned area: one band per year, 1 = burned.
-var annual = ee.Image(ROOT + NAME + 'annual_burned')
+var annual = ee.Image(ROOT + NAME + 'annual_burned' + V)
                .select('burned_area_' + year).selfMask();
 Map.addLayer(annual, {palette: ['#ff0000']}, 'burned ' + year);
 
 // Month of burn: 1-12.
-var monthly = ee.Image(ROOT + NAME + 'monthly_burned')
+var monthly = ee.Image(ROOT + NAME + 'monthly_burned' + V)
                 .select('burned_monthly_' + year).selfMask();
 Map.addLayer(monthly, {min: 1, max: 12, palette: ['#2c7bb6','#ffffbf','#d7191c']},
              'month of burn ' + year);
 
 // Fire frequency over the whole series: number of years burned.
-var freq = ee.Image(ROOT + NAME + 'frequency_burned')
+var freq = ee.Image(ROOT + NAME + 'frequency_burned' + V)
              .select('fire_frequency_1999_2025');
 Map.addLayer(freq, {min: 1, max: 10}, 'fire frequency');
 
@@ -1148,15 +1143,13 @@ fire carries a single timestamp taken from its median burn date.
 
 \section{Reproducibility}
 
-% [Claude, we must check later if put here the mapbiomas-github which points to my repo
-% or my repo directly.]
 The code and the documentation needed to reproduce this workflow are hosted on
-\href{https://github.com/barberaivan/mapbiomas-argentina-fire}{GitHub}. The repository is organised
+\href{https://github.com/mapbiomas/argentina-fire}{GitHub}. The repository is organised
 as one directory per collection; Collection 1 lives in \texttt{collection-01/}, with the numbered
 pipeline scripts in \texttt{workflow/}, the configuration tables that every stage reads in
 \texttt{config/}, the fitted coefficients in \texttt{models/}, and the analysis notebooks in
 \texttt{notebooks/}. The per-step technical notes in
-\href{https://github.com/barberaivan/mapbiomas-argentina-fire/tree/main/collection-01/docs}{\texttt{collection-01/docs}}
+\href{https://github.com/mapbiomas/argentina-fire/tree/main/collection-01/docs}{\texttt{collection-01/docs}}
 are the intended entry point for anyone reproducing or adapting the method: each one states what its
 stage measures, lists its inputs and outputs, records the decisions and their reasons, and warns
 about the failure modes that were actually encountered. The Earth Engine JavaScript used for
@@ -1208,7 +1201,7 @@ round.
 and are global (Section~\ref{sec-snic}), and they are the largest single lever in the segmentation:
 everything the object stage sees is what they let through. Investing the time to define them per
 \texttt{veg\_fire} class, on data rather than by eye, would probably improve the quality of the
-SNIC objects more than anything else at this stage.
+fire objects more than anything else at this stage.
 
 \paragraph{Better use of the temporal metrics in the segmentation.} The sixteen exported bands were
 fixed before the segmentation stage existed, and some of them are never read. The interesting
@@ -1248,56 +1241,3 @@ full re-run.
 
 \end{document}
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% CLAUDE'S NOTES, 2026-09-20 — answers to the [Claude, ...] comments, and what
-% I could not settle on my own.  Delete this block once reviewed.
-%
-% DONE
-% - Predictors of the object model: the two leakage paragraphs are now one short
-%   paragraph (year / calendar year / mean observation count dropped, sampling
-%   artifact, season as sin+cos).
-% - Variable importance: nothing is left in the document about a formal analysis.
-%   The seed-fraction claim survives where it always was, in "Object metrics"
-%   ("the single most discriminating metric for fire against noise").
-% - New section "Additional filters and minimum mapped size": rules A and B and
-%   the 1 ha cut, written from docs/07-vector_to_raster "Object exclusion
-%   ruleset".  The old "The minimum mapped size" subsection and the 1 ha
-%   paragraph that was in Limitations are folded into it.
-% - "Seeds, candidates and dates" now says the deployed cuts are global and were
-%   set by visual exploration, and that the data-calibrated per-class cuts were
-%   dropped after failing out of sample (docs/04-snic).
-% - Prioritized lines of improvement: the seed/candidate threshold item now comes
-%   first, above the temporal-metrics one.  "Considerations for Collection 2" is
-%   gone; its compute-cost and versioning argument is now the last item,
-%   "Planning and versioning a change to the spectral model".
-% - "Where the products live" rewritten around the public routes only: platform
-%   first, then the network's public GEE collection, then the download page.  The
-%   production tree path is no longer in the document.  The Code Editor snippet
-%   now reads from projects/mapbiomas-public/assets/argentina/fire/collection1/.
-% - Fixed on the way: \texti -> \emph, \cietalt -> \cite, \citep/\citealt ->
-%   \parencite/\cite (natbib commands do not exist with biblatex and broke the
-%   build), a stray "}" in "Spatial stage I: Foundations", the key
-%   alencar2022_mapbiomas_fire -> alencar2022mapbiomas_fire, and seven spelling
-%   slips (previoues, Theser, aggregateion, padd, severiy, probablity,
-%   upstreams).
-%
-% DOUBTS FOR YOU
-% 1. SETTLED by you: land cover runs from 1986, Collection 2 targets 1986-2026,
-%    and the text no longer argues from the previous-year requirement.  Note that
-%    mapping 1986 itself would need a different strategy, which the document does
-%    not discuss; say so there if you want it on the record.
-% 2. SETTLED by you: the "_v2" token is not copied to the public asset, so the
-%    snippet now reads annual_burned, monthly_burned and frequency_burned.
-% 3. The fire-object polygons are still cited from our own FINAL_PRODUCTS path in
-%    the snippet, because that layer is not copied to mapbiomas-public.  Tell me
-%    if you would rather drop those four lines from the example than publish the
-%    production path.
-% 4. The diagnostic panel figure (fig-ts-panel, Cholila) is still in, with your
-%    comment above it.  Your call; if it goes, the cleaning-gate subsection reads
-%    fine without it.
-% 5. Reproducibility section: still pointing at github.com/barberaivan.  Waiting
-%    on your decision about the MapBiomas GitHub organisation.
-% 6. Figure fig-algo is still the Collection 0 placeholder diagram.
-% 7. The abbreviation "SNIC objects" is used in the improvement item; elsewhere
-%    the document says "fire objects".  Unify if you care.
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
