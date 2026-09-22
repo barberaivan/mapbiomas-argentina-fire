@@ -189,12 +189,15 @@ evidence the previous one could not see (Fig.~\ref{fig-algo}).
 
 \begin{figure}[ht]
   \centering
-  \includegraphics[width=0.82\textwidth]{algorithm_c00_placeholder.png}
-  \caption{Placeholder. The diagram of the Collection 0 algorithm, shown here while the
-  Collection 1 diagram is being prepared. The overall shape still holds: spectral, then temporal,
-  then spatial context, then the published subproducts. Several boxes have changed, though.
-  Collection 1 has no annual probabilistic classifier and no hand-drawn masks, and its object
-  filter is a fitted classifier rather than a set of thresholds.}
+  \includegraphics[width=0.82\textwidth]{algorithm_c01.pdf}
+  \caption{The Collection 1 algorithm. Spectral: Landsat bands and indices, plus MapBiomas land
+  cover and the previous-year mosaic, feed a logistic-regression classifier that scores each pixel
+  and date with a burn probability. Temporal: the per-pixel time series of that probability is
+  summarised into annual metrics, capturing how high it rises, how abruptly, how long it persists,
+  and when. Spatial: the metrics separate clearly burned seeds from plausibly burned candidates,
+  which SNIC region-growing connects into segments; an object classifier filters those on shape,
+  size and vegetation to yield the 1.01\,M fire scars mapped over 1999--2025. The six published
+  subproducts and the fire-object polygon layer are both built from that same set of scars.}
   \label{fig-algo}
 \end{figure}
 
@@ -1095,7 +1098,7 @@ annual and monthly layers for one year, the frequency layer for the whole series
 polygons, with the visualisations the platform uses:
 
 \begin{center}
-\url{https://code.earthengine.google.com/SNAPSHOT-ID}
+\url{https://code.earthengine.google.com/178cf543c607f361419aff569ec09d44}
 \end{center}
 
 \noindent The script it opens is essentially the following, which can also be pasted into a blank
@@ -1130,7 +1133,7 @@ var POLYGONS = 'projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/'
              + 'FINAL_PRODUCTS/burned_area_polygons_v2';
 var fires = ee.FeatureCollection(POLYGONS)
               .filterDate(year + '-01-01', (year + 1) + '-01-01');
-var style = {color: 'white', fillColor: '00000000', width: 1};
+var style = {color: '0000ff', fillColor: '0000ff66', width: 1};
 Map.addLayer(fires.style(style), {}, 'fire objects ' + year);
 
 Map.setCenter(-64, -34, 5);
