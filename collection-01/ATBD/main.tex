@@ -22,6 +22,48 @@
 \usepackage{url}
 \usepackage{placeins}
 
+% --- Code listings (GEE JavaScript snippets) ---
+\usepackage{xcolor}
+\usepackage{listings}
+
+\definecolor{codebg}{rgb}{0.97,0.97,0.97}
+\definecolor{codeframe}{rgb}{0.80,0.80,0.80}
+\definecolor{codekeyword}{rgb}{0.13,0.29,0.53}
+\definecolor{codecomment}{rgb}{0.35,0.55,0.35}
+\definecolor{codestring}{rgb}{0.63,0.13,0.13}
+
+% This TeX Live's listings ships no JavaScript definition (only Java), so
+% the GEE snippets below use a minimal one defined here.
+\lstdefinelanguage{JavaScript}{
+  keywords={var, let, const, function, return, if, else, for, while, do,
+    break, continue, true, false, null, undefined, new, this, typeof,
+    instanceof, in, of, switch, case, default, try, catch, finally, throw},
+  sensitive=true,
+  comment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  string=[b]',
+  morestring=[b]",
+}
+
+\lstdefinestyle{jsstyle}{
+  language=JavaScript,
+  backgroundcolor=\color{codebg},
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{codekeyword}\bfseries,
+  commentstyle=\color{codecomment}\itshape,
+  stringstyle=\color{codestring},
+  numbers=none,
+  breaklines=true,
+  showstringspaces=false,
+  frame=single,
+  rulecolor=\color{codeframe},
+  framerule=0.4pt,
+  xleftmargin=4pt,
+  framexleftmargin=4pt,
+  tabsize=2,
+}
+\lstset{style=jsstyle}
+
 % Set path to images
 \graphicspath{{figures/}}
 
@@ -189,7 +231,7 @@ evidence the previous one could not see (Fig.~\ref{fig-algo}).
 
 \begin{figure}[ht]
   \centering
-  \includegraphics[width=0.82\textwidth]{algorithm_c01.pdf}
+  \includegraphics[width=0.95\textwidth]{algorithm_c01.pdf}
   \caption{The Collection 1 algorithm. Spectral: Landsat bands and indices, plus MapBiomas land
   cover and the previous-year mosaic, feed a logistic-regression classifier that scores each pixel
   and date with a burn probability. Temporal: the per-pixel time series of that probability is
@@ -403,7 +445,7 @@ so that folds carry comparable numbers of positives, and \(K\) is adaptive:
 fit at 7 and 6. Out-of-fold predictions are stored per observation and are what the per-class
 diagnostics are computed on: calibration, omission and commission, by-fire breakdowns.
 
-\subsection{Deployment in Earth Engine}\label{sec-deploy}
+\subsection{Deployment in GEE}\label{sec-deploy}
 
 The fitted models reach GEE as one small CSV of coefficients per class. Turning 23 such tables into
 a prediction over a whole country raises one design question, and the answer shapes the rest of the
@@ -1035,7 +1077,7 @@ Users of this layer must consider what follows:
         1999, so the November--December 1998 tail, 3,845 polygons and about 76 kha, is only in this
         layer.
   \item Area must be summed per object, not per row. One very large fire year 2000 object
-        exceeded Earth Engine's vertex limit on ingest and is stored as four features that each repeat
+        exceeded GEE's vertex limit on ingest and is stored as four features that each repeat
         the whole object's attributes. Summing \texttt{area\_ha} row by row overstates the layer by
         5.1 Mha.
 \end{itemize}
@@ -1060,7 +1102,7 @@ above: they can be browsed by year, month and frequency, crossed with territorie
 and downloaded as statistics. That is the entry point for the general public and the one we point
 users to.
 
-The second route is Earth Engine. The six subproducts and their coverage variants are copied, by an
+The second route is GEE. The six subproducts and their coverage variants are copied, by an
 explicit subproduct list, into the MapBiomas network's public asset collection:
 
 \begin{center}
@@ -1068,7 +1110,7 @@ explicit subproduct list, into the MapBiomas network's public asset collection:
 \end{center}
 
 \noindent These copies are readable by anyone and are what the platform itself ingests, so they are
-the layers to use in any Earth Engine analysis. Each one is named
+the layers to use in any GEE analysis. Each one is named
 \texttt{mapbiomas\_argentina\_fire\_collection1\_<subproduct>\_v1}: the version token belongs to the
 published copy and is set by the network, so it does not follow our internal product version. The download page,
 
@@ -1077,23 +1119,21 @@ published copy and is set by the network, so it does not follow our internal pro
 \end{center}
 
 \noindent serves the same products as cloud-optimised GeoTIFFs, one file per band, for users who
-work outside Earth Engine.
+work outside GEE.
 
 The fire-object vector database is not one of the network's six, so it is not swept into that
-public copy. It is Argentina's own layer and we share it directly, as a link to the asset.
+public copy. It is Argentina's own layer, and we share it as a GEE asset with read access open to
+anyone, rather than through the network's public collection:
 
-\begin{quote}
-\small
-[To be completed before release.] Two things have to be confirmed here once the launch
-configuration is fixed with the network and with the MapBiomas Argentina coordination: the address
-of the fire section itself, which the sibling countries publish as a page of their own, and the
-form in which the fire-object vector database is shared.
-\end{quote}
+\begin{center}
+\small\texttt{projects/mapbiomas-argentina/assets/FIRE/COLLECTION-1/FINAL\_PRODUCTS/}\\
+\small\texttt{burned\_area\_polygons\_v2}
+\end{center}
 
-\subsection{Using the products in Earth Engine}
+\subsection{Using the products in Google Earth Engine}
 
 The platform is the quickest route to look at the products; this section is for users who want to
-work with them in Earth Engine. The snapshot below loads the
+work with them in Google Earth Engine. The snapshot below loads the
 annual and monthly layers for one year, the frequency layer for the whole series, and the fire-object
 polygons, with the visualisations the platform uses:
 
@@ -1101,11 +1141,10 @@ polygons, with the visualisations the platform uses:
 \url{https://code.earthengine.google.com/178cf543c607f361419aff569ec09d44}
 \end{center}
 
-\noindent The script it opens is essentially the following, which can also be pasted into a blank
+\noindent The script it opens is the following, which can also be pasted into a blank
 Code Editor tab:
 
-\begin{small}
-\begin{verbatim}
+\begin{lstlisting}
 var ROOT = 'projects/mapbiomas-public/assets/argentina/fire/collection1/';
 var NAME = 'mapbiomas_argentina_fire_collection1_';
 var V    = '_v1';   // version token of the published copy
@@ -1137,8 +1176,7 @@ var style = {color: '0000ff', fillColor: '0000ff66', width: 1};
 Map.addLayer(fires.style(style), {}, 'fire objects ' + year);
 
 Map.setCenter(-64, -34, 5);
-\end{verbatim}
-\end{small}
+\end{lstlisting}
 
 \noindent Note the two patterns every consumer needs: a subproduct is one image and a year is one
 band of it, and the polygon layer is filtered by date rather than by a year property, because each
@@ -1155,7 +1193,7 @@ pipeline scripts in \texttt{workflow/}, the configuration tables that every stag
 \href{https://github.com/mapbiomas/argentina-fire/tree/main/collection-01/docs}{\texttt{collection-01/docs}}
 are the intended entry point for anyone reproducing or adapting the method: each one states what its
 stage measures, lists its inputs and outputs, records the decisions and their reasons, and warns
-about the failure modes that were actually encountered. The Earth Engine JavaScript used for
+about the failure modes that were actually encountered. The GEE JavaScript used for
 interactive threshold tuning and for label collection lives in a separate Code Editor repository,
 referenced from those notes.
 

@@ -17,15 +17,18 @@ preamble and style.
 | `frontpage.tex` | title page (logo, collection, version, team) |
 | `references.bib` | bibliography |
 | `figures/` | the seven images, plus the scripts that regenerate the non-copied ones |
-| `checklist.md` | **read this first** — the three things still missing, and what each one is waiting on |
-| `build/` | LaTeX output; `build/main.pdf` is the document |
+| `checklist.md` | status of what was missing before release — resolved, kept as the record |
+| `build/` | LaTeX output; `build/mapbiomas-argentina-fire-atbd-col01.pdf` is the document |
 
 ## Build
 
 ```bash
 cd collection-01/ATBD
-latexmk -pdf -outdir=build main.tex
+latexmk -pdf -jobname=mapbiomas-argentina-fire-atbd-col01 -outdir=build main.tex
 ```
+
+The `-jobname` gives the PDF its published name while the source file stays `main.tex`, the
+conventional entry point.
 
 Needs a TeX Live with `biblatex` + `biber`. The figures are committed, so none of these has to
 run to build the PDF:

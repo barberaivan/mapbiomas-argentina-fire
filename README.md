@@ -15,6 +15,10 @@ See each collection's README for what is where:
 - [`collection-00/README_00.md`](collection-00/README_00.md) — the completed pilot, with its ATBD
 - [`collection-01/README.md`](collection-01/README.md) — the map of the active collection
 
+Before delving into the repo structure, we suggest reading the
+[Algorithm Theoretical Basis Document](collection-01/ATBD/build/mapbiomas-argentina-fire-atbd-col01.pdf)
+of the latest collection (Collection 1).
+
 ---
 
 ## Remotes
@@ -115,4 +119,4 @@ commands to run it.
 
 ## Documentation
 
-- **ATBD** (methodology): [`collection-01/ATBD/build/main.pdf`](collection-01/ATBD/build/main.pdf) — the collection 1 document, in English (draft; source in [`collection-01/ATBD/`](collection-01/ATBD/)). The pilot's is [`collection-00/docs/.../mapbiomas_fire_argentina_atbd_pilot_2025.pdf`](collection-00/docs/documentation_pilot_latex/build/mapbiomas_fire_argentina_atbd_pilot_2025.pdf).
+- **ATBD** (methodology): [`collection-01/ATBD/build/mapbiomas-argentina-fire-atbd-col01.pdf`](collection-01/ATBD/build/mapbiomas-argentina-fire-atbd-col01.pdf) — the collection 1 document, in English (draft; source in [`collection-01/ATBD/`](collection-01/ATBD/)). The pilot's is [`collection-00/docs/.../mapbiomas_fire_argentina_atbd_pilot_2025.pdf`](collection-00/docs/documentation_pilot_latex/build/mapbiomas_fire_argentina_atbd_pilot_2025.pdf).
