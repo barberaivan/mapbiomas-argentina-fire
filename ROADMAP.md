@@ -24,12 +24,6 @@ Read it at the start of every session, before planning anything.
 El braindump que lo originó está absorbido en §1 de ese plan; la versión original queda en el
 historial de git.
 
-**Seed the `mapbiomas` remote** (run, when ready — no code change): force-push `main` to
-`mapbiomas/argentina-fire` (`git push mapbiomas main:main --force`), replacing its placeholder
-`Initial commit` history. Write access already confirmed (test branch pushed 22 Sep 2026). Iván
-runs this himself — force-push is blocked for Claude Code's auto mode. See README's "Remotes"
-section for the origin/mapbiomas split.
-
 ## After
 
 - **Seguir explorando análisis para el lanzamiento de diciembre**. 
