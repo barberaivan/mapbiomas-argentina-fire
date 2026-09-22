@@ -32,14 +32,6 @@ section for the origin/mapbiomas split.
 
 ## After
 
-- **El ATBD de Argentina Fuego Col1**, que nadie más puede escribir por nosotros.
-    El **borrador está en [`collection-01/ATBD/`](collection-01/ATBD/)** (LaTeX, inglés, 27 pp.),
-    revisado por Iván y con la portada al día. **Lo que falta está en
-    [`ATBD/checklist.md`](collection-01/ATBD/checklist.md)**, tres ítems: el diagrama del
-    algoritmo, las direcciones públicas de fuego (Gonza y Luna) y el snippet de GEE más el link de
-    snapshot (Vera).
-    ✅ Indexado (21 sep): `collection-01/README.md`, la tabla de documentos de `CLAUDE.md` y el
-    README raíz apuntan al ATBD.
 - **Seguir explorando análisis para el lanzamiento de diciembre**. 
     Ahí hay 4 factsheet-related notebooks; factsheet_sep2026 es el que soporta el factsheet
     del lanzamiento de Col3 ARG en septiembre.
@@ -70,9 +62,5 @@ bosque del factsheet y todo el bloque de bosques de §5.9 están intactos. Cambi
 la mitad de nivel 2. Control después del arreglo: Pampa 62 % *Herbaceas*, Delta 75 %
 *Herbaceas Inundables*, Puna 51 % *Mosaicos*.
 
-**Lo que falta, y no es código**:
-
 **Avisarle a la red.** El archivo es de ellos y lo lee todo país que decodifique la leyenda
 argentina. Conviene mirar si la misma rotación está en el bloque de otro país.
-**Revisar si algo ya publicado cita uno de los tres nombres**: el ATBD, láminas viejas, el
-borrador del paper.
