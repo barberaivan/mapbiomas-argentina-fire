@@ -17,6 +17,19 @@ See each collection's README for what is where:
 
 ---
 
+## Remotes
+
+This repo has two git remotes:
+
+| Remote | URL | Role |
+|--------|-----|------|
+| `origin` | `barberaivan/mapbiomas-argentina-fire` | **source of truth** — every commit and push lands here, at whatever frequency work happens |
+| `mapbiomas` | `mapbiomas/argentina-fire` | the official, public-facing mirror. Updated only **explicitly and at low frequency** (e.g. at milestones), never as a side effect of a normal commit/push |
+
+To publish a snapshot to the official repo: `git push mapbiomas main`.
+
+---
+
 ## Getting started (first-time setup)
 
 This repository holds **code only**. The heavy data — training samples, fitted models, CV

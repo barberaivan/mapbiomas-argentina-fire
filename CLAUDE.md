@@ -125,6 +125,13 @@ measured on a date → `docs/notes/`.
 - **Cite a section by name, never by number** (`docs/05 "Metrics"`, not `docs/05 §2.4`), in code
   comments and docstrings as much as in docs. A heading number is a position: insert anything
   above it and the citation silently points elsewhere.
+- **Two remotes: `origin` and `mapbiomas`.** `origin`
+  (`barberaivan/mapbiomas-argentina-fire`) is the **source of truth** — every ordinary commit and
+  push targets it, at whatever frequency work happens. `mapbiomas` (`mapbiomas/argentina-fire`) is
+  the official, public-facing mirror, updated only when **explicitly** asked, at low frequency
+  (e.g. milestones) — never as a side effect of "commit and push". No fork relationship exists
+  between them (mapbiomas' side couldn't fork), so syncing is a plain `git push mapbiomas main`,
+  not a PR.
 
 ## GEE Code Editor scripts (separate repos)
 
