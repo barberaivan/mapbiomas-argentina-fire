@@ -110,13 +110,17 @@ tr <- trend[abs(year - round(year)) < 1e-6]
 tr[, year := round(year)]
 bha <- unique(ann[, .(ecoregion, burnable_ha)])
 tr <- merge(tr, bha, by = "ecoregion")
+# Un % de área quemada negativo no existe, así que TODO lo negativo se acota
+# en cero -no sólo el límite inferior en Mha, también el propio % (`lo` puede
+# dar negativo en años de tendencia muy plana; es un límite estadístico del
+# GAM, no un dato real, y mostrarlo negativo confunde más de lo que aclara).
 s2 <- tr[, .(ecoregion, year,
-             `Tendencia del % quemado`            = round(fit, 3),
-             `Tendencia del área quemada (Mha)`    = round(fit / 100 * burnable_ha / 1e6, 4),
-             `Límite inferior del % quemado`       = round(lo, 3),
-             `Límite superior del % quemado`       = round(hi, 3),
+             `Tendencia del % quemado`            = round(pmax(0, fit), 3),
+             `Tendencia del área quemada (Mha)`    = round(pmax(0, fit) / 100 * burnable_ha / 1e6, 4),
+             `Límite inferior del % quemado`       = round(pmax(0, lo), 3),
+             `Límite superior del % quemado`       = round(pmax(0, hi), 3),
              `Límite inferior del área quemada (Mha)` = round(pmax(0, lo) / 100 * burnable_ha / 1e6, 4),
-             `Límite superior del área quemada (Mha)` = round(hi / 100 * burnable_ha / 1e6, 4))]
+             `Límite superior del área quemada (Mha)` = round(pmax(0, hi) / 100 * burnable_ha / 1e6, 4))]
 s2 <- merge(s2, ORDEN, by = "ecoregion")
 setorder(s2, orden, year)
 setnames(s2, "ecoregion", "Ecorregión"); setnames(s2, "year", "Año")
@@ -135,7 +139,7 @@ write_sheet(wb, "Tendencia del área quemada", s2, widths = c(8, 26, 16, 18, 16,
   "Tendencia del área quemada (Mha)" =
     "La misma tendencia, convertida a millones de hectáreas multiplicando el % por el área quemable (constante) de esa ecorregión.",
   "Límite inferior del % quemado" =
-    "El extremo inferior del intervalo de confianza del 95% de la tendencia. Puede dar un número negativo cerca de años con pocos datos o tendencia muy plana: es un límite estadístico, no un % real (un % negativo de área quemada no existe).",
+    "El extremo inferior del intervalo de confianza del 95% de la tendencia, ACOTADO EN CERO: el modelo estadístico (GAM) puede devolver un valor negativo cerca de años con pocos datos o tendencia muy plana, pero un % de área quemada negativo no existe, así que ese negativo se muestra como 0.",
   "Límite superior del % quemado" =
     "El extremo superior del intervalo de confianza del 95% de la tendencia.",
   "Límite inferior del área quemada (Mha)" =

@@ -35,13 +35,11 @@ es rápido.
    región, es un agujero del mapa, no un cero real — statistics.md §3.2). Lo
    mismo que hace el factsheet.
 
-6. Hoja "Tendencia del área quemada": el intervalo de confianza en % puede
-   dar negativo (es un límite estadístico de un modelo, no un dato real). En
-   Mha lo acoté en cero, igual que hace el propio cuaderno del factsheet al
-   dibujar la banda (un % de área quemada negativo no tiene equivalente en
-   hectáreas). El límite en % lo dejé SIN acotar, tal cual sale del modelo,
-   para no esconder que el intervalo cruza el cero en años de tendencia muy
-   plana.
+6. [RESUELTO — pediste esto 22 sep] Hoja "Tendencia del área quemada": el
+   intervalo de confianza en % podía dar negativo (es un límite estadístico
+   de un modelo, no un dato real). Al principio lo dejé sin acotar en % y
+   sólo acotado en cero en Mha; a pedido, ahora TODO -tendencia, límite
+   inferior y límite superior, en % y en Mha- está acotado en cero.
 
 7. Hoja "Cobertura quemada por año": el "Área de la clase" es la cobertura
    del año ANTERIOR al incendio (convención Y-1 que ya usa toda esta etapa,
