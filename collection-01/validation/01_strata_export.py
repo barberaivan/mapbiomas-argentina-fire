@@ -110,6 +110,15 @@ WEIGHTS_COL = "projects/mapbiomas-argentina/assets/FIRE/VALIDATION/sampling_stra
 FRAME_FC = ("projects/mapbiomas-argentina/assets/"
             "ANCILLARY_DATA/VECTOR/ARG/ARG-Political_Level_1-Pais")
 
+# Rectángulo generoso, NUNCA `FRAME_FC.geometry()`, como región de cómputo (no de máscara) — la
+# geometría política tiene 2M+ bordes y cualquier `region=`/`geometry=` que la reciba paga ese
+# costo (mismo hallazgo que `02_sample_pool.py::arg_bbox()`, 2026-08-31; ver BACKLOG.md).
+ARG_BBOX_COORDS = [-74.0, -55.5, -53.0, -21.5]
+
+
+def arg_bbox():
+    return ee.Geometry.Rectangle(ARG_BBOX_COORDS, None, False)
+
 MCD64A1 = "MODIS/061/MCD64A1"
 VNP64A1 = "NASA/VIIRS/002/VNP64A1"
 FIRECCI = "ESA/CCI/FireCCI/5_1"
@@ -380,7 +389,14 @@ def weights_launch(fy, overwrite=False):
     placeholder, porque `ee.Feature(None, …)` falla al exportar a un asset de tabla ("Unable to
     export features with null geometry"). `tileScale=8` (no el `tileScale=1` de `mobstats`,
     porque ese reduce es sobre una banda enmascarada/rala y este no): shards más chicos por
-    worker es la palanca directa contra un reduce denso limitado por memoria."""
+    worker es la palanca directa contra un reduce denso limitado por memoria.
+
+    Ese arreglo (bandas booleanas + tileScale=8) NO fue suficiente por sí solo: relanzado
+    2026-09-18 con `geometry=FRAME_FC.geometry()` (la geometría política de 2M+ bordes), fy2003
+    volvió a caer por OOM y fy2013 murió por timeout tras ~13.9 EECU-horas — la MISMA causa raíz
+    que `02_sample_pool.py` ya había encontrado y documentado para `sample()` (BACKLOG.md,
+    "Exact-Nh pixel census"). Arreglado 2026-09-20 pasando a `arg_bbox()` (rectángulo simple) en
+    vez de `FRAME_FC.geometry()` — no se volvió a probar en escala país todavía."""
     asset_id = strata_asset(fy)
     if not asset_exists(asset_id):
         sys.exit(f"[error] {asset_id} no existe todavía — correr --launch y esperar la tarea")
@@ -398,7 +414,7 @@ def weights_launch(fy, overwrite=False):
     bands = ee.Image.cat([img.eq(h).rename(f"n{h}") for h in (1, 2, 3)])
     d = bands.reduceRegion(
         reducer=ee.Reducer.sum().unweighted(),
-        geometry=ee.FeatureCollection(FRAME_FC).geometry(),
+        geometry=arg_bbox(),
         crs=C.SNIC_CRS, crsTransform=C.SNIC_TRANSFORM,
         maxPixels=1e13, tileScale=8)
     props = {f"n{h}": ee.Number(d.get(f"n{h}")).round() for h in (1, 2, 3)}

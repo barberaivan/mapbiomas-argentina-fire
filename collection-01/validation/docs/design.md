@@ -11,12 +11,22 @@ artefacts that cannot be retrofitted are **the strata rasters** and **the ordere
 
 ---
 
-## ⚠️ Status, and one thing to settle before interpreting
+## ⚠️ Status, and one thing settled since
 
-**Nothing has moved since 2026-08-31.** Landed: the three strata rasters (fire-years 2003, 2013,
-2022), the nine frozen ordered lists (3 years × 3 strata) and the three `ceo_points_fy<FY>` GEE
-table assets. Interpretation has not begun. The lists are written to `validation/outputs/frozen/`,
-which is **not tracked in this repo** — they live on the machine that ran the draw.
+**As of 2026-09-21**: interpretation has begun. 190 (fy2003) / 166 (fy2013) / 164 (fy2022, 2
+uninterpretable) points are CEO-interpreted — still short of the 100/stratum/year initial-pool
+target (per-stratum counts: fy2003 64/58/68, fy2013 62/51/53, fy2022 51/51/60). `06_stehman_compute.R`
+has been run once (against v1's frozen `map_burned`) — **not launch-ready on area or PA**: the
+error-adjusted area's 95% CI is close to the size of the estimate itself (S3 carries ~92–98% of the
+area weight and its still-small sample dominates the variance). User's accuracy (commission) for
+burned is the one defensible number at this sample size (SE ~0.05–0.06); OA is precise but inflated
+by class imbalance; PA inherits the area estimate's imprecision. A more complete CEO sheet is
+expected 2026-09-22 — re-run before quoting any of this externally.
+
+Also landed: the three strata rasters (fire-years 2003, 2013, 2022), the nine frozen ordered lists
+(3 years × 3 strata) and the three `ceo_points_fy<FY>` GEE table assets. The lists are written to
+`validation/outputs/frozen/`, which is **not tracked in this repo** — they live on the machine that
+ran the draw.
 
 **Still open**: the second pool, which extends the frozen lists to the full 5,000-unit reserve
 ("Drawing the frozen ordered sample lists"); the exact-`Nh` pixel census, whose `weights_launch()`
@@ -27,28 +37,29 @@ points at the demo asset.
 The paths that were tried and abandoned on the way here — and must not be taken again — are listed
 in [`notes/abandoned-paths.md`](notes/abandoned-paths.md).
 
-> ### ⚠️ The strata were built against the **v1** map, and the product is now **v2**
+> ### ✅ The v1 vs v2 resample asked for below — done (2026-09-21)
 >
-> Found in this review (2026-09-18), not previously recorded. The strata rasters were exported on
-> 2026-08-31, when `C.MONTH_OF_BURN_COL` resolved to `collection1_fire_mask_v1`;
-> `C.PRODUCT_VERSION = 2` landed on 2026-09-11 (`8cf4b7f`), and the published month-of-burn
-> collection is now `_v2` — the layer with exclusion rules A and B applied
-> (`docs/07` "The `_v2` re-export"). So **`S1` is v1's burned pixel set, and the frozen `burned`
-> band records v1's call.**
+> Re-sampled `burned` from v2 at the frozen sample addresses and added it as a second column,
+> `07_stehman_v1v2_compare.py`, sampling `FINAL_PRODUCTS/..._monthly_burned_v{1,2}` (the
+> post-processed, published pair) with the same fire-year OR logic as `01_strata_export.py::our_burn()`.
+> **Verified first**: the frozen v1 `map_burned` column (sourced from `C.MONTH_OF_BURN_COL`, the
+> pre-network-post-processing classification asset) matches this same OR logic recomputed from
+> `FINAL_PRODUCTS/..._monthly_burned_v1` at all 518 interpreted points — **zero mismatches**, so
+> the two `_v1` layers agree exactly at every sampled address for burned/not-burned, and v1 did not
+> need to be re-sampled, only v2.
 >
-> This does **not** invalidate the sample. The estimators require only that the strata partition
-> the population and that the weights are known, and both still hold — a stratum is allowed to be
-> defined by anything, including a superseded map. What it does invalidate is one rule below:
-> **"Estimators and outputs" says the map class is the frozen `burned` band and is never looked up
-> later.** Against v2 it must be looked up again, at the same pixel addresses, or the confusion
-> matrix describes the wrong map. The `col`/`row` addresses stored with every unit exist precisely
-> so that is possible.
+> Two outputs land in `validation/outputs/`: `stratum_accuracy_v1_v2.csv` — raw per-stratum
+> hit-rate (map==ref), Wilson 95% CI, unweighted, a diagnostic not an estimator — and
+> `stehman_results_summary_v1_v2.csv` — `08_stehman_v1v2_compute.R`, `stehman2014()` run
+> separately for v1 and v2 per fire-year (population-level OA/UA/PA, not broken out by stratum;
+> area and its CI come from the reference labels, so they are identical between v1/v2 within a
+> year by construction). **Result: v1 and v2 are not statistically distinguishable at this sample
+> size** — CIs overlap heavily in both outputs; see the CSVs for exact numbers per year/stratum.
 >
-> **To settle before interpretation**: re-sample `burned` from v2 at the frozen addresses and add
-> it as a second column (keeping v1's, which is what defines the strata), and recompute `W2` — v2
-> is a smaller burned set, so `W1` shrinks and some S1 pixels are no longer mapped-burned. Whether
-> the strata themselves should be rebuilt on v2 is a bigger call: rebuilding means new lists and
-> discards the frozen ones.
+> `W2`/`Nh` were **not** recomputed against v2 — still v1's weights, since the strata themselves
+> were not rebuilt. Whether they should be is still a bigger, separate call: rebuilding means new
+> lists and discards the frozen ones. Given v1/v2 came out statistically indistinguishable above,
+> there is no evidence yet that it's worth it.
 
 ---
 
