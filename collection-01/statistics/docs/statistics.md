@@ -40,6 +40,8 @@ collection-01/statistics/         all statistics + factsheet code
   fire_counts.R       THE VECTOR PASS (§4) — the fire tables + the plotting geometry
   factsheet_tables.R  THE ANALYSIS PASS (§5) — the plot-ready tables and the GAMs
   factsheet_style.R   the shared palette, theme, map-as-legend and figure variants
+  excel_workbook.R    "Excel table for the web page" (below) — the published .xlsx,
+                      reading only what factsheet_tables.R and fire_counts.R already wrote
 
 collection-01/notebooks/          ⚠️ FOUR notebooks, TWO ship in September — see §5.0
   factsheet_sep2026   THE DELIVERABLE (§5.10): the slide-by-slide spec. 16 images,
@@ -81,6 +83,8 @@ collection-01/data/statistics/    every statistics input and output (Insync stor
   factsheet_sep2026_figures_and_tables/   ⚠️ THE FOLDER THE DESIGNER GETS (§5.10): the 13
                                   images of the September deck, PNG + PDF, plus one
                                   `figNN_datos.csv` per figure (the maps have none)
+  mapbiomas-arg-fire-stats.xlsx   THE PUBLISHED WORKBOOK ("Excel table for the web page",
+                                  below) — six sheets, all Spanish, all ecoregions
 ```
 
 The GEE JavaScript is in the **`fuego` repo**, not here:
@@ -107,6 +111,7 @@ quarto render collection-01/notebooks/factsheet.qmd              # §5.4, ~5 min
 quarto render collection-01/notebooks/factsheet_veg.qmd          # análisis 6, ~2 min
 quarto render collection-01/notebooks/factsheet_veg_short.qmd    # §5.8, ~10 s
 quarto render collection-01/notebooks/factsheet_sep2026.qmd      # §5.10, ~7 min
+Rscript collection-01/statistics/excel_workbook.R                # the .xlsx, below, ~5 s
 ```
 
 Only the exports touch GEE (five scripts, seven tasks: two denominators, three rasters, two crossings). The point of the split is that **everything the factsheet draws
@@ -1571,6 +1576,69 @@ platform for 24 Sep (that date, not the 24th, is the real deadline); who regener
 Cloud-Storage COGs after a re-export; and whether to run the FireCCI / GABAM / MCD64A1
 comparison (`2-Statistics/1-Burned_area_products/`) — recommended, since it is the only
 external sanity check available for a first collection.
+
+---
+
+## Excel table for the web page
+
+`mapbiomas-arg-fire-stats.xlsx` (`data/statistics/`) is one of the artefacts published on the
+MapBiomas web page, alongside the maps. **`excel_workbook.R` builds it, and it computes
+nothing** — it only reshapes and re-labels tables `factsheet_tables.R` and `fire_counts.R`
+already wrote, into a form an Excel user (not a data scientist — "terrible" spreadsheet habits
+are fine, a script is not) can open, filter and pivot on their own.
+
+```bash
+Rscript collection-01/statistics/excel_workbook.R
+```
+
+**Entirely in Spanish, and every header carries a cell comment** explaining the column in
+plain language — units, what year or ecoregion convention applies, and the trap if there is
+one (the Y−1 land-cover offset, the constant denominator, why a fire can be double-counted
+across ecoregions). Nothing here assumes the reader has read this document.
+
+**What it adds over the factsheet, and why a second artefact exists at all.** The factsheet's
+figures are deliberately selective — 5 of the 12 ecoregions in the annual series (fig04–08), 4
+in the pirograms (fig09–12), and the two raster maps have no table at all (a map is not
+tabular data, and both rasters are gigabytes at native resolution — statistics.md §5.5, §5.6).
+This workbook is the un-selective version: **every ecoregion, every year**, for the series and
+the pirogram alike, plus one table that is not in the factsheet in any form.
+
+Six sheets:
+
+| sheet | rows | source(s) | what |
+|---|---|---|---|
+| **Área quemada por ecorregión** | 351 (13 × 27) | `factsheet_annual.csv` | burned ha/Mha, the constant burnable ha, and `%` — year × ecoregion, **not in the factsheet as a table** (only 1 of the 13 rows, Argentina, is ever plotted as a series on its own) |
+| **Tendencia del área quemada** | 351 | `factsheet_trend_fits.csv` + `burnable_ha` | the GAM trend (fig04–08's grey band) evaluated at whole years, for all 13 rows instead of the 5 the factsheet draws |
+| **Distribución intraanual** | 156 (13 × 12) | `factsheet_pirogram.csv` | the pirogram's numbers — burned area and fire counts by month, both actual and as a `%` of the region's own year — for all 13 rows instead of the 4 the factsheet draws |
+| **Cobertura quemada por año** | 378 (14 clases × 27) | `factsheet_lulc_pct.csv` (nivel 2, national) + `factsheet_lulc_share.csv` (for the nivel1 crosswalk) | **not in the factsheet in this form**: burned ha, the class's own total area (Y−1, §2.2), and burned ha subtracted from it — one row per (class, year), national only, as asked |
+| **Composición de lo quemado** | 14 | `factsheet_lulc_share.csv` (nivel 2, national) | fig02's own table verbatim, relabelled: accumulated burned ha 1999–2025 by nivel-2 class (with its nivel-1 family alongside) and its `%` of everything burned — no year column, because it is a 27-year accumulation, not a series |
+| **Notas** | — | — | what the file is, the date it was built, and a pointer to `NOTES_FOR_IVAN_TABLES.txt` for the calls made without asking first |
+
+**Both land-cover sheets are national only, on purpose** — per-ecoregion class breakdowns exist
+in `factsheet_lulc.csv` and `factsheet_lulc_pct.csv` already, but multiplying 14 classes × 12
+ecoregions × 27 years turns a spreadsheet someone can read into one they can only query, which
+defeats the point of this file. **"Cobertura quemada por año" is genuinely new**: no factsheet
+figure crosses burned/unburned by class *and* by year at once — análisis 4 (`fig02`, this
+workbook's "Composición…") accumulates over years, análisis 5 (`factsheet_lulc_pct_mean.csv`)
+averages over years. This sheet is the un-aggregated version of análisis 5, one row per year.
+
+**Ecoregion order is Argentina first, then north → south by `palette_order`** — the same order
+as the factsheet's map legend — in every sheet that has one. Islas del Atlántico Sur is absent
+everywhere, same as the factsheet (§3.2): it is not a zero, it is outside the processing grid.
+
+**Rounding follows the conventions already in `factsheet_tables.R` / `factsheet_sep2026.qmd`**:
+hectares to 1 decimal, Mha to 4, percentages to 2–4 depending on the sheet, rather than a new
+convention invented for this file.
+
+**`openxlsx` is a new R dependency**, not previously used anywhere in this repo (`data.table`
+and `mgcv` were the only libraries `factsheet_tables.R` needed). The repo has no `renv.lock` or
+`DESCRIPTION` to register it in; `install.packages("openxlsx")` on a machine that has never run
+this script.
+
+Judgment calls made without asking first — whether Argentina belongs in a sheet titled
+"besides Argentina", the sort order of the composition table, whether the CI band should be
+clamped at zero — are in `collection-01/statistics/NOTES_FOR_IVAN_TABLES.txt`, not repeated
+here.
 
 ---
 

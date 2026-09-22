@@ -19,3 +19,7 @@ why (Spanish, tied to the September 2026 launch).
 The GEE exports are the `*_export.py` files; `factsheet_tables.R` turns the downloads into
 plot-ready tables and `fire_counts.R` is the vector pass. The notebooks that render it all are in
 [`../notebooks/`](../notebooks/).
+
+`excel_workbook.R` turns those same tables into **`mapbiomas-arg-fire-stats.xlsx`**
+(`../data/statistics/`), the Spanish, six-sheet workbook published on the web page alongside the
+maps — see [`docs/statistics.md`](docs/statistics.md) "Excel table for the web page".

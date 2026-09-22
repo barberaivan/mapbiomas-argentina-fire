@@ -58,7 +58,7 @@ their code:
 
 | Document | What it is |
 |---|---|
-| `statistics/docs/statistics.md` | step 09 — where **every factsheet number and figure** comes from: the three sources, the code, the verification gates |
+| `statistics/docs/statistics.md` | step 09 — where **every factsheet number and figure** comes from: the three sources, the code, the verification gates, and the published `mapbiomas-arg-fire-stats.xlsx` |
 | `statistics/docs/factsheet-sep2026-spec.md` | what each factsheet slide **says** and why (Spanish, per-launch) |
 | `validation/docs/design.md` | the accuracy-assessment design (stratified sample, Olofsson/Stehman estimators). **Read its status box first** — the strata were built on `_v1` and the product is `_v2` |
 
