@@ -1612,7 +1612,7 @@ Six sheets:
 | **Distribución intraanual** | 156 (13 × 12) | `factsheet_pirogram.csv` | the pirogram's numbers — burned area and fire counts by month, both actual and as a `%` of the region's own year — for all 13 rows instead of the 4 the factsheet draws |
 | **Cobertura quemada por año** | 378 (14 clases × 27) | `factsheet_lulc_pct.csv` (nivel 2, national) + `factsheet_lulc_share.csv` (for the nivel1 crosswalk) | **not in the factsheet in this form**: burned ha, the class's own total area (Y−1, §2.2), and burned ha subtracted from it — one row per (class, year), national only, as asked |
 | **Composición de lo quemado** | 14 | `factsheet_lulc_share.csv` (nivel 2, national) | fig02's own table verbatim, relabelled: accumulated burned ha 1999–2025 by nivel-2 class (with its nivel-1 family alongside) and its `%` of everything burned — no year column, because it is a 27-year accumulation, not a series |
-| **Notas** | — | — | what the file is, the date it was built, and a pointer to `NOTES_FOR_IVAN_TABLES.txt` for the calls made without asking first |
+| **Notas** | — | — | what the file is, the date it was built, its sources, and the conventions (calendar year, constant denominator, Y−1 land cover) that apply to every other sheet |
 
 **Both land-cover sheets are national only, on purpose** — per-ecoregion class breakdowns exist
 in `factsheet_lulc.csv` and `factsheet_lulc_pct.csv` already, but multiplying 14 classes × 12
@@ -1635,10 +1635,14 @@ and `mgcv` were the only libraries `factsheet_tables.R` needed). The repo has no
 `DESCRIPTION` to register it in; `install.packages("openxlsx")` on a machine that has never run
 this script.
 
-Judgment calls made without asking first — whether Argentina belongs in a sheet titled
-"besides Argentina", the sort order of the composition table, whether the CI band should be
-clamped at zero — are in `collection-01/statistics/NOTES_FOR_IVAN_TABLES.txt`, not repeated
-here.
+Three calls worth recording, none of them in the source tables: **Argentina is kept as a row**
+in every sheet that has one, including "Área quemada por ecorregión" (the "besides Argentina"
+in the ask is read as "not only Argentina", not "excluding it"); **the composition sheet is
+sorted by descending share**, like fig02's bar chart, not by the pie chart's "decreasing
+woodiness" order, because a spreadsheet is read as a ranking, not looked at as a wheel; and
+**every trend value — fit and both confidence bounds, in % and in Mha — is clamped at zero**
+(decided 2026-09-22): the GAM can return a negative lower bound in a flat-trend year, which is a
+property of the model, not a real burned percentage.
 
 ---
 

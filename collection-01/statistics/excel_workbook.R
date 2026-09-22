@@ -12,8 +12,7 @@
 # reading a spreadsheet: no year filter is dropped, no region is left out just
 # because the factsheet's figures only show a handful. See
 # statistics/docs/statistics.md "## Excel table for the web page" for what
-# each sheet is and why; doubts and decisions made without Iván are in
-# statistics/NOTES_FOR_IVAN_TABLES.txt.
+# each sheet is and why.
 #
 # Usage (from the repo ROOT, after factsheet_tables.R and fire_counts.R):
 #   Rscript collection-01/statistics/excel_workbook.R
@@ -290,9 +289,7 @@ notas <- data.table(Nota = c(
   "Cobertura territorial: 12 de las 13 ecorregiones de Burkart et al. (1999). Islas del Atlántico Sur no está incluida en ninguna hoja: la grilla de procesamiento no llega a esa región (no hay datos, no es que no se haya quemado).",
   "Todas las fechas son AÑO CALENDARIO (enero a diciembre). El mapeo interno usa un 'año de fuego' (1 de mayo a 30 de abril) para no cortar una temporada de incendios al medio, pero eso nunca es lo que se reporta -salvo la columna de orden de la hoja 'Distribución intraanual', que es sólo para ordenar un gráfico.",
   "El 'área quemable' de cada ecorregión es una cifra CONSTANTE en el tiempo (no cambia año a año): es el área que puede arder, calculada una sola vez. Por eso un % quemado puede, en principio, superar el 100% si una región llegara a quemarse más que su propia área quemable típica -no sería un error.",
-  "Donde se cruza fuego con cobertura del suelo (hojas 'Cobertura quemada por año' y 'Composición de lo quemado'), la cobertura es la del AÑO ANTERIOR al incendio: se reporta qué había antes de arder, no en qué se convirtió el terreno después.",
-  "",
-  "Dudas, decisiones tomadas sin consultar y cosas para revisar: collection-01/statistics/NOTES_FOR_IVAN_TABLES.txt"
+  "Donde se cruza fuego con cobertura del suelo (hojas 'Cobertura quemada por año' y 'Composición de lo quemado'), la cobertura es la del AÑO ANTERIOR al incendio: se reporta qué había antes de arder, no en qué se convirtió el terreno después."
 ))
 addWorksheet(wb, "Notas")
 writeData(wb, "Notas", notas, colNames = FALSE)
