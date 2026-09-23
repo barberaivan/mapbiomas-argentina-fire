@@ -292,6 +292,62 @@ GAM_K <- 10L; GAM_GAMMA <- 1
 cat(if (WRITE) sprintf("Se escribe en %s\n", OUT) else "write_plots = false\n")
 ```
 
+```{r presentation-style}
+#| message: false
+# ── presentation version: las mismas figuras, para el evento de lanzamiento ─────────────
+# Se muestran proyectadas en pantalla grande, no impresas en una lámina A4: tipografía
+# Roboto, gris oscuro en vez de negro, texto más grande, y sólo PNG (van directo a Google
+# Slides, no a un diseñador que las edite en Illustrator). Un solo tamaño de cada tipo, no
+# todas las variantes. Se guardan en la MISMA carpeta de entrega, con sufijo `_presentation`.
+PRES_FONT  <- "Roboto"
+PRES_DARK  <- "#333333"
+PRES_LIGHT <- "grey40"
+undash <- function(x) gsub("–", "-", x)   # el guión medio de los rangos -> guión simple
+
+theme_fs_pres <- function(base_size = 17) {
+  theme_fs(base_size) +
+    theme(text = element_text(family = PRES_FONT, colour = PRES_DARK),
+          plot.title = element_text(face = "plain", colour = PRES_DARK, size = rel(1.15)),
+          axis.title = element_text(colour = PRES_LIGHT, size = rel(0.95)),
+          axis.text  = element_text(colour = PRES_LIGHT, size = rel(0.85)),
+          legend.text = element_text(colour = PRES_LIGHT))
+}
+theme_map_pres <- function(base_size = 17) {
+  theme_map(base_size) +
+    theme(text = element_text(family = PRES_FONT, colour = PRES_DARK),
+          legend.text  = element_text(size = rel(1.05), colour = PRES_LIGHT),
+          legend.title = element_text(size = rel(1.05), colour = PRES_DARK))
+}
+
+# LOS MAPAS AL MISMO TAMAÑO, SIEMPRE. Sin fijar el panel, una leyenda más larga (los rangos
+# de año de la figura 3 contra los conteos de la figura 1) le come espacio al panel y el
+# país sale dibujado más chico — that's lo que se ve como "más margen". `force_panelsizes`
+# (ggh4x) fija el panel a un tamaño absoluto, así que el país mide lo mismo en las cinco
+# figuras y la única diferencia es cuánto blanco le queda a la leyenda.
+suppressPackageStartupMessages(library(ggh4x))
+PANEL_W_IN   <- 2.8
+PANEL_H_IN   <- 6.26     # bbox de Argentina (+ Malvinas) en Albers, h/w ~= 2.237 x PANEL_W_IN
+MAP_CANVAS_W <- 5.8
+MAP_CANVAS_H <- 6.6
+lock_panel <- function(p) p + force_panelsizes(rows = unit(PANEL_H_IN, "in"),
+                                               cols = unit(PANEL_W_IN, "in"))
+# ⚠️ AGREGAR UNA CAPA `geom_sf()` A UN MAPA YA ARMADO (el contorno de una región, encima del
+# mapa 3) hace que `coord_sf(expand = FALSE)` deje de aplicarse: el rango del panel se
+# infla ~10 % (el `expand` por defecto) y el país sale más chico DENTRO del mismo panel
+# fijo — otra forma de "margen distinto", y la que de verdad corría el contorno respecto
+# del mapa. Se fija de nuevo `coord_sf()` con el rango YA correcto del mapa limpio.
+pin_range <- function(p) {
+  r <- ggplot2::ggplot_build(p)$layout$panel_params[[1]]
+  p + coord_sf(xlim = r$x_range, ylim = r$y_range, expand = FALSE, datum = NA)
+}
+
+save_pres <- function(p, name, w = 7, h = 5) {
+  if (WRITE) ggsave(file.path(OUT, paste0(name, "_presentation.png")), p,
+                    width = w, height = h, dpi = 300, bg = "white")
+  invisible(p)
+}
+```
+
 ---
 
 ## Lámina 1. Dónde y cuánto se quema en Argentina
@@ -326,6 +382,28 @@ epígrafe conviene que diga "en algún lugar de", no "acá ardió N veces".
 #| eval: !expr HAS_BURN_MAX
 map_fig("fig01_mapa_anios_quemados", "max", function()
   relabel_fill(map_burn_count(stat = "max"), "Cantidad de años\nque se quemó"))
+```
+
+```{r fig01-presentation}
+#| eval: !expr HAS_BURN_MAX
+# presentation version
+d1p <- raster_df("max", 480, method = "near",
+                 decode = function(v) v / 100 * N_YEARS_SERIES / 100)
+d1p$value <- round(d1p$value)
+labs1p <- undash(COUNT_MAX_LABELS)
+d1p$clase <- class_of(d1p$value, COUNT_MAX_BREAKS, labs1p, right = FALSE)
+p1p <- ggplot(d1p, aes(x, y)) +
+  geom_raster(aes(fill = clase)) +
+  scale_fill_manual(values = setNames(c(ZERO_COLOUR, BURN_COLORS), c(ZERO_LABEL, labs1p)),
+                    drop = FALSE, name = "Cantidad de años\nque se quemó",
+                    guide = guide_legend(reverse = TRUE)) +
+  geom_sf(data = ECO_SF, inherit.aes = FALSE, fill = NA, colour = "grey35", linewidth = 0.18) +
+  geom_malvinas() +
+  coord_sf(datum = NA, expand = FALSE) + theme_map_pres() +
+  theme(legend.position = "right", legend.key.width = grid::unit(0.9, "lines"),
+        plot.margin = margin(1, 1, 1, 1))
+p1p <- lock_panel(p1p)
+save_pres(p1p, "fig01_mapa_anios_quemados", w = MAP_CANVAS_W, h = MAP_CANVAS_H)
 ```
 
 ### Figura 2. Qué se quema a nivel nacional
@@ -573,6 +651,34 @@ save2(f02a, "fig02_torta_dos_anillos", w = 8, h = 5.6)
 f02a
 ```
 
+```{r fig02-anillos-presentation}
+# presentation version: ocupa casi toda la pantalla, así que la leyenda y los porcentajes
+# del anillo interno van con letra grande. El anillo EXTERNO no lleva texto — los nombres
+# de familia se escriben afuera, a mano, en la lámina de Slides. Las porciones menores al
+# 3 % (el resto de "Otros" por familia, statistics/docs no aplica acá) no llevan número:
+# a este tamaño de letra no entra sin superponerse a la vecina.
+f02a_pres <- ggplot() +
+  geom_rect(data = d2a, aes(xmin = 0.5, xmax = 1.9, ymin = bot, ymax = top, fill = clase),
+            colour = "white", linewidth = 0.6) +
+  geom_rect(data = fam2, aes(xmin = 1.95, xmax = 2.55, ymin = bot, ymax = top, fill = familia),
+            colour = "white", linewidth = 0.7) +
+  geom_text(data = d2a[share >= 3],
+            aes(x = 1.55, y = pos, label = paste0(fmt_pct(share, 0), " %")),
+            size = 5, colour = "grey15", family = PRES_FONT) +
+  coord_polar(theta = "y", direction = -1) +
+  scale_fill_manual(values = c(N2_COLORS, setNames("#BDBDBD", OTROS2), N1_COLORS),
+                    breaks = c(setdiff(unique(as.character(d2a$clase)), OTROS2), OTROS2),
+                    name = NULL) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 100)) +
+  xlim(0.15, 2.6) +
+  theme_void(base_size = 17) +
+  theme(text = element_text(family = PRES_FONT, colour = PRES_DARK),
+        legend.position = "right",
+        legend.text = element_text(size = rel(1.15), colour = PRES_DARK),
+        legend.key.size = grid::unit(1.3, "lines"))
+save_pres(f02a_pres, "fig02_torta_dos_anillos", w = 9.5, h = 6.8)
+```
+
 ```{r fig02-barras}
 #| fig-height: 5
 #| fig-width: 8
@@ -630,6 +736,41 @@ años. Es el complemento exacto de la figura 1, que dice *cuánto* ardió cada l
 # cada una es coherente consigo misma.
 map_fig("fig03_mapa_ultimo_fuego", "year", function()
   relabel_fill(map_last_fire(), "Año del\núltimo fuego"))
+```
+
+```{r fig03-presentation}
+#| eval: !expr HAS_LAST_FIRE
+# presentation version: el mapa limpio, y cuatro variantes con el contorno de una
+# ecorregión (la que va en pantalla junto a su serie, figuras 5 a 8) en negro por encima.
+d3p <- raster_df("year", 1000, decode = function(v) v / 100 + 1998, min_denom = 0)
+labs3p <- undash(YEAR_LABELS)
+d3p$clase <- factor(as.character(cut(d3p$value, YEAR_BREAKS, labels = labs3p,
+                                     right = FALSE, include.lowest = TRUE)),
+                    levels = labs3p)
+p3p <- ggplot(d3p, aes(x, y)) +
+  geom_raster(aes(fill = clase)) +
+  scale_fill_manual(values = setNames(YEAR_COLORS, labs3p), drop = FALSE,
+                    name = "Año del\núltimo fuego", guide = guide_legend(reverse = TRUE)) +
+  geom_sf(data = ECO_SF, inherit.aes = FALSE, fill = NA, colour = "grey35", linewidth = 0.18) +
+  geom_malvinas() +
+  coord_sf(datum = NA, expand = FALSE) + theme_map_pres() +
+  theme(legend.position = "right", legend.key.width = grid::unit(0.9, "lines"),
+        plot.margin = margin(1, 1, 1, 1))
+p3p <- lock_panel(p3p)
+save_pres(p3p, "fig03_mapa_ultimo_fuego", w = MAP_CANVAS_W, h = MAP_CANVAS_H)
+
+CONTOUR_LW <- 0.60
+REGIONES_MAPA <- c("05" = "Monte", "06" = "Espinal",
+                   "07" = "Delta e Islas del Paraná", "08" = "Bosques Patagónicos")
+for (i in names(REGIONES_MAPA)) {
+  r <- REGIONES_MAPA[[i]]
+  pr <- p3p +
+    geom_sf(data = ECO_SF[ECO_SF$ecoregion == r, ], inherit.aes = FALSE,
+            fill = NA, colour = "black", linewidth = CONTOUR_LW)
+  pr <- pin_range(pr)
+  save_pres(pr, sprintf("fig03_%s_mapa_ultimo_fuego_%s", i, slug(r)),
+           w = MAP_CANVAS_W, h = MAP_CANVAS_H)
+}
 ```
 
 ### Figuras 4 a 8. Las series anuales
@@ -785,6 +926,38 @@ for (i in names(SERIES)) {
 }
 save2(serie_facet(REGIONES_SERIE), "fig05-06-07-08_series_regiones", w = 9.6, h = 7)
 for (i in names(SERIES)) print(serie_mha(SERIES[[i]]))
+invisible(NULL)
+```
+
+```{r figs-series-presentation}
+# presentation version: las cinco, sueltas — se muestran una por vez, no en cuadrícula.
+# Más grandes y con más tamaño de letra que el original, pero angostas (no el ancho
+# completo de una lámina): título en gris oscuro y sin negrita, título de eje un poco más
+# claro, texto de eje un poco más chico todavía y del mismo gris que el título de eje.
+serie_mha_pres <- function(r) {
+  d <- ann[ecoregion == r][order(year)]
+  bha <- scal[ecoregion == r, burnable_ha]
+  g <- copy(fs$trend[ecoregion == r])[, `:=`(
+    fit_mha = fit / 100 * bha / 1e6,
+    lo_mha  = pmax(0, lo) / 100 * bha / 1e6,
+    hi_mha  = hi / 100 * bha / 1e6)]
+  ggplot(d, aes(year, burned_ha / 1e6)) +
+    geom_ribbon(data = g, aes(year, ymin = lo_mha, ymax = hi_mha), inherit.aes = FALSE,
+                fill = ribbon_col(r), alpha = 0.45) +
+    geom_line(data = g, aes(year, fit_mha), inherit.aes = FALSE, colour = "black",
+              linewidth = 0.9) +
+    geom_line(colour = "black", linewidth = 0.4, alpha = 0.45) +
+    geom_point(colour = "black", size = 2.3) +
+    scale_x_continuous(breaks = seq(2000, 2025, 5)) +
+    scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.1)),
+                       labels = num_auto) +
+    labs(x = "Año", y = "Área quemada (Mha)", title = r) +
+    theme_fs_pres(base_size = 19)
+}
+for (i in names(SERIES)) {
+  save_pres(serie_mha_pres(SERIES[[i]]), sprintf("fig%s_serie_%s", i, slug(SERIES[[i]])),
+           w = 6.5, h = 5)
+}
 invisible(NULL)
 ```
 
@@ -999,6 +1172,50 @@ for (i in names(PIROS)) {
 }
 save2(pirograma_stack(REGIONES_PIRO), STACK, w = WS, h = HS)
 invisible(NULL)     # las dos figuras se muestran abajo, una por sección
+```
+
+```{r figs-pirogramas-presentation}
+# presentation version: Argentina sola, más grande porque se muestra sola en su propia
+# lámina, y las tres regiones apiladas (la que se usa en pantalla, no las tres sueltas).
+# Mismos ejes/colores que la versión de factsheet, con el tratamiento de fuente y tamaño
+# de las demás figuras de presentación.
+pirograma_pres <- function(r, k = GAM_K, gamma = GAM_GAMMA) {
+  z <- piro_data(r, k, gamma)
+  ggplot(mapping = aes(month_fy)) +
+    geom_col(data = z$d, aes(y = mha), fill = z$col, alpha = 0.85, width = 0.95) +
+    geom_line(data = z$g_fuego, aes(month_fy, fit * z$k), colour = "black", linewidth = 0.9) +
+    geom_point(data = z$d, aes(y = n_ge10 * z$k), colour = "black", size = 2.4) +
+    scale_x_continuous(breaks = 1:12, labels = MONTH_FY_LAB, expand = c(0.02, 0)) +
+    scale_y_continuous(
+      name = Y_AREA, limits = c(0, NA), expand = expansion(mult = c(0, 0.08)),
+      labels = num_auto,
+      sec.axis = sec_axis(~ . / z$k, name = Y_FUEGO, labels = num_auto)) +
+    labs(x = "Mes", title = r) +
+    theme_fs_pres()
+}
+
+pirograma_stack_pres <- function(regiones, k = GAM_K, gamma = GAM_GAMMA) {
+  n <- length(regiones)
+  ps <- lapply(seq_along(regiones), function(i) {
+    p <- pirograma_pres(regiones[i], k, gamma) +
+      theme(plot.title.position = "panel",
+            # Más aire ENTRE paneles (arriba y abajo de cada uno). El título queda en su
+            # propia fila, sin invadir el panel: en Delta la barra de agosto llega casi al
+            # techo y un título superpuesto le caía encima.
+            plot.margin = margin(t = 26, r = 5.5, b = 26, l = 5.5))
+    # Sólo el panel de abajo lleva la etiqueta y el tick del eje de meses; los de arriba
+    # conservan la LÍNEA del eje pero no el texto, que ya lo dice el panel de abajo. El
+    # espacio que libera el texto/tick es lo que separa visualmente un panel del siguiente.
+    if (i < n) p <- p + theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+    p
+  })
+  patchwork::wrap_plots(ps, ncol = 1) + patchwork::plot_layout(axis_titles = "collect")
+}
+
+save_pres(pirograma_pres(NAT) + theme_fs_pres(base_size = 19),
+         "fig09_pirograma_argentina", w = 9, h = 5.8)
+save_pres(pirograma_stack_pres(REGIONES_PIRO), STACK, w = 7.2, h = 11.4)
+invisible(NULL)
 ```
 
 #### Argentina sola
