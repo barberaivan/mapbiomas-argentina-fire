@@ -679,6 +679,24 @@ f02a_pres <- ggplot() +
 save_pres(f02a_pres, "fig02_torta_dos_anillos", w = 9.5, h = 6.8)
 ```
 
+```{r fig02-torta-nivel1}
+#| fig-height: 5
+#| fig-width: 5
+# torta simple, mínima: sólo el nivel 1 (el anillo de afuera de `fig02_torta_dos_anillos`,
+# `fam2`), como torta llena, sin agujero, sin leyenda y sin ningún texto. Mismos colores,
+# mismo orden y mismo sentido que ese anillo, así las dos se leen igual en la lámina. Los
+# nombres y los porcentajes los pone el diseñador afuera. Archivo nuevo, no pisa nada.
+f02n1 <- ggplot(fam2) +
+  geom_rect(aes(xmin = 0, xmax = 1, ymin = bot, ymax = top, fill = familia),
+            colour = "white", linewidth = 0.8) +
+  coord_polar(theta = "y", direction = -1) +
+  scale_fill_manual(values = N1_COLORS, guide = "none") +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 100)) +
+  scale_x_continuous(expand = c(0, 0), limits = c(0, 1)) +
+  theme_void()
+save2(f02n1, "fig02_torta_nivel1", w = 5, h = 5)
+```
+
 ```{r fig02-barras}
 #| fig-height: 5
 #| fig-width: 8
@@ -959,6 +977,155 @@ for (i in names(SERIES)) {
            w = 6.5, h = 5)
 }
 invisible(NULL)
+```
+
+```{r figs-series-bars}
+# bars version: las mismas cinco series en barras y SIN tendencia, con el estilo de la
+# figura de la plataforma (`data/statistics/Serie temporal de Fuego • Anual por clase •
+# 1999 - 2025.png`): barras rojas, grilla horizontal punteada, "Hectáreas" arriba del eje Y
+# en vez de un título de eje rotado, etiquetas cortas (1M, 500K) y el eje X marcando el
+# primer y el último año. El rojo es el de la plataforma, muestreado del PNG, y es el mismo
+# en las cinco: acá la barra dice "fuego", no la región. Archivos nuevos, sufijo `_bars`;
+# no pisan las versiones `_presentation`.
+BAR_FIRE <- "#FF5340"
+lab_short <- scales::label_number(scale_cut = scales::cut_short_scale(),
+                                  decimal.mark = ",", big.mark = ".")
+serie_bars_pres <- function(r, fill = BAR_FIRE, bars = geom_col(fill = fill, width = 0.72)) {
+  d <- ann[ecoregion == r][order(year)]
+  ggplot(d, aes(year, burned_ha)) +
+    bars +
+    scale_x_continuous(breaks = c(seq(1999, 2019, 4), 2025),
+                       expand = expansion(add = 0.6)) +
+    scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.08)),
+                       labels = lab_short, n.breaks = 6) +
+    labs(x = NULL, y = NULL, title = r, subtitle = "Hectáreas") +
+    theme_fs_pres(base_size = 19) +
+    theme(plot.title.position = "plot",
+          plot.subtitle = element_text(colour = PRES_LIGHT, size = rel(0.8),
+                                       margin = margin(t = 2, b = 6)),
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor   = element_blank(),
+          panel.grid.major.y = element_line(colour = "grey88", linetype = "22",
+                                            linewidth = 0.4),
+          axis.line.x  = element_line(colour = "grey70", linewidth = 0.4),
+          axis.line.y  = element_blank(),
+          axis.ticks.x = element_line(colour = "grey70", linewidth = 0.4),
+          axis.ticks.y = element_blank())
+}
+for (i in names(SERIES)) {
+  # `ggsave` directo y no `save_pres`, que le agregaría `_presentation` al nombre.
+  if (WRITE) ggsave(file.path(OUT, sprintf("fig%s_serie_%s_bars.png", i, slug(SERIES[[i]]))),
+                    serie_bars_pres(SERIES[[i]]), width = 6.5, height = 5, dpi = 300,
+                    bg = "white")
+}
+print(serie_bars_pres(NAT))
+invisible(NULL)
+```
+
+```{r figs-series-bars-trend}
+# bars version con el tono de la tendencia: las cuatro regiones (no el país) en barras, pero
+# cada una con el color de su banda (`ribbon_col`, naranja si baja, violeta si sube) en vez del
+# rojo de la plataforma. La banda se dibuja con 0,45 de opacidad sobre blanco; la barra va
+# OPACA con ese mismo tono ya mezclado, así se lee igual que la banda sin transparencias que
+# el diseñador tenga que reproducir. Archivos nuevos, sufijo `_bars_tendencia`: no pisan los
+# `_bars` rojos.
+tone_on_white <- function(col, alpha = 0.45) {
+  m <- grDevices::col2rgb(col)[, 1] / 255
+  do.call(grDevices::rgb, as.list(alpha * m + (1 - alpha)))
+}
+for (i in setdiff(names(SERIES), "04")) {
+  r <- SERIES[[i]]
+  if (WRITE) ggsave(file.path(OUT, sprintf("fig%s_serie_%s_bars_tendencia.png", i, slug(r))),
+                    serie_bars_pres(r, fill = tone_on_white(ribbon_col(r))),
+                    width = 6.5, height = 5, dpi = 300, bg = "white")
+}
+for (r in REGIONES_SERIE) print(serie_bars_pres(r, fill = tone_on_white(ribbon_col(r))))
+invisible(NULL)
+```
+
+```{r figs-series-bars-trend-line}
+# Las mismas barras `_bars_tendencia`, con la línea de tendencia encima y SIN la banda de
+# confianza: la línea es la de `serie_mha_pres` (negra, 0,9), pasada de % del área quemable a
+# hectáreas porque este eje va en ha y no en Mha. Archivos nuevos, sufijo `_bars_trend`.
+#
+# El naranja va más FUERTE que en `_bars_tendencia` (0,8 de opacidad en vez de 0,45): mezclado
+# como la banda salía un durazno que se lavaba bajo la línea negra. El violeta ya aguanta a
+# 0,45 y queda igual. El país lleva el rojo de la plataforma, como su `_bars`.
+BAR_TONE_ALPHA <- c(baja = 0.8, sube = 0.45)
+bar_trend_fill <- function(r) {
+  if (r == NAT) return(BAR_FIRE)
+  tone_on_white(ribbon_col(r), BAR_TONE_ALPHA[[trend_side(r)]])
+}
+serie_bars_trend_pres <- function(r, bars = geom_col(fill = bar_trend_fill(r), width = 0.72)) {
+  bha <- scal[ecoregion == r, burnable_ha]
+  g <- copy(fs$trend[ecoregion == r])[, fit_ha := fit / 100 * bha]
+  serie_bars_pres(r, bars = bars) +
+    geom_line(data = g, aes(year, fit_ha), inherit.aes = FALSE, colour = "black",
+              linewidth = 0.9)
+}
+for (i in names(SERIES)) {
+  r <- SERIES[[i]]
+  if (WRITE) ggsave(file.path(OUT, sprintf("fig%s_serie_%s_bars_trend.png", i, slug(r))),
+                    serie_bars_trend_pres(r), width = 6.5, height = 5, dpi = 300,
+                    bg = "white")
+}
+for (r in SERIES) print(serie_bars_trend_pres(r))
+invisible(NULL)
+```
+
+```{r figs-series-bars-trend-cobertura}
+# La barra del país con la tendencia, pero APILADA por cobertura de nivel 1: cada año se parte
+# en lo que se quemó sobre Bosques, sobre vegetación herbácea y arbustiva y sobre uso
+# agropecuario, con la cobertura del AÑO ANTERIOR al fuego (la misma regla que la torta,
+# `fs$lulc`). En hectáreas, no normalizado: la barra mide lo que se quemó ese año. Colores y
+# orden de `fig02_torta_nivel1`, Bosques abajo; sin leyenda, igual que esa torta.
+#
+# La pila suma sólo lo QUEMABLE, así que queda 0,04-0,2 % por debajo del total que usa la
+# tendencia (el fuego sobre agua, glaciar o ciudad no tiene clase). A esta escala no se ve.
+d_n1 <- fs$lulc[ecoregion == NAT & nivel1 %in% N1_ORDEN,
+                .(burned_ha = sum(burned_ha)), by = .(year, nivel1)]
+d_n1[, nivel1 := factor(nivel1, levels = N1_ORDEN)]
+f04c <- serie_bars_trend_pres(
+  NAT, bars = geom_col(data = d_n1, aes(year, burned_ha, fill = nivel1), width = 0.72,
+                       position = position_stack(reverse = TRUE))) +
+  scale_fill_manual(values = N1_COLORS, guide = "none")
+if (WRITE) ggsave(file.path(OUT, "fig04_serie_argentina_bars_trend_cobertura.png"), f04c,
+                  width = 6.5, height = 5, dpi = 300, bg = "white")
+f04c
+```
+
+```{r figs-series-bars-cobertura-pct}
+# La misma pila de `fig04_serie_argentina_bars_trend_cobertura`, pero cada año NORMALIZADO a
+# 100 %: la composición de lo quemado, año por año. La línea ya no es la tendencia del área
+# quemada sino la de la PROPORCIÓN DE BOSQUE, que es la franja de abajo, así que la línea se lee
+# contra el borde superior del verde.
+#
+# ⚠️ ESTA TENDENCIA SE AJUSTA ACÁ, no viene de `factsheet_tables.R`: es la única de la entrega
+# que no está en una tabla. Misma receta que la del área (GAM, `k = 5` = `K_TREND`, REML), pero
+# quasibinomial con logit, porque es una proporción y así no puede salirse de 0-100 %. Sin
+# pesos: cada año cuenta igual, como en la tendencia del área.
+d_n1p <- copy(d_n1)[, pct := 100 * burned_ha / sum(burned_ha), by = year]
+d_bos <- d_n1p[nivel1 == "Bosques", .(year, p = pct / 100)]
+f_bos <- mgcv::gam(p ~ s(year, k = 5), family = quasibinomial(), data = d_bos,
+                   method = "REML")
+g_bos <- data.table(year = seq(min(d_bos$year), max(d_bos$year), by = 0.1))
+g_bos[, fit_pct := 100 * as.numeric(mgcv::predict.gam(f_bos, g_bos, type = "response"))]
+
+f04p <- serie_bars_pres(
+  NAT, bars = geom_col(data = d_n1p, aes(year, pct, fill = nivel1), width = 0.72,
+                       position = position_stack(reverse = TRUE))) +
+  geom_line(data = g_bos, aes(year, fit_pct), inherit.aes = FALSE, colour = "black",
+            linewidth = 0.9) +
+  scale_fill_manual(values = N1_COLORS, guide = "none") +
+  # `oob_keep` y no el `censor` por defecto: con redondeo la pila de algunos años termina en
+  # 100,0000001 y `censor` tira ESE segmento entero (el agropecuario, arriba) sin avisar.
+  scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 20), oob = scales::oob_keep,
+                     expand = expansion(mult = c(0, 0.02)),
+                     labels = function(x) paste0(x, " %")) +
+  labs(subtitle = "Porcentaje del área quemada")
+if (WRITE) ggsave(file.path(OUT, "fig04_serie_argentina_bars_cobertura_pct.png"), f04p,
+                  width = 6.5, height = 5, dpi = 300, bg = "white")
+f04p
 ```
 
 #### Las cuatro regiones en una grilla
