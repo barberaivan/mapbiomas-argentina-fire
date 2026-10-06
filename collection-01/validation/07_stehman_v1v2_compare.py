@@ -179,14 +179,33 @@ def build(years):
                          "n": n, "hits": hits, "proportion": round(p, 4),
                          "ci_low": round(lo, 4), "ci_high": round(hi, 4)})
 
+    # promedio NO ponderado de los tres estratos (sugerencia de Iván, WhatsApp 2026-09-22): cada
+    # estrato pesa 1/3 sin importar su Nh real — NO es el estimador de Stehman (que pondera por
+    # Nh y da ~94-98% de OA porque S3, casi todo el país, domina) ni tampoco representa la exactitud
+    # real del mapa (S1/S2/S3 no son del mismo tamaño ni cerca) — es sólo un resumen de referencia.
+    # SE combinado por propagación de errores (suma de varianzas independientes / 9, Wald), no
+    # Wilson — Wilson no tiene una forma cerrada para el promedio de tres proporciones.
+    avg_rows = []
+    for (fy, v), sub in pd.DataFrame(rows).groupby(["fire_year", "version"]):
+        sub = sub.set_index("stratum")
+        p_macro = sub["proportion"].mean()
+        se2 = sum(p * (1 - p) / n for p, n in zip(sub["proportion"], sub["n"]))
+        se_macro = (se2 / 9) ** 0.5
+        avg_rows.append({"fire_year": fy, "stratum": "avg(S1,S2,S3)", "version": v,
+                          "n": int(sub["n"].sum()), "hits": int(sub["hits"].sum()),
+                          "proportion": round(p_macro, 4),
+                          "ci_low": round(p_macro - Z_975 * se_macro, 4),
+                          "ci_high": round(p_macro + Z_975 * se_macro, 4)})
+    rows += avg_rows
+
     out_df = pd.DataFrame(rows)
     OUT_DIR.mkdir(exist_ok=True)
     out = OUT_DIR / "stratum_accuracy_v1_v2.csv"
     out_df.to_csv(out, index=False)
 
-    print(f"\n{'fy':<8}{'S':<3}{'ver':<5}{'n':<5}{'hits':<6}{'prop':<8}{'ci95':<20}")
+    print(f"\n{'fy':<8}{'S':<15}{'ver':<5}{'n':<5}{'hits':<6}{'prop':<8}{'ci95':<20}")
     for _, r in out_df.iterrows():
-        print(f"{str(r.fire_year):<8}{r.stratum:<3}{r.version:<5}{r.n:<5}{r.hits:<6}"
+        print(f"{str(r.fire_year):<8}{str(r.stratum):<15}{r.version:<5}{r.n:<5}{r.hits:<6}"
               f"{r.proportion:<8.4f}[{r.ci_low:.4f}, {r.ci_high:.4f}]")
     print(f"\n[escrito] {out}")
     return out_df

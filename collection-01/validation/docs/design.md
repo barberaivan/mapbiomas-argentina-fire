@@ -13,15 +13,48 @@ artefacts that cannot be retrofitted are **the strata rasters** and **the ordere
 
 ## ⚠️ Status, and one thing settled since
 
-**As of 2026-09-21**: interpretation has begun. 190 (fy2003) / 166 (fy2013) / 164 (fy2022, 2
-uninterpretable) points are CEO-interpreted — still short of the 100/stratum/year initial-pool
-target (per-stratum counts: fy2003 64/58/68, fy2013 62/51/53, fy2022 51/51/60). `06_stehman_compute.R`
-has been run once (against v1's frozen `map_burned`) — **not launch-ready on area or PA**: the
-error-adjusted area's 95% CI is close to the size of the estimate itself (S3 carries ~92–98% of the
-area weight and its still-small sample dominates the variance). User's accuracy (commission) for
-burned is the one defensible number at this sample size (SE ~0.05–0.06); OA is precise but inflated
-by class imbalance; PA inherits the area estimate's imprecision. A more complete CEO sheet is
-expected 2026-09-22 — re-run before quoting any of this externally.
+**As of 2026-10-06**: wave 1 is 85 % interpreted: 262 (fy2003) / 247 (fy2013) / 255 (fy2022, 2
+uninterpretable) of 300 points per year. Usable points per stratum S1/S2/S3: fy2003 89/83/90,
+fy2013 84/77/86, fy2022 88/80/85. The remaining wave-1 points still have to be interpreted: they
+are part of the random sample, and skipping the hard ones would bias it.
+
+Results with the v2 map (`07_stehman_v1v2_compare.py` and `08_stehman_v1v2_compute.R`):
+
+| | fy2003 | fy2013 | fy2022 |
+|---|---|---|---|
+| User's accuracy, burned | 73.8 % | 73.1 % | 78.8 % |
+| Producer's accuracy, burned | 21.5 % | 21.4 % | 10.3 % |
+| 95 % CI of burned area, relative to the estimate | ±66 % | ±85 % | ±68 % |
+
+Hit rate per stratum, all three years together: S1 73.6 %, S2 87.9 %, S3 96.9 %. Their simple
+average is 86.1 % (95 % CI 83.8–88.5 %). It is not the area-weighted accuracy.
+
+User's accuracy is the only number precise enough to quote (SE about 0.05). The burned-area CI is
+still too wide: S3 holds about 90 % of the country and has only ~85 points per year. **Do not quote
+hectares yet**: the R scripts use 0.09 ha per pixel, and the pixel totals add up to about 24 % more
+than the country's area. Accuracies are not affected.
+
+### Wave 2 (started 2026-10-06)
+
+300 new points per year, split **S1 50 / S2 50 / S3 200**. Most go to S3 because that is where
+almost all the uncertainty of the burned area sits. A few stay in S1 and S2 so that every batch mixes
+strata and the validators cannot guess the map's answer from the batch.
+
+- The points continue down the same frozen lists, right after wave 1: S1 and S2 ranks 100–149, S3
+  ranks 100–299. No new draw was needed.
+- `03_ceo_export.py --export --all-years --wave 2` writes `ceo_upload_fy<FY>_w2.csv` (LON, LAT,
+  PLOTID only) and `ceo_crosswalk_fy<FY>_w2.csv` (local only, never uploaded). PLOTID runs 301–600,
+  so it never repeats a wave-1 id.
+- Uploaded to GEE as `ceo_points_fy<FY>_w2`, next to the wave-1 `ceo_points_fy<FY>`. The inspector
+  template `ceo_val_00_template` (in the `fuego` repo) looks up the PLOTID in both. Each validator
+  needs a fresh copy of the template, or the same one-line change in their own copy.
+- In CEO, each year's wave 2 is a new project, made from the wave-1 project as a template and using
+  the `_w2` CSV.
+- **Pending**: once wave-2 answers come in, `05_stehman_export.py` has to read both waves of each
+  year together.
+
+`05_stehman_export.py` reads both kinds of CEO export: "sample data" (`<project id>-samples.csv`,
+the one used now) and the older "plot data".
 
 Also landed: the three strata rasters (fire-years 2003, 2013, 2022), the nine frozen ordered lists
 (3 years × 3 strata) and the three `ceo_points_fy<FY>` GEE table assets. The lists are written to
@@ -29,10 +62,10 @@ Also landed: the three strata rasters (fire-years 2003, 2013, 2022), the nine fr
 ran the draw.
 
 **Still open**: the second pool, which extends the frozen lists to the full 5,000-unit reserve
-("Drawing the frozen ordered sample lists"); the exact-`Nh` pixel census, whose `weights_launch()`
-in `01_strata_export.py` was never re-tested after the frame-geometry fix and very plausibly now
-works; and the validator-facing `ceo_val_00_template` script in the `fuego` repo, which still
-points at the demo asset.
+("Drawing the frozen ordered sample lists"). It is not needed yet: the lists already hold
+566/506/506 points in S1, 4,587/4,533/3,727 in S2 and 5,000 in S3 (fy2003/2013/2022). Also open:
+the exact-`Nh` pixel census, whose `weights_launch()` in `01_strata_export.py` was never re-tested
+after the frame-geometry fix and very plausibly now works, and the hectare issue above.
 
 The paths that were tried and abandoned on the way here — and must not be taken again — are listed
 in [`notes/abandoned-paths.md`](notes/abandoned-paths.md).

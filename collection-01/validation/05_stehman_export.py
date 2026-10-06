@@ -13,11 +13,17 @@ lo que `stehman2014(s, r, m, Nh_strata)` espera, para que unirlo sea un `read.cs
 QUÉ HACE
 --------
 Por año-fuego:
-  1. Lee el CSV de plot-data exportado por CEO (`ceo_data/preliminar_val_ceo/`, el más reciente
-     que matchea el año) y se queda con las filas YA INTERPRETADAS (`collection_time` no vacío).
-  2. Construye la etiqueta de referencia (`ref_burned`, "burned"/"unburned") desde las columnas
-     one-hot `¿Se quemó...?:Si` / `:No` — el texto de la pregunta cambia por año (el rango de
-     fechas), por eso se matchea por prefijo/sufijo, no por el string completo.
+  1. Lee el export de CEO del año (`ceo_data/preliminar_val_ceo/`) y se queda con las filas YA
+     INTERPRETADAS (`collection_time` no vacío). Acepta los dos formatos que exporta CEO:
+       - "sample data" (`<projectid>-samples.csv`): una columna por pregunta, respuesta en texto
+         (`Si`/`No`, `Confianza` entera). El nombre no dice el año, así que se elige el archivo
+         cuya pregunta `¿Se quemó de mayo del <FY> ...` coincide. Se prefiere este formato: el
+         export "plot data" de 2026-10-06 salió vacío (sólo encabezado).
+       - "plot data" (`ceo-MB-Fuego-Col-01---Validación-<FY>-plot-data-*.csv`): columnas one-hot
+         `pregunta:respuesta`. Queda como respaldo.
+  2. Construye la etiqueta de referencia (`ref_burned`, "burned"/"unburned") desde la pregunta
+     `¿Se quemó...?` — el texto cambia por año (el rango de fechas), por eso se matchea por
+     prefijo, no por el string completo.
   3. Excluye del input al estimador las filas marcadas `flagged == true` (intérprete no pudo
      responder con confianza) — se cuentan y reportan aparte, nunca se les inventa una etiqueta.
   4. Junta por `PLOTID` con `outputs/ceo/ceo_crosswalk_fy<FY>.csv` (paso 3) para traer `stratum` y
@@ -66,10 +72,30 @@ OUT_DIR = Path(__file__).resolve().parent / "outputs"
 BURNED_Q_RE = re.compile(r"^¿Se quemó.*:(Si|No)$")
 BORDER_Q_RE = re.compile(r"^¿Es borde\?:(Si|No)$")
 CONFIDENCE_Q_RE = re.compile(r"^Confianza:(\d+)$")
+SAMPLES_BURNED_Q_RE = re.compile(r"^¿Se quemó de mayo del (\d{4})\b.*\?$")
 
 
 # ---------------------------------------------------------------------------
+def _burned_question_year(src):
+    """Año-fuego de un export "sample data", leído de la pregunta de quema del encabezado."""
+    header = pd.read_csv(src, encoding="utf-8-sig", nrows=0).columns
+    for c in header:
+        m = SAMPLES_BURNED_Q_RE.match(c)
+        if m:
+            return int(m.group(1))
+    return None
+
+
 def find_ceo_csv(fy):
+    """(ruta, formato) del export de CEO para `fy`. Prefiere "samples" sobre "plot-data"."""
+    samples = [Path(f) for f in sorted(glob.glob(str(CEO_DIR / "*-samples.csv")))
+               if _burned_question_year(f) == fy]
+    if len(samples) > 1:
+        sys.exit(f"[error] fy{fy}: {len(samples)} exports 'samples' para el mismo año — dejar uno: "
+                 f"{[p.name for p in samples]}")
+    if samples:
+        return samples[0], "samples"
+
     pattern = str(CEO_DIR / f"ceo-MB-Fuego-Col-01---Validación-{fy}-plot-data-*.csv")
     hits = sorted(glob.glob(pattern))
     if not hits:
@@ -77,43 +103,58 @@ def find_ceo_csv(fy):
     if len(hits) > 1:
         print(f"[warn] fy{fy}: {len(hits)} exports de CEO encontrados, uso el más reciente "
               f"por nombre: {Path(hits[-1]).name}")
-    return Path(hits[-1])
+    return Path(hits[-1]), "plot-data"
 
 
-def load_ceo(fy):
-    """Filas YA interpretadas (`collection_time` no vacío), con `ref_burned`/`is_border`/
-    `confidence` ya extraídas de las columnas one-hot. NO excluye `flagged==true` acá — eso se
-    reporta y se filtra en `build()`, para que el conteo de no-interpretables quede visible."""
-    src = find_ceo_csv(fy)
-    df = pd.read_csv(src, encoding="utf-8-sig")
-    df = df[df["collection_time"].notna() & (df["collection_time"] != "")].copy()
-
+def _answers_plot_data(df):
+    """(si, no, border, confidence) desde las columnas one-hot `pregunta:respuesta`."""
     burned_si_col = next(c for c in df.columns if BURNED_Q_RE.match(c) and c.endswith(":Si"))
     burned_no_col = next(c for c in df.columns if BURNED_Q_RE.match(c) and c.endswith(":No"))
     border_si_col = next(c for c in df.columns if BORDER_Q_RE.match(c) and c.endswith(":Si"))
     conf_cols = [c for c in df.columns if CONFIDENCE_Q_RE.match(c)]
-
-    df["uninterpretable"] = df["flagged"].astype(str).str.lower() == "true"
-
-    si = df[burned_si_col].fillna(0) > 0
-    no = df[burned_no_col].fillna(0) > 0
-    unanswered = ~(si | no)
-    # una fila `flagged==true` (intérprete no pudo decidir) legítimamente no responde la pregunta
-    # de quema — se excluye del estimador en build(), no es un error del export.
-    bad = unanswered & ~df["uninterpretable"]
-    if bad.any():
-        sys.exit(f"[error] fy{fy}: {bad.sum()} filas interpretadas y NO flaggeadas sin Si/No en "
-                  f"la pregunta de quema — revisar el export de CEO")
-    df["ref_burned"] = si.map({True: "burned", False: "unburned"})
-    df.loc[unanswered, "ref_burned"] = pd.NA
-    df["is_border"] = df[border_si_col].fillna(0) > 0
 
     def confidence(row):
         for c in conf_cols:
             if row.get(c, 0) and float(row[c]) > 0:
                 return int(CONFIDENCE_Q_RE.match(c).group(1))
         return pd.NA
-    df["confidence"] = df.apply(confidence, axis=1)
+    return (df[burned_si_col].fillna(0) > 0, df[burned_no_col].fillna(0) > 0,
+            df[border_si_col].fillna(0) > 0, df.apply(confidence, axis=1))
+
+
+def _answers_samples(df):
+    """(si, no, border, confidence) desde una columna por pregunta con la respuesta en texto."""
+    burned_col = next(c for c in df.columns if SAMPLES_BURNED_Q_RE.match(c))
+    burned = df[burned_col].fillna("").astype(str).str.strip()
+    border = df["¿Es borde?"].fillna("").astype(str).str.strip()
+    conf = pd.to_numeric(df["Confianza"], errors="coerce").astype("Int64")
+    return burned == "Si", burned == "No", border == "Si", conf
+
+
+def load_ceo(fy):
+    """Filas YA interpretadas (`collection_time` no vacío), con `ref_burned`/`is_border`/
+    `confidence` ya extraídas de las respuestas. NO excluye `flagged==true` acá — eso se
+    reporta y se filtra en `build()`, para que el conteo de no-interpretables quede visible."""
+    src, fmt = find_ceo_csv(fy)
+    df = pd.read_csv(src, encoding="utf-8-sig")
+    df = df[df["collection_time"].notna() & (df["collection_time"] != "")].copy()
+
+    df["uninterpretable"] = df["flagged"].astype(str).str.lower() == "true"
+    if "flagged_reason" not in df.columns:      # el export "samples" no la trae
+        df["flagged_reason"] = pd.NA
+
+    si, no, border, conf = (_answers_samples if fmt == "samples" else _answers_plot_data)(df)
+    unanswered = ~(si | no)
+    # una fila `flagged==true` (intérprete no pudo decidir) legítimamente no responde la pregunta
+    # de quema — se excluye del estimador en build(), no es un error del export.
+    bad = unanswered & ~df["uninterpretable"]
+    if bad.any():
+        sys.exit(f"[error] fy{fy}: {bad.sum()} filas interpretadas y NO flaggeadas sin Si/No en "
+                  f"la pregunta de quema — revisar el export de CEO ({src.name})")
+    df["ref_burned"] = si.map({True: "burned", False: "unburned"})
+    df.loc[unanswered, "ref_burned"] = pd.NA
+    df["is_border"] = border
+    df["confidence"] = conf
     df["plotid"] = df["plotid"].astype(int)
 
     return df[["plotid", "email", "collection_time", "analysis_duration", "ref_burned",
@@ -174,9 +215,9 @@ def build(fy):
 
 
 def check(fy):
-    ceo_src = find_ceo_csv(fy)
+    ceo_src, fmt = find_ceo_csv(fy)
     ceo = load_ceo(fy)
-    print(f"[check] fy{fy} — CEO: {ceo_src.name}  ({len(ceo)} interpretados, "
+    print(f"[check] fy{fy} — CEO ({fmt}): {ceo_src.name}  ({len(ceo)} interpretados, "
           f"{int(ceo['uninterpretable'].sum())} no-interpretables)")
     cross_src = CROSSWALK_DIR / f"ceo_crosswalk_fy{fy}.csv"
     print(f"         crosswalk: {'ok' if cross_src.exists() else 'FALTA'} ({cross_src})")
