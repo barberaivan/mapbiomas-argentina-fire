@@ -697,6 +697,50 @@ f02n1 <- ggplot(fam2) +
 save2(f02n1, "fig02_torta_nivel1", w = 5, h = 5)
 ```
 
+```{r fig02-disponible-quemado-presentation}
+#| fig-height: 7
+#| fig-width: 12
+# presentation version, para un congreso: el nivel 1 en lo DISPONIBLE contra lo QUEMADO, para
+# mostrar que el bosque se quema más de lo que le tocaría por su superficie. Mismos colores que
+# `fig02_torta_nivel1`; sin leyenda, porque las clases ya están en el eje X.
+#
+# Los dos lados son Argentina 1999-2025 sobre las mismas tres familias (sin 'No observado' ni
+# clases no quemables). Disponible: el área MEDIA de cada familia en la cobertura del año
+# anterior (`mean_area_ha` de factsheet_lulc_pct_mean.csv). Quemado: el % de lo quemado en los
+# 27 años, el mismo número de la torta (`share`).
+N1_CORTO <- setNames(c("Bosques", "Herbáceas y\narbustivas", "Uso\nagropecuario"), N1_ORDEN)
+N1_X     <- rev(N1_ORDEN)   # agropecuario, herbácea, bosques
+dq <- rbind(
+  fs$lulc_pct_mean[level == "nivel1" & ecoregion_id == 0 & clase %in% N1_ORDEN,
+                   .(panel = "Disponible", familia = clase, pct = 100 * mean_area_ha / sum(mean_area_ha))],
+  fs$lulc_share[level == "nivel1" & ecoregion_id == 0 & clase %in% N1_ORDEN,
+                .(panel = "Quemado", familia = clase, pct = share)])
+dq[, `:=`(panel = factor(panel, levels = c("Quemado", "Disponible")),
+          familia = factor(familia, levels = N1_X))]
+save_tab(dq[, .(panel, familia_nivel1 = familia, porcentaje = round(pct, 2))],
+         "fig02_disponible_quemado")
+
+f02dq <- ggplot(dq, aes(familia, pct, fill = familia)) +
+  geom_col(width = 0.75) +
+  geom_text(aes(label = sprintf("%.0f %%", pct)), vjust = -0.4, size = 7,
+            family = PRES_FONT, colour = PRES_DARK) +
+  facet_wrap(~panel, nrow = 1) +
+  scale_fill_manual(values = N1_COLORS, guide = "none") +
+  scale_x_discrete(labels = N1_CORTO) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.12))) +
+  labs(x = NULL, y = "Porcentaje del área") +
+  theme_fs_pres(24) +
+  # recuadro al panel y al título del facet, más parecido al formato por defecto de ggplot
+  theme(panel.border = element_rect(fill = NA, colour = PRES_LIGHT, linewidth = 0.6),
+        strip.background = element_rect(fill = "grey92", colour = PRES_LIGHT, linewidth = 0.6),
+        strip.text  = element_text(size = rel(1.1), colour = PRES_DARK,
+                                   margin = margin(8, 0, 8, 0)),
+        axis.line = element_blank(),
+        panel.grid.major.x = element_blank())
+save_pres(f02dq, "fig02_barras_nivel1_disponible_quemado", w = 12, h = 7)
+f02dq
+```
+
 ```{r fig02-barras}
 #| fig-height: 5
 #| fig-width: 8
