@@ -5,19 +5,12 @@
 El factsheed es una serie de imágenes/infografías que contienen los 
 principales hallazgos relacionados a un producto de MapBiomas.
 
-Para el lanzamiento general (Argentina Col3, 24/08/2026) haremos un 
-factsheet pequeño, limitado. Luego extenderemos el análisis para 
-mostrar más detalles en un segundo lanzamiento propio de fuego, que 
-probablemente tenga lugar en Bariloche, en la semana del 7-11/12/2026.
+Para el lanzamiento general (Argentina Col3, 24/08/2026) hicimos un 
+factsheet pequeño, limitado, de 3 slides. Luego extendemos el análisis para 
+mostrar más detalles en un segundo lanzamiento propio de fuego, 
+el 11/12/2026.
 
-Por ahora trabajamos en la versión reducida, que consiste en 3-4 
-imágenes (slides). Estas serán parte de la presentación de fuego (~15 min)
-en el lanzamiento general, donde también se hará una breve descripción
-de la metodología de mapeo desarrollada.
-
-En este documento se detallan enlaces/datos relevantes, e ideas para 
-el factsheet. Puede también servir como hoja de ruta/bitácora, para estar al
-tanto de qué se hizo y qué falta.
+Las primeras 3 slides están completas, y ahora trabajamos en las siguientes.
 
 > **Plan de producción: [`09-statistics.md`](statistics.md)** (de dónde sale cada
 > número: el área quemada del toolkit, el denominador quemable, el conteo de incendios) y
@@ -44,7 +37,7 @@ análisis 6 no entran** a la versión de septiembre.
 **Exploratorio no quiere decir descartado — quiere decir que no se publica en septiembre.**
 Los dos cuadernos de vegetación son material de trabajo para:
 
-1. **el lanzamiento propio de fuego (Bariloche, 7-11/12/2026)**, donde el factsheet se
+1. **el lanzamiento propio de fuego (Bariloche, 11/12/2026)**, donde el factsheet se
    extiende y el análisis 6 es candidato natural a lámina propia; y
 2. **el paper**, donde el control, `q`, la trayectoria por ventana y el corte por clase de
    bosque son el material que sostiene un resultado publicable.
@@ -832,3 +825,107 @@ bosque cerrado y en clases nativas, **la mitad de lo que sale va a cultivos temp
 porcentaje **sube** (bosque cerrado 44 % en Y+1 → 51 % en Y+5, la conversión tarda) y `q` **baja**
 (14,0 → 9,1, el control acumula su propio fondo). Y+4 e Y+5 nacionales **ya están exportados**
 (§5.9), así que reportar a cinco años no cuesta una corrida nueva.
+
+
+# Láminas extra para diciembre 2026
+
+## Lámina 4
+
+¿Cuánto se quema por cada tipo de vegetación?
+
+Porcentaje quemado anual medio por grandes tipos de veg (nivel 1), para el país y 
+para algunas regiones. Son gráficos de barras, con la veg en el Y y el % en el X, 
+en orden [bosque, herbaceas y arbustivas, agropec], pero usando sus nombres formales 
+de las clases.
+
+Una línea discontinua marca el promedio del país/región, marginal a la veg.
+No sé si una línea discontinua o eso + una barra sin relleno arriba de todo que diga
+"promedio ponderado" o "total". La idea es con esto poder mostrar también cuál se quema
+más o menos que el valor promedio marginal a la veg.
+
+Tengo que elegir qué regiones, quizás Chaco, Bosques Patagónicos, y Monte (Burkart).
+
+Ya tenemos un gráfico/tabla en un factsheet sobre esto, que muestra cada celda con color.
+Muestra a nivel país y por región, pero ahí sólo faltaría el valor marginal a la veg.
+Me refiero a que los datos ya están listos por ahí, procesados, sólo hay que ordenarlos 
+en este gráfico que pido.
+
+**Hecha** (`notebooks/factsheet_2026.qmd`, `fig13_pct_cobertura_argentina` y
+`fig14_pct_cobertura_regiones`). Lo que se decidió:
+
+- Regiones: **Chaco, Delta e Islas del Paraná y Bosques Patagónicos**, en ese orden. Cada una
+  anticipa una lámina de evento (Condorito está en el Chaco Serrano, el Delta es la 7 y
+  Cholila la 6). Monte quedó afuera: su bosque es el 2 % de la región (971 kha) y su 2,70 %
+  anual se apoya en un denominador chico.
+- El total es una barra sin relleno, **"Todas las coberturas"**, arriba de todo, y de ella
+  baja la línea discontinua. Se calcula con la regla de las barras: año por año, quemado sobre
+  área de las familias del panel, y el promedio al final. No es el % regional de la lámina 1.
+- **Bosques Patagónicos va sin uso agropecuario**, también en el total: es el 1,4 % de su
+  superficie (~60 kha).
+- Cada panel tiene su propia escala (0,15 % en Patagonia contra ~3 % en el Delta), con el valor
+  escrito en cada barra. Va dicho en el epígrafe.
+- El agropecuario del Chaco (1,29 %) se dejó. Al nivel 2 son sobre todo **pasturas** (75 de los
+  124 kha quemados por año, 3,5 % anual) y en menor medida cultivos temporarios (48 kha,
+  0,66 %). La quema de pasturas megatérmicas (buffel, gatton) es una práctica real en el Chaco;
+  parte puede ser pastizal natural mal etiquetado como pastura en el LULC, pero el fuego sería
+  real igual. Sin verificar: la estacionalidad (fin de invierno = manejo) y dónde cae (Chaco
+  húmedo apunta a pastizal mal etiquetado).
+
+## Lámina 5
+
+Pirorregiones: a esto lo hace Ramón, me tiene que pasar la imagen en pdf y png, 
+ya tengo la slide.
+
+---
+
+> Láminas 6 a 8 son sobre eventos/particularidades. Llevan mapa y algunas estadísticas.
+> El mapa debería ser fondo de imagen satelital y escala, con lo quemado como un raster rojo
+> con algo de transparencia. En algunos casos, se debe agregar el contorno (polígono) de 
+> un área de interés.
+> No sé si se podrán hacer directamente desde la plataforma o tendremos que hacerlo con 
+> Python o R. Quizás geemap va bien ahí.
+
+### Sugerencias para los mapas de 6 a 8 (aún no implementadas)
+
+- **Hacerlos en R**, como el resto de la entrega, y no con capturas de la plataforma: así hay
+  control de la transparencia, la escala y el polígono, salen PNG y PDF, y son reproducibles.
+  geemap sirve para explorar, no para la figura final. El flujo: exportar desde GEE, por área
+  de interés, el ráster quemado a 30 m y un compuesto RGB de fondo; dibujar con `terra` +
+  `tidyterra` + `ggspatial` (escala y norte), con el rojo semitransparente y el contorno encima.
+- **Fondo previo al fuego**: con la cicatriz visible debajo, el rojo es redundante. Para 2015,
+  Landsat 8 (Sentinel-2 empieza a mediados de 2015). Un mosaico de Esri sería más rápido pero
+  lleva atribución.
+- **Tipo de vegetación con la cobertura del año anterior**, como en todo el factsheet (col-3,
+  `PRODUCT_LULC`). Con la del mismo año, parte del bosque quemado aparece como otra clase.
+- **Cholila**: el ráster calendario no distingue eventos. Lo más limpio es tomar de la capa de
+  polígonos de objetos de fuego (step 07e) los objetos que forman el incendio y usar su
+  contorno como área de interés.
+- **Delta**: usar **año calendario 2020**, no año de fuego. Los datos mensuales
+  (`factsheet_monthly.csv`) dan ~658 kha en calendario 2020 y ~657 kha en el año de fuego
+  may 2020-abr 2021; ene-abr 2021 suma sólo ~15 kha, así que el verano de 2021 no cambia nada.
+  El pico fue jul-sep 2020. Así se respeta "todo es año calendario" y se lee de los productos
+  publicados.
+- **Condorito**: límite del parque de WDPA en GEE (`WCMC/WDPA/current/polygons`) o de la APN.
+  **Confirmar el año**: los grandes incendios recordados de las sierras de Córdoba son 2013 y
+  2020; verificarlo con el mensual antes de armar nada.
+
+## Lámina 6
+
+Incendio de Cholila 2015, con mapa. 
+Texto que cuente área afectada y cuánto quemó por tipo de vegetación, en área absoluta y como (%)
+de lo quemado. 
+
+## Lámina 7
+
+Incendios del Delta del Paraná, fire-year 2020.
+Esta es una pirorregión, dibujar el polígono. Todos los fuegos de ese fire-year 
+(creo que gran parte también quemó en verano de 2021).
+Área afectada y también por veg type en abs y rel.
+
+## Lámina 8
+
+Incendios del 2015 en Parque Nacional Quebrada del Condorito.
+Lo mismo, recortando al parque, e indicando qué proporción del área se quemó en ese 
+fire-year.
+
+

@@ -1546,8 +1546,11 @@ pct_cob <- function(d) {
           axis.line.x = element_line(colour = "grey40", linewidth = 0.3))
 }
 
-f13 <- pct_cob(d4[region == NAT])
-save2(f13, "fig13_pct_cobertura_argentina", w = 7, h = 3.4)
+# el título por el mismo facet que la fig14, así "Argentina" sale con la letra y la posición
+# de "Chaco"
+f13 <- pct_cob(d4[region == NAT]) + facet_wrap(~region) +
+  theme(strip.text = element_text(face = "bold", hjust = 0, size = rel(1.05)))
+save2(f13, "fig13_pct_cobertura_argentina", w = 7, h = 3.7)
 ```
 
 ```{r fig14-pct-cobertura-regiones}
