@@ -5,7 +5,7 @@ collection-01/statistics/burn_perc_export.py — EL MAPA DE "% DE LOS AÑOS CON 
 El primero de los tres rásters que baja el factsheet (los otros dos son la corrida
 `--reducer max` de acá mismo y `last_fire_export.py`).  Todo lo demás son tablas; esto es
 una imagen, porque la figura de apertura quiere el mapa nacional al lado del mapa de
-ecorregiones (statistics/docs/factsheet-sep2026-spec.md §0).
+ecorregiones (statistics/docs/factsheet-2026-spec.md §0).
 
 QUÉ COMPUTA
     `frequency_burned_v2`, banda `fire_frequency_1999_2025` (cuántos de los 27 años

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
 collection-01/statistics/lulc_change_export.py — QUÉ HABÍA ANTES Y QUÉ QUEDÓ DESPUÉS
-(el análisis 6 del factsheet; statistics/docs/statistics.md §5.7, statistics/docs/factsheet-sep2026-spec.md §6)
+(el análisis 6 del factsheet; statistics/docs/statistics.md §5.7, statistics/docs/factsheet-2026-spec.md §6)
 
 La tercera —y última— reducción propia en Earth Engine.  `burnable_export.py` da el
 denominador del "% de lo quemable que se quemó"; `lulc_area_export.py`, el del "% del

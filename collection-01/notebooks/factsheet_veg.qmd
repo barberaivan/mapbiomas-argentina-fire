@@ -22,7 +22,7 @@ de celdas— y esta parte todavía se está decidiendo. Acá se dibuja sólo lo 
 CSV chicos, así que un render son segundos.
 
 Las figuras que escribe siguen llevando el prefijo **`fig06_`**: el análisis sigue siendo el
-6 (`statistics/docs/factsheet-sep2026-spec.md` §6), sólo cambió de cuaderno. `factsheet.qmd` ya no lo
+6 (`statistics/docs/factsheet-2026-spec.md` §6), sólo cambió de cuaderno. `factsheet.qmd` ya no lo
 dibuja, así que cada figura tiene un único productor.
 
 De dónde salen los números: [`statistics/docs/statistics.md`](../statistics/docs/statistics.md) §5.7.

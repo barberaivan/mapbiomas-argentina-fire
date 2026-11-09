@@ -117,8 +117,8 @@ fix_n2 <- function(x) {
 # significa cuando se la lee.
 NON_BURNABLE_N1 <- c("Áreas sin vegetación", "Cuerpos de agua")
 
-K_TREND  <- 5      # statistics/docs/factsheet-sep2026-spec.md análisis 2 — a few bases, a smooth decadal shape
-# statistics/docs/factsheet-sep2026-spec.md análisis 3.2 asks for k = 12, so that the curve FOLLOWS the 12 summary
+K_TREND  <- 5      # statistics/docs/factsheet-2026-spec.md análisis 2 — a few bases, a smooth decadal shape
+# statistics/docs/factsheet-2026-spec.md análisis 3.2 asks for k = 12, so that the curve FOLLOWS the 12 summary
 # points. Measured, 12 does the opposite at the one place it matters: nationally
 # it overshoots the August peak by 8 % and the Chaco's by 10.5 %, drawing a curve
 # that is higher than any month actually is. k = 10 reproduces the national peak
@@ -175,7 +175,7 @@ ann[is.na(burned_ha), burned_ha := 0]
 ann <- add_national(ann, "year")
 ann[burn, on = "ecoregion_id", `:=`(ecoregion = i.ecoregion, burnable_ha = i.burnable_ha)]
 ann[, pct := 100 * burned_ha / burnable_ha]
-# "veces el año típico" (statistics/docs/factsheet-sep2026-spec.md análisis 2): the series divided by its own mean,
+# "veces el año típico" (statistics/docs/factsheet-2026-spec.md análisis 2): the series divided by its own mean,
 # so regions of wildly different magnitude can share one panel and be compared by
 # SHAPE. 1 is a normal year for that region, 4 is four times its normal.
 ann[, pct_rel := pct / mean(pct), by = ecoregion_id]
@@ -346,7 +346,7 @@ if (!file.exists(LULC_AREA)) {
 }
 
 # ── 4. the trend: a GAM through the annual % series ──────────────────────────
-# One normal GAM per region, k = 5 (statistics/docs/factsheet-sep2026-spec.md análisis 2). The scalar it is
+# One normal GAM per region, k = 5 (statistics/docs/factsheet-2026-spec.md análisis 2). The scalar it is
 # summarised by is the MEAN SLOPE over the series — evaluated at every observed
 # year and averaged, which for a straight line is just the slope.
 trend_one <- function(d) {
@@ -371,7 +371,7 @@ wr(trend_fits, "factsheet_trend_fits.csv")
 
 # ── 5. the pirogram: área e incendios por mes ────────────────────────────────
 # Both halves are MEANS OVER THE 27 YEARS of that month's value — "un mes de
-# septiembre típico", not a total. The count half is the >= 10 ha fires (statistics/docs/factsheet-sep2026-spec.md
+# septiembre típico", not a total. The count half is the >= 10 ha fires (statistics/docs/factsheet-2026-spec.md
 # análisis 3.2); it comes from the polygons and is filed whole into the month of
 # `date_median`, while the area half is split per pixel. Same shape, different
 # values — say which one a number came from.
@@ -387,7 +387,7 @@ piro <- merge(mon[, .(burned_ha = sum(burned_ha) / nyears, pct = sum(pct) / nyea
               cnt[, .(n_fires = sum(n_fires) / nyears, n_ge10 = sum(n_ge10) / nyears,
                       n_ge100 = sum(n_ge100) / nyears), by = .(ecoregion_id, month)],
               by = c("ecoregion_id", "month"))
-# The intra-annual SHAPES (statistics/docs/factsheet-sep2026-spec.md análisis 3.3): each region's 12 months sum to
+# The intra-annual SHAPES (statistics/docs/factsheet-2026-spec.md análisis 3.3): each region's 12 months sum to
 # 100 %, so magnitude is divided out and only the season's shape is compared.
 piro[, share_area := 100 * burned_ha / sum(burned_ha), by = ecoregion_id]
 piro[, share_fires := 100 * n_ge10 / sum(n_ge10), by = ecoregion_id]
@@ -403,7 +403,7 @@ wr(piro[, .(ecoregion_id, ecoregion, month, month_fy, month_name, burned_ha, pct
 # ── 6. the cyclic GAM through the pirogram ───────────────────────────────────
 # Fitted on the 12 SUMMARY points, not on the raw year-by-month data: it is there
 # to follow the mean curve, an aesthetic device, and fitting it to the summary is
-# what makes it do that (statistics/docs/factsheet-sep2026-spec.md análisis 3.2).
+# what makes it do that (statistics/docs/factsheet-2026-spec.md análisis 3.2).
 season_one <- function(d, yname) {
   y <- d[[yname]]
   if (sum(y) <= 0) return(data.table(month = numeric(0), fit = numeric(0)))
@@ -481,7 +481,7 @@ scal[fs, on = "ecoregion_id",
           p95_ha = i.p95_ha, biggest_fire_ha = i.max_ha,
           fires_ge10_per_10kkm2 = i.fires_per_year_per_10kkm2,
           total_fires = i.n_fires, total_ge10 = i.n_ge10)]
-# The totals over the whole series, which the pirograma normalizado annotates (statistics/docs/factsheet-sep2026-spec.md análisis 3.4): a
+# The totals over the whole series, which the pirograma normalizado annotates (statistics/docs/factsheet-2026-spec.md análisis 3.4): a
 # PMF divides magnitude out, so the panel has to carry the magnitude in text or it
 # says nothing about how much burned. The area is the RASTER side (the sum of the
 # annual table, recurrences and all — a hectare that burned four times is in it four
@@ -497,7 +497,7 @@ scal <- merge(scal, rbind(meta[, .(ecoregion_id, lat, lon, area_km2, palette_ord
 setorder(scal, -mean_pct)
 wr(scal, "factsheet_region_scalars.csv")
 
-# ── 6. el cambio de cobertura alrededor del fuego (statistics/docs/statistics.md §5.7, statistics/docs/factsheet-sep2026-spec.md §6) ──
+# ── 6. el cambio de cobertura alrededor del fuego (statistics/docs/statistics.md §5.7, statistics/docs/factsheet-2026-spec.md §6) ──
 # La fuente son `lulc_change_eco13_y{1,3}.csv` (statistics/lulc_change_export.py): el país
 # entero cruzado por estado de fuego x ecorregión x clase col-3 de Y-1 x clase de Y+offset,
 # por año. OPCIONAL, como el análisis 5: un factsheet regenerado antes de que aterrice esa

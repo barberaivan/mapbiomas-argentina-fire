@@ -640,7 +640,7 @@ descuido, no para ponerlos en ella.
    una muestra al azar del país: parte de la asociación es fuego ocurriendo donde el cambio ya
    iba a ocurrir. En `bosque → agropecuario` —la banda más gruesa del Sankey de nivel 1— la
    lectura más probable es el fuego como **herramienta de un desmonte ya decidido**, no como su
-   causa (statistics/docs/factsheet-sep2026-spec.md §6.4).
+   causa (statistics/docs/factsheet-2026-spec.md §6.4).
 2. **Un año es poco para la vegetación leñosa.** La ventana Y+1 está calibrada en el Chaco,
    donde el fuego *despeja*. Donde mata pero no despeja, el cambio llega al mapa más tarde: a
    Y+3 el número de la frase 1 sube de `r fmt_pct(N1$XX, 1)` % a **17,9 %** (nivel 1), y en el

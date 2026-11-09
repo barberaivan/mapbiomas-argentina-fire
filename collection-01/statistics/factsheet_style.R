@@ -1,7 +1,7 @@
 # =============================================================================
 # collection-01/statistics/factsheet_style.R
 #
-# The conventions of statistics/docs/factsheet-sep2026-spec.md §"Convenciones para gráficos multi-región", in code,
+# The conventions of statistics/docs/factsheet-2026-spec.md §"Convenciones para gráficos multi-región", in code,
 # so every figure in notebooks/factsheet.qmd is a member of one family and not a
 # plot on its own. Sourced by the notebook; it loads the tables and defines the
 # palette, the theme, the map-as-legend and the two figure variants.
@@ -61,7 +61,7 @@ fs <- local({
        # the denominator export — the only table that carries the col-3 CLASS CODE
        # next to the three legend levels, so the crosswalk is read, never retyped
        lulc_area = rd_opt("lulc_area_eco13.csv"),
-       # análisis 6 (statistics/docs/factsheet-sep2026-spec.md §6): las tres tablas del cambio de cobertura. Opcionales
+       # análisis 6 (statistics/docs/factsheet-2026-spec.md §6): las tres tablas del cambio de cobertura. Opcionales
        # por la misma razón — dependen de la tercera exportación (statistics/docs/statistics.md §5.7).
        change        = rd_opt("factsheet_change.csv"),
        change_annual = rd_opt("factsheet_change_annual.csv"),
@@ -339,7 +339,7 @@ ZERO_COLOUR <- "#FFFFFF"
 BURN_BREAKS <- c(0, 0.2, 0.5, 1, 2, 5, 10, Inf)
 BURN_LABELS <- c("< 0,2", "0,2 – 0,5", "0,5 – 1", "1 – 2", "2 – 5", "5 – 10", "> 10")
 
-# Las etiquetas del mismo dato en VECES (statistics/docs/factsheet-sep2026-spec.md §0.2): % de los años x 27 / 100.  Es una
+# Las etiquetas del mismo dato en VECES (statistics/docs/factsheet-2026-spec.md §0.2): % de los años x 27 / 100.  Es una
 # reescala de los mismos cortes, no otro mapa — así las dos figuras son comparables tono a
 # tono y la única diferencia es qué dice la leyenda.
 count_lab <- function(x) formatC(x, format = "f", digits = 2, decimal.mark = ",")
@@ -419,7 +419,7 @@ map_burn_perc <- function(res_m = 1000, outline = TRUE, legend = TRUE) {
 }
 
 # El MISMO dato en veces (`stat = "mean"`, la celda promedio) o el máximo de la celda
-# (`stat = "max"`, el único que da enteros).  Ver statistics/docs/factsheet-sep2026-spec.md §0.2 para cuál dice qué.
+# (`stat = "max"`, el único que da enteros).  Ver statistics/docs/factsheet-2026-spec.md §0.2 para cuál dice qué.
 map_burn_count <- function(res_m = 1000, stat = c("mean", "max"), outline = TRUE,
                            legend = TRUE) {
   stat <- match.arg(stat)
@@ -440,7 +440,7 @@ map_burn_count <- function(res_m = 1000, stat = c("mean", "max"), outline = TRUE
   }
 }
 
-# El año del último fuego (statistics/docs/factsheet-sep2026-spec.md §2.1).  `min_denom` es el de la banda 2 de ESTE archivo, que no es la
+# El año del último fuego (statistics/docs/factsheet-2026-spec.md §2.1).  `min_denom` es el de la banda 2 de ESTE archivo, que no es la
 # fracción quemable sino la fracción QUEMADA: 0 dibuja todo lo que ardió alguna vez, y
 # subirlo esconde las celdas donde ardieron dos píxeles.  Por defecto no se esconde nada — el
 # color acá codifica una FECHA, no una magnitud, así que una celda que ardió poco no miente
@@ -583,7 +583,7 @@ lines_focal <- function(d, x, y, focal) {
 
 # ── análisis 6: el cambio de cobertura alrededor del fuego ───────────────────
 # Tres vistas de la misma tabla (`factsheet_change.csv`), y el orden importa porque cada una
-# es el zoom de la anterior (statistics/docs/factsheet-sep2026-spec.md §6):
+# es el zoom de la anterior (statistics/docs/factsheet-2026-spec.md §6):
 #
 #   (a) de todo lo que ardió, ¿qué proporción figura con OTRA cobertura un año después?
 #   (b1) de lo que NO cambió, ¿cómo se reparte entre clases?  (suma 100 %)

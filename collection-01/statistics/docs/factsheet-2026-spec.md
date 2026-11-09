@@ -32,7 +32,7 @@ septiembre.
 
 | Cuaderno | Estatus | Para qué |
 |---|---|---|
-| **`factsheet_sep2026.qmd`** | **EL ENTREGABLE** | Las 3 láminas de septiembre, lámina por lámina: 16 imágenes limpias (sin título ni epígrafe adentro) + un CSV por figura, en carpeta propia. **Es lo que recibe el diseñador** |
+| **`factsheet_2026.qmd`** | **EL ENTREGABLE** | Las 3 láminas de septiembre, lámina por lámina: 16 imágenes limpias (sin título ni epígrafe adentro) + un CSV por figura, en carpeta propia. **Es lo que recibe el diseñador** |
 | `factsheet.qmd` | **La fuente de la que elige** | Análisis 1–5, con todas las variantes regionales y con título/subtítulo/epígrafe: es lo que hace falta para *decidir*, y justo lo que no va en un archivo entregado |
 | `factsheet_veg.qmd` | **Exploratorio** | Análisis 6 entero: control, `q`, 12 ecorregiones, dos ventanas, el caso patagónico |
 | `factsheet_veg_short.qmd` | **Exploratorio** | El análisis 6 recortado + el bloque de bosques; el ensayo de cómo se diría en una lámina |
@@ -52,10 +52,10 @@ Los dos cuadernos de vegetación son material de trabajo para:
 Por eso **no se borra nada y se sigue documentando con el mismo cuidado**, aunque no vaya a
 imprenta ahora.
 
-**Ese cuaderno ya existe: `factsheet_sep2026.qmd`**, y es la fuente de verdad de qué se
+**Ese cuaderno ya existe: `factsheet_2026.qmd`**, y es la fuente de verdad de qué se
 publica. Especifica lámina por lámina qué figura va, con qué nombre de archivo, qué dice el
 epígrafe y de qué tabla sale; escribe las imágenes y sus CSV en
-`data/statistics/factsheet_sep2026_figures_and_tables/`, que es la carpeta que se comparte.
+`data/statistics/factsheet_2026_figures_and_tables/`, que es la carpeta que se comparte.
 De dónde sale cada número sigue estando en [`09-statistics.md`](statistics.md) §5.10; el
 resto de este documento es el porqué de cada figura, que es lo que el cuaderno resume.
 
@@ -68,8 +68,8 @@ resto de este documento es el porqué de cada figura, que es lo que el cuaderno 
 - Factsheets de ejemplo: 
   Perú: `https://drive.google.com/file/d/17QOdf0zKoLDrVaCVrePdSPT5LESoZDP9/view?usp=drive_link` 
   Brasil: `https://drive.google.com/file/d/1KDZeqRvEinWQDAfpln6T9FVlHl_S5bgq/view?usp=drive_link`
-- PPT de trabajo para nuestro factsheet de fuego:
-  `https://docs.google.com/presentation/d/1OEkZipoZGzFkNU6bzdLaOvdyKS2F9tMYXuTQJwuNwEs/edit?usp=sharing`
+- Borrador de Google Slides del factsheet (texto, comentarios y orden final de las láminas):
+  `https://docs.google.com/presentation/d/1E4RdJ1rMAtl-4yaUaGrGAJrQPU6lu2Z0YsBMnxPrgXQ/edit`
   Aquí trabajamos como borrador, pero al diseño final lo agarrará un 
   diseñador gráfico.
 - Carpeta con fotos de fuego:

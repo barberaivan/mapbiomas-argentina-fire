@@ -19,7 +19,7 @@ format:
 Este cuaderno **dibuja**; no calcula nada. Todas las cifras salen de las tablas de
 `data/statistics/`, producidas por `statistics/fire_counts.R` (la pasada vectorial) y
 `statistics/factsheet_tables.R` (la pasada de análisis). El contenido de cada figura —
-qué dice y por qué — está en [`statistics/docs/factsheet-sep2026-spec.md`](../statistics/docs/factsheet-sep2026-spec.md);
+qué dice y por qué — está en [`statistics/docs/factsheet-2026-spec.md`](../statistics/docs/factsheet-2026-spec.md);
 de dónde sale cada número, en [`statistics/docs/statistics.md`](../statistics/docs/statistics.md).
 
 Con `write_plots: true` (por defecto) cada figura se escribe en
@@ -132,7 +132,7 @@ de este mapa es la proporción quemada media anual del país (0,838 % sobre el �
 lo hacen, la compuerta de `statistics/burn_perc_export.py --check` dice cuál se rompió.
 
 Tres cosas del dibujo, las tres deliberadas y las tres explicadas en `statistics/docs/statistics.md §5.5` y
-`statistics/docs/factsheet-sep2026-spec.md §0.1`: se agrega **promediando** (no con el máximo, que a 480 m ya duplica y a 2 km
+`statistics/docs/factsheet-2026-spec.md §0.1`: se agrega **promediando** (no con el máximo, que a 480 m ya duplica y a 2 km
 cuadruplica lo que el país quema); se muestra **en clases** y no en rampa continua, porque el
 grueso del país está por debajo de 1 % y una rampa lineal no muestra nada; y **el cero es
 blanco y es una clase aparte**, porque "acá no hubo fuego" y "acá hubo poco fuego" son dos
@@ -1084,7 +1084,7 @@ análisis 6 —que sale de tres CSV chicos y todavía se está decidiendo— no 
 ese costo cada vez que se lo toca.
 
 Sigue escribiendo sus figuras con el prefijo `fig06_` en la misma carpeta, así que para el
-diseñador no cambia nada. El diseño está en `statistics/docs/factsheet-sep2026-spec.md` §6.
+diseñador no cambia nada. El diseño está en `statistics/docs/factsheet-2026-spec.md` §6.
 
 ## 7. Material de apoyo (no va al factsheet)
 

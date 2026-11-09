@@ -27,7 +27,7 @@ historial de git.
 ## After
 
 - **Seguir explorando análisis para el lanzamiento de diciembre**. 
-    Ahí hay 4 factsheet-related notebooks; factsheet_sep2026 es el que soporta el factsheet
+    Ahí hay 4 factsheet-related notebooks; factsheet_2026 es el que soporta el factsheet
     del lanzamiento de Col3 ARG en septiembre.
 - **Comunicar problema de leyenda**:
 

@@ -23,7 +23,7 @@ Este cuaderno arma **el material gráfico del factsheet de lanzamiento**. No cal
 todas las cifras salen de las tablas de `data/statistics/`, que producen
 `statistics/fire_counts.R` y `statistics/factsheet_tables.R`. De dónde sale cada número
 está en [`statistics/docs/statistics.md`](../statistics/docs/statistics.md); qué dice cada figura y por qué,
-en [`statistics/docs/factsheet-sep2026-spec.md`](../statistics/docs/factsheet-sep2026-spec.md).
+en [`statistics/docs/factsheet-2026-spec.md`](../statistics/docs/factsheet-2026-spec.md).
 
 Las figuras de acá son **versiones para diseño** de las del cuaderno largo
 ([`factsheet.qmd`](factsheet.html)): mismo dato, mismo estilo, pero **sin título, sin
@@ -34,14 +34,14 @@ va en la pieza, no en el PNG.
 
 ### Lo que se entrega
 
-La carpeta **`collection-01/data/statistics/factsheet_sep2026_figures_and_tables`**, con:
+La carpeta **`collection-01/data/statistics/factsheet_2026_figures_and_tables`**, con:
 
 - cada figura en **PNG** (300 dpi, para el borrador y para maquetar) y en **PDF vectorial**
   (para editarla en Illustrator o Inkscape: los textos son texto, las líneas son líneas);
 - la **tabla que genera cada figura**, en `figNN_datos.csv`, por si se prefiere volver a
   dibujarla desde cero. Los mapas no llevan CSV: son rásters de millones de celdas y van
   sólo como imagen;
-- una copia de **este mismo documento** (`factsheet_sep2026.html`), para que la carpeta se
+- una copia de **este mismo documento** (`factsheet_2026.html`), para que la carpeta se
   explique sola.
 
 El texto del factsheet, los comentarios y el orden final de las láminas están en el borrador
@@ -75,7 +75,7 @@ knitr::opts_chunk$set(message = FALSE, warning = FALSE, dev = "png", dpi = 150)
 source("collection-01/statistics/factsheet_style.R")
 
 WRITE <- isTRUE(params$write_plots)
-OUT   <- file.path(STATS_DIR, "factsheet_sep2026_figures_and_tables")
+OUT   <- file.path(STATS_DIR, "factsheet_2026_figures_and_tables")
 if (WRITE) dir.create(OUT, showWarnings = FALSE, recursive = TRUE)
 
 # Las figuras de esta entrega NO llevan texto adentro salvo ejes y leyenda, así que el tema
@@ -1493,7 +1493,7 @@ porque `save2()` devolvía `invisible()` y nadie lo notaba desde adentro.
 ```{r compuerta}
 #| echo: false
 if (!WRITE) cat("write_plots = false: no se verifica nada\n") else local({
-  qmd  <- readLines("collection-01/notebooks/factsheet_sep2026.qmd", warn = FALSE)
+  qmd  <- readLines("collection-01/notebooks/factsheet_2026.qmd", warn = FALSE)
   # sólo la PROSA: dentro de los chunks los nombres aparecen como argumentos y no son promesas
   chunk <- cumsum(grepl("^```", qmd)) %% 2 == 1
   texto <- paste(qmd[!chunk & !grepl("^```", qmd)], collapse = "\n")
@@ -1529,5 +1529,5 @@ if (!WRITE) cat("write_plots = false: no se verifica nada\n") else local({
 Para regenerar todo:
 
 ```bash
-quarto render collection-01/notebooks/factsheet_sep2026.qmd
+quarto render collection-01/notebooks/factsheet_2026.qmd
 ```

@@ -13,7 +13,7 @@ counts** are local, off the polygons.
 
 → **[`docs/statistics.md`](docs/statistics.md)** — where every number comes from, which of the four
 `factsheet_*` notebooks is the deliverable, and the verification gates.
-→ [`docs/factsheet-sep2026-spec.md`](docs/factsheet-sep2026-spec.md) — what each slide *says* and
+→ [`docs/factsheet-2026-spec.md`](docs/factsheet-2026-spec.md) — what each slide *says* and
 why (Spanish, tied to the September 2026 launch).
 
 The GEE exports are the `*_export.py` files; `factsheet_tables.R` turns the downloads into

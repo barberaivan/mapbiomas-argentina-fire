@@ -4,7 +4,7 @@ How we compute fire statistics from the published maps. **None of this is part o
 product** — it exists to communicate results. The maps themselves are
 [`07-vector_to_raster.md`](../../docs/07-vector_to_raster.md) (what we build) and
 [`08-postprocessing.md`](../../docs/08-postprocessing.md) (what the network expects); what each graphic
-*says* is [`factsheet-sep2026-spec.md`](factsheet-sep2026-spec.md). This file is where each of its
+*says* is [`factsheet-2026-spec.md`](factsheet-2026-spec.md). This file is where each of its
 **numbers** comes from. [`ROADMAP.md`](../../../ROADMAP.md) is the *when*.
 
 **Three sources, and every figure must say which one it used.**
@@ -44,7 +44,7 @@ collection-01/statistics/         all statistics + factsheet code
                       reading only what factsheet_tables.R and fire_counts.R already wrote
 
 collection-01/notebooks/          ⚠️ FOUR notebooks, TWO ship in September — see §5.0
-  factsheet_sep2026   THE DELIVERABLE (§5.10): the slide-by-slide spec. 16 images,
+  factsheet_2026   THE DELIVERABLE (§5.10): the slide-by-slide spec. 16 images,
         .qmd          `figNN_`, into a folder of its own with one CSV per figure. Clean
                       (no title, no caption inside the image): it is what the DESIGNER gets
   factsheet.qmd       THE FIGURE BANK (§5.2) — draws only; writes PNG + PDF. Análisis 1-5.
@@ -80,7 +80,7 @@ collection-01/data/statistics/    every statistics input and output (Insync stor
   factsheet_*.csv                 the plot-ready tables (§5.1), incl. the four
                                   `factsheet_change*` of análisis 6
   figures/                        PNG + PDF of every figure of `factsheet{,_veg,_veg_short}.qmd`
-  factsheet_sep2026_figures_and_tables/   ⚠️ THE FOLDER THE DESIGNER GETS (§5.10): the 13
+  factsheet_2026_figures_and_tables/   ⚠️ THE FOLDER THE DESIGNER GETS (§5.10): the 13
                                   images of the September deck, PNG + PDF, plus one
                                   `figNN_datos.csv` per figure (the maps have none)
   mapbiomas-arg-fire-stats.xlsx   THE PUBLISHED WORKBOOK ("Excel table for the web page",
@@ -110,7 +110,7 @@ Rscript collection-01/statistics/factsheet_tables.R              # §5, ~10 s
 quarto render collection-01/notebooks/factsheet.qmd              # §5.4, ~5 min
 quarto render collection-01/notebooks/factsheet_veg.qmd          # análisis 6, ~2 min
 quarto render collection-01/notebooks/factsheet_veg_short.qmd    # §5.8, ~10 s
-quarto render collection-01/notebooks/factsheet_sep2026.qmd      # §5.10, ~7 min
+quarto render collection-01/notebooks/factsheet_2026.qmd      # §5.10, ~7 min
 Rscript collection-01/statistics/excel_workbook.R                # the .xlsx, below, ~5 s
 ```
 
@@ -292,7 +292,7 @@ hole in the map as a fact about fire. `factsheet_tables.R` drops it from every t
 every map and from the national denominator (252.25 → **251.09 Mha**) via one constant,
 `UNMAPPED_REGIONS`. The 13 rows stay in `burnable_eco13.csv`, so nothing is lost.
 
-**It is still drawn on every map, unpainted** (factsheet-sep2026-spec.md, the box before §0.1): outside the
+**It is still drawn on every map, unpainted** (factsheet-2026-spec.md, the box before §0.1): outside the
 processing grid means no data, not no territory, and an empty outline says both at once.
 `MALVINAS_SF` + `geom_malvinas()` in `factsheet_style.R`; `ECO_SF` stays the 12 reported
 ones, because that is the geometry the numbers join to.
@@ -339,7 +339,7 @@ database (`objects-pred/`, `objects-raw/*_raster_metrics.csv`, the territory tag
 - **A fire counts in EVERY ecorregión it intersects.** `terra::relate(..., "intersects")` —
   a true/false, never an actual intersection geometry, which on 1.3 M polygons would cost
   hours for an answer nothing needs. Regional counts therefore **sum to more than the national
-  count**, by design (factsheet-sep2026-spec.md análisis 3.2); the national row is computed from the fire set
+  count**, by design (factsheet-2026-spec.md análisis 3.2); the national row is computed from the fire set
   itself, never by summing regions. (The tags are precomputed by `objects_region_tag.R`,
   which writes both this `_multi` assignment and a centroid-based `_one`; the factsheet uses
   `_multi`.)
@@ -358,7 +358,7 @@ in no ecorregión**. 18 s end to end.
 
 ### 5.0 ⚠️ Four notebooks, and only one of them is the deliverable
 
-**`factsheet_sep2026.qmd` is what the designer gets** (§5.10): the September deck, slide by
+**`factsheet_2026.qmd` is what the designer gets** (§5.10): the September deck, slide by
 slide, the deck's images and one CSV per figure in a folder of their own. **`factsheet.qmd` is the figure bank it
 selects from** — 170 figures with every regional variant, each with its title, subtitle and
 caption, which is what you need to *decide* and exactly what you do not want in a file handed
@@ -368,7 +368,7 @@ September.
 
 | notebook | status | figures | covers |
 |---|---|---|---|
-| `factsheet_sep2026.qmd` | **THE DELIVERABLE (Sep)** | `fig01`–`fig12`, own folder | the 3 láminas, clean, with their CSVs |
+| `factsheet_2026.qmd` | **THE DELIVERABLE (Sep)** | `fig01`–`fig12`, own folder | the 3 láminas, clean, with their CSVs |
 | `factsheet.qmd` | ships as the **source** (Sep) | `fig00`–`fig05` | análisis 1–5, every variant |
 | `factsheet_veg.qmd` | exploratory | `fig06_` (202 files) | análisis 6, whole |
 | `factsheet_veg_short.qmd` | exploratory | `fig06c_` (8 files) | análisis 6 short + forest |
@@ -411,7 +411,7 @@ always meaningful.
 
 **The seasonal curve.** Cyclic GAM, fitted on the **12 summary points**, not on the raw
 year-by-month data — it is there to follow the mean curve, which is what fitting it to the
-summary makes it do. factsheet-sep2026-spec.md asks for `k = 12`; measured, **12 does the opposite at the one
+summary makes it do. factsheet-2026-spec.md asks for `k = 12`; measured, **12 does the opposite at the one
 place it matters** — nationally it overshoots the August peak by 8 % and the Chaco's by
 10.5 %, drawing a curve higher than any month actually is. **`k = 10`** reproduces the
 national peak to 0.2 % and is the compromise across the 12 regions.
@@ -540,7 +540,7 @@ year".
 ### 5.4 `factsheet.qmd` — the figures
 
 The notebook **draws and does not compute**. `factsheet_style.R` holds the conventions of
-factsheet-sep2026-spec.md in code, so the whole factsheet reads as one family: one **colour per ecorregión,
+factsheet-2026-spec.md in code, so the whole factsheet reads as one family: one **colour per ecorregión,
 stable everywhere**, on a **latitude ramp** (hue 12 → 280, warm north to cool south, with
 luminance alternating along it so that mid-ramp neighbours — which are also neighbours on the
 map — stay apart); the **map as the legend**, exported loose; and the two variants,
@@ -564,7 +564,7 @@ map — stay apart); the **map as the legend**, exported loose; and the two vari
 | `fig04_*` | 3 | análisis 4 — la composición de lo quemado, **en nivel 2 (clase nativa) y en nivel 1 (familia)**, y el mapa de `share_bosques` |
 | `fig05_*` | 3 | análisis 5 — qué % de cada clase se quema: los heatmaps región × clase **de nivel 2 y de nivel 1**, y el mapa del bosque |
 
-> **Los tres análisis intraanuales son uno solo** (factsheet-sep2026-spec.md §3): el prefijo `fig03_` los cubre a
+> **Los tres análisis intraanuales son uno solo** (factsheet-2026-spec.md §3): el prefijo `fig03_` los cubre a
 > los tres, y por eso los que siguen se corrieron un número — `fig04_` es la composición y
 > `fig05_` el porcentaje por clase, no lo que decían las versiones anteriores de esta tabla.
 
@@ -583,7 +583,7 @@ legend's own; notebook §5.1 prints the whole crosswalk (código col-3 → nivel
 nivel 0), read off `lulc_area_eco13.csv` rather than retyped, and every figure's subtitle names
 the level it is drawing.
 
-Análisis 3.3 draws **straight lines between the 12 points, not the GAM**: factsheet-sep2026-spec.md asks for the
+Análisis 3.3 draws **straight lines between the 12 points, not the GAM**: factsheet-2026-spec.md asks for the
 same format as análisis 2, and a cyclic smooth over a sharply peaked share series displaces
 and overshoots the peak. The fit is still in `factsheet_season_fits.csv`, and it *is* what
 accompanies the pirogram in análisis 3.2 and 3.4.
@@ -684,7 +684,7 @@ for any reducer other than `mean` it prints the numbers and explicitly declines 
 
 ### 5.6 `last_fire_export.py` — the second raster: the year of the last fire
 
-The figure that opens **análisis 2** (factsheet-sep2026-spec.md §2.1): where it burned recently and where it
+The figure that opens **análisis 2** (factsheet-2026-spec.md §2.1): where it burned recently and where it
 last burned twenty years ago. It is the exact complement of the opening map — that one says
 *how much* each place burned in 27 years, this one says *when it last did* — and it comes from
 the same family of products.
@@ -740,7 +740,7 @@ burned", two different lies):
 
 Band 2 is not decoration: a cell where 0.4 % of the ground burned carries a year just like one
 that burned whole, and drawn identically the map overstates the footprint. R decides with it
-(`min_denom` in `map_last_fire()`, 0 by default — see factsheet-sep2026-spec.md §2.1 for why nothing is hidden).
+(`min_denom` in `map_last_fire()`, 0 by default — see factsheet-2026-spec.md §2.1 for why nothing is hidden).
 
 **The gate** (`--check`) is three checks, none of them "the published number", because a date
 has no published number:
@@ -928,7 +928,7 @@ and the composition draw), `factsheet_change_annual.csv` (per state and year),
 says much more than it did without them, but it stays **observational**: pixels that burn are
 not a random sample of the country, so part of `q` may be fire happening where the change was
 going to happen anyway — fire as the tool of an already-decided clearing is in fact the most
-likely reading of bosque → agropecuario (q = 10.9). factsheet-sep2026-spec.md §6 carries the same box for the
+likely reading of bosque → agropecuario (q = 10.9). factsheet-2026-spec.md §6 carries the same box for the
 slide.
 
 ```bash
@@ -1150,7 +1150,7 @@ same pixels at every lag), which the same file carries.
 **Where the burned forest goes** (Y+1, states 1+3): of the 18.6 Mha of burned forest, 30 % leaves,
 and of that **60.9 % goes to agropecuario** and 38.5 % to natural herbaceous/shrub. From closed
 forest specifically, **50.9 % of what leaves goes to `Cultivos temporarios`** — the clearing
-reading, which the figure cannot separate from fire *causing* it (factsheet-sep2026-spec.md §6.4).
+reading, which the figure cannot separate from fire *causing* it (factsheet-2026-spec.md §6.4).
 
 **Two traps in the tables, both of which fail silently:** `"Bosques (familia)"` is a **row label in
 the scalar table, not a legend class** — `factor()`ing it against the legend levels yields `NA` and
@@ -1158,7 +1158,7 @@ the Sankey renders as an empty panel with no error; and that label **does not ex
 `factsheet_bosques_destinos.csv`, which is opened by nivel-2 class, so filtering for it returns
 zero rows (the family figure has to sum the three classes). The notebook asserts against both.
 
-### 5.10 `factsheet_sep2026.qmd` — the folder the designer gets
+### 5.10 `factsheet_2026.qmd` — the folder the designer gets
 
 The deliverable. It draws **nothing new**: every figure is a version of one that
 `factsheet.qmd` already draws, redone under one rule — **no title, no subtitle, no caption
@@ -1169,7 +1169,7 @@ in the piece, set by the designer, and this document is where it is written.
 It writes to its own folder, **not** to `figures/`:
 
 ```
-collection-01/data/statistics/factsheet_sep2026_figures_and_tables/
+collection-01/data/statistics/factsheet_2026_figures_and_tables/
 ```
 
 with, for each figure, a **PNG at 300 dpi** and a **vector PDF**, and next to them
@@ -1626,7 +1626,7 @@ averages over years. This sheet is the un-aggregated version of análisis 5, one
 as the factsheet's map legend — in every sheet that has one. Islas del Atlántico Sur is absent
 everywhere, same as the factsheet (§3.2): it is not a zero, it is outside the processing grid.
 
-**Rounding follows the conventions already in `factsheet_tables.R` / `factsheet_sep2026.qmd`**:
+**Rounding follows the conventions already in `factsheet_tables.R` / `factsheet_2026.qmd`**:
 hectares to 1 decimal, Mha to 4, percentages to 2–4 depending on the sheet, rather than a new
 convention invented for this file.
 

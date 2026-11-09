@@ -83,7 +83,7 @@ collection-01/
   statistics/
     README.md                  signpost
     docs/statistics.md         ← today's docs/09-statistics.md
-    docs/factsheet-sep2026-spec.md   ← today's docs/10-factsheet_design.md (Spanish, per-launch)
+    docs/factsheet-2026-spec.md   ← today's docs/10-factsheet_design.md (Spanish, per-launch)
   workflow/ scripts/ models/ samples/ config/
                                code.  A SIGNPOST README where the directory is not
                                self-evident (see below).
@@ -230,7 +230,7 @@ Not every file in `docs/` is a step doc. Proposed:
 | `04-snic`, `05-object_metrics`, `06-object_model`, `07-vector_to_raster` | yes | |
 | `08-postprocessing` | **half** — §6 is our step 08; §§1–5 are a reading of the network's repo | **split**, see below |
 | `09-statistics` | **no** — episodic, consumes the map | → `statistics/docs/statistics.md`, still to `TEMPLATE.md` |
-| `10-factsheet_design` | **no** — a per-launch deliverable spec, in Spanish | → `statistics/docs/factsheet-sep2026-spec.md`; stays Spanish |
+| `10-factsheet_design` | **no** — a per-launch deliverable spec, in Spanish | → `statistics/docs/factsheet-2026-spec.md`; stays Spanish |
 | `11-validation` | **no** — episodic, consumes the map | → `validation/docs/design.md`; drops the number (it was "Step 10" in its own title and is cited as `docs/10` in code — both gone, 2026-09-18). ⚠️ An earlier version of this plan said it was *not* written by Iván; `git log --follow` says otherwise — **the design is his, the implementation and the status section are Ramón Peña Agrest's** |
 
 `10-factsheet_design.md` is a **spec** — a specification of what to build — and it is tied to
@@ -325,7 +325,7 @@ own, find the step doc that is carrying it. A doc that documents two stages will
       its conventions (§2 and §3 of this file).
 - [x] **The moves** (`git mv`, content untouched — the rewrites happen in Phase 2):
       `docs/09-statistics.md` → `statistics/docs/statistics.md`;
-      `docs/10-factsheet_design.md` → `statistics/docs/factsheet-sep2026-spec.md`;
+      `docs/10-factsheet_design.md` → `statistics/docs/factsheet-2026-spec.md`;
       `docs/11-validation.md` → `validation/docs/design.md`.
       `docs/` is now `00`–`08` only (no `00-overview.md` yet — Phase 1).
 - [x] **~120 inbound citations rewritten**, and they were *not* mechanical — see the box below.

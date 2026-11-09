@@ -111,14 +111,14 @@ the notebook becomes the evidence behind it. Rendered `.html` is tracked alongsi
 | `data_collection_stats.qmd` | field-collection stats (time, authors, points, observations per fire) |
 | `validation_year_selection.qmd` | which three fire-years to validate |
 | `objects-analysis.qmd` | step 06: size distribution, labels vs population, the minimum-fire-size decision, the per-size-band cuts, the per-year leak diagnostic, importance + ALE |
-| `factsheet_sep2026.qmd` | **the September deliverable** |
+| `factsheet_2026.qmd` | **the September deliverable** |
 | `factsheet.qmd` | the bank of figures it selects from (análisis 1–5, every regional variant) |
 | `factsheet_veg.qmd`, `factsheet_veg_short.qmd` | análisis 6, exploratory — December and the paper |
 
 ⚠️ **Which factsheet notebook ships, and what each one is for, is
 [`statistics/docs/statistics.md`](statistics/docs/statistics.md) §5.0** — that is the one home for
 it. What each figure *says* is
-[`statistics/docs/factsheet-sep2026-spec.md`](statistics/docs/factsheet-sep2026-spec.md).
+[`statistics/docs/factsheet-2026-spec.md`](statistics/docs/factsheet-2026-spec.md).
 
 ---
 
