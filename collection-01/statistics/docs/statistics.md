@@ -42,6 +42,12 @@ collection-01/statistics/         all statistics + factsheet code
   factsheet_style.R   the shared palette, theme, map-as-legend and figure variants
   excel_workbook.R    "Excel table for the web page" (below) — the published .xlsx,
                       reading only what factsheet_tables.R and fire_counts.R already wrote
+  factsheet_events_maps.R   THE EVENT MAPS (láminas 6-8, figures 16-18): Esri imagery +
+                      the AOI + the fire objects of one calendar year. Also writes each
+                      event's geometry for the next script. Spec: factsheet-2026-spec.md
+                      "Láminas 6 a 8: los mapas de eventos"
+  factsheet_events_stats.py THE NUMBERS OF THOSE SLIDES: annual_burned_v2 x col-3 (Y-1)
+                      over each event's AOI and map frame, interactive. Run AFTER the R one
 
 collection-01/notebooks/          ⚠️ FOUR notebooks, TWO ship in September — see §5.0
   factsheet_2026   THE DELIVERABLE (§5.10): the slide-by-slide spec. 16 images,
@@ -80,11 +86,22 @@ collection-01/data/statistics/    every statistics input and output (Insync stor
   factsheet_*.csv                 the plot-ready tables (§5.1), incl. the four
                                   `factsheet_change*` of análisis 6
   figures/                        PNG + PDF of every figure of `factsheet{,_veg,_veg_short}.qmd`
-  factsheet_2026_figures_and_tables/   ⚠️ THE FOLDER THE DESIGNER GETS (§5.10): the 13
-                                  images of the September deck, PNG + PDF, plus one
-                                  `figNN_datos.csv` per figure (the maps have none)
+  factsheet_2026_figures_and_tables/   ⚠️ THE FOLDER THE DESIGNER GETS (§5.10): figures
+                                  1-18, PNG + PDF, plus one `figNN_datos.csv` per figure
+                                  (the two national maps and Ramón's fig 15 have none)
   mapbiomas-arg-fire-stats.xlsx   THE PUBLISHED WORKBOOK ("Excel table for the web page",
                                   below) — six sheets, all Spanish, all ecoregions
+  pyrorregions/                   ⚠️ NOT OURS: the pirorregiones (lámina 5) are Ramón's
+                                  work. Every file he sends goes here, as received — the
+                                  preliminary polygons (`pirorregiones_preliminar_shp.zip`)
+                                  and his maps (PNG). No script here writes to it. His
+                                  map is copied BY HAND into the deliverable as
+                                  `fig15_pyrorregions.{png,pdf}`
+  events/                         the event maps' geometry: `<event>.geojson` (AOI + map
+                                  frame + year, written by factsheet_events_maps.R, read
+                                  by factsheet_events_stats.py) and `pnqc_osm.geojson`,
+                                  the park boundary cached from OpenStreetMap
+  events_stats.csv                the event cross-tab: event x AOI/frame x burned x class
 ```
 
 The GEE JavaScript is in the **`fuego` repo**, not here:
@@ -112,9 +129,11 @@ quarto render collection-01/notebooks/factsheet_veg.qmd          # análisis 6, 
 quarto render collection-01/notebooks/factsheet_veg_short.qmd    # §5.8, ~10 s
 quarto render collection-01/notebooks/factsheet_2026.qmd      # §5.10, ~7 min
 Rscript collection-01/statistics/excel_workbook.R                # the .xlsx, below, ~5 s
+Rscript collection-01/statistics/factsheet_events_maps.R         # figs 16-18, ~3 min
+$PYTHON collection-01/statistics/factsheet_events_stats.py       # their numbers, ~1 min
 ```
 
-Only the exports touch GEE (five scripts, seven tasks: two denominators, three rasters, two crossings). The point of the split is that **everything the factsheet draws
+Only the exports touch GEE (five scripts, seven tasks: two denominators, three rasters, two crossings), plus `factsheet_events_stats.py`, which reads three small areas interactively with no task. The point of the split is that **everything the factsheet draws
 is cheap**: the geometry is read once, in `fire_counts.R`, and every figure afterwards is a
 read of a CSV with at most a few thousand rows — so a new figure idea costs seconds, not a
 re-run.
@@ -1173,8 +1192,15 @@ collection-01/data/statistics/factsheet_2026_figures_and_tables/
 ```
 
 with, for each figure, a **PNG at 300 dpi** and a **vector PDF**, and next to them
-**`figNN_datos.csv`, the table that generates it**. The two maps have no CSV: they are
-rasters of millions of cells and go as images only. A copy of the rendered HTML goes in too, so the folder explains itself. 43 files, 14 MB.
+**`figNN_datos.csv`, the table that generates it**. The two national maps (1 and 3) have no
+CSV: they are rasters of millions of cells and go as images only. The event maps (16–18) do:
+their CSV holds the numbers the slide text quotes. A copy of the rendered HTML goes in too, so
+the folder explains itself.
+
+**Not everything in the folder comes from the notebook.** Figure 15 is Ramón's pirorregiones
+map, copied in by hand from `pyrorregions/`. Figures 16–18 are written by
+`factsheet_events_maps.R` and `factsheet_events_stats.py`; their spec is
+`factsheet-2026-spec.md` "Láminas 6 a 8: los mapas de eventos".
 
 | # | figure | file | source |
 |---|---|---|---|
@@ -1186,6 +1212,10 @@ rasters of millions of cells and go as images only. A copy of the rendered HTML 
 | 5–8 | the four regions in a 2 × 2, falling on top, rising below | `fig05-06-07-08_series_regiones` | same |
 | 9–12 | pirograma: país, Delta, Chaco, Bosques Patagónicos | `figNN_pirograma_<region>` | `factsheet_pirogram.csv`, GAM refitted in the notebook |
 | 10–12 | the three regions stacked in one column, to sit beside figure 9 | `fig10-11-12_pirogramas_regiones` | same |
+| 13 | % of each nivel-1 cover burned per year, Argentina, with the all-covers total (lámina 4) | `fig13_pct_cobertura_argentina` | `factsheet_lulc_pct.csv` |
+| 14 | the same for Chaco, Delta e Islas del Paraná and Bosques Patagónicos, one column | `fig14_pct_cobertura_regiones` | same |
+| 15 | pirorregiones (lámina 5) — **Ramón's, not ours**, copied by hand | `fig15_pyrorregions` | `pyrorregions/` |
+| 16–18 | event maps: Cholila 2015, Delta 2020, Condorito 2025 — **not from the notebook** | `fig16_mapa_cholila_2015`, `fig17_mapa_delta_2020`, `fig18_mapa_pnqc_2025` + `figNN_datos.csv` | `factsheet_events_maps.R` + `factsheet_events_stats.py` |
 
 #### ⚠️ 5.10.1 The network's nivel-2 legend had three class names rotated (fixed)
 

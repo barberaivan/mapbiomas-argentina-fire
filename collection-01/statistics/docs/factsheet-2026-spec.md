@@ -874,58 +874,119 @@ en este gráfico que pido.
 ## Lámina 5
 
 Pirorregiones: a esto lo hace Ramón, me tiene que pasar la imagen en pdf y png, 
-ya tengo la slide.
+ya tengo la slide. Todo lo que manda Ramón va a `data/statistics/pyrorregions/`, tal cual
+llega (ver `statistics.md` "Files, directories and scripts").
+
+**Figura 15**: su mapa, copiado **a mano** a la carpeta del diseñador como
+`fig15_pyrorregions.{png,pdf}`. Ningún script lo escribe: si Ramón manda una versión nueva,
+hay que volver a copiarla. Su shapefile preliminar es además el AOI de la lámina 7.
 
 ---
 
-> Láminas 6 a 8 son sobre eventos/particularidades. Llevan mapa y algunas estadísticas.
-> El mapa debería ser fondo de imagen satelital y escala, con lo quemado como un raster rojo
-> con algo de transparencia. En algunos casos, se debe agregar el contorno (polígono) de 
-> un área de interés.
-> No sé si se podrán hacer directamente desde la plataforma o tendremos que hacerlo con 
-> Python o R. Quizás geemap va bien ahí.
+## Láminas 6 a 8: los mapas de eventos
 
-### Sugerencias para los mapas de 6 a 8 (aún no implementadas)
+Tres láminas sobre eventos puntuales, cada una con un mapa y dos o tres números en el texto.
+**Hechas**: figuras 16 (Cholila), 17 (Delta) y 18 (Condorito) en
+`data/statistics/factsheet_2026_figures_and_tables/`, cada una como `figNN_mapa_<evento>`
+(PNG a 300 dpi + PDF) y su `figNN_datos.csv`. No salen de `factsheet_2026.qmd` sino de dos
+scripts propios, que se corren en este orden:
 
-- **Hacerlos en R**, como el resto de la entrega, y no con capturas de la plataforma: así hay
-  control de la transparencia, la escala y el polígono, salen PNG y PDF, y son reproducibles.
-  geemap sirve para explorar, no para la figura final. El flujo: exportar desde GEE, por área
-  de interés, el ráster quemado a 30 m y un compuesto RGB de fondo; dibujar con `terra` +
-  `tidyterra` + `ggspatial` (escala y norte), con el rojo semitransparente y el contorno encima.
-- **Fondo previo al fuego**: con la cicatriz visible debajo, el rojo es redundante. Para 2015,
-  Landsat 8 (Sentinel-2 empieza a mediados de 2015). Un mosaico de Esri sería más rápido pero
-  lleva atribución.
-- **Tipo de vegetación con la cobertura del año anterior**, como en todo el factsheet (col-3,
-  `PRODUCT_LULC`). Con la del mismo año, parte del bosque quemado aparece como otra clase.
-- **Cholila**: el ráster calendario no distingue eventos. Lo más limpio es tomar de la capa de
-  polígonos de objetos de fuego (step 07e) los objetos que forman el incendio y usar su
-  contorno como área de interés.
-- **Delta**: usar **año calendario 2020**, no año de fuego. Los datos mensuales
-  (`factsheet_monthly.csv`) dan ~658 kha en calendario 2020 y ~657 kha en el año de fuego
-  may 2020-abr 2021; ene-abr 2021 suma sólo ~15 kha, así que el verano de 2021 no cambia nada.
-  El pico fue jul-sep 2020. Así se respeta "todo es año calendario" y se lee de los productos
-  publicados.
-- **Condorito**: límite del parque de WDPA en GEE (`WCMC/WDPA/current/polygons`) o de la APN.
-  **Confirmar el año**: los grandes incendios recordados de las sierras de Córdoba son 2013 y
-  2020; verificarlo con el mensual antes de armar nada.
+```bash
+Rscript collection-01/statistics/factsheet_events_maps.R          # los 3 mapas + la geometría
+$PYTHON collection-01/statistics/factsheet_events_stats.py        # los números, ~1 min
+```
 
-## Lámina 6
+Los dos aceptan una clave de evento (`cholila_2015`, `delta_2020`, `pnqc_2025`) para
+rehacer uno solo.
 
-Incendio de Cholila 2015, con mapa. 
-Texto que cuente área afectada y cuánto quemó por tipo de vegetación, en área absoluta y como (%)
-de lo quemado. 
+### El mapa
 
-## Lámina 7
+De abajo hacia arriba:
 
-Incendios del Delta del Paraná, fire-year 2020.
-Esta es una pirorregión, dibujar el polígono. Todos los fuegos de ese fire-year 
-(creo que gran parte también quemó en verano de 2021).
-Área afectada y también por veg type en abs y rel.
+1. **Fondo: Esri World Imagery**, bajado como teselas con `maptiles` para la extensión del
+   mapa y dibujado con `tidyterra`. No se baja ningún mosaico Landsat. **La fecha de la
+   imagen no se controla**: es el mosaico actual de Esri, distinto en cada zona. Lleva la
+   atribución de Esri al pie (`maptiles::get_credit()`), que es obligatoria.
+2. **El área de interés (AOI), sólo como contorno blanco.** El AOI dice *dónde mirar*, no
+   recorta nada: la extensión del mapa es su caja más un margen, y se muestra todo lo que cae
+   adentro.
+3. **Todos los fuegos que caen en la extensión, rellenos en rojo semitransparente**,
+   cortados en el borde del mapa, estén o no dentro del AOI. Son los **objetos de fuego**
+   (`objects-raw/objects_<fy>.gpkg`) con la selección publicada (`fire == 1`, ≥ 1 ha, sin
+   las reglas A y B; copiada de `fire_counts.R`, hay que mantenerlas iguales a mano).
+4. Escala abajo a la izquierda, sin flecha de norte, y **coordenadas escasas en castellano**
+   (`33° 00' S`, `60° 00' O`) en el borde: dos o tres por eje, con el paso redondo más grueso
+   que dé al menos dos. Margen blanco parejo en los cuatro lados.
 
-## Lámina 8
+**Todo es año calendario**, como el resto del factsheet. Un año calendario Y junta los
+objetos de los fire-years Y−1 (su ene-abr) e Y (su may-dic) cuya `date_median` cae en Y: cada
+fuego se dibuja entero en el año de su fecha mediana.
 
-Incendios del 2015 en Parque Nacional Quebrada del Condorito.
-Lo mismo, recortando al parque, e indicando qué proporción del área se quemó en ese 
-fire-year.
+### Los números
 
+`factsheet_events_stats.py` usa el mismo método que `lulc_change_export.py`: una banda
+entera `quemado × 100 + clase(Y−1)`, y la suma de `pixelArea` agrupada por ese código, sobre
+la retícula de la cobertura (`C.SNIC_CRS` + `C.SNIC_TRANSFORM`). Corre interactivo, sin
+tarea de exportación, porque las geometrías son chicas.
 
+- **El fuego es el producto publicado**, `annual_burned_v2` banda `burned_area_<Y>`, no los
+  objetos del mapa. Cualquier número se puede reproducir desde la plataforma. Difiere del
+  mapa sólo en los bordes del año: un fuego que cruza el 31 de diciembre se parte por píxel
+  acá y se dibuja entero allá.
+- **La cobertura es la del año anterior**, `classification_<Y−1>` de la col-3, a nivel 1,
+  como en todo el factsheet.
+- **La geometría se define una sola vez, en el script de R**, que escribe
+  `data/statistics/events/<evento>.geojson` con el AOI, la extensión del mapa, el año y el
+  número de figura. Python lee eso: por eso R va primero.
+- Cada evento se calcula sobre **dos regiones**: el AOI y la extensión del mapa (para
+  Cholila son la misma). La tabla completa (clase de nivel 2, quemado y no quemado) va a
+  `data/statistics/events_stats.csv`; lo que cita cada lámina va a su `figNN_datos.csv`.
+
+## Lámina 6 — Cholila 2015 (figura 16)
+
+> En el noroeste de Chubut, ocurrieron grandes incendios en 2015, afectando las zonas de
+> Puerto Patriada, Río Turbio, y Cholila. Estos incendios quemaron **34.037 ha**. De lo
+> quemado, **55 %** del área era bosque, y **44 %**, herbáceas y arbustivas.
+
+- **AOI: un rectángulo** de −42,0414 a −42,5698 de latitud y de −72,0423 a −71,3984 de
+  longitud. El rectángulo *es* el mapa, sin margen y sin contorno dibujado.
+- **Año calendario 2015**: Cholila ardió en febrero, así que viene del fire-year 2014.
+- Los 34.037 ha son **todo lo quemado en el rectángulo** (311.662 ha; 10,9 %).
+- ⚠️ En el fondo de Esri se ven un par de costuras del mosaico (lagos grises con borde recto
+  arriba al centro) y una mancha borrosa a la derecha. No son del producto.
+
+## Lámina 7 — Delta del Paraná 2020 (figura 17)
+
+> El **24 %** de la pirorregión del Delta del Paraná se quemó en 2020, acumulando
+> **391.779 ha** quemadas. Prácticamente todo (**> 99,9 %**) era vegetación natural
+> herbácea y arbustiva.
+
+- **AOI: la pirorregión "Delta del Paraná" de Ramón** (`pyrorregions/
+  pirorregiones_preliminar_shp.zip`, preliminar), dibujada como contorno. Es una grilla de
+  hexágonos, de ahí el borde dentado.
+- **Año calendario 2020**, no fire-year: ene-abr 2021 suma sólo ~15 kha, así que el verano
+  de 2021 no cambia la historia, y el pico fue jul-sep 2020.
+- **El denominador del 24 % es el área total de la pirorregión** (1.625.082 ha), agua del
+  río incluida. Contra el área quemable el porcentaje sería mayor.
+- En el mapa entero se quemaron 419.734 ha: fuera de la pirorregión hay fuegos chicos y
+  dispersos en la zona agrícola, que a esta escala quedan como fondo.
+
+## Lámina 8 — Parque Nacional Quebrada del Condorito 2025 (figura 18)
+
+> En el Parque Nacional Quebrada del Condorito ocurrió un gran incendio en 2025. El mismo
+> quemó **5.659 ha**, afectando el **22 %** del área del parque. Las coberturas afectadas
+> fueron sobre todo herbáceas y arbustivas (**92 %**), y bosque (**8 %**).
+
+- **AOI: el límite del parque de OpenStreetMap** (relación 10371635, bajado de Nominatim la
+  primera vez y guardado en `data/statistics/events/pnqc_osm.geojson`), 24.587 ha.
+  **Comparar con la superficie oficial de la APN**; si difiere, cambiar ese archivo.
+- **2025 y no 2015**: el parque se quemó dos veces en grande, 5.636 ha en el fire-year 2015
+  (sur del parque) y 5.358 ha en 2025 (centro y noreste), y se eligió 2025 porque la imagen
+  de Esri muestra la cicatriz de 2025: con 2015 el fondo contaba otra historia que el rojo.
+  El fuego de 2025 es uno solo, con mediana el 17 de octubre y fin el 4 de diciembre: cae
+  entero en el año calendario.
+- **Dos números distintos, a propósito**: "quemó 5.659 ha" es el fuego entero (todo lo
+  quemado en el mapa, que es ese único fuego), y "el 22 % del parque" es lo quemado
+  *adentro* del parque (5.358 ha) sobre su área. El fuego cruzó el borde este.
+- Las coberturas del texto son las de **lo quemado dentro del parque** (91,8 % y 8,0 %). Las
+  del fuego entero casi no cambian (91,4 % y 8,5 %); las dos están en `fig18_datos.csv`.

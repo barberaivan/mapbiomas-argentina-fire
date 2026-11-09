@@ -1554,8 +1554,8 @@ save2(f13, "fig13_pct_cobertura_argentina", w = 7, h = 3.7)
 ```
 
 ```{r fig14-pct-cobertura-regiones}
-#| fig-height: 8
-#| fig-width: 7
+#| fig-height: 7.8
+#| fig-width: 6
 # Una columna, cada panel con su eje X (libre y repetido) y su eje Y libre, para que Bosques
 # Patagónicos no deje un hueco donde iría el agropecuario. La altura de cada panel va en
 # proporción a sus barras, así las barras tienen el mismo grosor en los tres.
@@ -1564,7 +1564,7 @@ f14 <- pct_cob(d4[region %in% REG_L4]) +
   ggh4x::facet_wrap2(~region, ncol = 1, scales = "free", axes = "all") +
   ggh4x::force_panelsizes(rows = n_bar) +
   theme(strip.text = element_text(face = "bold", hjust = 0, size = rel(1.05)))
-save2(f14, "fig14_pct_cobertura_regiones", w = 7, h = 8)
+save2(f14, "fig14_pct_cobertura_regiones", w = 6, h = 7.8)
 ```
 
 ---

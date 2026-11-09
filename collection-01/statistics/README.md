@@ -20,6 +20,11 @@ The GEE exports are the `*_export.py` files; `factsheet_tables.R` turns the down
 plot-ready tables and `fire_counts.R` is the vector pass. The notebooks that render it all are in
 [`../notebooks/`](../notebooks/).
 
+The event slides (láminas 6–8) have their own pair: `factsheet_events_maps.R` draws the three
+maps and `factsheet_events_stats.py` computes the numbers their text quotes — see
+[`docs/factsheet-2026-spec.md`](docs/factsheet-2026-spec.md) "Láminas 6 a 8: los mapas de
+eventos".
+
 `excel_workbook.R` turns those same tables into **`mapbiomas-arg-fire-stats.xlsx`**
 (`../data/statistics/`), the Spanish, six-sheet workbook published on the web page alongside the
 maps — see [`docs/statistics.md`](docs/statistics.md) "Excel table for the web page".
