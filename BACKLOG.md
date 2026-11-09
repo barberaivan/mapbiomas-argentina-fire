@@ -56,9 +56,11 @@ They were simply moved to statistics/docs from docs/, but not cleaned.
 
 - [ ] `statistics/docs/statistics.md` (16.8 k, was `docs/09`) — **two sessions. FROZEN, with its
       move, until the launch lands (24 Sep 2026).**
-- [ ] `statistics/docs/factsheet-2026-spec.md` (8.8 k, was `docs/10`) — **FROZEN until the
-      launch lands.** Stays Spanish. Lightest pass of all: it is a spec, and it is already done
-      its job; strip status chatter, leave the figure-by-figure content.
+- [ ] `statistics/docs/factsheet-2026-spec.md` (was `docs/10`) — **very long, full of history
+      and exploration; needs a real clean-up, not a light pass.** Active again: it is being
+      extended with the ~5 slides of the extended factsheet, so clean it once that lands (maybe
+      Feb 2027). Stays Spanish. Keep the figure-by-figure content; strip the history, the
+      abandoned explorations and the status chatter.
 
 ---
 
