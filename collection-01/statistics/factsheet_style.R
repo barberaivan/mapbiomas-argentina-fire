@@ -58,6 +58,9 @@ fs <- local({
        scalars  = rd("factsheet_region_scalars.csv"),
        lulc_share = rd("factsheet_lulc_share.csv"),
        lulc_pct_mean = rd_opt("factsheet_lulc_pct_mean.csv"),
+       # the same, year by year: the "all covers" total of lámina 4 is a % per year averaged at
+       # the end, so it needs the annual burned_ha and area_ha, not the means
+       lulc_pct = rd_opt("factsheet_lulc_pct.csv"),
        # the denominator export — the only table that carries the col-3 CLASS CODE
        # next to the three legend levels, so the crosswalk is read, never retyped
        lulc_area = rd_opt("lulc_area_eco13.csv"),

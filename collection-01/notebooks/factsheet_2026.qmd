@@ -1470,6 +1470,100 @@ tbl(dcast(pt, orden_mayo_abril + mes_nombre ~ region,
     align = "lrrrr")
 ```
 
+## Lámina 4. Cuánto se quema por cada tipo de cobertura
+
+### Figuras 13 y 14. El % anual quemado de cada familia, contra el de todas las coberturas
+
+## Qué muestran
+
+Qué porcentaje de cada familia de nivel 1 se quema por año, promedio 1999–2025, y arriba de
+todo una barra sin relleno, **"Todas las coberturas"**, con su línea discontinua: el mismo %
+calculado sobre las familias juntas. Lo que queda a la derecha de la línea se quema más que el
+promedio de su región; lo que queda a la izquierda, menos. `fig13_pct_cobertura_argentina` es
+el país y `fig14_pct_cobertura_regiones` son Chaco, Delta e Islas del Paraná y Bosques
+Patagónicos, apiladas.
+
+**Cada panel tiene su propia escala**, y eso va dicho en el epígrafe: Bosques Patagónicos quema
+~0,15 % por año y el Delta ~3 %, así que con un eje común las barras patagónicas no se verían.
+Las barras llevan el valor escrito para que la comparación entre regiones se haga con los
+números y no con los largos.
+
+**Bosques Patagónicos va sin el uso agropecuario**, también en el total: es el 1,4 % de su
+superficie (~60 kha), y su tasa sale de un denominador demasiado chico para leerla.
+
+**Cómo sale cada número.** Cobertura del año **anterior** al fuego, como en todo el factsheet.
+Las barras de familia son `mean_pct` de `factsheet_lulc_pct_mean.csv`. El total se calcula
+**con la misma regla**: año por año, quemado sobre área sumando las familias que lleva el
+panel, y el promedio al final. No es el % regional de la lámina 1, que tiene otro denominador:
+con ese, la línea podría caer fuera del rango de las barras, cosa imposible para un promedio
+ponderado de ellas.
+
+```{r fig13-14-pct-cobertura}
+#| fig-height: 9
+#| fig-width: 7
+TODAS  <- "Todas las\ncoberturas"
+REG_L4 <- c("Chaco", "Delta e Islas del Paraná", "Bosques Patagónicos")
+SIN_AGRO <- "Bosques Patagónicos"     # ahí el agropecuario se ignora, también en el total
+
+l4 <- fs$lulc_pct[level == "nivel1" & ecoregion %in% c(NAT, REG_L4) & clase %in% N1_ORDEN]
+l4 <- l4[!(ecoregion %in% SIN_AGRO & clase == "Áreas de uso agropecuario")]
+d4 <- rbind(
+  l4[, .(pct = mean(pct)), by = .(region = ecoregion, clase)],
+  l4[, .(pct = 100 * sum(burned_ha) / sum(area_ha)), by = .(region = ecoregion, year)][
+    , .(clase = TODAS, pct = mean(pct)), by = region])
+# control: la barra de cada familia es la misma que la del heatmap de la lámina original
+chk <- merge(d4[clase != TODAS], fs$lulc_pct_mean[level == "nivel1"],
+             by.x = c("region", "clase"), by.y = c("ecoregion", "clase"))
+stopifnot(nrow(chk) == nrow(d4[clase != TODAS]), all.equal(chk$pct, chk$mean_pct))
+
+d4[, `:=`(region = factor(region, levels = c(NAT, REG_L4)),
+          clase  = factor(clase, levels = rev(c(TODAS, N1_ORDEN))))]
+save_tab(d4[order(region, -as.integer(clase)),
+            .(region, cobertura = sub("\n", " ", clase), pct_anual_medio = round(pct, 2))],
+         "fig13-14")
+
+pct_cob <- function(d) {
+  ggplot(d, aes(pct, clase)) +
+    geom_col(aes(fill = clase, colour = clase == TODAS), width = 0.7, linewidth = 0.5) +
+    geom_vline(data = d[clase == TODAS], aes(xintercept = pct), linetype = "dashed",
+               colour = "grey30", linewidth = 0.5) +
+    # etiqueta con fondo blanco y sin borde: donde la línea discontinua pasa por el valor
+    # (Chaco agropecuario, Patagonia herbácea), el número queda encima y no tachado
+    geom_label(aes(label = paste(fmt_pct(pct), "%")), hjust = -0.1, size = 3.8,
+               colour = "grey20", fill = "white", label.size = 0,
+               label.padding = unit(0.12, "lines")) +
+    scale_fill_manual(values = c(N1_COLORS, setNames("white", TODAS)), guide = "none") +
+    scale_colour_manual(values = c(`TRUE` = "grey30", `FALSE` = NA), guide = "none") +
+    # decimales según el rango del panel: con uno fijo, Patagonia (0-0,2 %) repetía "0,1 %"
+    scale_x_continuous(expand = expansion(mult = c(0, 0.22)),
+                       labels = scales::label_number(decimal.mark = ",", suffix = " %")) +
+    # `strwrap` trata el salto de línea como un espacio: al total, que ya lo trae, no se lo toca
+    scale_y_discrete(labels = function(x) vapply(x, function(z)
+      if (grepl("\n", z)) z else paste(strwrap(z, 22), collapse = "\n"), "")) +
+    labs(x = "Porcentaje de la cobertura quemado por año", y = NULL) +
+    theme(panel.grid.major.y = element_blank(),
+          panel.grid.major.x = element_line(colour = "grey92", linewidth = 0.3),
+          axis.line.x = element_line(colour = "grey40", linewidth = 0.3))
+}
+
+f13 <- pct_cob(d4[region == NAT])
+save2(f13, "fig13_pct_cobertura_argentina", w = 7, h = 3.4)
+```
+
+```{r fig14-pct-cobertura-regiones}
+#| fig-height: 8
+#| fig-width: 7
+# Una columna, cada panel con su eje X (libre y repetido) y su eje Y libre, para que Bosques
+# Patagónicos no deje un hueco donde iría el agropecuario. La altura de cada panel va en
+# proporción a sus barras, así las barras tienen el mismo grosor en los tres.
+n_bar <- d4[region %in% REG_L4, .N, by = region][order(region), N]
+f14 <- pct_cob(d4[region %in% REG_L4]) +
+  ggh4x::facet_wrap2(~region, ncol = 1, scales = "free", axes = "all") +
+  ggh4x::force_panelsizes(rows = n_bar) +
+  theme(strip.text = element_text(face = "bold", hjust = 0, size = rel(1.05)))
+save2(f14, "fig14_pct_cobertura_regiones", w = 7, h = 8)
+```
+
 ---
 
 ## El inventario de la carpeta, y la compuerta
